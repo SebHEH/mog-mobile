@@ -355,6 +355,75 @@
       gap: 8px;
     }
     .comingsoon-banner i { font-size: 18px; }
+    /* Stale reset screen */
+    .stale-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      padding-top: max(24px, env(safe-area-inset-top));
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+      background: var(--bg);
+      text-align: center;
+    }
+    .stale-icon {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: var(--amber-light);
+      color: var(--amber-mid);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 38px; margin-bottom: 18px;
+    }
+    .stale-title { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+    .stale-sub {
+      font-size: 14px; color: var(--text-2);
+      margin: 0 0 22px; max-width: 320px; line-height: 1.45;
+    }
+    .stale-meta-card {
+      background: var(--bg-soft);
+      border-radius: var(--r-md);
+      padding: 14px 16px;
+      max-width: 320px;
+      width: 100%;
+      margin-bottom: 22px;
+      font-size: 13px;
+      text-align: left;
+    }
+    .stale-meta-row {
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .stale-meta-row + .stale-meta-row { margin-top: 6px; }
+    .stale-meta-row .label { color: var(--text-2); }
+    .stale-meta-row .val { font-weight: 600; }
+    .stale-cta {
+      width: 100%;
+      max-width: 320px;
+      background: var(--teal); color: white;
+      border: none; border-radius: var(--r-md);
+      padding: 14px;
+      font-size: 15px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px;
+    }
+    .stale-cta:active { background: var(--teal-dark); }
+    .stale-cta:disabled { opacity: 0.6; }
+    .stale-cta i { font-size: 18px; }
+    .stale-help {
+      margin-top: 18px;
+      font-size: 12px;
+      color: var(--text-3);
+      max-width: 320px;
+      line-height: 1.45;
+    }
+    .stale-error {
+      color: var(--red);
+      font-size: 13px;
+      font-weight: 500;
+      min-height: 18px;
+      margin-top: 12px;
+    }
+
 
     .es .lang-en { display: none; }
     .en .lang-es { display: none; }
@@ -397,6 +466,44 @@
     <p class="pin-help">
       <span class="lang-en">If you don't know the PIN, ask your GM.</span>
       <span class="lang-es">Si no sabes el PIN, pregunta a tu gerente.</span>
+    </p>
+  </div>
+
+
+  <!-- STALE RESET GATE -->
+  <div class="stale-screen" id="screen-stale" style="display:none">
+    <div class="stale-icon"><i class="ti ti-refresh-alert" aria-hidden="true"></i></div>
+    <h1 class="stale-title">
+      <span class="lang-en">Start the new day</span>
+      <span class="lang-es">Empezar el d&iacute;a</span>
+    </h1>
+    <p class="stale-sub">
+      <span class="lang-en">Reset On Hand to clear yesterday's counts and load today's pars before you begin counting.</span>
+      <span class="lang-es">Reinicia el inventario para borrar los conteos de ayer y cargar los pars de hoy antes de contar.</span>
+    </p>
+
+    <div class="stale-meta-card">
+      <div class="stale-meta-row">
+        <span class="label"><span class="lang-en">Last reset</span><span class="lang-es">&Uacute;ltimo reinicio</span></span>
+        <span class="val" id="stale-lastreset">—</span>
+      </div>
+      <div class="stale-meta-row">
+        <span class="label"><span class="lang-en">Today</span><span class="lang-es">Hoy</span></span>
+        <span class="val" id="stale-today">—</span>
+      </div>
+    </div>
+
+    <button class="stale-cta" id="stale-reset-btn">
+      <i class="ti ti-refresh" aria-hidden="true"></i>
+      <span class="lang-en">Reset On Hand</span>
+      <span class="lang-es">Reiniciar Inventario</span>
+    </button>
+
+    <p class="stale-error" id="stale-error"></p>
+
+    <p class="stale-help">
+      <span class="lang-en">This logs yesterday's order, clears all On Hand counts, and updates the date so today's multipliers apply.</span>
+      <span class="lang-es">Esto registra el pedido de ayer, borra los conteos y actualiza la fecha para los multiplicadores de hoy.</span>
     </p>
   </div>
 
@@ -566,6 +673,7 @@
 
   function showPinScreen() {
     $('screen-pin').style.display = 'flex';
+    $('screen-stale').style.display = 'none';
     $('screen-main').style.display = 'none';
     $('pin-input').value = '';
     $('pin-error').textContent = '';
@@ -574,8 +682,87 @@
 
   function showMainApp() {
     $('screen-pin').style.display = 'none';
+    $('screen-stale').style.display = 'none';
     $('screen-main').style.display = 'flex';
     switchTab('today');
+  }
+
+  function showStaleScreen(status) {
+    $('screen-pin').style.display = 'none';
+    $('screen-main').style.display = 'none';
+    $('screen-stale').style.display = 'flex';
+
+    const lastResetEl = $('stale-lastreset');
+    const todayEl     = $('stale-today');
+    const errEl       = $('stale-error');
+    const btn         = $('stale-reset-btn');
+
+    lastResetEl.textContent = status.lastReset
+      ? formatDateForStale(status.lastReset)
+      : (state.lang === 'en' ? 'Never' : 'Nunca');
+    todayEl.textContent = formatDateForStale(status.today);
+    errEl.textContent = '';
+    btn.disabled = false;
+    btn.querySelector('span.lang-en').textContent = 'Reset On Hand';
+    btn.querySelector('span.lang-es').textContent = 'Reiniciar Inventario';
+  }
+
+  function formatDateForStale(yyyymmdd) {
+    if (!yyyymmdd) return '—';
+    const parts = yyyymmdd.split('-');
+    if (parts.length !== 3) return yyyymmdd;
+    const monthsEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthsEs = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const months = state.lang === 'en' ? monthsEn : monthsEs;
+    return months[+parts[1] - 1] + ' ' + (+parts[2]) + ', ' + parts[0];
+  }
+
+  // Single router: called after successful PIN entry or restored session.
+  // Decides between stale-reset gate and the dashboard.
+  async function proceedAfterAuth() {
+    try {
+      const status = await api('getResetStatus');
+      if (status.isStale) {
+        showStaleScreen(status);
+      } else {
+        showMainApp();
+      }
+    } catch (err) {
+      console.error('proceedAfterAuth error:', err);
+      // If the stale check itself fails, fall through to the main app —
+      // the dashboard's own error state will surface the issue clearly,
+      // rather than blocking everything behind a setup error.
+      showMainApp();
+    }
+  }
+
+  async function handleStaleReset() {
+    const btn   = $('stale-reset-btn');
+    const errEl = $('stale-error');
+    btn.disabled = true;
+    errEl.textContent = '';
+    btn.querySelector('span.lang-en').textContent = 'Resetting…';
+    btn.querySelector('span.lang-es').textContent = 'Reiniciando…';
+    try {
+      await api('commitReset');
+      // Clear caches so dashboard re-fetches with fresh data
+      state.cache.dashboard = null;
+      state.cache.history = null;
+      showMainApp();
+    } catch (err) {
+      console.error('reset error:', err);
+      btn.disabled = false;
+      btn.querySelector('span.lang-en').textContent = 'Reset On Hand';
+      btn.querySelector('span.lang-es').textContent = 'Reiniciar Inventario';
+      const m = String(err.message || '');
+      if (m.indexOf('Failed to fetch') >= 0 || m.indexOf('NetworkError') >= 0) {
+        errEl.textContent = state.lang === 'en'
+          ? "Couldn't reach the server. Try again."
+          : 'Sin conexión. Intenta de nuevo.';
+      } else {
+        errEl.textContent = m || (state.lang === 'en' ? 'Reset failed.' : 'Error al reiniciar.');
+      }
+    }
   }
 
   async function handlePinSubmit() {
@@ -588,7 +775,7 @@
     $('pin-input').classList.remove('error');
     try {
       await tryPin(pin);
-      showMainApp();
+      await proceedAfterAuth();
     } catch (err) {
       btn.disabled = false;
       $('pin-input').classList.add('error');
@@ -611,6 +798,7 @@
     state.cache.history = null;
     showPinScreen();
   }
+
 
   // ============================================================
   // VIEWS
@@ -973,6 +1161,7 @@
   });
 
   $('pin-submit').addEventListener('click', handlePinSubmit);
+  $('stale-reset-btn').addEventListener('click', handleStaleReset);
   $('pin-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') handlePinSubmit();
   });
@@ -989,7 +1178,7 @@
   if (state.pin) {
     // Verify stored PIN by silently calling ping. If it fails, force re-auth.
     tryPin(state.pin)
-      .then(() => showMainApp())
+      .then(() => proceedAfterAuth())
       .catch(() => showPinScreen());
   } else {
     showPinScreen();
