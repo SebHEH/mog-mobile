@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Ordering">
+  <meta name="theme-color" content="#0F6E56">
+  <title>Master Ordering Guide</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, sans-serif;
+      font-size: 15px;
+      color: #1f1e1b;
+      background: #ebe9e0;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
+    }
+    button, input, select { font-family: inherit; }
+    button { -webkit-tap-highlight-color: transparent; cursor: pointer; }
+
+    :root {
+      --teal: #0f6e56;
+      --teal-light: #e1f5ee;
+      --teal-dark: #04342c;
+      --amber-light: #faeeda;
+      --amber-mid: #BA7517;
+      --amber-dark: #412402;
+      --red: #A32D2D;
+      --red-light: #FCEBEB;
+      --red-dark: #501313;
+      --bg: #ffffff;
+      --bg-soft: #f5f4ed;
+      --bg-mute: #ebe9e0;
+      --text: #1f1e1b;
+      --text-2: #5f5e5a;
+      --text-3: #8a8a85;
+      --border: rgba(0,0,0,0.10);
+      --border-2: rgba(0,0,0,0.20);
+      --r-md: 10px;
+      --r-lg: 14px;
+    }
+
+    .app {
+      max-width: 480px;
+      margin: 0 auto;
+      background: var(--bg);
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      padding-top: max(10px, env(safe-area-inset-top));
+      border-bottom: 0.5px solid var(--border);
+      background: var(--bg);
+      flex-shrink: 0;
+      gap: 8px;
+    }
+    .topbar-title { font-weight: 600; font-size: 16px; flex: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .topbar-side { display: flex; align-items: center; min-width: 64px; }
+    .topbar-side.right { justify-content: flex-end; }
+
+    .back-btn {
+      background: transparent;
+      border: none;
+      color: var(--teal);
+      font-size: 15px;
+      font-weight: 500;
+      padding: 6px 4px 6px 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 1px;
+    }
+    .back-btn i { font-size: 22px; margin-right: -2px; }
+    .back-btn:active { opacity: 0.5; }
+
+    .lang-btn {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-2);
+      border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      padding: 5px 10px;
+      background: transparent;
+    }
+    .lang-btn:active { opacity: 0.6; }
+
+    .scroll-area { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .screen { padding: 16px 14px 24px; }
+
+    .tabbar {
+      display: flex;
+      border-top: 0.5px solid var(--border);
+      background: var(--bg);
+      flex-shrink: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 8px 6px 6px;
+      background: transparent;
+      border: none;
+      color: var(--text-3);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .tab i { font-size: 22px; }
+    .tab.active { color: var(--teal); }
+    .tab:active { opacity: 0.6; }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+
+    .hero-day { font-size: 24px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+    .hero-loc { font-size: 13px; color: var(--text-2); margin: 4px 0 18px; display: flex; align-items: center; gap: 4px; }
+    .hero-loc i { font-size: 15px; }
+
+    .vendor-card {
+      background: var(--bg);
+      border: 0.5px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .vendor-card.tappable { cursor: pointer; }
+    .vendor-card.tappable:active { background: var(--bg-soft); }
+    .vendor-card.muted { background: var(--bg-soft); }
+    .vendor-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .vendor-name { font-size: 16px; font-weight: 600; }
+    .vendor-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .vendor-meta.urgent { color: var(--red); font-weight: 600; }
+    .vendor-meta i { font-size: 13px; }
+
+    .pill {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: var(--r-md);
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .pill-done { background: var(--teal-light); color: var(--teal-dark); }
+    .pill-progress { background: var(--amber-light); color: var(--amber-dark); }
+    .pill-todo { background: var(--bg-mute); color: var(--text-2); }
+
+    .empty-state { padding: 48px 24px; text-align: center; }
+    .empty-icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--bg-soft);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 28px; color: var(--text-3); margin-bottom: 14px;
+    }
+    .empty-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+    .empty-sub { font-size: 13px; color: var(--text-2); margin: 0 0 18px; }
+
+    .history-group { margin-bottom: 18px; }
+    .history-group-header {
+      font-size: 11px; font-weight: 600; color: var(--text-3);
+      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
+    }
+    .history-row {
+      background: var(--bg); border: 0.5px solid var(--border);
+      border-radius: var(--r-md); padding: 12px 14px; margin-bottom: 6px;
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer;
+    }
+    .history-row:active { background: var(--bg-soft); }
+    .history-vendor { font-size: 14px; font-weight: 600; }
+    .history-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+    .history-arrow { color: var(--text-3); font-size: 18px; }
+
+    .review-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0; border-bottom: 0.5px solid var(--border); gap: 10px;
+    }
+    .review-row:last-of-type { border-bottom: none; }
+    .review-info { flex: 1; min-width: 0; }
+    .item-name { font-size: 15px; font-weight: 500; margin: 0; }
+    .item-meta { font-size: 12px; color: var(--text-3); margin: 2px 0 0; }
+    .review-qty { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+    .qty-num { font-size: 22px; font-weight: 700; }
+
+    .review-summary {
+      background: var(--bg-soft); padding: 14px; border-radius: var(--r-md);
+      margin-top: 16px; font-size: 14px;
+    }
+    .summary-row { display: flex; justify-content: space-between; align-items: center; }
+    .summary-row + .summary-row { margin-top: 6px; color: var(--text-2); font-size: 12px; }
+    .progress-strong { color: var(--text); font-weight: 600; }
+    .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; }
+
+    /* Settings */
+    .profile-card {
+      background: var(--bg-soft); border-radius: var(--r-lg); padding: 16px;
+      margin-bottom: 18px; display: flex; align-items: center; gap: 14px;
+    }
+    .avatar {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--teal); color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 600; flex-shrink: 0;
+    }
+    .profile-info { flex: 1; min-width: 0; }
+    .profile-name { font-size: 16px; font-weight: 600; }
+    .profile-email { font-size: 12px; color: var(--text-2); margin-top: 2px; word-break: break-all; }
+    .profile-role { font-size: 11px; color: var(--teal); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; }
+
+    .settings-section-label {
+      font-size: 11px; font-weight: 600; color: var(--text-3);
+      text-transform: uppercase; letter-spacing: 0.06em; padding: 0 4px 8px;
+    }
+    .settings-group {
+      background: var(--bg); border: 0.5px solid var(--border);
+      border-radius: var(--r-lg); overflow: hidden; margin-bottom: 14px;
+    }
+    .settings-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px; gap: 12px; background: var(--bg);
+      border-bottom: 0.5px solid var(--border);
+    }
+    .settings-row:last-child { border-bottom: none; }
+    .settings-row.tappable { cursor: pointer; }
+    .settings-row.tappable:active { background: var(--bg-soft); }
+    .settings-label { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; }
+    .settings-label i { color: var(--text-2); margin-right: 10px; font-size: 18px; vertical-align: middle; }
+    .settings-value { font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .settings-value i { font-size: 16px; color: var(--text-3); }
+
+    .cta-secondary {
+      width: 100%; background: transparent; color: var(--text);
+      border: 0.5px solid var(--border-2); border-radius: var(--r-md);
+      padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
+    }
+    .cta-secondary:active { background: var(--bg-soft); }
+    .cta-secondary:disabled { opacity: 0.4; }
+    .cta-danger {
+      width: 100%; background: transparent; color: var(--red);
+      border: 0.5px solid var(--border-2); border-radius: var(--r-md);
+      padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
+    }
+    .cta-danger:active { background: var(--red-light); }
+
+    /* PIN screen */
+    .pin-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      padding-top: max(24px, env(safe-area-inset-top));
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+      background: var(--bg);
+    }
+    .pin-logo {
+      width: 64px; height: 64px; border-radius: 16px;
+      background: var(--teal); color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 32px; margin-bottom: 18px;
+    }
+    .pin-title { font-size: 22px; font-weight: 600; margin: 0 0 4px; text-align: center; }
+    .pin-sub { font-size: 14px; color: var(--text-2); margin: 0 0 28px; text-align: center; }
+    .pin-input {
+      width: 100%; max-width: 280px;
+      padding: 14px 16px; border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md); font-size: 22px; font-weight: 600;
+      text-align: center; letter-spacing: 0.4em;
+      margin-bottom: 14px; outline: none; background: var(--bg-soft);
+    }
+    .pin-input:focus { border-color: var(--teal); background: var(--bg); }
+    .pin-input.error { border-color: var(--red); background: var(--red-light); animation: shake 0.3s; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-6px); }
+      75% { transform: translateX(6px); }
+    }
+    .pin-error {
+      color: var(--red); font-size: 13px; font-weight: 500;
+      min-height: 18px; margin-bottom: 14px;
+    }
+    .pin-cta {
+      width: 100%; max-width: 280px;
+      background: var(--teal); color: white; border: none;
+      border-radius: var(--r-md); padding: 14px;
+      font-size: 15px; font-weight: 600;
+    }
+    .pin-cta:active { background: var(--teal-dark); }
+    .pin-cta:disabled { opacity: 0.4; }
+    .pin-help {
+      margin-top: 28px; font-size: 12px; color: var(--text-3);
+      text-align: center; max-width: 280px;
+    }
+
+    /* Loading state */
+    .loading-state {
+      padding: 64px 24px; text-align: center; color: var(--text-2);
+    }
+    .spinner {
+      display: inline-block; width: 28px; height: 28px;
+      border: 3px solid var(--bg-mute); border-top-color: var(--teal);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 14px; }
+
+    /* Error state */
+    .error-state {
+      padding: 32px 24px; text-align: center;
+    }
+    .error-icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--red-light); color: var(--red);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 28px; margin-bottom: 14px;
+    }
+    .error-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+    .error-sub { font-size: 13px; color: var(--text-2); margin: 0 0 18px; }
+
+    /* Coming soon banner */
+    .comingsoon-banner {
+      background: var(--amber-light);
+      border-radius: var(--r-md);
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      font-size: 13px;
+      color: var(--amber-dark);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .comingsoon-banner i { font-size: 18px; }
+
+    .es .lang-en { display: none; }
+    .en .lang-es { display: none; }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  </style>
+</head>
+<body>
+
+<!-- ============================================================
+     CONFIG — set this to your deployed Apps Script Web App URL
+     ============================================================ -->
+<script>
+  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+</script>
+
+<div class="app en" id="app">
+
+  <!-- PIN GATE -->
+  <div class="pin-screen" id="screen-pin">
+    <div class="pin-logo"><i class="ti ti-clipboard-list" aria-hidden="true"></i></div>
+    <h1 class="pin-title">Master Ordering Guide</h1>
+    <p class="pin-sub" id="pin-loc-hint">
+      <span class="lang-en">Enter the location PIN to continue.</span>
+      <span class="lang-es">Ingresa el PIN para continuar.</span>
+    </p>
+    <input
+      class="pin-input"
+      id="pin-input"
+      type="password"
+      inputmode="numeric"
+      autocomplete="off"
+      maxlength="8"
+      placeholder="••••">
+    <p class="pin-error" id="pin-error"></p>
+    <button class="pin-cta" id="pin-submit">
+      <span class="lang-en">Sign in</span>
+      <span class="lang-es">Entrar</span>
+    </button>
+    <p class="pin-help">
+      <span class="lang-en">If you don't know the PIN, ask your GM.</span>
+      <span class="lang-es">Si no sabes el PIN, pregunta a tu gerente.</span>
+    </p>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="screen-main" style="display:none; flex: 1; flex-direction: column; min-height: 0;">
+
+    <div class="topbar">
+      <div class="topbar-side">
+        <button class="back-btn" id="back-btn" aria-label="Back" style="display:none">
+          <i class="ti ti-chevron-left" aria-hidden="true"></i>
+          <span class="lang-en">Back</span><span class="lang-es">Atr&aacute;s</span>
+        </button>
+      </div>
+      <div class="topbar-title" id="topbar-title">
+        <span class="lang-en">Today's orders</span><span class="lang-es">Pedidos de hoy</span>
+      </div>
+      <div class="topbar-side right">
+        <button class="lang-btn" id="lang-btn">
+          <span class="lang-en">ES</span><span class="lang-es">EN</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="scroll-area" id="scroll-area">
+      <!-- Today screen -->
+      <div class="screen" id="view-today" style="display:none"></div>
+      <!-- History screen -->
+      <div class="screen" id="view-history" style="display:none"></div>
+      <!-- History detail screen -->
+      <div class="screen" id="view-history-detail" style="display:none"></div>
+      <!-- Settings screen -->
+      <div class="screen" id="view-settings" style="display:none"></div>
+    </div>
+
+    <div class="tabbar">
+      <button class="tab active" data-tab="today">
+        <i class="ti ti-home" aria-hidden="true"></i>
+        <span><span class="lang-en">Today</span><span class="lang-es">Hoy</span></span>
+      </button>
+      <button class="tab" data-tab="history">
+        <i class="ti ti-clock" aria-hidden="true"></i>
+        <span><span class="lang-en">History</span><span class="lang-es">Historial</span></span>
+      </button>
+      <button class="tab" data-tab="settings">
+        <i class="ti ti-settings" aria-hidden="true"></i>
+        <span><span class="lang-en">Settings</span><span class="lang-es">Ajustes</span></span>
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  const state = {
+    apiUrl:     window.MOG_API_URL,
+    pin:        localStorage.getItem('mog_pin') || '',
+    lang:       localStorage.getItem('mog_lang') || 'en',
+    location:   localStorage.getItem('mog_location') || '',
+    locAbbr:    localStorage.getItem('mog_loc_abbr') || '',
+    currentTab: 'today',
+    currentView: 'today',
+    historyDetailContext: null, // { vendor, date }
+    cache: { dashboard: null, history: null }
+  };
+
+  // ============================================================
+  // I18N
+  // ============================================================
+  const T = {
+    titles: {
+      today:           { en: "Today's orders",  es: 'Pedidos de hoy' },
+      history:         { en: 'History',         es: 'Historial' },
+      'history-detail':{ en: 'Order details',   es: 'Detalles' },
+      settings:        { en: 'Settings',        es: 'Ajustes' }
+    },
+    msg: {
+      noVendors:        { en: 'No vendors today',                                  es: 'No hay proveedores hoy' },
+      noVendorsSub:     { en: "Nothing scheduled for delivery today.",             es: 'No hay entregas programadas hoy.' },
+      noHistory:        { en: 'No orders yet',                                     es: 'A&uacute;n no hay pedidos' },
+      noHistorySub:     { en: 'Past orders will appear here.',                     es: 'Los pedidos aparecer&aacute;n aqu&iacute;.' },
+      loading:          { en: 'Loading…',                                          es: 'Cargando…' },
+      retry:            { en: 'Retry',                                             es: 'Reintentar' },
+      cantLoad:         { en: "Couldn't load",                                     es: 'No se pudo cargar' },
+      cantLoadSub:      { en: 'Check your connection and try again.',              es: 'Revisa tu conexi&oacute;n y reintenta.' },
+      sent:             { en: 'Sent',                                              es: 'Enviado' },
+      notStarted:       { en: 'Not started',                                       es: 'No iniciado' },
+      itemsToOrder:     { en: 'to order',                                          es: 'por pedir' },
+      sentAt:           { en: 'sent at',                                           es: 'enviado' },
+      items:            { en: 'items',                                             es: 'art&iacute;culos' },
+      cutoff:           { en: 'cutoff',                                            es: 'corte' },
+      cutoffIn:         { en: 'Cutoff in',                                         es: 'Corte en' },
+      pickup:           { en: 'pick up',                                           es: 'recoger' },
+      vendorsToday:     { en: 'Vendors today',                                     es: 'Proveedores hoy' },
+      today:            { en: 'Today',                                             es: 'Hoy' },
+      orderHistory:     { en: 'Order history',                                     es: 'Historial' },
+      itemsOrdered:     { en: 'Items ordered',                                     es: 'Art&iacute;culos pedidos' },
+      reference:        { en: 'Reference',                                         es: 'Referencia' },
+      onHand:           { en: 'on hand',                                           es: 'stock' },
+      defaultLocation:  { en: 'Default location',                                  es: 'Ubicaci&oacute;n predeterminada' },
+      language:         { en: 'Language',                                          es: 'Idioma' },
+      english:          { en: 'English',                                           es: 'Espa&ntilde;ol' },
+      version:          { en: 'Version',                                           es: 'Versi&oacute;n' },
+      signOut:          { en: 'Sign out',                                          es: 'Cerrar sesi&oacute;n' },
+      comingSoon:       { en: 'Counting and sending coming next.',                 es: 'Contar y enviar pr&oacute;ximamente.' },
+      pinError:         { en: 'Wrong PIN. Try again.',                             es: 'PIN incorrecto. Intenta de nuevo.' },
+      pinNetworkError:  { en: "Couldn't reach the server. Check your connection.", es: 'Sin conexi&oacute;n. Revisa tu internet.' },
+      pinConfigError:   { en: 'App not configured. Contact your GM.',              es: 'App no configurada. Contacta tu gerente.' }
+    }
+  };
+  const t = (key) => T.msg[key] ? T.msg[key][state.lang] : key;
+
+  // ============================================================
+  // DOM helpers
+  // ============================================================
+  const $  = (id) => document.getElementById(id);
+  const escapeHtml = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  function setLang(lang) {
+    state.lang = lang;
+    localStorage.setItem('mog_lang', lang);
+    document.getElementById('app').classList.toggle('en', lang === 'en');
+    document.getElementById('app').classList.toggle('es', lang === 'es');
+  }
+
+  // ============================================================
+  // API client
+  // ============================================================
+  async function api(action, payload) {
+    if (!state.apiUrl || state.apiUrl.indexOf('PASTE_YOUR') === 0) {
+      throw new Error('CONFIG_MISSING');
+    }
+    const resp = await fetch(state.apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ pin: state.pin, action: action, payload: payload || {} }),
+      redirect: 'follow'
+    });
+    const text = await resp.text();
+    let json;
+    try { json = JSON.parse(text); }
+    catch (e) { throw new Error('BAD_JSON: ' + text.substring(0, 200)); }
+    if (!json.ok) throw new Error(json.error || 'Unknown error');
+    return json.data;
+  }
+
+  // ============================================================
+  // PIN GATE
+  // ============================================================
+  async function tryPin(pin) {
+    state.pin = pin;
+    const data = await api('ping');
+    state.location = data.location || '';
+    state.locAbbr  = data.abbr     || '';
+    localStorage.setItem('mog_pin', pin);
+    localStorage.setItem('mog_location', state.location);
+    localStorage.setItem('mog_loc_abbr', state.locAbbr);
+    return data;
+  }
+
+  function showPinScreen() {
+    $('screen-pin').style.display = 'flex';
+    $('screen-main').style.display = 'none';
+    $('pin-input').value = '';
+    $('pin-error').textContent = '';
+    setTimeout(() => $('pin-input').focus(), 100);
+  }
+
+  function showMainApp() {
+    $('screen-pin').style.display = 'none';
+    $('screen-main').style.display = 'flex';
+    switchTab('today');
+  }
+
+  async function handlePinSubmit() {
+    const pin = $('pin-input').value.trim();
+    const errEl = $('pin-error');
+    const btn   = $('pin-submit');
+    if (!pin) return;
+    btn.disabled = true;
+    errEl.textContent = '';
+    $('pin-input').classList.remove('error');
+    try {
+      await tryPin(pin);
+      showMainApp();
+    } catch (err) {
+      btn.disabled = false;
+      $('pin-input').classList.add('error');
+      const m = String(err.message || '');
+      if (m === 'CONFIG_MISSING') errEl.textContent = t('pinConfigError');
+      else if (m === 'Invalid PIN') errEl.textContent = t('pinError');
+      else if (m.indexOf('Failed to fetch') >= 0 || m.indexOf('NetworkError') >= 0) errEl.textContent = t('pinNetworkError');
+      else errEl.textContent = m;
+    }
+  }
+
+  function signOut() {
+    state.pin = '';
+    state.location = '';
+    state.locAbbr = '';
+    localStorage.removeItem('mog_pin');
+    localStorage.removeItem('mog_location');
+    localStorage.removeItem('mog_loc_abbr');
+    state.cache.dashboard = null;
+    state.cache.history = null;
+    showPinScreen();
+  }
+
+  // ============================================================
+  // VIEWS
+  // ============================================================
+
+  function renderLoading(el) {
+    el.innerHTML =
+      '<div class="loading-state">' +
+        '<div class="spinner"></div>' +
+        '<div class="loading-text">' + escapeHtml(t('loading')) + '</div>' +
+      '</div>';
+  }
+
+  function renderError(el, retryFn) {
+    const html =
+      '<div class="error-state">' +
+        '<div class="error-icon"><i class="ti ti-cloud-off" aria-hidden="true"></i></div>' +
+        '<p class="error-title">' + escapeHtml(t('cantLoad')) + '</p>' +
+        '<p class="error-sub">' + escapeHtml(t('cantLoadSub')) + '</p>' +
+        '<button class="cta-secondary" id="retry-btn" style="max-width:200px;display:inline-block;width:auto">' +
+          '<i class="ti ti-refresh" aria-hidden="true" style="vertical-align:middle"></i> ' +
+          escapeHtml(t('retry')) +
+        '</button>' +
+      '</div>';
+    el.innerHTML = html;
+    $('retry-btn').addEventListener('click', retryFn);
+  }
+
+  // ----- TODAY ----------------------------------------------------
+  function dayName(dayCode) {
+    const map = {
+      en: { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' },
+      es: { Mon: 'Lunes', Tue: 'Martes', Wed: 'Mi&eacute;rcoles', Thu: 'Jueves', Fri: 'Viernes', Sat: 'S&aacute;bado', Sun: 'Domingo' }
+    };
+    return map[state.lang][dayCode] || dayCode;
+  }
+  function formatDateLong(dateStr, dayCode) {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    const monthsEn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const monthsEs = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const month = state.lang === 'en' ? monthsEn[+parts[1] - 1] : monthsEs[+parts[1] - 1];
+    const day = +parts[2];
+    if (state.lang === 'en') return dayName(dayCode) + ', ' + month + ' ' + day;
+    return dayName(dayCode) + ', ' + day + ' de ' + month;
+  }
+
+  function fmt12h(hhmm) {
+    if (!hhmm) return '';
+    const [h, m] = hhmm.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const hr12 = h % 12 || 12;
+    return hr12 + ':' + String(m).padStart(2, '0') + ' ' + ampm;
+  }
+
+  function renderToday(data) {
+    const view = $('view-today');
+    if (!data || !data.vendors || !data.vendors.length) {
+      view.innerHTML =
+        '<p class="hero-day">' + escapeHtml(formatDateLong(data ? data.date : '', data ? data.dayOfWeek : '')) + '</p>' +
+        '<p class="hero-loc"><i class="ti ti-map-pin" aria-hidden="true"></i>' + escapeHtml(data ? data.location : state.location) + '</p>' +
+        '<div class="empty-state">' +
+          '<div class="empty-icon"><i class="ti ti-coffee" aria-hidden="true"></i></div>' +
+          '<p class="empty-title">' + escapeHtml(t('noVendors')) + '</p>' +
+          '<p class="empty-sub">' + escapeHtml(t('noVendorsSub')) + '</p>' +
+        '</div>';
+      return;
+    }
+
+    let html = '';
+    html += '<p class="hero-day">' + escapeHtml(formatDateLong(data.date, data.dayOfWeek)) + '</p>';
+    html += '<p class="hero-loc"><i class="ti ti-map-pin" aria-hidden="true"></i>' + escapeHtml(data.location) + '</p>';
+    html += '<div class="comingsoon-banner"><i class="ti ti-info-circle" aria-hidden="true"></i>' + escapeHtml(t('comingSoon')) + '</div>';
+    html += '<div class="section-label">' + escapeHtml(t('vendorsToday')) + ' &middot; ' + data.vendors.length + '</div>';
+
+    for (const v of data.vendors) {
+      html += renderVendorCard(v);
+    }
+
+    view.innerHTML = html;
+  }
+
+  function renderVendorCard(v) {
+    const isSent = v.status === 'sent';
+    const muted  = isSent ? ' muted' : '';
+    let metaText, pillHtml;
+
+    if (isSent) {
+      const sentLabel = v.sentAt ? (' &middot; ' + escapeHtml(t('sentAt')) + ' ' + escapeHtml(fmt12h(v.sentAt))) : '';
+      const itemsText = v.toOrderCount != null ? v.toOrderCount : v.itemCount;
+      metaText = itemsText + ' ' + t('items') + sentLabel;
+      pillHtml = '<span class="pill pill-done"><i class="ti ti-check" aria-hidden="true" style="font-size:12px"></i>' + escapeHtml(t('sent')) + '</span>';
+    } else if (v.status === 'in_progress') {
+      const cutoff = v.cutoffTime ? (' &middot; ' + escapeHtml(t('cutoff')) + ' ' + escapeHtml(fmt12h(v.cutoffTime))) : '';
+      metaText = v.itemCount + ' ' + t('items') + cutoff;
+      pillHtml = '<span class="pill pill-progress">' + (v.toOrderCount != null ? v.toOrderCount : '?') + ' ' + escapeHtml(t('itemsToOrder')) + '</span>';
+    } else {
+      const cutoff = v.cutoffTime ? (' &middot; ' + escapeHtml(t('cutoff')) + ' ' + escapeHtml(fmt12h(v.cutoffTime))) : '';
+      metaText = v.itemCount + ' ' + t('items') + cutoff;
+      pillHtml = '<span class="pill pill-todo">' + escapeHtml(t('notStarted')) + '</span>';
+    }
+
+    return (
+      '<div class="vendor-card' + muted + '">' +
+        '<div class="vendor-row">' +
+          '<div>' +
+            '<div class="vendor-name">' + escapeHtml(v.name) + '</div>' +
+            '<div class="vendor-meta">' + metaText + '</div>' +
+          '</div>' +
+          pillHtml +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  async function loadToday() {
+    const view = $('view-today');
+    renderLoading(view);
+    try {
+      const data = await api('getDashboard');
+      state.cache.dashboard = data;
+      renderToday(data);
+    } catch (err) {
+      console.error('loadToday error:', err);
+      renderError(view, loadToday);
+    }
+  }
+
+  // ----- HISTORY --------------------------------------------------
+  function formatHistoryDate(dateStr) {
+    if (!dateStr) return '';
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const yesterday = new Date(today.getTime() - 86400000);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    if (dateStr === todayStr)     return t('today') + ' &middot; ' + shortDate(dateStr);
+    if (dateStr === yesterdayStr) return (state.lang === 'en' ? 'Yesterday' : 'Ayer') + ' &middot; ' + shortDate(dateStr);
+    return shortDate(dateStr);
+  }
+  function shortDate(dateStr) {
+    const parts = dateStr.split('-');
+    const monthsEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthsEs = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const day = +parts[2];
+    if (state.lang === 'en') {
+      const dayCodes = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      const d = new Date(dateStr + 'T00:00:00');
+      return dayCodes[d.getDay()] + ' ' + monthsEn[+parts[1] - 1] + ' ' + day;
+    }
+    const dayCodesEs = ['dom','lun','mar','mi&eacute;','jue','vie','s&aacute;b'];
+    const d = new Date(dateStr + 'T00:00:00');
+    return dayCodesEs[d.getDay()] + ' ' + day + ' ' + monthsEs[+parts[1] - 1];
+  }
+  function fmtTimestamp12h(ts) {
+    // ts format from API: "yyyy-MM-dd HH:mm" or full timestamp
+    if (!ts) return '';
+    const m = ts.match(/(\d{2}):(\d{2})/);
+    if (!m) return ts;
+    return fmt12h(m[1] + ':' + m[2]);
+  }
+
+  function renderHistory(data) {
+    const view = $('view-history');
+    if (!data || !data.groups || !data.groups.length) {
+      view.innerHTML =
+        '<p class="hero-day">' + escapeHtml(t('orderHistory')) + '</p>' +
+        '<div class="empty-state">' +
+          '<div class="empty-icon"><i class="ti ti-clock" aria-hidden="true"></i></div>' +
+          '<p class="empty-title">' + escapeHtml(t('noHistory')) + '</p>' +
+          '<p class="empty-sub">' + escapeHtml(t('noHistorySub')) + '</p>' +
+        '</div>';
+      return;
+    }
+
+    let html = '<p class="hero-day" style="margin-bottom:18px">' + escapeHtml(t('orderHistory')) + '</p>';
+    for (const g of data.groups) {
+      html += '<div class="history-group">';
+      html += '<div class="history-group-header">' + formatHistoryDate(g.date) + '</div>';
+      for (const v of g.vendors) {
+        html += (
+          '<div class="history-row" data-vendor="' + escapeHtml(v.vendor) + '" data-date="' + escapeHtml(g.date) + '">' +
+            '<div>' +
+              '<div class="history-vendor">' + escapeHtml(v.vendor) + '</div>' +
+              '<div class="history-meta">' + v.itemCount + ' ' + t('items') + ' &middot; ' + escapeHtml(fmtTimestamp12h(v.timestamp)) + '</div>' +
+            '</div>' +
+            '<i class="ti ti-chevron-right history-arrow" aria-hidden="true"></i>' +
+          '</div>'
+        );
+      }
+      html += '</div>';
+    }
+    view.innerHTML = html;
+
+    view.querySelectorAll('.history-row').forEach(row => {
+      row.addEventListener('click', () => {
+        openHistoryDetail({
+          vendor: row.getAttribute('data-vendor'),
+          date:   row.getAttribute('data-date')
+        });
+      });
+    });
+  }
+
+  async function loadHistory() {
+    const view = $('view-history');
+    renderLoading(view);
+    try {
+      const today = new Date();
+      const fromDate = new Date(today.getTime() - 30 * 86400000);
+      const data = await api('getHistory', {
+        dateFrom: fromDate.toISOString().slice(0, 10),
+        dateTo:   today.toISOString().slice(0, 10)
+      });
+      state.cache.history = data;
+      renderHistory(data);
+    } catch (err) {
+      console.error('loadHistory error:', err);
+      renderError(view, loadHistory);
+    }
+  }
+
+  // ----- HISTORY DETAIL -------------------------------------------
+  function renderHistoryDetail(data, ctx) {
+    const view = $('view-history-detail');
+    let html = '';
+    html += '<div class="section-label" style="margin-bottom:14px">' +
+      escapeHtml(ctx.vendor) + ' &middot; ' + formatHistoryDate(ctx.date) +
+      (data.timestamp ? ' &middot; ' + escapeHtml(fmtTimestamp12h(data.timestamp)) : '') +
+      '</div>';
+
+    for (const it of data.items) {
+      html += (
+        '<div class="review-row">' +
+          '<div class="review-info">' +
+            '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
+            '<p class="item-meta">' + escapeHtml(it.onHand == null ? '—' : it.onHand) + ' ' + escapeHtml(t('onHand')) + '</p>' +
+          '</div>' +
+          '<div class="review-qty"><span class="qty-num">' + it.qty + '</span></div>' +
+        '</div>'
+      );
+    }
+    html += '<div class="review-summary">';
+    html += '<div class="summary-row"><span>' + escapeHtml(t('itemsOrdered')) + '</span><span class="progress-strong">' + data.itemCount + '</span></div>';
+    if (data.reference) {
+      html += '<div class="summary-row"><span>' + escapeHtml(t('reference')) + '</span><span class="mono">' + escapeHtml(data.reference) + '</span></div>';
+    }
+    html += '</div>';
+    view.innerHTML = html;
+  }
+
+  async function openHistoryDetail(ctx) {
+    state.historyDetailContext = ctx;
+    showView('history-detail');
+    const view = $('view-history-detail');
+    renderLoading(view);
+    try {
+      const data = await api('getHistoryDetail', { vendor: ctx.vendor, date: ctx.date });
+      renderHistoryDetail(data, ctx);
+    } catch (err) {
+      console.error('historyDetail error:', err);
+      renderError(view, () => openHistoryDetail(ctx));
+    }
+  }
+
+  // ----- SETTINGS -------------------------------------------------
+  function renderSettings() {
+    const view = $('view-settings');
+    const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
+    const versionStr = '0.4.0';
+    const langLabel = state.lang === 'en' ? 'English' : 'Espa&ntilde;ol';
+
+    view.innerHTML =
+      '<p class="hero-day" style="margin-bottom:18px">' + escapeHtml(t('settings') || 'Settings') + '</p>' +
+
+      '<div class="profile-card">' +
+        '<div class="avatar">' + escapeHtml(initials) + '</div>' +
+        '<div class="profile-info">' +
+          '<div class="profile-name">' + escapeHtml(state.location || '—') + '</div>' +
+          '<div class="profile-email">' + escapeHtml(state.locAbbr || '') + '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="settings-section-label"><span class="lang-en">Preferences</span><span class="lang-es">Preferencias</span></div>' +
+      '<div class="settings-group">' +
+        '<div class="settings-row tappable" id="settings-lang">' +
+          '<div class="settings-label"><i class="ti ti-language" aria-hidden="true"></i>' + escapeHtml(t('language')) + '</div>' +
+          '<div class="settings-value">' + langLabel + '<i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="settings-section-label"><span class="lang-en">About</span><span class="lang-es">Acerca de</span></div>' +
+      '<div class="settings-group">' +
+        '<div class="settings-row">' +
+          '<div class="settings-label"><i class="ti ti-info-circle" aria-hidden="true"></i>' + escapeHtml(t('version')) + '</div>' +
+          '<div class="settings-value">' + versionStr + '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<button class="cta-danger" id="signout-btn" style="margin-top:18px">' + escapeHtml(t('signOut')) + '</button>';
+
+    $('settings-lang').addEventListener('click', () => {
+      setLang(state.lang === 'en' ? 'es' : 'en');
+      renderSettings();
+      // Re-render any visible content
+      if (state.cache.dashboard) renderToday(state.cache.dashboard);
+      if (state.cache.history) renderHistory(state.cache.history);
+    });
+    $('signout-btn').addEventListener('click', signOut);
+  }
+
+  // ----- TOPBAR / TITLE -------------------------------------------
+  function setTitle(view) {
+    const t = T.titles[view] || { en: '', es: '' };
+    $('topbar-title').innerHTML =
+      '<span class="lang-en">' + t.en + '</span><span class="lang-es">' + t.es + '</span>';
+  }
+
+  // ----- VIEW SWITCHING -------------------------------------------
+  function showView(viewName) {
+    ['today','history','history-detail','settings'].forEach(v => {
+      $('view-' + v).style.display = v === viewName ? 'block' : 'none';
+    });
+    state.currentView = viewName;
+    setTitle(viewName);
+    const tabRoot = (viewName === 'history-detail') ? 'history' : viewName;
+    $('back-btn').style.display = (viewName === tabRoot) ? 'none' : 'inline-flex';
+    $('scroll-area').scrollTop = 0;
+  }
+
+  function switchTab(tab) {
+    state.currentTab = tab;
+    document.querySelectorAll('.tab').forEach(b => {
+      b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+    });
+    showView(tab);
+    if (tab === 'today')    loadToday();
+    if (tab === 'history')  loadHistory();
+    if (tab === 'settings') renderSettings();
+  }
+
+  function goBack() {
+    if (state.currentView === 'history-detail') {
+      showView('history');
+    }
+  }
+
+  // ============================================================
+  // EVENT WIRING
+  // ============================================================
+  document.querySelectorAll('.tab').forEach(b => {
+    b.addEventListener('click', () => switchTab(b.getAttribute('data-tab')));
+  });
+  $('back-btn').addEventListener('click', goBack);
+  $('lang-btn').addEventListener('click', () => {
+    setLang(state.lang === 'en' ? 'es' : 'en');
+    if (state.cache.dashboard) renderToday(state.cache.dashboard);
+    if (state.cache.history) renderHistory(state.cache.history);
+    if (state.currentView === 'settings') renderSettings();
+    setTitle(state.currentView);
+  });
+
+  $('pin-submit').addEventListener('click', handlePinSubmit);
+  $('pin-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') handlePinSubmit();
+  });
+  $('pin-input').addEventListener('input', () => {
+    $('pin-input').classList.remove('error');
+    $('pin-error').textContent = '';
+  });
+
+  // ============================================================
+  // BOOT
+  // ============================================================
+  setLang(state.lang);
+
+  if (state.pin) {
+    // Verify stored PIN by silently calling ping. If it fails, force re-auth.
+    tryPin(state.pin)
+      .then(() => showMainApp())
+      .catch(() => showPinScreen());
+  } else {
+    showPinScreen();
+  }
+})();
+</script>
+
+</body>
+</html>
