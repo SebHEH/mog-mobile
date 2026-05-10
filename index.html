@@ -123,6 +123,7 @@
     }
     .tab i { font-size: 22px; }
     .tab.active { color: var(--teal); }
+    .tab.busy { opacity: 0.6; pointer-events: none; }
     .tab:active { opacity: 0.6; }
 
     .section-label {
@@ -714,7 +715,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -1225,10 +1226,12 @@
     btn.querySelector('span.lang-es').textContent = 'Reiniciando…';
     try {
       await api('commitReset');
-      // Clear caches and any stale draft/reviewed flags
       state.cache.dashboard = null;
       state.cache.history = null;
-      // Reviewed flags get garbage-collected by date on next dashboard load
+      // Wipe per-cycle local flags. Self-heal in loadToday will catch
+      // anything we miss here, but explicit cleanup is faster and avoids
+      // a momentary flash of stale UI.
+      clearAllPerCycleLocalState_();
       showMainApp();
     } catch (err) {
       console.error('reset error:', err);
@@ -1239,6 +1242,21 @@
       errEl.textContent = (m.indexOf('Failed to fetch') >= 0)
         ? (state.lang === 'en' ? "Couldn't reach the server. Try again." : 'Sin conexión. Intenta de nuevo.')
         : (m || (state.lang === 'en' ? 'Reset failed.' : 'Error al reiniciar.'));
+    }
+  }
+
+  // Wipes every piece of localStorage tied to the current ordering cycle.
+  // Called whenever a reset is committed from any path (stale gate, home
+  // dashboard button, etc.) so reviewed flags / drafts / recap markers
+  // don't carry over and confuse the next cycle.
+  function clearAllPerCycleLocalState_() {
+    const prefixes = ['mog_reviewed_', 'mog_draft_', 'mog_recap_sent_'];
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      for (const p of prefixes) {
+        if (k.indexOf(p) === 0) { localStorage.removeItem(k); break; }
+      }
     }
   }
 
@@ -1491,6 +1509,23 @@
       // GC stale localStorage on first today-load of a new day
       gcReviewedFlags(data.date);
       gcDrafts(data.date);
+      // Self-heal: if a vendor is flagged as reviewed in localStorage but
+      // its on-hand has been wiped on the sheet (enteredCount === 0), the
+      // flag is stale and must be cleared. Catches:
+      //   - PWA reset paths that forgot to clear flags
+      //   - GM resetting directly from the sheet
+      //   - Different KM on a different device clearing on-hand
+      const reviewed = getReviewedSet(data.date);
+      let mutated = false;
+      for (const v of data.vendors) {
+        if (reviewed[v.name] && (v.enteredCount === 0 || v.enteredCount == null)) {
+          delete reviewed[v.name];
+          mutated = true;
+        }
+      }
+      if (mutated) {
+        localStorage.setItem(reviewedKey(data.date), JSON.stringify(reviewed));
+      }
       renderToday(data);
     } catch (err) {
       console.error('loadToday error:', err);
@@ -1531,6 +1566,8 @@
 
   function computeSuggested(item) {
     // Returns the suggested order qty for the current On Hand value.
+    // Always rounds UP so partial-unit shortfalls always trigger an order
+    // (matches the sheet's behavior — you can't order half a case).
     //
     // Priority order for target par:
     //   1. item.targetPar from the API (par × day multiplier, read from
@@ -1543,12 +1580,15 @@
     if (isNaN(oh)) return null;
 
     if (item.targetPar != null) {
-      return Math.max(0, Number(item.targetPar) - oh);
+      return Math.max(0, Math.ceil(Number(item.targetPar) - oh));
     }
     if (item._targetPar != null) {
-      return Math.max(0, Number(item._targetPar) - oh);
+      return Math.max(0, Math.ceil(Number(item._targetPar) - oh));
     }
-    return (item.suggestedQty != null) ? Number(item.suggestedQty) : null;
+    if (item.suggestedQty != null) {
+      return Math.ceil(Number(item.suggestedQty));
+    }
+    return null;
   }
 
   function cacheTargetPars(items) {
@@ -1770,16 +1810,26 @@
     }
   }
 
+  // Disable both action buttons in lockstep while either save flow runs,
+  // so a quick second tap on the other button can't fire a parallel save
+  // and double-flush the dirty buffer.
+  function setCountActionsDisabled(disabled) {
+    const a = $('save-continue-btn');
+    const b = $('review-btn');
+    if (a) a.disabled = disabled;
+    if (b) b.disabled = disabled;
+  }
+
   async function onSaveContinueClick() {
     const btn = $('save-continue-btn');
-    btn.disabled = true;
+    setCountActionsDisabled(true);
     btn.textContent = t('saving');
     const result = await flushDirtyToServer();
     if (result.ok) {
       // Don't toast — the save isn't the goal, getting back to dashboard is
       switchTab('today');
     } else {
-      btn.disabled = false;
+      setCountActionsDisabled(false);
       btn.textContent = t('saveContinue');
       showToast(t('saveError'), 'error');
     }
@@ -1792,12 +1842,12 @@
       return;
     }
     const btn = $('review-btn');
-    btn.disabled = true;
+    setCountActionsDisabled(true);
     btn.textContent = t('saving');
     // Refetch so the review screen has accurate suggestions even for items
     // where target par couldn't be inferred locally.
     const result = await flushDirtyToServer({ refetch: true });
-    btn.disabled = false;
+    setCountActionsDisabled(false);
     btn.textContent = t('reviewOrder');
     if (!result.ok) {
       showToast(t('saveError'), 'error');
@@ -2051,7 +2101,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.9.0';
+    const versionStr = '0.10.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
     const emailDisplay = state.userEmail
       ? state.userEmail
@@ -2193,14 +2243,9 @@
 
     try {
       await api('commitReset');
-      // Wipe local state that's now stale post-reset
       state.cache.dashboard = null;
       state.cache.history   = null;
-      // Clear "recap sent" markers since this is a new cycle
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const k = localStorage.key(i);
-        if (k && k.indexOf('mog_recap_sent_') === 0) localStorage.removeItem(k);
-      }
+      clearAllPerCycleLocalState_();
       showToast(state.lang === 'en' ? 'Reset complete' : 'Reinicio completo', 'success');
       loadToday();
     } catch (err) {
@@ -2261,22 +2306,37 @@
     $('scroll-area').scrollTop = 0;
   }
 
-  function switchTab(tab) {
+  // While a tab's initial load is in flight, ignore further tab taps so a
+  // KM rapidly mashing buttons can't pile up parallel API calls. Tabs
+  // visually stay clickable but the click handler bails. Cleared when the
+  // load completes (success or failure).
+  let isSwitchingTab = false;
+
+  async function switchTab(tab) {
+    if (isSwitchingTab) return;
+    isSwitchingTab = true;
+    document.querySelectorAll('.tab').forEach(b => b.classList.add('busy'));
     state.currentTab = tab;
     document.querySelectorAll('.tab').forEach(b => {
       b.classList.toggle('active', b.getAttribute('data-tab') === tab);
     });
     const tabRoot = { today:'today', history:'history', settings:'settings' }[tab];
     showView(tabRoot);
-    if (tab === 'today')    loadToday();
-    if (tab === 'history')  loadHistory();
-    if (tab === 'settings') renderSettings();
+    try {
+      if (tab === 'today')    await loadToday();
+      if (tab === 'history')  await loadHistory();
+      if (tab === 'settings') renderSettings();
+    } finally {
+      isSwitchingTab = false;
+      document.querySelectorAll('.tab').forEach(b => b.classList.remove('busy'));
+    }
   }
 
   // Wraps switchTab with a dirty-state guard. Used by the tab bar buttons
   // so a user mid-count doesn't lose their unsaved entries by tapping
   // History or Settings by accident. Same confirm UX as the back button.
   async function requestSwitchTab(tab) {
+    if (isSwitchingTab) return;
     const v = state.currentView;
     const ctx = state.countContext;
     const dirtyMidCount = (v === 'count') && ctx && Object.keys(ctx.dirty || {}).length > 0;
