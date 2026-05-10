@@ -138,6 +138,66 @@
     .hero-loc { font-size: 13px; color: var(--text-2); margin: 4px 0 18px; display: flex; align-items: center; gap: 4px; }
     .hero-loc i { font-size: 15px; }
 
+    /* End-of-day "all done" panel — appears at top of Today when every
+       vendor on today's list has been reviewed. Celebratory + email CTA. */
+    .alldone-panel {
+      background: var(--teal-light);
+      border: 0.5px solid #b8dccd;
+      border-radius: var(--r-lg);
+      padding: 18px;
+      margin-bottom: 18px;
+      text-align: center;
+    }
+    .alldone-icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--teal); color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 30px; margin-bottom: 10px;
+    }
+    .alldone-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; color: var(--teal-dark); }
+    .alldone-sub { font-size: 13px; color: var(--text-2); margin: 0 0 14px; line-height: 1.4; }
+    .alldone-btn {
+      width: 100%;
+      background: var(--teal); color: white;
+      border: none; border-radius: var(--r-md);
+      padding: 12px;
+      font-size: 14px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px;
+    }
+    .alldone-btn:active { background: var(--teal-dark); }
+    .alldone-btn:disabled { opacity: 0.6; }
+    .alldone-btn i { font-size: 17px; }
+    .alldone-sent {
+      font-size: 12px; color: var(--teal-dark); margin-top: 8px;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .alldone-sent i { font-size: 14px; }
+
+    /* Home reset card — sits at the bottom of Today as a destructive
+       fallback action. Visually de-emphasized so it doesn't compete with
+       vendor cards. */
+    .home-reset-card {
+      background: var(--bg-soft);
+      border: 0.5px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 14px;
+      margin-top: 24px;
+      text-align: center;
+    }
+    .home-reset-title { font-size: 13px; font-weight: 600; color: var(--text); margin: 0 0 4px; }
+    .home-reset-sub { font-size: 12px; color: var(--text-2); margin: 0 0 12px; line-height: 1.4; }
+    .home-reset-btn {
+      background: transparent;
+      color: var(--text);
+      border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      padding: 10px 16px;
+      font-size: 13px; font-weight: 500;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .home-reset-btn:active { background: var(--bg-mute); }
+    .home-reset-btn i { font-size: 15px; }
     .vendor-card {
       background: var(--bg);
       border: 0.5px solid var(--border);
@@ -654,7 +714,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -907,12 +967,30 @@
         es: 'Esto bloquea los conteos. Puedes volver y editar si lo necesitas.'
       },
       confirmEdit:      { en: 'Edit reviewed vendor?', es: '¿Editar proveedor revisado?' },
-      confirmGoBack:    { en: 'Save and go back?', es: '¿Guardar y volver?' },
+      confirmGoBack:    { en: 'Save your changes?', es: '¿Guardar cambios?' },
       confirmGoBackMsg: {
-        en: "You've made changes that haven't been saved. Save them before returning?",
-        es: 'Tienes cambios sin guardar. ¿Guardarlos antes de volver?'
+        en: "You've entered counts that haven't been saved. Save them before continuing?",
+        es: 'Tienes conteos sin guardar. ¿Guardarlos antes de continuar?'
       },
-      saveAndGoBack:    { en: 'Save and go back', es: 'Guardar y volver' },
+      saveAndGoBack:    { en: 'Save and continue', es: 'Guardar y continuar' },
+      // End-of-day panel
+      allDoneTitle:     { en: 'All vendors reviewed', es: 'Todos los proveedores revisados' },
+      allDoneSub:       { en: "You're set for the day. Email yourself a copy to place the orders.", es: 'Listo para hoy. Env\u00edate una copia para hacer los pedidos.' },
+      emailMyCopy:      { en: 'Email me the daily summary', es: 'Env\u00edame el resumen' },
+      emailing:         { en: 'Sending…', es: 'Enviando…' },
+      // Reset card on home
+      resetHomeTitle:   { en: 'Reset on hand', es: 'Reiniciar inventario' },
+      resetHomeSub: {
+        en: 'Logs all current counts and clears on hand for every vendor. Use only if you need to start over.',
+        es: 'Registra todo y borra el stock de todos los proveedores. Usar solo si necesitas reiniciar.'
+      },
+      resetHomeCta:     { en: 'Reset on hand', es: 'Reiniciar inventario' },
+      confirmReset:     { en: 'Reset on hand for everyone?', es: '¿Reiniciar inventario para todos?' },
+      confirmResetMsg: {
+        en: "This logs every vendor's current counts to history and clears on hand across the whole sheet. This affects everyone, not just one vendor.",
+        es: 'Esto registra todos los conteos actuales y borra el inventario de todo el sistema. Afecta a todos los proveedores, no solo a uno.'
+      },
+      yesReset:         { en: 'Yes, reset everything', es: 'S\u00ed, reiniciar todo' },
       confirmEditMsg: {
         en: "You'll be able to change counts. Mark as reviewed again when you're done.",
         es: 'Podr&aacute;s cambiar los conteos. Marca como revisado al terminar.'
@@ -1307,12 +1385,51 @@
     let html = '';
     html += '<p class="hero-day">' + escapeHtml(formatDateLong(data.date, data.dayOfWeek)) + '</p>';
     html += '<p class="hero-loc"><i class="ti ti-map-pin" aria-hidden="true"></i>' + escapeHtml(data.location) + '</p>';
+
+    // End-of-day "all done" panel — appears when every vendor on today's
+    // list has been reviewed. Tracks "did the user already email this
+    // cycle's recap?" via a per-date localStorage flag so we can show a
+    // confirmation state instead of letting them spam-send.
+    const allReviewed = data.vendors.every(v => effectiveStatus(v, data.date) === 'reviewed');
+    const recapSent   = !!localStorage.getItem('mog_recap_sent_' + data.date);
+    if (allReviewed) {
+      html += '<div class="alldone-panel">' +
+        '<div class="alldone-icon"><i class="ti ti-check" aria-hidden="true"></i></div>' +
+        '<p class="alldone-title">' + escapeHtml(t('allDoneTitle')) + '</p>' +
+        '<p class="alldone-sub">' + escapeHtml(t('allDoneSub')) + '</p>' +
+        (recapSent
+          ? '<button class="alldone-btn" id="alldone-resend-btn">' +
+              '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
+              '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
+            '</button>' +
+            '<div class="alldone-sent">' +
+              '<i class="ti ti-circle-check" aria-hidden="true"></i>' +
+              '<span class="lang-en">Already sent today</span>' +
+              '<span class="lang-es">Ya enviado hoy</span>' +
+            '</div>'
+          : '<button class="alldone-btn" id="alldone-email-btn">' +
+              '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
+              '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
+            '</button>') +
+      '</div>';
+    }
+
     html += '<div class="section-label">' + escapeHtml(t('vendorsToday')) + ' &middot; ' + data.vendors.length + '</div>';
 
     for (const v of data.vendors) {
       const status = effectiveStatus(v, data.date);
       html += renderVendorCard(v, status);
     }
+
+    // Home reset card — destructive fallback. Always visible at the bottom.
+    html += '<div class="home-reset-card">' +
+      '<p class="home-reset-title">' + escapeHtml(t('resetHomeTitle')) + '</p>' +
+      '<p class="home-reset-sub">' + escapeHtml(t('resetHomeSub')) + '</p>' +
+      '<button class="home-reset-btn" id="home-reset-btn">' +
+        '<i class="ti ti-refresh" aria-hidden="true"></i>' +
+        '<span>' + escapeHtml(t('resetHomeCta')) + '</span>' +
+      '</button>' +
+    '</div>';
 
     view.innerHTML = html;
 
@@ -1322,6 +1439,9 @@
         openCount(vendor);
       });
     });
+    if ($('alldone-email-btn'))  $('alldone-email-btn').addEventListener('click', onSendDailyRecap);
+    if ($('alldone-resend-btn')) $('alldone-resend-btn').addEventListener('click', onSendDailyRecap);
+    if ($('home-reset-btn'))     $('home-reset-btn').addEventListener('click', onHomeResetClick);
   }
 
   function renderVendorCard(v, status) {
@@ -1931,7 +2051,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.8.0';
+    const versionStr = '0.9.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
     const emailDisplay = state.userEmail
       ? state.userEmail
@@ -2000,32 +2120,121 @@
     renderSettings();
   }
 
-  async function onDailySummaryClick() {
+  // Shared core: ensures we have an email, sends the recap, returns
+  // { ok, vendorCount, error }. Used by both the Settings row and the
+  // end-of-day panel on the home dashboard.
+  async function sendDailyRecap() {
     let email = state.userEmail;
     if (!email) {
       email = await showEmailPrompt();
-      if (!email) return;
+      if (!email) return { ok: false, cancelled: true };
       state.userEmail = email;
       localStorage.setItem('mog_user_email', email);
     }
+    try {
+      const result = await api('emailRecap', { userEmail: email });
+      // Mark this cycle's recap as sent so the home panel can show a
+      // confirmation state and discourage spam-resends.
+      const cycleDate = (state.cache.dashboard && state.cache.dashboard.date) || result.cycleDate;
+      if (cycleDate) localStorage.setItem('mog_recap_sent_' + cycleDate, '1');
+      return { ok: true, vendorCount: result.vendorCount, itemCount: result.itemCount };
+    } catch (err) {
+      console.error('emailRecap error:', err);
+      return { ok: false, error: err };
+    }
+  }
+
+  async function onSendDailyRecap() {
+    const btn = $('alldone-email-btn') || $('alldone-resend-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.querySelector('span').textContent = t('emailing');
+    }
+    const result = await sendDailyRecap();
+    if (result.cancelled) {
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = t('emailMyCopy');
+      }
+      return;
+    }
+    if (result.ok) {
+      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+      // Re-render Today so the panel flips to "already sent" state
+      if (state.cache.dashboard) renderToday(state.cache.dashboard);
+    } else {
+      const m = String((result.error && result.error.message) || '');
+      if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      else showToast(m || 'Error', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = t('emailMyCopy');
+      }
+    }
+  }
+
+  async function onHomeResetClick() {
+    // Strong confirm — this is destructive and affects every vendor.
+    const ok = await showConfirm({
+      kind: 'danger',
+      icon: 'alert-triangle',
+      title: t('confirmReset'),
+      msg:   t('confirmResetMsg'),
+      confirmLabel: t('yesReset'),
+      cancelLabel:  t('cancel')
+    });
+    if (!ok) return;
+
+    const btn = $('home-reset-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.querySelector('span').textContent = t('saving');
+    }
+
+    try {
+      await api('commitReset');
+      // Wipe local state that's now stale post-reset
+      state.cache.dashboard = null;
+      state.cache.history   = null;
+      // Clear "recap sent" markers since this is a new cycle
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf('mog_recap_sent_') === 0) localStorage.removeItem(k);
+      }
+      showToast(state.lang === 'en' ? 'Reset complete' : 'Reinicio completo', 'success');
+      loadToday();
+    } catch (err) {
+      console.error('home reset error:', err);
+      showToast(String(err.message || 'Error'), 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = t('resetHomeCta');
+      }
+    }
+  }
+
+  async function onDailySummaryClick() {
     const row = $('settings-summary');
     row.classList.add('disabled');
     const labelEl = row.querySelector('.settings-label');
     const original = labelEl.innerHTML;
     labelEl.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i>' + escapeHtml(t('sendingSummary'));
-    try {
-      const result = await api('emailRecap', { userEmail: email });
-      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
-    } catch (err) {
-      console.error('emailRecap error:', err);
-      const m = String(err.message || '');
-      if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
-      else showToast(m || 'Error', 'error');
-    } finally {
+    const result = await sendDailyRecap();
+    if (result.cancelled) {
       row.classList.remove('disabled');
       labelEl.innerHTML = original;
-      renderSettings();
+      return;
     }
+    if (result.ok) {
+      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+    } else {
+      const m = String((result.error && result.error.message) || '');
+      if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      else showToast(m || 'Error', 'error');
+    }
+    row.classList.remove('disabled');
+    labelEl.innerHTML = original;
+    renderSettings();
   }
 
   // ============================================================
