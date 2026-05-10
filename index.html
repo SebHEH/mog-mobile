@@ -21,7 +21,7 @@
       -webkit-tap-highlight-color: transparent;
       overscroll-behavior: none;
     }
-    button, input, select { font-family: inherit; }
+    button, input, select, textarea { font-family: inherit; }
     button { -webkit-tap-highlight-color: transparent; cursor: pointer; }
 
     :root {
@@ -166,7 +166,7 @@
     }
     .pill-done { background: var(--teal-light); color: var(--teal-dark); }
     .pill-progress { background: var(--amber-light); color: var(--amber-dark); }
-    .pill-todo { background: var(--bg-mute); color: var(--text-2); }
+    .pill-todo { background: #fde4e4; color: var(--red-dark); }
 
     .empty-state { padding: 48px 24px; text-align: center; }
     .empty-icon {
@@ -194,25 +194,163 @@
     .history-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; }
     .history-arrow { color: var(--text-3); font-size: 18px; }
 
+    /* Count screen */
+    .count-progress {
+      background: var(--bg-soft);
+      border-radius: var(--r-md);
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--text-2);
+      gap: 10px;
+    }
+    .count-progress-strong { color: var(--text); font-weight: 600; }
+
+    .area-header {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-2);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 18px 0 6px;
+      padding-bottom: 6px;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .area-header:first-child { margin-top: 4px; }
+
+    .item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 0;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .item:last-of-type { border-bottom: none; }
+    .item-info { flex: 1; min-width: 0; }
+    .item-name { font-size: 15px; font-weight: 500; margin: 0; }
+    .item-meta { font-size: 12px; color: var(--text-3); margin: 2px 0 0; }
+
+    .stepper {
+      display: flex;
+      align-items: center;
+      border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .step-btn {
+      background: var(--bg-soft);
+      border: none;
+      width: 34px;
+      height: 38px;
+      font-size: 17px;
+      color: var(--text);
+      padding: 0;
+      font-weight: 500;
+    }
+    .step-btn:active { background: var(--bg-mute); }
+    .step-val {
+      width: 38px;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      background: transparent;
+      outline: none;
+      padding: 0;
+      -moz-appearance: textfield;
+      height: 38px;
+      color: var(--text);
+    }
+    .step-val::-webkit-outer-spin-button,
+    .step-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .step-val::placeholder { color: var(--text-3); font-weight: 400; }
+
+    .suggest {
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--teal-light);
+      color: var(--teal-dark);
+      padding: 6px 9px;
+      border-radius: var(--r-md);
+      min-width: 34px;
+      text-align: center;
+    }
+    .suggest.empty { background: transparent; color: var(--text-3); font-weight: 400; }
+    .suggest.zero { background: var(--bg-mute); color: var(--text-3); }
+
     .review-row {
       display: flex; align-items: center; justify-content: space-between;
       padding: 12px 0; border-bottom: 0.5px solid var(--border); gap: 10px;
     }
     .review-row:last-of-type { border-bottom: none; }
     .review-info { flex: 1; min-width: 0; }
-    .item-name { font-size: 15px; font-weight: 500; margin: 0; }
-    .item-meta { font-size: 12px; color: var(--text-3); margin: 2px 0 0; }
     .review-qty { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
     .qty-num { font-size: 22px; font-weight: 700; }
+    .qty-unit { font-size: 13px; color: var(--text-2); font-weight: 500; }
 
     .review-summary {
-      background: var(--bg-soft); padding: 14px; border-radius: var(--r-md);
-      margin-top: 16px; font-size: 14px;
+      background: var(--bg-soft);
+      padding: 14px;
+      border-radius: var(--r-md);
+      margin-top: 16px;
+      font-size: 14px;
     }
     .summary-row { display: flex; justify-content: space-between; align-items: center; }
     .summary-row + .summary-row { margin-top: 6px; color: var(--text-2); font-size: 12px; }
     .progress-strong { color: var(--text); font-weight: 600; }
     .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; }
+
+    .cta {
+      width: 100%; background: var(--teal); color: white;
+      border: none; border-radius: var(--r-md);
+      padding: 14px; font-size: 15px; font-weight: 600;
+      margin-top: 18px;
+    }
+    .cta:active { background: var(--teal-dark); }
+    .cta:disabled { opacity: 0.4; }
+    .cta-secondary {
+      width: 100%; background: transparent; color: var(--text);
+      border: 0.5px solid var(--border-2); border-radius: var(--r-md);
+      padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
+    }
+    .cta-secondary:active { background: var(--bg-soft); }
+    .cta-secondary:disabled { opacity: 0.4; }
+    .cta-danger {
+      width: 100%; background: transparent; color: var(--red);
+      border: 0.5px solid var(--border-2); border-radius: var(--r-md);
+      padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
+    }
+    .cta-danger:active { background: var(--red-light); }
+
+    /* Reviewed banner shown atop a locked vendor */
+    .locked-banner {
+      background: var(--teal-light);
+      border-radius: var(--r-md);
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      font-size: 13px;
+      color: var(--teal-dark);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .locked-banner i { font-size: 18px; }
+    .locked-banner-msg { flex: 1; min-width: 0; }
+    .locked-banner-edit {
+      background: transparent;
+      border: 0.5px solid var(--teal);
+      color: var(--teal-dark);
+      border-radius: var(--r-md);
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .locked-banner-edit:active { background: rgba(15,110,86,0.08); }
 
     /* Settings */
     .profile-card {
@@ -228,7 +366,6 @@
     .profile-info { flex: 1; min-width: 0; }
     .profile-name { font-size: 16px; font-weight: 600; }
     .profile-email { font-size: 12px; color: var(--text-2); margin-top: 2px; word-break: break-all; }
-    .profile-role { font-size: 11px; color: var(--teal); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; }
 
     .settings-section-label {
       font-size: 11px; font-weight: 600; color: var(--text-3);
@@ -246,24 +383,12 @@
     .settings-row:last-child { border-bottom: none; }
     .settings-row.tappable { cursor: pointer; }
     .settings-row.tappable:active { background: var(--bg-soft); }
+    .settings-row.disabled { opacity: 0.5; cursor: default; }
+    .settings-row.disabled:active { background: var(--bg); }
     .settings-label { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; }
     .settings-label i { color: var(--text-2); margin-right: 10px; font-size: 18px; vertical-align: middle; }
     .settings-value { font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
     .settings-value i { font-size: 16px; color: var(--text-3); }
-
-    .cta-secondary {
-      width: 100%; background: transparent; color: var(--text);
-      border: 0.5px solid var(--border-2); border-radius: var(--r-md);
-      padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
-    }
-    .cta-secondary:active { background: var(--bg-soft); }
-    .cta-secondary:disabled { opacity: 0.4; }
-    .cta-danger {
-      width: 100%; background: transparent; color: var(--red);
-      border: 0.5px solid var(--border-2); border-radius: var(--r-md);
-      padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
-    }
-    .cta-danger:active { background: var(--red-light); }
 
     /* PIN screen */
     .pin-screen {
@@ -316,45 +441,6 @@
       text-align: center; max-width: 280px;
     }
 
-    /* Loading state */
-    .loading-state {
-      padding: 64px 24px; text-align: center; color: var(--text-2);
-    }
-    .spinner {
-      display: inline-block; width: 28px; height: 28px;
-      border: 3px solid var(--bg-mute); border-top-color: var(--teal);
-      border-radius: 50%; animation: spin 0.8s linear infinite;
-      margin-bottom: 12px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .loading-text { font-size: 14px; }
-
-    /* Error state */
-    .error-state {
-      padding: 32px 24px; text-align: center;
-    }
-    .error-icon {
-      width: 56px; height: 56px; border-radius: 50%;
-      background: var(--red-light); color: var(--red);
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 28px; margin-bottom: 14px;
-    }
-    .error-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
-    .error-sub { font-size: 13px; color: var(--text-2); margin: 0 0 18px; }
-
-    /* Coming soon banner */
-    .comingsoon-banner {
-      background: var(--amber-light);
-      border-radius: var(--r-md);
-      padding: 12px 14px;
-      margin-bottom: 14px;
-      font-size: 13px;
-      color: var(--amber-dark);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .comingsoon-banner i { font-size: 18px; }
     /* Stale reset screen */
     .stale-screen {
       flex: 1;
@@ -370,8 +456,7 @@
     }
     .stale-icon {
       width: 72px; height: 72px; border-radius: 50%;
-      background: var(--amber-light);
-      color: var(--amber-mid);
+      background: var(--amber-light); color: var(--amber-mid);
       display: inline-flex; align-items: center; justify-content: center;
       font-size: 38px; margin-bottom: 18px;
     }
@@ -381,28 +466,19 @@
       margin: 0 0 22px; max-width: 320px; line-height: 1.45;
     }
     .stale-meta-card {
-      background: var(--bg-soft);
-      border-radius: var(--r-md);
-      padding: 14px 16px;
-      max-width: 320px;
-      width: 100%;
-      margin-bottom: 22px;
-      font-size: 13px;
-      text-align: left;
+      background: var(--bg-soft); border-radius: var(--r-md);
+      padding: 14px 16px; max-width: 320px; width: 100%;
+      margin-bottom: 22px; font-size: 13px; text-align: left;
     }
-    .stale-meta-row {
-      display: flex; justify-content: space-between; align-items: center;
-    }
+    .stale-meta-row { display: flex; justify-content: space-between; align-items: center; }
     .stale-meta-row + .stale-meta-row { margin-top: 6px; }
     .stale-meta-row .label { color: var(--text-2); }
     .stale-meta-row .val { font-weight: 600; }
     .stale-cta {
-      width: 100%;
-      max-width: 320px;
+      width: 100%; max-width: 320px;
       background: var(--teal); color: white;
       border: none; border-radius: var(--r-md);
-      padding: 14px;
-      font-size: 15px; font-weight: 600;
+      padding: 14px; font-size: 15px; font-weight: 600;
       display: inline-flex; align-items: center; justify-content: center;
       gap: 8px;
     }
@@ -410,20 +486,103 @@
     .stale-cta:disabled { opacity: 0.6; }
     .stale-cta i { font-size: 18px; }
     .stale-help {
-      margin-top: 18px;
-      font-size: 12px;
-      color: var(--text-3);
-      max-width: 320px;
-      line-height: 1.45;
+      margin-top: 18px; font-size: 12px; color: var(--text-3);
+      max-width: 320px; line-height: 1.45;
     }
     .stale-error {
-      color: var(--red);
-      font-size: 13px;
-      font-weight: 500;
-      min-height: 18px;
-      margin-top: 12px;
+      color: var(--red); font-size: 13px; font-weight: 500;
+      min-height: 18px; margin-top: 12px;
     }
 
+    /* Loading state */
+    .loading-state {
+      padding: 64px 24px; text-align: center; color: var(--text-2);
+    }
+    .spinner {
+      display: inline-block; width: 28px; height: 28px;
+      border: 3px solid var(--bg-mute); border-top-color: var(--teal);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 14px; }
+
+    /* Error state */
+    .error-state { padding: 32px 24px; text-align: center; }
+    .error-icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--red-light); color: var(--red);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 28px; margin-bottom: 14px;
+    }
+    .error-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+    .error-sub { font-size: 13px; color: var(--text-2); margin: 0 0 18px; }
+
+    /* Modal (confirm dialog) */
+    .modal-backdrop {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 50; display: none;
+      animation: fadeIn 0.18s ease;
+    }
+    .modal-backdrop.open { display: block; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .modal {
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--bg);
+      border-radius: var(--r-lg);
+      width: calc(100% - 36px);
+      max-width: 360px;
+      z-index: 51;
+      padding: 22px 20px 18px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .modal-icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 28px; margin-bottom: 12px;
+    }
+    .modal-icon.success { background: var(--teal-light); color: var(--teal); }
+    .modal-icon.warn    { background: var(--amber-light); color: var(--amber-mid); }
+    .modal-icon.danger  { background: var(--red-light); color: var(--red); }
+    .modal-title { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+    .modal-msg { font-size: 14px; color: var(--text-2); margin: 0 0 18px; line-height: 1.4; }
+    .modal-actions { display: flex; flex-direction: column; gap: 8px; }
+    .modal-cta {
+      background: var(--teal); color: white;
+      border: none; border-radius: var(--r-md);
+      padding: 12px; font-size: 15px; font-weight: 600;
+    }
+    .modal-cta:active { background: var(--teal-dark); }
+    .modal-cancel {
+      background: transparent; color: var(--text);
+      border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      padding: 11px;
+      font-size: 14px; font-weight: 500;
+    }
+    .modal-cancel:active { background: var(--bg-soft); }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: max(80px, calc(80px + env(safe-area-inset-bottom)));
+      left: 50%; transform: translate(-50%, 24px);
+      background: var(--text); color: white;
+      padding: 12px 18px;
+      border-radius: 24px;
+      font-size: 14px; font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      max-width: 340px;
+      z-index: 60;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.25s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast.success { background: #0e554a; }
+    .toast.error   { background: var(--red-dark); }
 
     .es .lang-en { display: none; }
     .en .lang-es { display: none; }
@@ -437,7 +596,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -446,29 +605,21 @@
   <div class="pin-screen" id="screen-pin">
     <div class="pin-logo"><i class="ti ti-clipboard-list" aria-hidden="true"></i></div>
     <h1 class="pin-title">Master Ordering Guide</h1>
-    <p class="pin-sub" id="pin-loc-hint">
+    <p class="pin-sub">
       <span class="lang-en">Enter the location PIN to continue.</span>
       <span class="lang-es">Ingresa el PIN para continuar.</span>
     </p>
-    <input
-      class="pin-input"
-      id="pin-input"
-      type="password"
-      inputmode="numeric"
-      autocomplete="off"
-      maxlength="8"
-      placeholder="••••">
+    <input class="pin-input" id="pin-input" type="password" inputmode="numeric"
+           autocomplete="off" maxlength="8" placeholder="••••">
     <p class="pin-error" id="pin-error"></p>
     <button class="pin-cta" id="pin-submit">
-      <span class="lang-en">Sign in</span>
-      <span class="lang-es">Entrar</span>
+      <span class="lang-en">Sign in</span><span class="lang-es">Entrar</span>
     </button>
     <p class="pin-help">
       <span class="lang-en">If you don't know the PIN, ask your GM.</span>
       <span class="lang-es">Si no sabes el PIN, pregunta a tu gerente.</span>
     </p>
   </div>
-
 
   <!-- STALE RESET GATE -->
   <div class="stale-screen" id="screen-stale" style="display:none">
@@ -528,13 +679,11 @@
     </div>
 
     <div class="scroll-area" id="scroll-area">
-      <!-- Today screen -->
       <div class="screen" id="view-today" style="display:none"></div>
-      <!-- History screen -->
+      <div class="screen" id="view-count" style="display:none"></div>
+      <div class="screen" id="view-review" style="display:none"></div>
       <div class="screen" id="view-history" style="display:none"></div>
-      <!-- History detail screen -->
       <div class="screen" id="view-history-detail" style="display:none"></div>
-      <!-- Settings screen -->
       <div class="screen" id="view-settings" style="display:none"></div>
     </div>
 
@@ -554,6 +703,21 @@
     </div>
   </div>
 
+  <!-- Confirm modal -->
+  <div class="modal-backdrop" id="modal-backdrop"></div>
+  <div class="modal" id="modal" style="display:none">
+    <div class="modal-icon" id="modal-icon"><i class="ti ti-check" aria-hidden="true"></i></div>
+    <h3 class="modal-title" id="modal-title"></h3>
+    <p class="modal-msg" id="modal-msg"></p>
+    <div class="modal-actions">
+      <button class="modal-cta" id="modal-confirm"></button>
+      <button class="modal-cancel" id="modal-cancel"></button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
 </div>
 
 <script>
@@ -569,11 +733,66 @@
     lang:       localStorage.getItem('mog_lang') || 'en',
     location:   localStorage.getItem('mog_location') || '',
     locAbbr:    localStorage.getItem('mog_loc_abbr') || '',
+    userEmail:  localStorage.getItem('mog_user_email') || '',
     currentTab: 'today',
     currentView: 'today',
     historyDetailContext: null, // { vendor, date }
+    countContext: null, // { vendor, items, dirty: { itemId: value }, isLocked }
     cache: { dashboard: null, history: null }
   };
+
+  // Reviewed flags live in localStorage keyed by date so they auto-expire
+  // when the calendar day rolls over. Stored as a JSON object:
+  //   mog_reviewed_2026-05-09 -> {"Sysco":true,"Baldor":true}
+  function reviewedKey(dateStr) { return 'mog_reviewed_' + dateStr; }
+  function getReviewedSet(dateStr) {
+    try {
+      return JSON.parse(localStorage.getItem(reviewedKey(dateStr)) || '{}');
+    } catch (e) { return {}; }
+  }
+  function setReviewed(dateStr, vendor, val) {
+    const m = getReviewedSet(dateStr);
+    if (val) m[vendor] = true; else delete m[vendor];
+    localStorage.setItem(reviewedKey(dateStr), JSON.stringify(m));
+  }
+  // Garbage-collect old reviewed-flag keys on boot
+  function gcReviewedFlags(currentDateStr) {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('mog_reviewed_') && k !== reviewedKey(currentDateStr)) {
+        localStorage.removeItem(k);
+      }
+    }
+  }
+
+  // Draft counts per vendor for crash safety. Keyed by vendor + date.
+  //   mog_draft_2026-05-09_Sysco -> {"ITEM-0001":3,"ITEM-0002":null,...}
+  function draftKey(dateStr, vendor) { return 'mog_draft_' + dateStr + '_' + vendor; }
+  function loadDraft(dateStr, vendor) {
+    try {
+      return JSON.parse(localStorage.getItem(draftKey(dateStr, vendor)) || '{}');
+    } catch (e) { return {}; }
+  }
+  function saveDraft(dateStr, vendor, draft) {
+    if (!Object.keys(draft).length) {
+      localStorage.removeItem(draftKey(dateStr, vendor));
+    } else {
+      localStorage.setItem(draftKey(dateStr, vendor), JSON.stringify(draft));
+    }
+  }
+  function clearDraft(dateStr, vendor) {
+    localStorage.removeItem(draftKey(dateStr, vendor));
+  }
+  function gcDrafts(currentDateStr) {
+    const prefix = 'mog_draft_';
+    const keep = 'mog_draft_' + currentDateStr + '_';
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix) && !k.startsWith(keep)) {
+        localStorage.removeItem(k);
+      }
+    }
+  }
 
   // ============================================================
   // I18N
@@ -581,50 +800,93 @@
   const T = {
     titles: {
       today:           { en: "Today's orders",  es: 'Pedidos de hoy' },
+      count:           { en: 'Count',           es: 'Contar' },
+      review:          { en: 'Review',          es: 'Revisar' },
       history:         { en: 'History',         es: 'Historial' },
       'history-detail':{ en: 'Order details',   es: 'Detalles' },
       settings:        { en: 'Settings',        es: 'Ajustes' }
     },
     msg: {
-      noVendors:        { en: 'No vendors today',                                  es: 'No hay proveedores hoy' },
-      noVendorsSub:     { en: "Nothing scheduled for delivery today.",             es: 'No hay entregas programadas hoy.' },
-      noHistory:        { en: 'No orders yet',                                     es: 'A&uacute;n no hay pedidos' },
-      noHistorySub:     { en: 'Past orders will appear here.',                     es: 'Los pedidos aparecer&aacute;n aqu&iacute;.' },
-      loading:          { en: 'Loading…',                                          es: 'Cargando…' },
-      retry:            { en: 'Retry',                                             es: 'Reintentar' },
-      cantLoad:         { en: "Couldn't load",                                     es: 'No se pudo cargar' },
-      cantLoadSub:      { en: 'Check your connection and try again.',              es: 'Revisa tu conexi&oacute;n y reintenta.' },
-      sent:             { en: 'Sent',                                              es: 'Enviado' },
-      notStarted:       { en: 'Not started',                                       es: 'No iniciado' },
-      itemsToOrder:     { en: 'to order',                                          es: 'por pedir' },
-      sentAt:           { en: 'sent at',                                           es: 'enviado' },
-      items:            { en: 'items',                                             es: 'art&iacute;culos' },
-      cutoff:           { en: 'cutoff',                                            es: 'corte' },
-      cutoffIn:         { en: 'Cutoff in',                                         es: 'Corte en' },
-      pickup:           { en: 'pick up',                                           es: 'recoger' },
-      vendorsToday:     { en: 'Vendors today',                                     es: 'Proveedores hoy' },
-      today:            { en: 'Today',                                             es: 'Hoy' },
-      orderHistory:     { en: 'Order history',                                     es: 'Historial' },
-      itemsOrdered:     { en: 'Items ordered',                                     es: 'Art&iacute;culos pedidos' },
-      reference:        { en: 'Reference',                                         es: 'Referencia' },
-      onHand:           { en: 'on hand',                                           es: 'stock' },
-      defaultLocation:  { en: 'Default location',                                  es: 'Ubicaci&oacute;n predeterminada' },
-      language:         { en: 'Language',                                          es: 'Idioma' },
-      english:          { en: 'English',                                           es: 'Espa&ntilde;ol' },
-      version:          { en: 'Version',                                           es: 'Versi&oacute;n' },
-      signOut:          { en: 'Sign out',                                          es: 'Cerrar sesi&oacute;n' },
-      comingSoon:       { en: 'Counting and sending coming next.',                 es: 'Contar y enviar pr&oacute;ximamente.' },
-      pinError:         { en: 'Wrong PIN. Try again.',                             es: 'PIN incorrecto. Intenta de nuevo.' },
+      noVendors:        { en: 'No vendors today', es: 'No hay proveedores hoy' },
+      noVendorsSub:     { en: "Nothing scheduled for today.", es: 'No hay entregas programadas hoy.' },
+      noHistory:        { en: 'No orders yet', es: 'A&uacute;n no hay pedidos' },
+      noHistorySub:     { en: 'Past orders will appear here.', es: 'Los pedidos aparecer&aacute;n aqu&iacute;.' },
+      loading:          { en: 'Loading…', es: 'Cargando…' },
+      retry:            { en: 'Retry', es: 'Reintentar' },
+      cantLoad:         { en: "Couldn't load", es: 'No se pudo cargar' },
+      cantLoadSub:      { en: 'Check your connection and try again.', es: 'Revisa tu conexi&oacute;n y reintenta.' },
+      reviewed:         { en: 'Reviewed', es: 'Revisado' },
+      notStarted:       { en: 'Not started', es: 'No iniciado' },
+      inProgress:       { en: 'In progress', es: 'En progreso' },
+      itemsToOrder:     { en: 'to order', es: 'por pedir' },
+      items:            { en: 'items', es: 'art&iacute;culos' },
+      cutoff:           { en: 'cutoff', es: 'corte' },
+      pickup:           { en: 'pick up', es: 'recoger' },
+      vendorsToday:     { en: 'Vendors today', es: 'Proveedores hoy' },
+      today:            { en: 'Today', es: 'Hoy' },
+      orderHistory:     { en: 'Order history', es: 'Historial' },
+      itemsOrdered:     { en: 'Items ordered', es: 'Art&iacute;culos pedidos' },
+      reference:        { en: 'Reference', es: 'Referencia' },
+      onHand:           { en: 'on hand', es: 'stock' },
+      counted:          { en: 'counted', es: 'contados' },
+      walkPickPath:     { en: 'Walk the pick path', es: 'Recorre la ruta' },
+      reviewOrder:      { en: 'Review order', es: 'Revisar pedido' },
+      saveContinue:     { en: 'Save and continue later', es: 'Guardar y continuar despu&eacute;s' },
+      saving:           { en: 'Saving…', es: 'Guardando…' },
+      saveError:        { en: "Couldn't save. Try again.", es: 'No se pudo guardar. Intenta de nuevo.' },
+      backToCount:      { en: 'Back to count', es: 'Volver a contar' },
+      markReviewed:     { en: 'Mark as reviewed', es: 'Marcar como revisado' },
+      itemsReviewed:    { en: 'items reviewed', es: 'art&iacute;culos revisados' },
+      lockedMsg:        { en: 'Reviewed. Edit to make changes.', es: 'Revisado. Edita para cambiar.' },
+      edit:             { en: 'Edit', es: 'Editar' },
+      vendorReviewed:   { en: 'Vendor reviewed', es: 'Proveedor revisado' },
+      done:             { en: 'Done', es: 'Listo' },
+      cancel:           { en: 'Cancel', es: 'Cancelar' },
+      confirmReview:    { en: 'Mark as reviewed?', es: '¿Marcar como revisado?' },
+      confirmReviewMsg: {
+        en: 'This locks counts for this vendor. You can still come back and edit if you need to.',
+        es: 'Esto bloquea los conteos. Puedes volver y editar si lo necesitas.'
+      },
+      confirmEdit:      { en: 'Edit reviewed vendor?', es: '¿Editar proveedor revisado?' },
+      confirmEditMsg: {
+        en: "You'll be able to change counts. Mark as reviewed again when you're done.",
+        es: 'Podr&aacute;s cambiar los conteos. Marca como revisado al terminar.'
+      },
+      confirmEmpty:     { en: 'Send empty order?', es: '¿Pedido vac&iacute;o?' },
+      confirmEmptyMsg: {
+        en: 'No items have a quantity to order. Mark as reviewed anyway?',
+        es: 'No hay art&iacute;culos por pedir. ¿Marcar como revisado?'
+      },
+      pinError:         { en: 'Wrong PIN. Try again.', es: 'PIN incorrecto. Intenta de nuevo.' },
       pinNetworkError:  { en: "Couldn't reach the server. Check your connection.", es: 'Sin conexi&oacute;n. Revisa tu internet.' },
-      pinConfigError:   { en: 'App not configured. Contact your GM.',              es: 'App no configurada. Contacta tu gerente.' }
+      pinConfigError:   { en: 'App not configured. Contact your GM.', es: 'App no configurada. Contacta tu gerente.' },
+      reviewedToast:    { en: 'Vendor reviewed', es: 'Proveedor revisado' },
+      summarySent:      { en: 'Daily summary emailed', es: 'Resumen enviado' },
+      summaryEmpty:     { en: 'Nothing to send yet', es: 'No hay nada que enviar' },
+      dailySummary:     { en: 'Daily summary', es: 'Resumen diario' },
+      dailySummaryHelp: { en: 'Email yourself a copy of all suggested orders', es: 'Recibe por correo todos los pedidos sugeridos' },
+      sendingSummary:   { en: 'Sending…', es: 'Enviando…' },
+      enterEmail:       { en: 'Your email', es: 'Tu correo' },
+      enterEmailMsg: {
+        en: "We'll send the daily summary here. We'll remember it on this device.",
+        es: 'Enviaremos el resumen aqu&iacute;. Lo guardaremos en este dispositivo.'
+      },
+      enterEmailPlaceholder: { en: 'name@example.com', es: 'tu@correo.com' },
+      send:             { en: 'Send', es: 'Enviar' },
+      english:          { en: 'English', es: 'Espa&ntilde;ol' },
+      language:         { en: 'Language', es: 'Idioma' },
+      version:          { en: 'Version', es: 'Versi&oacute;n' },
+      signOut:          { en: 'Sign out', es: 'Cerrar sesi&oacute;n' },
+      yourEmail:        { en: 'Your email', es: 'Tu correo' },
+      notSet:           { en: 'Not set', es: 'No configurado' }
     }
   };
-  const t = (key) => T.msg[key] ? T.msg[key][state.lang] : key;
+  const t = (key) => (T.msg[key] && T.msg[key][state.lang]) || key;
 
   // ============================================================
   // DOM helpers
   // ============================================================
-  const $  = (id) => document.getElementById(id);
+  const $ = (id) => document.getElementById(id);
   const escapeHtml = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -634,6 +896,95 @@
     localStorage.setItem('mog_lang', lang);
     document.getElementById('app').classList.toggle('en', lang === 'en');
     document.getElementById('app').classList.toggle('es', lang === 'es');
+  }
+
+  function showToast(msg, kind) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.className = 'toast' + (kind ? ' ' + kind : '');
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => el.classList.remove('show'), 2400);
+  }
+
+  // ============================================================
+  // CONFIRM MODAL
+  // ============================================================
+  function showConfirm(opts) {
+    return new Promise((resolve) => {
+      $('modal-icon').className = 'modal-icon ' + (opts.kind || 'success');
+      $('modal-icon').innerHTML = '<i class="ti ti-' + (opts.icon || 'check') + '" aria-hidden="true"></i>';
+      $('modal-title').textContent = opts.title || '';
+      $('modal-msg').textContent   = opts.msg || '';
+      $('modal-confirm').textContent = opts.confirmLabel || t('done');
+      $('modal-cancel').textContent  = opts.cancelLabel  || t('cancel');
+      $('modal-backdrop').classList.add('open');
+      $('modal').style.display = 'block';
+      const cleanup = (val) => {
+        $('modal').style.display = 'none';
+        $('modal-backdrop').classList.remove('open');
+        $('modal-confirm').onclick = null;
+        $('modal-cancel').onclick = null;
+        $('modal-backdrop').onclick = null;
+        resolve(val);
+      };
+      $('modal-confirm').onclick   = () => cleanup(true);
+      $('modal-cancel').onclick    = () => cleanup(false);
+      $('modal-backdrop').onclick  = () => cleanup(false);
+    });
+  }
+
+  // Email prompt modal — stripped-down version that takes an input
+  function showEmailPrompt() {
+    return new Promise((resolve) => {
+      $('modal-icon').className = 'modal-icon success';
+      $('modal-icon').innerHTML = '<i class="ti ti-mail" aria-hidden="true"></i>';
+      $('modal-title').textContent = t('enterEmail');
+      $('modal-msg').textContent = t('enterEmailMsg');
+
+      // Replace actions with input + send/cancel
+      const actionsEl = document.querySelector('.modal-actions');
+      const placeholder = t('enterEmailPlaceholder');
+      actionsEl.innerHTML =
+        '<input type="email" id="email-input" autocomplete="email" inputmode="email" ' +
+        'placeholder="' + escapeHtml(placeholder) + '" ' +
+        'style="width:100%;padding:12px;border:0.5px solid var(--border-2);border-radius:var(--r-md);' +
+        'font-size:15px;margin-bottom:8px;outline:none">' +
+        '<button class="modal-cta" id="modal-send">' + escapeHtml(t('send')) + '</button>' +
+        '<button class="modal-cancel" id="modal-cancel-2">' + escapeHtml(t('cancel')) + '</button>';
+
+      const input = $('email-input');
+      input.value = state.userEmail || '';
+      $('modal-backdrop').classList.add('open');
+      $('modal').style.display = 'block';
+      setTimeout(() => input.focus(), 80);
+
+      const cleanup = (val) => {
+        $('modal').style.display = 'none';
+        $('modal-backdrop').classList.remove('open');
+        // Restore default action buttons for next confirm modal
+        actionsEl.innerHTML =
+          '<button class="modal-cta" id="modal-confirm"></button>' +
+          '<button class="modal-cancel" id="modal-cancel"></button>';
+        resolve(val);
+      };
+
+      const submit = () => {
+        const v = (input.value || '').trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+          input.style.borderColor = 'var(--red)';
+          input.style.background = 'var(--red-light)';
+          return;
+        }
+        cleanup(v);
+      };
+      $('modal-send').onclick = submit;
+      $('modal-cancel-2').onclick = () => cleanup(null);
+      $('modal-backdrop').onclick = () => cleanup(null);
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter') submit();
+        else { input.style.borderColor = ''; input.style.background = ''; }
+      };
+    });
   }
 
   // ============================================================
@@ -658,7 +1009,7 @@
   }
 
   // ============================================================
-  // PIN GATE
+  // PIN GATE / STALE / SIGNOUT
   // ============================================================
   async function tryPin(pin) {
     state.pin = pin;
@@ -691,20 +1042,14 @@
     $('screen-pin').style.display = 'none';
     $('screen-main').style.display = 'none';
     $('screen-stale').style.display = 'flex';
-
-    const lastResetEl = $('stale-lastreset');
-    const todayEl     = $('stale-today');
-    const errEl       = $('stale-error');
-    const btn         = $('stale-reset-btn');
-
-    lastResetEl.textContent = status.lastReset
+    $('stale-lastreset').textContent = status.lastReset
       ? formatDateForStale(status.lastReset)
       : (state.lang === 'en' ? 'Never' : 'Nunca');
-    todayEl.textContent = formatDateForStale(status.today);
-    errEl.textContent = '';
-    btn.disabled = false;
-    btn.querySelector('span.lang-en').textContent = 'Reset On Hand';
-    btn.querySelector('span.lang-es').textContent = 'Reiniciar Inventario';
+    $('stale-today').textContent = formatDateForStale(status.today);
+    $('stale-error').textContent = '';
+    $('stale-reset-btn').disabled = false;
+    $('stale-reset-btn').querySelector('span.lang-en').textContent = 'Reset On Hand';
+    $('stale-reset-btn').querySelector('span.lang-es').textContent = 'Reiniciar Inventario';
   }
 
   function formatDateForStale(yyyymmdd) {
@@ -717,21 +1062,13 @@
     return months[+parts[1] - 1] + ' ' + (+parts[2]) + ', ' + parts[0];
   }
 
-  // Single router: called after successful PIN entry or restored session.
-  // Decides between stale-reset gate and the dashboard.
   async function proceedAfterAuth() {
     try {
       const status = await api('getResetStatus');
-      if (status.isStale) {
-        showStaleScreen(status);
-      } else {
-        showMainApp();
-      }
+      if (status.isStale) showStaleScreen(status);
+      else showMainApp();
     } catch (err) {
       console.error('proceedAfterAuth error:', err);
-      // If the stale check itself fails, fall through to the main app —
-      // the dashboard's own error state will surface the issue clearly,
-      // rather than blocking everything behind a setup error.
       showMainApp();
     }
   }
@@ -745,9 +1082,10 @@
     btn.querySelector('span.lang-es').textContent = 'Reiniciando…';
     try {
       await api('commitReset');
-      // Clear caches so dashboard re-fetches with fresh data
+      // Clear caches and any stale draft/reviewed flags
       state.cache.dashboard = null;
       state.cache.history = null;
+      // Reviewed flags get garbage-collected by date on next dashboard load
       showMainApp();
     } catch (err) {
       console.error('reset error:', err);
@@ -755,20 +1093,16 @@
       btn.querySelector('span.lang-en').textContent = 'Reset On Hand';
       btn.querySelector('span.lang-es').textContent = 'Reiniciar Inventario';
       const m = String(err.message || '');
-      if (m.indexOf('Failed to fetch') >= 0 || m.indexOf('NetworkError') >= 0) {
-        errEl.textContent = state.lang === 'en'
-          ? "Couldn't reach the server. Try again."
-          : 'Sin conexión. Intenta de nuevo.';
-      } else {
-        errEl.textContent = m || (state.lang === 'en' ? 'Reset failed.' : 'Error al reiniciar.');
-      }
+      errEl.textContent = (m.indexOf('Failed to fetch') >= 0)
+        ? (state.lang === 'en' ? "Couldn't reach the server. Try again." : 'Sin conexión. Intenta de nuevo.')
+        : (m || (state.lang === 'en' ? 'Reset failed.' : 'Error al reiniciar.'));
     }
   }
 
   async function handlePinSubmit() {
     const pin = $('pin-input').value.trim();
     const errEl = $('pin-error');
-    const btn   = $('pin-submit');
+    const btn = $('pin-submit');
     if (!pin) return;
     btn.disabled = true;
     errEl.textContent = '';
@@ -782,7 +1116,7 @@
       const m = String(err.message || '');
       if (m === 'CONFIG_MISSING') errEl.textContent = t('pinConfigError');
       else if (m === 'Invalid PIN') errEl.textContent = t('pinError');
-      else if (m.indexOf('Failed to fetch') >= 0 || m.indexOf('NetworkError') >= 0) errEl.textContent = t('pinNetworkError');
+      else if (m.indexOf('Failed to fetch') >= 0) errEl.textContent = t('pinNetworkError');
       else errEl.textContent = m;
     }
   }
@@ -799,35 +1133,9 @@
     showPinScreen();
   }
 
-
   // ============================================================
-  // VIEWS
+  // SHARED RENDER HELPERS
   // ============================================================
-
-  function renderLoading(el) {
-    el.innerHTML =
-      '<div class="loading-state">' +
-        '<div class="spinner"></div>' +
-        '<div class="loading-text">' + escapeHtml(t('loading')) + '</div>' +
-      '</div>';
-  }
-
-  function renderError(el, retryFn) {
-    const html =
-      '<div class="error-state">' +
-        '<div class="error-icon"><i class="ti ti-cloud-off" aria-hidden="true"></i></div>' +
-        '<p class="error-title">' + escapeHtml(t('cantLoad')) + '</p>' +
-        '<p class="error-sub">' + escapeHtml(t('cantLoadSub')) + '</p>' +
-        '<button class="cta-secondary" id="retry-btn" style="max-width:200px;display:inline-block;width:auto">' +
-          '<i class="ti ti-refresh" aria-hidden="true" style="vertical-align:middle"></i> ' +
-          escapeHtml(t('retry')) +
-        '</button>' +
-      '</div>';
-    el.innerHTML = html;
-    $('retry-btn').addEventListener('click', retryFn);
-  }
-
-  // ----- TODAY ----------------------------------------------------
   function dayName(dayCode) {
     const map = {
       en: { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' },
@@ -845,13 +1153,76 @@
     if (state.lang === 'en') return dayName(dayCode) + ', ' + month + ' ' + day;
     return dayName(dayCode) + ', ' + day + ' de ' + month;
   }
-
   function fmt12h(hhmm) {
     if (!hhmm) return '';
     const [h, m] = hhmm.split(':').map(Number);
     const ampm = h >= 12 ? 'PM' : 'AM';
     const hr12 = h % 12 || 12;
     return hr12 + ':' + String(m).padStart(2, '0') + ' ' + ampm;
+  }
+  function fmtTimestamp12h(ts) {
+    if (!ts) return '';
+    const m = ts.match(/(\d{2}):(\d{2})/);
+    if (!m) return ts;
+    return fmt12h(m[1] + ':' + m[2]);
+  }
+  function shortDate(dateStr) {
+    const parts = dateStr.split('-');
+    const monthsEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthsEs = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const day = +parts[2];
+    const d = new Date(dateStr + 'T00:00:00');
+    if (state.lang === 'en') {
+      const dayCodes = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      return dayCodes[d.getDay()] + ' ' + monthsEn[+parts[1] - 1] + ' ' + day;
+    }
+    const dayCodesEs = ['dom','lun','mar','mi&eacute;','jue','vie','s&aacute;b'];
+    return dayCodesEs[d.getDay()] + ' ' + day + ' ' + monthsEs[+parts[1] - 1];
+  }
+  function formatHistoryDate(dateStr) {
+    if (!dateStr) return '';
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const yesterday = new Date(today.getTime() - 86400000);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    if (dateStr === todayStr)     return t('today') + ' &middot; ' + shortDate(dateStr);
+    if (dateStr === yesterdayStr) return (state.lang === 'en' ? 'Yesterday' : 'Ayer') + ' &middot; ' + shortDate(dateStr);
+    return shortDate(dateStr);
+  }
+
+  function renderLoading(el) {
+    el.innerHTML =
+      '<div class="loading-state">' +
+        '<div class="spinner"></div>' +
+        '<div class="loading-text">' + escapeHtml(t('loading')) + '</div>' +
+      '</div>';
+  }
+  function renderError(el, retryFn) {
+    el.innerHTML =
+      '<div class="error-state">' +
+        '<div class="error-icon"><i class="ti ti-cloud-off" aria-hidden="true"></i></div>' +
+        '<p class="error-title">' + escapeHtml(t('cantLoad')) + '</p>' +
+        '<p class="error-sub">' + escapeHtml(t('cantLoadSub')) + '</p>' +
+        '<button class="cta-secondary" id="retry-btn" style="max-width:200px;display:inline-block;width:auto">' +
+          '<i class="ti ti-refresh" aria-hidden="true" style="vertical-align:middle"></i> ' +
+          escapeHtml(t('retry')) +
+        '</button>' +
+      '</div>';
+    $('retry-btn').addEventListener('click', retryFn);
+  }
+
+  // ============================================================
+  // TODAY
+  // ============================================================
+  function effectiveStatus(v, dateStr) {
+    // API returns 'sent' | 'in_progress' | 'not_started'.
+    // We treat reviewed-in-localStorage as the new "done" state.
+    // The "sent" status from the API only happens if a vendor has rows in
+    // LOG_ORDERS for today — which only happens after reset, so it's rare
+    // for today's dashboard to ever see 'sent'. We honor it if present.
+    const reviewed = getReviewedSet(dateStr);
+    if (reviewed[v.name]) return 'reviewed';
+    return v.status === 'sent' ? 'reviewed' : v.status; // map sent→reviewed visually
   }
 
   function renderToday(data) {
@@ -871,38 +1242,44 @@
     let html = '';
     html += '<p class="hero-day">' + escapeHtml(formatDateLong(data.date, data.dayOfWeek)) + '</p>';
     html += '<p class="hero-loc"><i class="ti ti-map-pin" aria-hidden="true"></i>' + escapeHtml(data.location) + '</p>';
-    html += '<div class="comingsoon-banner"><i class="ti ti-info-circle" aria-hidden="true"></i>' + escapeHtml(t('comingSoon')) + '</div>';
     html += '<div class="section-label">' + escapeHtml(t('vendorsToday')) + ' &middot; ' + data.vendors.length + '</div>';
 
     for (const v of data.vendors) {
-      html += renderVendorCard(v);
+      const status = effectiveStatus(v, data.date);
+      html += renderVendorCard(v, status);
     }
 
     view.innerHTML = html;
+
+    view.querySelectorAll('.vendor-card.tappable').forEach(card => {
+      card.addEventListener('click', () => {
+        const vendor = card.getAttribute('data-vendor');
+        openCount(vendor);
+      });
+    });
   }
 
-  function renderVendorCard(v) {
-    const isSent = v.status === 'sent';
-    const muted  = isSent ? ' muted' : '';
-    let metaText, pillHtml;
+  function renderVendorCard(v, status) {
+    let muted = '', pillHtml = '', metaText = '';
 
-    if (isSent) {
-      const sentLabel = v.sentAt ? (' &middot; ' + escapeHtml(t('sentAt')) + ' ' + escapeHtml(fmt12h(v.sentAt))) : '';
-      const itemsText = v.toOrderCount != null ? v.toOrderCount : v.itemCount;
-      metaText = itemsText + ' ' + t('items') + sentLabel;
-      pillHtml = '<span class="pill pill-done"><i class="ti ti-check" aria-hidden="true" style="font-size:12px"></i>' + escapeHtml(t('sent')) + '</span>';
-    } else if (v.status === 'in_progress') {
-      const cutoff = v.cutoffTime ? (' &middot; ' + escapeHtml(t('cutoff')) + ' ' + escapeHtml(fmt12h(v.cutoffTime))) : '';
-      metaText = v.itemCount + ' ' + t('items') + cutoff;
-      pillHtml = '<span class="pill pill-progress">' + (v.toOrderCount != null ? v.toOrderCount : '?') + ' ' + escapeHtml(t('itemsToOrder')) + '</span>';
+    const cutoffStr = v.cutoffTime ? (' &middot; ' + escapeHtml(t('cutoff')) + ' ' + escapeHtml(fmt12h(v.cutoffTime))) : '';
+    metaText = v.itemCount + ' ' + t('items') + cutoffStr;
+
+    if (status === 'reviewed') {
+      muted = ' muted';
+      pillHtml = '<span class="pill pill-done"><i class="ti ti-check" aria-hidden="true" style="font-size:12px"></i>' + escapeHtml(t('reviewed')) + '</span>';
+    } else if (status === 'in_progress') {
+      pillHtml = '<span class="pill pill-progress">' +
+        (v.toOrderCount != null && v.toOrderCount > 0
+          ? v.toOrderCount + ' ' + escapeHtml(t('itemsToOrder'))
+          : escapeHtml(t('inProgress'))) +
+        '</span>';
     } else {
-      const cutoff = v.cutoffTime ? (' &middot; ' + escapeHtml(t('cutoff')) + ' ' + escapeHtml(fmt12h(v.cutoffTime))) : '';
-      metaText = v.itemCount + ' ' + t('items') + cutoff;
       pillHtml = '<span class="pill pill-todo">' + escapeHtml(t('notStarted')) + '</span>';
     }
 
     return (
-      '<div class="vendor-card' + muted + '">' +
+      '<div class="vendor-card tappable' + muted + '" data-vendor="' + escapeHtml(v.name) + '">' +
         '<div class="vendor-row">' +
           '<div>' +
             '<div class="vendor-name">' + escapeHtml(v.name) + '</div>' +
@@ -920,6 +1297,9 @@
     try {
       const data = await api('getDashboard');
       state.cache.dashboard = data;
+      // GC stale localStorage on first today-load of a new day
+      gcReviewedFlags(data.date);
+      gcDrafts(data.date);
       renderToday(data);
     } catch (err) {
       console.error('loadToday error:', err);
@@ -927,39 +1307,396 @@
     }
   }
 
-  // ----- HISTORY --------------------------------------------------
-  function formatHistoryDate(dateStr) {
-    if (!dateStr) return '';
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
-    const yesterday = new Date(today.getTime() - 86400000);
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
-    if (dateStr === todayStr)     return t('today') + ' &middot; ' + shortDate(dateStr);
-    if (dateStr === yesterdayStr) return (state.lang === 'en' ? 'Yesterday' : 'Ayer') + ' &middot; ' + shortDate(dateStr);
-    return shortDate(dateStr);
-  }
-  function shortDate(dateStr) {
-    const parts = dateStr.split('-');
-    const monthsEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const monthsEs = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-    const day = +parts[2];
-    if (state.lang === 'en') {
-      const dayCodes = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-      const d = new Date(dateStr + 'T00:00:00');
-      return dayCodes[d.getDay()] + ' ' + monthsEn[+parts[1] - 1] + ' ' + day;
+  // ============================================================
+  // COUNT
+  // ============================================================
+  async function openCount(vendor) {
+    state.countContext = { vendor: vendor, items: [], dirty: {}, isLocked: false };
+    showView('count');
+    renderLoading($('view-count'));
+    try {
+      const data = await api('getVendorItems', { vendor: vendor });
+      state.countContext.items = data.items;
+      const dateStr = (state.cache.dashboard && state.cache.dashboard.date) || new Date().toISOString().slice(0,10);
+      state.countContext.dateStr = dateStr;
+      state.countContext.isLocked = !!getReviewedSet(dateStr)[vendor];
+
+      // Merge localStorage draft on top of server values (drafts win — that's
+      // the "unsaved" tier the user expects to see when they return)
+      const draft = loadDraft(dateStr, vendor);
+      for (const id of Object.keys(draft)) {
+        const item = state.countContext.items.find(i => i.id === id);
+        if (item) item.onHand = draft[id];
+      }
+      renderCount();
+    } catch (err) {
+      console.error('openCount error:', err);
+      renderError($('view-count'), () => openCount(vendor));
     }
-    const dayCodesEs = ['dom','lun','mar','mi&eacute;','jue','vie','s&aacute;b'];
-    const d = new Date(dateStr + 'T00:00:00');
-    return dayCodesEs[d.getDay()] + ' ' + day + ' ' + monthsEs[+parts[1] - 1];
-  }
-  function fmtTimestamp12h(ts) {
-    // ts format from API: "yyyy-MM-dd HH:mm" or full timestamp
-    if (!ts) return '';
-    const m = ts.match(/(\d{2}):(\d{2})/);
-    if (!m) return ts;
-    return fmt12h(m[1] + ':' + m[2]);
   }
 
+  function computeSuggested(item) {
+    if (item.onHand === null || item.onHand === '' || item.onHand === undefined) return null;
+    // The API already calculated a suggested qty server-side using the
+    // active cycle's day multipliers. When a user edits On Hand client-side,
+    // we recompute suggestion locally using (par - onHand) as a proxy so
+    // the pill updates live. The server recalculates correctly on save.
+    const oh = Number(item.onHand);
+    if (isNaN(oh)) return null;
+    return Math.max(0, (Number(item.par) || 0) - oh);
+  }
+
+  function renderCount() {
+    const ctx = state.countContext;
+    const view = $('view-count');
+    const items = ctx.items;
+    const isLocked = ctx.isLocked;
+
+    let toOrder = 0;
+    let counted = 0;
+    for (const it of items) {
+      if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) {
+        counted++;
+        const s = computeSuggested(it);
+        if (s != null && s > 0) toOrder++;
+      }
+    }
+
+    let html = '';
+    if (isLocked) {
+      html += '<div class="locked-banner">' +
+        '<i class="ti ti-lock" aria-hidden="true"></i>' +
+        '<span class="locked-banner-msg">' + escapeHtml(t('lockedMsg')) + '</span>' +
+        '<button class="locked-banner-edit" id="unlock-btn">' + escapeHtml(t('edit')) + '</button>' +
+      '</div>';
+    }
+
+    html += '<div class="count-progress">' +
+      '<span><span class="count-progress-strong">' + counted + ' ' +
+        (state.lang === 'en' ? 'of' : 'de') + ' ' + items.length + '</span> ' +
+        escapeHtml(t('counted')) + '</span>' +
+      '<span style="font-size:12px">' +
+        (toOrder > 0 ? toOrder + ' ' + escapeHtml(t('itemsToOrder')) : '&nbsp;') +
+      '</span>' +
+    '</div>';
+
+    // Group by storage area, preserving the API's order
+    let lastArea = null;
+    for (const it of items) {
+      if (it.storageArea !== lastArea) {
+        html += '<div class="area-header">' + escapeHtml(it.storageArea || '—') + '</div>';
+        lastArea = it.storageArea;
+      }
+      const valStr = (it.onHand === null || it.onHand === undefined || it.onHand === '') ? '' : it.onHand;
+      const sug = computeSuggested(it);
+      const pillCls = sug == null ? 'suggest empty' : (sug === 0 ? 'suggest zero' : 'suggest');
+      const pillTxt = sug == null ? '—' : sug;
+      html += '<div class="item" data-id="' + escapeHtml(it.id) + '">' +
+        '<div class="item-info">' +
+          '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
+          '<p class="item-meta">' + escapeHtml(it.pack || '') + '</p>' +
+        '</div>' +
+        '<div class="stepper">' +
+          '<button class="step-btn" data-step="-1"' + (isLocked ? ' disabled' : '') + '>&minus;</button>' +
+          '<input class="step-val" type="number" inputmode="numeric" placeholder="—" ' +
+            'value="' + valStr + '" ' + (isLocked ? 'readonly' : '') + '>' +
+          '<button class="step-btn" data-step="1"' + (isLocked ? ' disabled' : '') + '>+</button>' +
+        '</div>' +
+        '<span class="' + pillCls + '">' + pillTxt + '</span>' +
+      '</div>';
+    }
+
+    if (!isLocked) {
+      html += '<button class="cta" id="review-btn">' + escapeHtml(t('reviewOrder')) + '</button>';
+      html += '<button class="cta-secondary" id="save-continue-btn">' + escapeHtml(t('saveContinue')) + '</button>';
+    } else {
+      html += '<button class="cta" id="review-btn">' + escapeHtml(t('reviewOrder')) + '</button>';
+    }
+
+    view.innerHTML = html;
+    setTitle('count', ctx.vendor);
+
+    // Wire stepper events
+    view.querySelectorAll('.step-val').forEach(input => {
+      input.addEventListener('input', () => onCountInputChange(input));
+      input.addEventListener('focus', () => input.select());
+    });
+    view.querySelectorAll('.step-btn').forEach(btn => {
+      btn.addEventListener('click', () => onStepperClick(btn));
+    });
+
+    if ($('review-btn'))         $('review-btn').addEventListener('click', onReviewClick);
+    if ($('save-continue-btn'))  $('save-continue-btn').addEventListener('click', onSaveContinueClick);
+    if ($('unlock-btn'))         $('unlock-btn').addEventListener('click', onUnlockClick);
+  }
+
+  function onStepperClick(btn) {
+    if (state.countContext.isLocked) return;
+    const itemRow = btn.closest('.item');
+    const id = itemRow.getAttribute('data-id');
+    const input = itemRow.querySelector('.step-val');
+    const delta = parseInt(btn.getAttribute('data-step'), 10) || 0;
+    const raw = input.value;
+    let next;
+    if (raw === '' || raw === null) {
+      if (delta > 0) next = 1;
+      else return; // negative from blank: no-op
+    } else {
+      const cur = parseInt(raw, 10) || 0;
+      next = Math.max(0, cur + delta);
+    }
+    input.value = next;
+    updateItem(id, next);
+  }
+
+  function onCountInputChange(input) {
+    const itemRow = input.closest('.item');
+    const id = itemRow.getAttribute('data-id');
+    const raw = input.value;
+    const val = (raw === '' || raw === null) ? null : parseInt(raw, 10);
+    updateItem(id, isNaN(val) ? null : val);
+  }
+
+  function updateItem(id, val) {
+    const ctx = state.countContext;
+    const item = ctx.items.find(i => i.id === id);
+    if (!item) return;
+    item.onHand = val;
+    ctx.dirty[id] = val;
+
+    // Update suggestion pill
+    const row = $('view-count').querySelector('.item[data-id="' + cssEscape(id) + '"]');
+    if (row) {
+      const pill = row.querySelector('.suggest');
+      const sug = computeSuggested(item);
+      pill.classList.remove('zero', 'empty');
+      if (sug == null) {
+        pill.textContent = '—';
+        pill.classList.add('empty');
+      } else {
+        pill.textContent = sug;
+        if (sug === 0) pill.classList.add('zero');
+      }
+    }
+
+    // Update progress block
+    const items = ctx.items;
+    let toOrder = 0, counted = 0;
+    for (const it of items) {
+      if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) {
+        counted++;
+        const s = computeSuggested(it);
+        if (s != null && s > 0) toOrder++;
+      }
+    }
+    const prog = $('view-count').querySelector('.count-progress-strong');
+    if (prog) prog.textContent = counted + ' ' + (state.lang === 'en' ? 'of' : 'de') + ' ' + items.length;
+    const orderEl = $('view-count').querySelector('.count-progress span:nth-child(2)');
+    if (orderEl) orderEl.innerHTML = toOrder > 0 ? toOrder + ' ' + escapeHtml(t('itemsToOrder')) : '&nbsp;';
+
+    // Persist draft to localStorage so a crash doesn't lose work
+    saveDraft(ctx.dateStr, ctx.vendor, ctx.dirty);
+  }
+
+  function cssEscape(s) {
+    // Items IDs in this system are like "ITEM-0001" — safe — but escape just in case
+    return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+  }
+
+  async function flushDirtyToServer() {
+    const ctx = state.countContext;
+    if (!ctx) return { saved: 0, ok: true };
+    const dirtyIds = Object.keys(ctx.dirty);
+    if (!dirtyIds.length) return { saved: 0, ok: true };
+    const items = dirtyIds.map(id => ({ id: id, onHand: ctx.dirty[id] }));
+    try {
+      await api('saveOnHand', { vendor: ctx.vendor, items: items });
+      ctx.dirty = {};
+      clearDraft(ctx.dateStr, ctx.vendor);
+      return { saved: items.length, ok: true };
+    } catch (err) {
+      console.error('saveOnHand error:', err);
+      return { saved: 0, ok: false, error: err };
+    }
+  }
+
+  async function onSaveContinueClick() {
+    const btn = $('save-continue-btn');
+    btn.disabled = true;
+    btn.textContent = t('saving');
+    const result = await flushDirtyToServer();
+    if (result.ok) {
+      // Don't toast — the save isn't the goal, getting back to dashboard is
+      switchTab('today');
+    } else {
+      btn.disabled = false;
+      btn.textContent = t('saveContinue');
+      showToast(t('saveError'), 'error');
+    }
+  }
+
+  async function onReviewClick() {
+    if (state.countContext.isLocked) {
+      // Already reviewed — go to review screen as read-only
+      openReview();
+      return;
+    }
+    const btn = $('review-btn');
+    btn.disabled = true;
+    btn.textContent = t('saving');
+    const result = await flushDirtyToServer();
+    btn.disabled = false;
+    btn.textContent = t('reviewOrder');
+    if (!result.ok) {
+      showToast(t('saveError'), 'error');
+      return;
+    }
+    openReview();
+  }
+
+  async function onUnlockClick() {
+    const ok = await showConfirm({
+      kind: 'warn',
+      icon: 'edit',
+      title: t('confirmEdit'),
+      msg: t('confirmEditMsg'),
+      confirmLabel: t('edit'),
+      cancelLabel: t('cancel')
+    });
+    if (!ok) return;
+    setReviewed(state.countContext.dateStr, state.countContext.vendor, false);
+    state.countContext.isLocked = false;
+    renderCount();
+  }
+
+  // ============================================================
+  // REVIEW
+  // ============================================================
+  function openReview() {
+    const ctx = state.countContext;
+    showView('review');
+    setTitle('review', ctx.vendor);
+    renderReview();
+  }
+
+  function renderReview() {
+    const ctx = state.countContext;
+    const view = $('view-review');
+    const items = ctx.items;
+    const isLocked = ctx.isLocked;
+
+    const reviewed = items.filter(it => it.onHand !== null && it.onHand !== '' && it.onHand !== undefined);
+    const toOrder = reviewed.filter(it => {
+      const s = computeSuggested(it);
+      return s != null && s > 0;
+    });
+
+    let html = '';
+
+    if (isLocked) {
+      html += '<div class="locked-banner">' +
+        '<i class="ti ti-lock" aria-hidden="true"></i>' +
+        '<span class="locked-banner-msg">' + escapeHtml(t('lockedMsg')) + '</span>' +
+        '<button class="locked-banner-edit" id="unlock-btn-review">' + escapeHtml(t('edit')) + '</button>' +
+      '</div>';
+    }
+
+    html += '<div class="section-label" style="margin-bottom:14px">' +
+      escapeHtml(ctx.vendor) + '</div>';
+
+    if (!toOrder.length) {
+      html += '<div class="empty-state" style="padding:32px 24px">' +
+        '<div class="empty-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>' +
+        '<p class="empty-title">' + (state.lang === 'en' ? 'Nothing to order' : 'Nada por pedir') + '</p>' +
+        '<p class="empty-sub">' + (state.lang === 'en' ? 'All counted items are at or above par.' : 'Todos los art&iacute;culos est&aacute;n en par o por encima.') + '</p>' +
+      '</div>';
+    } else {
+      for (const it of toOrder) {
+        const sug = computeSuggested(it);
+        const pack = it.pack || '';
+        html += '<div class="review-row">' +
+          '<div class="review-info">' +
+            '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
+            '<p class="item-meta">' + escapeHtml(it.onHand) + ' ' + escapeHtml(t('onHand')) + '</p>' +
+          '</div>' +
+          '<div class="review-qty">' +
+            '<span class="qty-num">' + sug + '</span>' +
+            '<span class="qty-unit">' + escapeHtml(pack) + '</span>' +
+          '</div>' +
+        '</div>';
+      }
+    }
+
+    html += '<div class="review-summary">' +
+      '<div class="summary-row">' +
+        '<span>' + reviewed.length + ' ' + escapeHtml(t('itemsReviewed')) + '</span>' +
+        '<span class="progress-strong">' + toOrder.length + ' ' + escapeHtml(t('itemsToOrder')) + '</span>' +
+      '</div>' +
+    '</div>';
+
+    if (!isLocked) {
+      html += '<button class="cta" id="markreview-btn">' + escapeHtml(t('markReviewed')) + '</button>';
+      html += '<button class="cta-secondary" id="back-count-btn">' + escapeHtml(t('backToCount')) + '</button>';
+    } else {
+      html += '<button class="cta-secondary" id="back-today-btn" style="margin-top:18px">' +
+        (state.lang === 'en' ? "Back to today's orders" : 'Volver a pedidos de hoy') + '</button>';
+    }
+
+    view.innerHTML = html;
+
+    if ($('markreview-btn'))    $('markreview-btn').addEventListener('click', onMarkReviewedClick);
+    if ($('back-count-btn'))    $('back-count-btn').addEventListener('click', () => openCount(ctx.vendor));
+    if ($('back-today-btn'))    $('back-today-btn').addEventListener('click', () => switchTab('today'));
+    if ($('unlock-btn-review')) $('unlock-btn-review').addEventListener('click', async () => {
+      const ok = await showConfirm({
+        kind: 'warn',
+        icon: 'edit',
+        title: t('confirmEdit'),
+        msg: t('confirmEditMsg'),
+        confirmLabel: t('edit'),
+        cancelLabel: t('cancel')
+      });
+      if (!ok) return;
+      setReviewed(ctx.dateStr, ctx.vendor, false);
+      ctx.isLocked = false;
+      openCount(ctx.vendor);
+    });
+  }
+
+  async function onMarkReviewedClick() {
+    const ctx = state.countContext;
+    const items = ctx.items;
+    const toOrder = items.filter(it => {
+      const s = computeSuggested(it);
+      return s != null && s > 0;
+    });
+
+    let confirmTitle = t('confirmReview');
+    let confirmMsg = t('confirmReviewMsg');
+    if (!toOrder.length) {
+      confirmTitle = t('confirmEmpty');
+      confirmMsg = t('confirmEmptyMsg');
+    }
+
+    const ok = await showConfirm({
+      kind: !toOrder.length ? 'warn' : 'success',
+      icon: !toOrder.length ? 'alert-triangle' : 'check',
+      title: confirmTitle,
+      msg: confirmMsg,
+      confirmLabel: t('markReviewed'),
+      cancelLabel: t('cancel')
+    });
+    if (!ok) return;
+
+    setReviewed(ctx.dateStr, ctx.vendor, true);
+    state.cache.dashboard = null; // force refresh on next today render
+    showToast(t('reviewedToast'), 'success');
+    switchTab('today');
+  }
+
+  // ============================================================
+  // HISTORY
+  // ============================================================
   function renderHistory(data) {
     const view = $('view-history');
     if (!data || !data.groups || !data.groups.length) {
@@ -978,15 +1715,13 @@
       html += '<div class="history-group">';
       html += '<div class="history-group-header">' + formatHistoryDate(g.date) + '</div>';
       for (const v of g.vendors) {
-        html += (
-          '<div class="history-row" data-vendor="' + escapeHtml(v.vendor) + '" data-date="' + escapeHtml(g.date) + '">' +
-            '<div>' +
-              '<div class="history-vendor">' + escapeHtml(v.vendor) + '</div>' +
-              '<div class="history-meta">' + v.itemCount + ' ' + t('items') + ' &middot; ' + escapeHtml(fmtTimestamp12h(v.timestamp)) + '</div>' +
-            '</div>' +
-            '<i class="ti ti-chevron-right history-arrow" aria-hidden="true"></i>' +
-          '</div>'
-        );
+        html += '<div class="history-row" data-vendor="' + escapeHtml(v.vendor) + '" data-date="' + escapeHtml(g.date) + '">' +
+          '<div>' +
+            '<div class="history-vendor">' + escapeHtml(v.vendor) + '</div>' +
+            '<div class="history-meta">' + v.itemCount + ' ' + t('items') + ' &middot; ' + escapeHtml(fmtTimestamp12h(v.timestamp)) + '</div>' +
+          '</div>' +
+          '<i class="ti ti-chevron-right history-arrow" aria-hidden="true"></i>' +
+        '</div>';
       }
       html += '</div>';
     }
@@ -1020,28 +1755,23 @@
     }
   }
 
-  // ----- HISTORY DETAIL -------------------------------------------
   function renderHistoryDetail(data, ctx) {
     const view = $('view-history-detail');
-    let html = '';
-    html += '<div class="section-label" style="margin-bottom:14px">' +
+    let html = '<div class="section-label" style="margin-bottom:14px">' +
       escapeHtml(ctx.vendor) + ' &middot; ' + formatHistoryDate(ctx.date) +
       (data.timestamp ? ' &middot; ' + escapeHtml(fmtTimestamp12h(data.timestamp)) : '') +
       '</div>';
-
     for (const it of data.items) {
-      html += (
-        '<div class="review-row">' +
-          '<div class="review-info">' +
-            '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
-            '<p class="item-meta">' + escapeHtml(it.onHand == null ? '—' : it.onHand) + ' ' + escapeHtml(t('onHand')) + '</p>' +
-          '</div>' +
-          '<div class="review-qty"><span class="qty-num">' + it.qty + '</span></div>' +
-        '</div>'
-      );
+      html += '<div class="review-row">' +
+        '<div class="review-info">' +
+          '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
+          '<p class="item-meta">' + escapeHtml(it.onHand == null ? '—' : it.onHand) + ' ' + escapeHtml(t('onHand')) + '</p>' +
+        '</div>' +
+        '<div class="review-qty"><span class="qty-num">' + it.qty + '</span></div>' +
+      '</div>';
     }
-    html += '<div class="review-summary">';
-    html += '<div class="summary-row"><span>' + escapeHtml(t('itemsOrdered')) + '</span><span class="progress-strong">' + data.itemCount + '</span></div>';
+    html += '<div class="review-summary">' +
+      '<div class="summary-row"><span>' + escapeHtml(t('itemsOrdered')) + '</span><span class="progress-strong">' + data.itemCount + '</span></div>';
     if (data.reference) {
       html += '<div class="summary-row"><span>' + escapeHtml(t('reference')) + '</span><span class="mono">' + escapeHtml(data.reference) + '</span></div>';
     }
@@ -1063,12 +1793,17 @@
     }
   }
 
-  // ----- SETTINGS -------------------------------------------------
+  // ============================================================
+  // SETTINGS
+  // ============================================================
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.4.0';
-    const langLabel = state.lang === 'en' ? 'English' : 'Espa&ntilde;ol';
+    const versionStr = '0.5.0';
+    const langLabel = state.lang === 'en' ? 'English' : 'Español';
+    const emailDisplay = state.userEmail
+      ? state.userEmail
+      : '<span style="font-style:italic;color:var(--text-3)">' + escapeHtml(t('notSet')) + '</span>';
 
     view.innerHTML =
       '<p class="hero-day" style="margin-bottom:18px">' + escapeHtml(t('settings') || 'Settings') + '</p>' +
@@ -1081,11 +1816,26 @@
         '</div>' +
       '</div>' +
 
+      '<div class="settings-section-label"><span class="lang-en">Actions</span><span class="lang-es">Acciones</span></div>' +
+      '<div class="settings-group">' +
+        '<div class="settings-row tappable" id="settings-summary">' +
+          '<div>' +
+            '<div class="settings-label"><i class="ti ti-mail-share" aria-hidden="true"></i>' + escapeHtml(t('dailySummary')) + '</div>' +
+            '<div style="font-size:12px;color:var(--text-3);margin-top:4px;margin-left:28px">' + escapeHtml(t('dailySummaryHelp')) + '</div>' +
+          '</div>' +
+          '<div class="settings-value"><i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
+        '</div>' +
+      '</div>' +
+
       '<div class="settings-section-label"><span class="lang-en">Preferences</span><span class="lang-es">Preferencias</span></div>' +
       '<div class="settings-group">' +
         '<div class="settings-row tappable" id="settings-lang">' +
           '<div class="settings-label"><i class="ti ti-language" aria-hidden="true"></i>' + escapeHtml(t('language')) + '</div>' +
           '<div class="settings-value">' + langLabel + '<i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
+        '</div>' +
+        '<div class="settings-row tappable" id="settings-email">' +
+          '<div class="settings-label"><i class="ti ti-mail" aria-hidden="true"></i>' + escapeHtml(t('yourEmail')) + '</div>' +
+          '<div class="settings-value" style="max-width:60%;overflow:hidden;text-overflow:ellipsis">' + emailDisplay + '<i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
         '</div>' +
       '</div>' +
 
@@ -1102,29 +1852,71 @@
     $('settings-lang').addEventListener('click', () => {
       setLang(state.lang === 'en' ? 'es' : 'en');
       renderSettings();
-      // Re-render any visible content
       if (state.cache.dashboard) renderToday(state.cache.dashboard);
       if (state.cache.history) renderHistory(state.cache.history);
     });
+    $('settings-email').addEventListener('click', onChangeEmailClick);
+    $('settings-summary').addEventListener('click', onDailySummaryClick);
     $('signout-btn').addEventListener('click', signOut);
   }
 
-  // ----- TOPBAR / TITLE -------------------------------------------
-  function setTitle(view) {
-    const t = T.titles[view] || { en: '', es: '' };
-    $('topbar-title').innerHTML =
-      '<span class="lang-en">' + t.en + '</span><span class="lang-es">' + t.es + '</span>';
+  async function onChangeEmailClick() {
+    const email = await showEmailPrompt();
+    if (!email) return;
+    state.userEmail = email;
+    localStorage.setItem('mog_user_email', email);
+    renderSettings();
   }
 
-  // ----- VIEW SWITCHING -------------------------------------------
+  async function onDailySummaryClick() {
+    let email = state.userEmail;
+    if (!email) {
+      email = await showEmailPrompt();
+      if (!email) return;
+      state.userEmail = email;
+      localStorage.setItem('mog_user_email', email);
+    }
+    const row = $('settings-summary');
+    row.classList.add('disabled');
+    const labelEl = row.querySelector('.settings-label');
+    const original = labelEl.innerHTML;
+    labelEl.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i>' + escapeHtml(t('sendingSummary'));
+    try {
+      const result = await api('emailRecap', { userEmail: email });
+      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+    } catch (err) {
+      console.error('emailRecap error:', err);
+      const m = String(err.message || '');
+      if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      else showToast(m || 'Error', 'error');
+    } finally {
+      row.classList.remove('disabled');
+      labelEl.innerHTML = original;
+      renderSettings();
+    }
+  }
+
+  // ============================================================
+  // VIEW SWITCHING
+  // ============================================================
+  function setTitle(view, suffix) {
+    const def = T.titles[view] || { en: '', es: '' };
+    const en = suffix ? suffix : def.en;
+    const es = suffix ? suffix : def.es;
+    $('topbar-title').innerHTML =
+      '<span class="lang-en">' + escapeHtml(en) + '</span><span class="lang-es">' + escapeHtml(es) + '</span>';
+  }
+
   function showView(viewName) {
-    ['today','history','history-detail','settings'].forEach(v => {
+    ['today','count','review','history','history-detail','settings'].forEach(v => {
       $('view-' + v).style.display = v === viewName ? 'block' : 'none';
     });
     state.currentView = viewName;
-    setTitle(viewName);
-    const tabRoot = (viewName === 'history-detail') ? 'history' : viewName;
-    $('back-btn').style.display = (viewName === tabRoot) ? 'none' : 'inline-flex';
+    if (!['count','review'].includes(viewName)) setTitle(viewName);
+    // Back button: show whenever current view isn't a tab root
+    const tabRoots = { today:'today', history:'history', settings:'settings' };
+    const isTabRoot = (viewName === tabRoots[state.currentTab]);
+    $('back-btn').style.display = isTabRoot ? 'none' : 'inline-flex';
     $('scroll-area').scrollTop = 0;
   }
 
@@ -1133,15 +1925,27 @@
     document.querySelectorAll('.tab').forEach(b => {
       b.classList.toggle('active', b.getAttribute('data-tab') === tab);
     });
-    showView(tab);
+    const tabRoot = { today:'today', history:'history', settings:'settings' }[tab];
+    showView(tabRoot);
     if (tab === 'today')    loadToday();
     if (tab === 'history')  loadHistory();
     if (tab === 'settings') renderSettings();
   }
 
   function goBack() {
-    if (state.currentView === 'history-detail') {
+    const v = state.currentView;
+    if (v === 'count' || v === 'review') {
+      // Back from count/review goes to today, after flushing dirty
+      if (v === 'count' && state.countContext) {
+        flushDirtyToServer().finally(() => switchTab('today'));
+      } else {
+        switchTab('today');
+      }
+      return;
+    }
+    if (v === 'history-detail') {
       showView('history');
+      return;
     }
   }
 
@@ -1157,7 +1961,8 @@
     if (state.cache.dashboard) renderToday(state.cache.dashboard);
     if (state.cache.history) renderHistory(state.cache.history);
     if (state.currentView === 'settings') renderSettings();
-    setTitle(state.currentView);
+    if (state.currentView === 'count') renderCount();
+    if (state.currentView === 'review') renderReview();
   });
 
   $('pin-submit').addEventListener('click', handlePinSubmit);
@@ -1170,13 +1975,19 @@
     $('pin-error').textContent = '';
   });
 
+  // Flush draft writes when the page is hidden / closed
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && state.countContext && Object.keys(state.countContext.dirty).length) {
+      // Best-effort fire-and-forget
+      flushDirtyToServer();
+    }
+  });
+
   // ============================================================
   // BOOT
   // ============================================================
   setLang(state.lang);
-
   if (state.pin) {
-    // Verify stored PIN by silently calling ping. If it fails, force re-auth.
     tryPin(state.pin)
       .then(() => proceedAfterAuth())
       .catch(() => showPinScreen());
