@@ -172,18 +172,34 @@
     .vendor-meta i { font-size: 13px; }
 
     .pill {
-      font-size: 11px;
-      font-weight: 600;
-      padding: 4px 8px;
-      border-radius: var(--r-md);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 7px 12px;
+      border-radius: 999px;
       white-space: nowrap;
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      letter-spacing: 0.01em;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      border: 1px solid transparent;
     }
-    .pill-done { background: var(--teal-light); color: var(--teal-dark); }
-    .pill-progress { background: var(--amber-light); color: var(--amber-dark); }
-    .pill-todo { background: #fde4e4; color: var(--red-dark); }
+    .pill i { font-size: 14px; }
+    .pill-done {
+      background: white;
+      color: var(--teal-dark);
+      border-color: rgba(15,110,86,0.35);
+    }
+    .pill-progress {
+      background: white;
+      color: var(--amber-dark);
+      border-color: rgba(186,117,23,0.45);
+    }
+    .pill-todo {
+      background: white;
+      color: var(--red-dark);
+      border-color: rgba(163,45,45,0.4);
+    }
 
     .empty-state { padding: 48px 24px; text-align: center; }
     .empty-icon {
@@ -638,7 +654,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -861,6 +877,7 @@
       notStarted:       { en: 'Not started', es: 'No iniciado' },
       inProgress:       { en: 'In progress', es: 'En progreso' },
       itemsToOrder:     { en: 'to order', es: 'por pedir' },
+      entered:          { en: 'entered', es: 'ingresados' },
       items:            { en: 'items', es: 'art&iacute;culos' },
       cutoff:           { en: 'cutoff', es: 'corte' },
       pickup:           { en: 'pick up', es: 'recoger' },
@@ -1315,14 +1332,18 @@
 
     if (status === 'reviewed') {
       statusClass = ' status-reviewed';
-      pillHtml = '<span class="pill pill-done"><i class="ti ti-check" aria-hidden="true" style="font-size:12px"></i>' + escapeHtml(t('reviewed')) + '</span>';
+      pillHtml = '<span class="pill pill-done"><i class="ti ti-check" aria-hidden="true"></i>' + escapeHtml(t('reviewed')) + '</span>';
     } else if (status === 'in_progress') {
       statusClass = ' status-progress';
-      pillHtml = '<span class="pill pill-progress">' +
-        (v.toOrderCount != null && v.toOrderCount > 0
-          ? v.toOrderCount + ' ' + escapeHtml(t('itemsToOrder'))
-          : escapeHtml(t('inProgress'))) +
-        '</span>';
+      // "X / Y entered" — mirrors the sheet's home dashboard counter so KMs
+      // see consistent terminology between the two surfaces. Falls back to
+      // a generic label only if enteredCount somehow isn't available.
+      const entered = (v.enteredCount != null) ? v.enteredCount : null;
+      const total   = v.itemCount || 0;
+      const label   = (entered != null)
+        ? entered + ' / ' + total + ' ' + escapeHtml(t('entered'))
+        : escapeHtml(t('inProgress'));
+      pillHtml = '<span class="pill pill-progress">' + label + '</span>';
     } else {
       statusClass = ' status-todo';
       pillHtml = '<span class="pill pill-todo">' + escapeHtml(t('notStarted')) + '</span>';
@@ -1910,7 +1931,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.7.0';
+    const versionStr = '0.8.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
     const emailDisplay = state.userEmail
       ? state.userEmail
@@ -2043,6 +2064,37 @@
     if (tab === 'settings') renderSettings();
   }
 
+  // Wraps switchTab with a dirty-state guard. Used by the tab bar buttons
+  // so a user mid-count doesn't lose their unsaved entries by tapping
+  // History or Settings by accident. Same confirm UX as the back button.
+  async function requestSwitchTab(tab) {
+    const v = state.currentView;
+    const ctx = state.countContext;
+    const dirtyMidCount = (v === 'count') && ctx && Object.keys(ctx.dirty || {}).length > 0;
+
+    if (!dirtyMidCount) {
+      switchTab(tab);
+      return;
+    }
+
+    const ok = await showConfirm({
+      kind: 'warn',
+      icon: 'arrow-left',
+      title: t('confirmGoBack'),
+      msg:   t('confirmGoBackMsg'),
+      confirmLabel: t('saveAndGoBack'),
+      cancelLabel:  t('cancel')
+    });
+    if (!ok) return;
+
+    const result = await flushDirtyToServer();
+    if (result.ok) {
+      switchTab(tab);
+    } else {
+      showToast(t('saveError'), 'error');
+    }
+  }
+
   async function goBack() {
     const v = state.currentView;
 
@@ -2090,7 +2142,7 @@
   // EVENT WIRING
   // ============================================================
   document.querySelectorAll('.tab').forEach(b => {
-    b.addEventListener('click', () => switchTab(b.getAttribute('data-tab')));
+    b.addEventListener('click', () => requestSwitchTab(b.getAttribute('data-tab')));
   });
   $('back-btn').addEventListener('click', goBack);
   $('lang-btn').addEventListener('click', () => {
