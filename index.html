@@ -144,10 +144,27 @@
       border-radius: var(--r-lg);
       padding: 14px;
       margin-bottom: 10px;
+      transition: background 0.15s, border-color 0.15s;
     }
     .vendor-card.tappable { cursor: pointer; }
-    .vendor-card.tappable:active { background: var(--bg-soft); }
+    .vendor-card.tappable:active { filter: brightness(0.97); }
     .vendor-card.muted { background: var(--bg-soft); }
+
+    /* Status-tinted cards — soft tints, not saturated, so 9 stacked cards
+       don't burn the user's eyes. The pill on the right keeps the explicit
+       label for accessibility / clarity. */
+    .vendor-card.status-todo {
+      background: #fde4e4;       /* soft red */
+      border-color: #f5c2c2;
+    }
+    .vendor-card.status-progress {
+      background: var(--amber-light);
+      border-color: #f0d9a8;
+    }
+    .vendor-card.status-reviewed {
+      background: var(--teal-light);
+      border-color: #b8dccd;
+    }
     .vendor-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .vendor-name { font-size: 16px; font-weight: 600; }
     .vendor-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
@@ -199,7 +216,7 @@
       background: var(--bg-soft);
       border-radius: var(--r-md);
       padding: 12px 14px;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -208,6 +225,31 @@
       gap: 10px;
     }
     .count-progress-strong { color: var(--text); font-weight: 600; }
+
+    /* Sticky column header strip — pinned to the top of the scroll area
+       so the user always knows which column is on-hand vs order while
+       scrolling through a long vendor list. */
+    .count-colheader {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0 8px;
+      margin-bottom: 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-2);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      gap: 8px;
+    }
+    .count-colheader .ch-item   { flex: 1; min-width: 0; }
+    .count-colheader .ch-onhand { width: 110px; text-align: center; }
+    .count-colheader .ch-order  { width: 44px; text-align: center; }
 
     .area-header {
       font-size: 14px;
@@ -596,7 +638,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -1266,26 +1308,28 @@
   }
 
   function renderVendorCard(v, status) {
-    let muted = '', pillHtml = '', metaText = '';
+    let statusClass = '', pillHtml = '', metaText = '';
 
     const cutoffStr = v.cutoffTime ? (' &middot; ' + escapeHtml(t('cutoff')) + ' ' + escapeHtml(fmt12h(v.cutoffTime))) : '';
     metaText = v.itemCount + ' ' + t('items') + cutoffStr;
 
     if (status === 'reviewed') {
-      muted = ' muted';
+      statusClass = ' status-reviewed';
       pillHtml = '<span class="pill pill-done"><i class="ti ti-check" aria-hidden="true" style="font-size:12px"></i>' + escapeHtml(t('reviewed')) + '</span>';
     } else if (status === 'in_progress') {
+      statusClass = ' status-progress';
       pillHtml = '<span class="pill pill-progress">' +
         (v.toOrderCount != null && v.toOrderCount > 0
           ? v.toOrderCount + ' ' + escapeHtml(t('itemsToOrder'))
           : escapeHtml(t('inProgress'))) +
         '</span>';
     } else {
+      statusClass = ' status-todo';
       pillHtml = '<span class="pill pill-todo">' + escapeHtml(t('notStarted')) + '</span>';
     }
 
     return (
-      '<div class="vendor-card tappable' + muted + '" data-vendor="' + escapeHtml(v.name) + '">' +
+      '<div class="vendor-card tappable' + statusClass + '" data-vendor="' + escapeHtml(v.name) + '">' +
         '<div class="vendor-row">' +
           '<div>' +
             '<div class="vendor-name">' + escapeHtml(v.name) + '</div>' +
@@ -1347,32 +1391,32 @@
   function computeSuggested(item) {
     // Returns the suggested order qty for the current On Hand value.
     //
-    // Strategy: the API's `suggestedQty` is the authoritative value (from
-    // the vendor tab's column F formula, which is day-multiplier-aware).
-    // For live UI feedback as the user types, we infer a target par from
-    // the API's original response: if onHand was non-null at fetch time,
-    // targetPar = onHand + suggestedQty. We cache it on the item as
-    // _targetPar so subsequent edits compute correctly.
-    //
-    // For items that had a null onHand at fetch time, we can't infer a
-    // target par. We return null and the pill shows "—" until the user
-    // saves, which triggers a refetch with accurate suggestions.
+    // Priority order for target par:
+    //   1. item.targetPar from the API (par × day multiplier, read from
+    //      the vendor tab) — works for every item, even ones not yet counted
+    //   2. item._targetPar inferred from API onHand+suggestedQty (legacy
+    //      fallback, kept for safety if older API versions don't send targetPar)
+    //   3. item.suggestedQty (only correct on initial render before any edit)
     if (item.onHand === null || item.onHand === '' || item.onHand === undefined) return null;
     const oh = Number(item.onHand);
     if (isNaN(oh)) return null;
 
+    if (item.targetPar != null) {
+      return Math.max(0, Number(item.targetPar) - oh);
+    }
     if (item._targetPar != null) {
       return Math.max(0, Number(item._targetPar) - oh);
     }
-    // Fall back to API value (correct on initial render before any edits)
     return (item.suggestedQty != null) ? Number(item.suggestedQty) : null;
   }
 
   function cacheTargetPars(items) {
-    // Walk items once after a fresh API fetch and cache _targetPar where
-    // we can infer it. Items where onHand was null or suggestedQty was null
-    // at fetch time are skipped — they'll show "—" for live edits.
+    // The API now sends targetPar directly so live updates work for every
+    // item. This helper remains as a fallback that infers target par from
+    // (onHand + suggestedQty) when targetPar is missing — useful if the
+    // PWA is talking to an older API deployment.
     for (const it of items) {
+      if (it.targetPar != null) continue;
       if (it.onHand != null && it.onHand !== '' && it.suggestedQty != null) {
         const oh = Number(it.onHand);
         const sq = Number(it.suggestedQty);
@@ -1414,6 +1458,20 @@
         escapeHtml(t('counted')) + '</span>' +
       '<span style="font-size:12px">' +
         (toOrder > 0 ? toOrder + ' ' + escapeHtml(t('itemsToOrder')) : '&nbsp;') +
+      '</span>' +
+    '</div>';
+
+    // Sticky column header strip — stays pinned to the top of the scroll
+    // area so the user always knows which column is which on long lists.
+    html += '<div class="count-colheader">' +
+      '<span class="ch-item">' +
+        '<span class="lang-en">Item</span><span class="lang-es">Art&iacute;culo</span>' +
+      '</span>' +
+      '<span class="ch-onhand">' +
+        '<span class="lang-en">On hand</span><span class="lang-es">Stock</span>' +
+      '</span>' +
+      '<span class="ch-order">' +
+        '<span class="lang-en">Order</span><span class="lang-es">Pedir</span>' +
       '</span>' +
     '</div>';
 
@@ -1852,7 +1910,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.6.0';
+    const versionStr = '0.7.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
     const emailDisplay = state.userEmail
       ? state.userEmail
