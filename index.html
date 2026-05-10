@@ -210,13 +210,13 @@
     .count-progress-strong { color: var(--text); font-weight: 600; }
 
     .area-header {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-2);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin: 18px 0 6px;
-      padding-bottom: 6px;
+      letter-spacing: 0.04em;
+      margin: 22px 0 8px;
+      padding-bottom: 8px;
       border-bottom: 0.5px solid var(--border);
     }
     .area-header:first-child { margin-top: 4px; }
@@ -231,7 +231,7 @@
     .item:last-of-type { border-bottom: none; }
     .item-info { flex: 1; min-width: 0; }
     .item-name { font-size: 15px; font-weight: 500; margin: 0; }
-    .item-meta { font-size: 12px; color: var(--text-3); margin: 2px 0 0; }
+    .item-meta { font-size: 12px; color: var(--text-3); margin: 2px 0 0; font-style: italic; }
 
     .stepper {
       display: flex;
@@ -596,7 +596,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -848,6 +848,12 @@
         es: 'Esto bloquea los conteos. Puedes volver y editar si lo necesitas.'
       },
       confirmEdit:      { en: 'Edit reviewed vendor?', es: '¿Editar proveedor revisado?' },
+      confirmGoBack:    { en: 'Save and go back?', es: '¿Guardar y volver?' },
+      confirmGoBackMsg: {
+        en: "You've made changes that haven't been saved. Save them before returning?",
+        es: 'Tienes cambios sin guardar. ¿Guardarlos antes de volver?'
+      },
+      saveAndGoBack:    { en: 'Save and go back', es: 'Guardar y volver' },
       confirmEditMsg: {
         en: "You'll be able to change counts. Mark as reviewed again when you're done.",
         es: 'Podr&aacute;s cambiar los conteos. Marca como revisado al terminar.'
@@ -1328,6 +1334,9 @@
         const item = state.countContext.items.find(i => i.id === id);
         if (item) item.onHand = draft[id];
       }
+      // Cache target pars from the API's onHand+suggestedQty pairing so
+      // computeSuggested can update suggestions live as the user types.
+      cacheTargetPars(state.countContext.items);
       renderCount();
     } catch (err) {
       console.error('openCount error:', err);
@@ -1336,14 +1345,42 @@
   }
 
   function computeSuggested(item) {
+    // Returns the suggested order qty for the current On Hand value.
+    //
+    // Strategy: the API's `suggestedQty` is the authoritative value (from
+    // the vendor tab's column F formula, which is day-multiplier-aware).
+    // For live UI feedback as the user types, we infer a target par from
+    // the API's original response: if onHand was non-null at fetch time,
+    // targetPar = onHand + suggestedQty. We cache it on the item as
+    // _targetPar so subsequent edits compute correctly.
+    //
+    // For items that had a null onHand at fetch time, we can't infer a
+    // target par. We return null and the pill shows "—" until the user
+    // saves, which triggers a refetch with accurate suggestions.
     if (item.onHand === null || item.onHand === '' || item.onHand === undefined) return null;
-    // The API already calculated a suggested qty server-side using the
-    // active cycle's day multipliers. When a user edits On Hand client-side,
-    // we recompute suggestion locally using (par - onHand) as a proxy so
-    // the pill updates live. The server recalculates correctly on save.
     const oh = Number(item.onHand);
     if (isNaN(oh)) return null;
-    return Math.max(0, (Number(item.par) || 0) - oh);
+
+    if (item._targetPar != null) {
+      return Math.max(0, Number(item._targetPar) - oh);
+    }
+    // Fall back to API value (correct on initial render before any edits)
+    return (item.suggestedQty != null) ? Number(item.suggestedQty) : null;
+  }
+
+  function cacheTargetPars(items) {
+    // Walk items once after a fresh API fetch and cache _targetPar where
+    // we can infer it. Items where onHand was null or suggestedQty was null
+    // at fetch time are skipped — they'll show "—" for live edits.
+    for (const it of items) {
+      if (it.onHand != null && it.onHand !== '' && it.suggestedQty != null) {
+        const oh = Number(it.onHand);
+        const sq = Number(it.suggestedQty);
+        if (!isNaN(oh) && !isNaN(sq)) {
+          it._targetPar = oh + sq;
+        }
+      }
+    }
   }
 
   function renderCount() {
@@ -1407,8 +1444,10 @@
     }
 
     if (!isLocked) {
-      html += '<button class="cta" id="review-btn">' + escapeHtml(t('reviewOrder')) + '</button>';
-      html += '<button class="cta-secondary" id="save-continue-btn">' + escapeHtml(t('saveContinue')) + '</button>';
+      // Save and continue later goes ABOVE Review order so the primary
+      // CTA (Review) sits at the bottom edge — closer to the thumb.
+      html += '<button class="cta-secondary" id="save-continue-btn" style="margin-top:18px">' + escapeHtml(t('saveContinue')) + '</button>';
+      html += '<button class="cta" id="review-btn" style="margin-top:8px">' + escapeHtml(t('reviewOrder')) + '</button>';
     } else {
       html += '<button class="cta" id="review-btn">' + escapeHtml(t('reviewOrder')) + '</button>';
     }
@@ -1503,19 +1542,31 @@
     return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   }
 
-  async function flushDirtyToServer() {
+  async function flushDirtyToServer(opts) {
+    // opts.refetch: if true, after a successful save (or even with no dirty
+    // items), pull fresh vendor items from the API. Used before the review
+    // screen so it shows accurate, formula-resolved suggestions — including
+    // for items where we couldn't infer target par locally.
+    const refetch = !!(opts && opts.refetch);
     const ctx = state.countContext;
     if (!ctx) return { saved: 0, ok: true };
     const dirtyIds = Object.keys(ctx.dirty);
-    if (!dirtyIds.length) return { saved: 0, ok: true };
-    const items = dirtyIds.map(id => ({ id: id, onHand: ctx.dirty[id] }));
+
     try {
-      await api('saveOnHand', { vendor: ctx.vendor, items: items });
-      ctx.dirty = {};
-      clearDraft(ctx.dateStr, ctx.vendor);
-      return { saved: items.length, ok: true };
+      if (dirtyIds.length) {
+        const items = dirtyIds.map(id => ({ id: id, onHand: ctx.dirty[id] }));
+        await api('saveOnHand', { vendor: ctx.vendor, items: items });
+        ctx.dirty = {};
+        clearDraft(ctx.dateStr, ctx.vendor);
+      }
+      if (refetch) {
+        const fresh = await api('getVendorItems', { vendor: ctx.vendor });
+        ctx.items = fresh.items;
+        cacheTargetPars(ctx.items);
+      }
+      return { saved: dirtyIds.length, ok: true };
     } catch (err) {
-      console.error('saveOnHand error:', err);
+      console.error('flushDirtyToServer error:', err);
       return { saved: 0, ok: false, error: err };
     }
   }
@@ -1544,7 +1595,9 @@
     const btn = $('review-btn');
     btn.disabled = true;
     btn.textContent = t('saving');
-    const result = await flushDirtyToServer();
+    // Refetch so the review screen has accurate suggestions even for items
+    // where target par couldn't be inferred locally.
+    const result = await flushDirtyToServer({ refetch: true });
     btn.disabled = false;
     btn.textContent = t('reviewOrder');
     if (!result.ok) {
@@ -1799,7 +1852,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.5.0';
+    const versionStr = '0.6.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
     const emailDisplay = state.userEmail
       ? state.userEmail
@@ -1932,19 +1985,45 @@
     if (tab === 'settings') renderSettings();
   }
 
-  function goBack() {
+  async function goBack() {
     const v = state.currentView;
-    if (v === 'count' || v === 'review') {
-      // Back from count/review goes to today, after flushing dirty
-      if (v === 'count' && state.countContext) {
-        flushDirtyToServer().finally(() => switchTab('today'));
-      } else {
-        switchTab('today');
-      }
-      return;
-    }
+
+    // History detail → history list (no save needed)
     if (v === 'history-detail') {
       showView('history');
+      return;
+    }
+
+    // Review → today (no save needed; counts already saved on entry)
+    if (v === 'review') {
+      switchTab('today');
+      return;
+    }
+
+    // Count → today. If there are unsaved counts, confirm save+go.
+    // If nothing dirty, just go back silently.
+    if (v === 'count') {
+      const ctx = state.countContext;
+      const hasDirty = ctx && Object.keys(ctx.dirty).length > 0;
+      if (!hasDirty) {
+        switchTab('today');
+        return;
+      }
+      const ok = await showConfirm({
+        kind: 'warn',
+        icon: 'arrow-left',
+        title: t('confirmGoBack'),
+        msg:   t('confirmGoBackMsg'),
+        confirmLabel: t('saveAndGoBack'),
+        cancelLabel:  t('cancel')
+      });
+      if (!ok) return;
+      const result = await flushDirtyToServer();
+      if (result.ok) {
+        switchTab('today');
+      } else {
+        showToast(t('saveError'), 'error');
+      }
       return;
     }
   }
