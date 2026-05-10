@@ -646,6 +646,28 @@
     }
     .modal-backdrop.open { display: block; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Full-screen busy overlay used during destructive ops (reset).
+       Higher z-index than the modal so it covers any open confirm. */
+    .busy-overlay {
+      position: absolute; inset: 0;
+      background: rgba(255,255,255,0.92);
+      z-index: 70; display: none;
+      align-items: center; justify-content: center;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .busy-overlay.open { display: flex; }
+    .busy-overlay .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--bg-mute);
+      border-top-color: var(--teal);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    .busy-overlay .busy-label {
+      font-size: 14px; font-weight: 600; color: var(--text);
+    }
     .modal {
       position: absolute; left: 50%; top: 50%;
       transform: translate(-50%, -50%);
@@ -682,6 +704,14 @@
       font-size: 14px; font-weight: 500;
     }
     .modal-cancel:active { background: var(--bg-soft); }
+    .modal-tertiary {
+      background: transparent; color: var(--red);
+      border: 0.5px solid rgba(163,45,45,0.45);
+      border-radius: var(--r-md);
+      padding: 11px;
+      font-size: 14px; font-weight: 500;
+    }
+    .modal-tertiary:active { background: var(--red-light); }
 
     /* Toast */
     .toast {
@@ -715,7 +745,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -832,6 +862,12 @@
       <button class="modal-cta" id="modal-confirm"></button>
       <button class="modal-cancel" id="modal-cancel"></button>
     </div>
+  </div>
+
+  <!-- Busy overlay -->
+  <div class="busy-overlay" id="busy-overlay">
+    <div class="spinner"></div>
+    <div class="busy-label" id="busy-label"></div>
   </div>
 
   <!-- Toast -->
@@ -974,6 +1010,7 @@
         es: 'Tienes conteos sin guardar. ¿Guardarlos antes de continuar?'
       },
       saveAndGoBack:    { en: 'Save and continue', es: 'Guardar y continuar' },
+      discardChanges:   { en: "Don't save, continue", es: 'No guardar, continuar' },
       // End-of-day panel
       allDoneTitle:     { en: 'All vendors reviewed', es: 'Todos los proveedores revisados' },
       allDoneSub:       { en: "You're set for the day. Email yourself a copy to place the orders.", es: 'Listo para hoy. Env\u00edate una copia para hacer los pedidos.' },
@@ -1050,6 +1087,18 @@
     setTimeout(() => el.classList.remove('show'), 2400);
   }
 
+  // Block the entire app behind a centered spinner. Use sparingly — only
+  // for destructive ops where the user needs to know "something is
+  // happening, don't tap again." Always pair with a try/finally so a
+  // failure doesn't leave the overlay stuck.
+  function showBusy(label) {
+    $('busy-label').textContent = label || t('loading');
+    $('busy-overlay').classList.add('open');
+  }
+  function hideBusy() {
+    $('busy-overlay').classList.remove('open');
+  }
+
   // ============================================================
   // CONFIRM MODAL
   // ============================================================
@@ -1059,21 +1108,43 @@
       $('modal-icon').innerHTML = '<i class="ti ti-' + (opts.icon || 'check') + '" aria-hidden="true"></i>';
       $('modal-title').textContent = opts.title || '';
       $('modal-msg').textContent   = opts.msg || '';
-      $('modal-confirm').textContent = opts.confirmLabel || t('done');
-      $('modal-cancel').textContent  = opts.cancelLabel  || t('cancel');
+
+      // Rebuild the actions container to support an optional tertiary
+      // (destructive) button between confirm and cancel. Layout: confirm
+      // (primary) on top, tertiary (red) middle if present, cancel below.
+      const actionsEl = document.querySelector('.modal-actions');
+      const hasTertiary = !!opts.tertiaryLabel;
+      let html =
+        '<button class="modal-cta" id="modal-confirm">' + escapeHtml(opts.confirmLabel || t('done')) + '</button>';
+      if (hasTertiary) {
+        html += '<button class="modal-tertiary" id="modal-tertiary">' + escapeHtml(opts.tertiaryLabel) + '</button>';
+      }
+      html +=
+        '<button class="modal-cancel" id="modal-cancel">' + escapeHtml(opts.cancelLabel || t('cancel')) + '</button>';
+      actionsEl.innerHTML = html;
+
       $('modal-backdrop').classList.add('open');
       $('modal').style.display = 'block';
+
       const cleanup = (val) => {
         $('modal').style.display = 'none';
         $('modal-backdrop').classList.remove('open');
-        $('modal-confirm').onclick = null;
-        $('modal-cancel').onclick = null;
         $('modal-backdrop').onclick = null;
+        // Restore default action buttons for the next caller (other modals
+        // mutate this container too, e.g. the email prompt).
+        actionsEl.innerHTML =
+          '<button class="modal-cta" id="modal-confirm"></button>' +
+          '<button class="modal-cancel" id="modal-cancel"></button>';
         resolve(val);
       };
-      $('modal-confirm').onclick   = () => cleanup(true);
-      $('modal-cancel').onclick    = () => cleanup(false);
-      $('modal-backdrop').onclick  = () => cleanup(false);
+
+      // For backward compatibility: when there's no tertiary, resolve to
+      // boolean (true/false). When tertiary is present, resolve to string
+      // ('confirm'|'tertiary'|'cancel') so callers can distinguish.
+      $('modal-confirm').onclick   = () => cleanup(hasTertiary ? 'confirm' : true);
+      $('modal-cancel').onclick    = () => cleanup(hasTertiary ? 'cancel'  : false);
+      if (hasTertiary) $('modal-tertiary').onclick = () => cleanup('tertiary');
+      $('modal-backdrop').onclick  = () => cleanup(hasTertiary ? 'cancel'  : false);
     });
   }
 
@@ -1224,17 +1295,17 @@
     errEl.textContent = '';
     btn.querySelector('span.lang-en').textContent = 'Resetting…';
     btn.querySelector('span.lang-es').textContent = 'Reiniciando…';
+    showBusy(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
     try {
       await api('commitReset');
       state.cache.dashboard = null;
       state.cache.history = null;
-      // Wipe per-cycle local flags. Self-heal in loadToday will catch
-      // anything we miss here, but explicit cleanup is faster and avoids
-      // a momentary flash of stale UI.
       clearAllPerCycleLocalState_();
+      hideBusy();
       showMainApp();
     } catch (err) {
       console.error('reset error:', err);
+      hideBusy();
       btn.disabled = false;
       btn.querySelector('span.lang-en').textContent = 'Reset On Hand';
       btn.querySelector('span.lang-es').textContent = 'Reiniciar Inventario';
@@ -1509,16 +1580,22 @@
       // GC stale localStorage on first today-load of a new day
       gcReviewedFlags(data.date);
       gcDrafts(data.date);
-      // Self-heal: if a vendor is flagged as reviewed in localStorage but
-      // its on-hand has been wiped on the sheet (enteredCount === 0), the
-      // flag is stale and must be cleared. Catches:
-      //   - PWA reset paths that forgot to clear flags
-      //   - GM resetting directly from the sheet
-      //   - Different KM on a different device clearing on-hand
+      // Self-heal reviewed flags against the API's status field.
+      //
+      // The API computes status independently each call by looking at the
+      // vendor tab's actual on-hand state. If status is 'not_started', the
+      // vendor has no entered counts — period. A reviewed flag in
+      // localStorage for that vendor is therefore stale (could be from a
+      // GM resetting via the sheet, or any reset path that bypassed our
+      // local cleanup).
+      //
+      // We trust status directly rather than enteredCount because status
+      // is the authoritative answer the API returns to "is this vendor
+      // started?" and matches the dashboard pill logic.
       const reviewed = getReviewedSet(data.date);
       let mutated = false;
       for (const v of data.vendors) {
-        if (reviewed[v.name] && (v.enteredCount === 0 || v.enteredCount == null)) {
+        if (reviewed[v.name] && v.status === 'not_started') {
           delete reviewed[v.name];
           mutated = true;
         }
@@ -2101,7 +2178,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.10.0';
+    const versionStr = '0.11.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
     const emailDisplay = state.userEmail
       ? state.userEmail
@@ -2235,26 +2312,19 @@
     });
     if (!ok) return;
 
-    const btn = $('home-reset-btn');
-    if (btn) {
-      btn.disabled = true;
-      btn.querySelector('span').textContent = t('saving');
-    }
-
+    showBusy(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
     try {
       await api('commitReset');
       state.cache.dashboard = null;
       state.cache.history   = null;
       clearAllPerCycleLocalState_();
+      await loadToday();
       showToast(state.lang === 'en' ? 'Reset complete' : 'Reinicio completo', 'success');
-      loadToday();
     } catch (err) {
       console.error('home reset error:', err);
       showToast(String(err.message || 'Error'), 'error');
-      if (btn) {
-        btn.disabled = false;
-        btn.querySelector('span').textContent = t('resetHomeCta');
-      }
+    } finally {
+      hideBusy();
     }
   }
 
@@ -2346,16 +2416,32 @@
       return;
     }
 
-    const ok = await showConfirm({
+    const choice = await showConfirm({
       kind: 'warn',
       icon: 'arrow-left',
       title: t('confirmGoBack'),
       msg:   t('confirmGoBackMsg'),
-      confirmLabel: t('saveAndGoBack'),
-      cancelLabel:  t('cancel')
+      confirmLabel:  t('saveAndGoBack'),
+      tertiaryLabel: t('discardChanges'),
+      cancelLabel:   t('cancel')
     });
-    if (!ok) return;
 
+    if (choice === 'cancel' || !choice) return;
+
+    if (choice === 'tertiary') {
+      // Discard: drop dirty edits in-memory and clear localStorage draft
+      // for this vendor so the next openCount won't restore them. The
+      // sheet keeps whatever was already saved before this session.
+      const ctx = state.countContext;
+      if (ctx) {
+        ctx.dirty = {};
+        clearDraft(ctx.dateStr, ctx.vendor);
+      }
+      switchTab(tab);
+      return;
+    }
+
+    // choice === 'confirm' → save and go
     const result = await flushDirtyToServer();
     if (result.ok) {
       switchTab(tab);
@@ -2388,15 +2474,22 @@
         switchTab('today');
         return;
       }
-      const ok = await showConfirm({
+      const choice = await showConfirm({
         kind: 'warn',
         icon: 'arrow-left',
         title: t('confirmGoBack'),
         msg:   t('confirmGoBackMsg'),
-        confirmLabel: t('saveAndGoBack'),
-        cancelLabel:  t('cancel')
+        confirmLabel:  t('saveAndGoBack'),
+        tertiaryLabel: t('discardChanges'),
+        cancelLabel:   t('cancel')
       });
-      if (!ok) return;
+      if (choice === 'cancel' || !choice) return;
+      if (choice === 'tertiary') {
+        ctx.dirty = {};
+        clearDraft(ctx.dateStr, ctx.vendor);
+        switchTab('today');
+        return;
+      }
       const result = await flushDirtyToServer();
       if (result.ok) {
         switchTab('today');
