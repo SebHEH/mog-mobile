@@ -68,6 +68,13 @@
       background: var(--bg);
       flex-shrink: 0;
       gap: 8px;
+      position: relative;
+      z-index: 10;
+      transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .topbar.scrolled {
+      border-bottom-color: rgba(0,0,0,0.08);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
     }
     .topbar-title { font-weight: 600; font-size: 16px; flex: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .topbar-side { display: flex; align-items: center; min-width: 64px; }
@@ -136,8 +143,14 @@
     }
 
     .hero-day { font-size: 24px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
-    .hero-loc { font-size: 13px; color: var(--text-2); margin: 4px 0 18px; display: flex; align-items: center; gap: 4px; }
-    .hero-loc i { font-size: 15px; }
+    .hero-loc {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+      margin: 6px 0 20px;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .hero-loc i { font-size: 17px; color: var(--text-2); }
 
     /* End-of-day "all done" panel — appears at top of Today when every
        vendor on today's list has been reviewed. Celebratory + email CTA. */
@@ -420,6 +433,7 @@
     .review-info { flex: 1; min-width: 0; }
     .review-qty { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
     .qty-num { font-size: 22px; font-weight: 700; }
+    .qty-x   { font-size: 14px; color: var(--text-3); font-weight: 500; margin: 0 1px; }
     .qty-unit { font-size: 13px; color: var(--text-2); font-weight: 500; }
 
     .review-summary {
@@ -429,6 +443,29 @@
       margin-top: 16px;
       font-size: 14px;
     }
+
+    /* Recap (master summary) view */
+    .recap-summary {
+      background: var(--bg-soft);
+      padding: 12px 14px;
+      border-radius: var(--r-md);
+      font-size: 13px;
+      color: var(--text-2);
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 18px;
+    }
+    .recap-summary-strong { font-weight: 600; color: var(--text); }
+    .recap-summary-dot { color: var(--text-3); }
+    .recap-section { margin-bottom: 22px; }
+    .recap-section:last-child { margin-bottom: 0; }
+    .recap-vendor-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      padding: 8px 0 10px;
+      border-bottom: 0.5px solid var(--border);
+      margin-bottom: 4px;
+    }
+    .recap-vendor-name { font-size: 16px; font-weight: 700; color: var(--text); }
+    .recap-vendor-count { font-size: 12px; color: var(--text-2); }
     .summary-row { display: flex; justify-content: space-between; align-items: center; }
     .summary-row + .summary-row { margin-top: 6px; color: var(--text-2); font-size: 12px; }
     .progress-strong { color: var(--text); font-weight: 600; }
@@ -653,6 +690,57 @@
     .busy-overlay .busy-label {
       font-size: 14px; font-weight: 600; color: var(--text);
     }
+
+    /* Mark-as-reviewed success animation: bar fills, check pops, fades. */
+    .markreview-overlay {
+      position: absolute; inset: 0;
+      background: rgba(255,255,255,0.96);
+      z-index: 80; display: none;
+      align-items: center; justify-content: center;
+      transition: opacity 0.28s ease;
+    }
+    .markreview-overlay.open { display: flex; opacity: 1; }
+    .markreview-overlay.fade-out { opacity: 0; }
+    .markreview-card {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 24px;
+      width: 220px;
+    }
+    .markreview-bar {
+      width: 100%; height: 6px;
+      background: var(--bg-mute);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .markreview-fill {
+      height: 100%; width: 0%;
+      background: var(--teal);
+      border-radius: 3px;
+    }
+    .markreview-check {
+      width: 64px; height: 64px;
+      opacity: 0;
+      transform: scale(0.4);
+      transition: opacity 0.18s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .markreview-check.on { opacity: 1; transform: scale(1); }
+    .markreview-check svg { width: 100%; height: 100%; display: block; }
+    .mr-check-circle {
+      fill: var(--teal); stroke: none;
+    }
+    .mr-check-mark {
+      fill: none;
+      stroke: white;
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 48;
+      stroke-dashoffset: 48;
+      animation: mr-stroke 0.32s cubic-bezier(0.65, 0, 0.45, 1) 0.06s forwards;
+    }
+    @keyframes mr-stroke {
+      to { stroke-dashoffset: 0; }
+    }
     .modal {
       position: absolute; left: 50%; top: 50%;
       transform: translate(-50%, -50%);
@@ -730,7 +818,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -816,6 +904,7 @@
       <div class="screen" id="view-today" style="display:none"></div>
       <div class="screen" id="view-count" style="display:none"></div>
       <div class="screen" id="view-review" style="display:none"></div>
+      <div class="screen" id="view-recap" style="display:none"></div>
       <div class="screen" id="view-history" style="display:none"></div>
       <div class="screen" id="view-history-detail" style="display:none"></div>
       <div class="screen" id="view-settings" style="display:none"></div>
@@ -853,6 +942,19 @@
   <div class="busy-overlay" id="busy-overlay">
     <div class="spinner"></div>
     <div class="busy-label" id="busy-label"></div>
+  </div>
+
+  <!-- Mark-as-reviewed success animation -->
+  <div class="markreview-overlay" id="markreview-overlay">
+    <div class="markreview-card">
+      <div class="markreview-bar"><div class="markreview-fill" id="markreview-fill"></div></div>
+      <div class="markreview-check" id="markreview-check">
+        <svg viewBox="0 0 52 52" aria-hidden="true">
+          <circle class="mr-check-circle" cx="26" cy="26" r="24"/>
+          <path class="mr-check-mark" d="M14 27 l8 8 l16 -18"/>
+        </svg>
+      </div>
+    </div>
   </div>
 
   <!-- Toast -->
@@ -942,6 +1044,7 @@
       today:           { en: "Today's orders",  es: 'Pedidos de hoy' },
       count:           { en: 'Count',           es: 'Contar' },
       review:          { en: 'Review',          es: 'Revisar' },
+      recap:           { en: 'Full order list', es: 'Lista completa' },
       history:         { en: 'History',         es: 'Historial' },
       'history-detail':{ en: 'Order details',   es: 'Detalles' },
       settings:        { en: 'Settings',        es: 'Ajustes' }
@@ -990,6 +1093,18 @@
         es: 'Esto bloquea los conteos. Puedes volver y editar si lo necesitas.'
       },
       confirmEdit:      { en: 'Edit reviewed vendor?', es: '¿Editar proveedor revisado?' },
+      confirmOpenReviewed: { en: 'Open reviewed vendor?', es: '¿Abrir proveedor revisado?' },
+      confirmOpenReviewedMsg: {
+        en: "This vendor is already marked as reviewed. You can still make changes — they'll save as you type.",
+        es: 'Este proveedor ya est&aacute; revisado. A&uacute;n puedes cambiarlo \u2014 se guarda autom&aacute;ticamente.'
+      },
+      openVendor:       { en: 'Open', es: 'Abrir' },
+      viewFullOrder:    { en: 'View full order list', es: 'Ver lista completa' },
+      fullOrderEmpty:   { en: 'Nothing to order yet', es: 'A&uacute;n no hay nada por pedir' },
+      fullOrderEmptySub:{
+        en: 'Start counting vendors and items will appear here as you go.',
+        es: 'Comienza a contar proveedores y los art&iacute;culos aparecer&aacute;n aqu&iacute;.'
+      },
       confirmGoBack:    { en: 'Save your changes?', es: '¿Guardar cambios?' },
       confirmGoBackMsg: {
         en: "You've entered counts that haven't been saved. Save them before continuing?",
@@ -1510,6 +1625,15 @@
       html += renderVendorCard(v, status);
     }
 
+    // Always-visible "View full order list" button. Opens the master
+    // summary screen showing every vendor's suggested orders in one place.
+    // Available regardless of how many vendors are reviewed, so KMs can
+    // peek at the master picture any time.
+    html += '<button class="cta-secondary" id="view-full-btn" style="margin-top:18px">' +
+      '<i class="ti ti-list-details" aria-hidden="true" style="font-size:16px;margin-right:6px"></i>' +
+      escapeHtml(t('viewFullOrder')) +
+    '</button>';
+
     // Home reset card — destructive fallback. Always visible at the bottom.
     html += '<div class="home-reset-card">' +
       '<p class="home-reset-title">' + escapeHtml(t('resetHomeTitle')) + '</p>' +
@@ -1523,13 +1647,29 @@
     view.innerHTML = html;
 
     view.querySelectorAll('.vendor-card.tappable').forEach(card => {
-      card.addEventListener('click', () => {
+      card.addEventListener('click', async () => {
         const vendor = card.getAttribute('data-vendor');
+        // If this vendor is already reviewed, confirm before opening — gives
+        // a soft safety net against re-opening one you thought was done.
+        // Reviewed remains purely visual; this is just a "you sure?" gate.
+        const reviewedSet = getReviewedSet(data.date);
+        if (reviewedSet[vendor]) {
+          const ok = await showConfirm({
+            kind: 'warn',
+            icon: 'edit',
+            title: t('confirmOpenReviewed'),
+            msg:   t('confirmOpenReviewedMsg'),
+            confirmLabel: t('openVendor'),
+            cancelLabel:  t('cancel')
+          });
+          if (!ok) return;
+        }
         openCount(vendor);
       });
     });
     if ($('alldone-email-btn'))  $('alldone-email-btn').addEventListener('click', onSendDailyRecap);
     if ($('alldone-resend-btn')) $('alldone-resend-btn').addEventListener('click', onSendDailyRecap);
+    if ($('view-full-btn'))      $('view-full-btn').addEventListener('click', openRecap);
     if ($('home-reset-btn'))     $('home-reset-btn').addEventListener('click', onHomeResetClick);
   }
 
@@ -1890,7 +2030,9 @@
     const btn = $('save-continue-btn');
     setCountActionsDisabled(true);
     btn.textContent = t('saving');
+    showBusy(state.lang === 'en' ? 'Saving…' : 'Guardando…');
     const result = await flushDirtyToServer();
+    hideBusy();
     if (result.ok) {
       // Don't toast — the save isn't the goal, getting back to dashboard is
       switchTab('today');
@@ -1905,9 +2047,14 @@
     const btn = $('review-btn');
     setCountActionsDisabled(true);
     btn.textContent = t('saving');
+    // Show the busy overlay too — clearer signal than just a text swap on
+    // the button. The button text change alone is too easy to miss on
+    // a long page.
+    showBusy(state.lang === 'en' ? 'Saving…' : 'Guardando…');
     // Refetch so the review screen has accurate suggestions even for items
     // where target par couldn't be inferred locally.
     const result = await flushDirtyToServer({ refetch: true });
+    hideBusy();
     setCountActionsDisabled(false);
     btn.textContent = t('reviewOrder');
     if (!result.ok) {
@@ -1959,7 +2106,7 @@
           '</div>' +
           '<div class="review-qty">' +
             '<span class="qty-num">' + sug + '</span>' +
-            '<span class="qty-unit">' + escapeHtml(pack) + '</span>' +
+            (pack ? '<span class="qty-x">&times;</span><span class="qty-unit">' + escapeHtml(pack) + '</span>' : '') +
           '</div>' +
         '</div>';
       }
@@ -2008,8 +2155,49 @@
 
     setReviewed(ctx.dateStr, ctx.vendor, true);
     state.cache.dashboard = null; // force refresh on next today render
-    showToast(t('reviewedToast'), 'success');
+
+    // Bar-fill + animated checkmark success state. Plays on top of the
+    // current view as a momentary celebration, then transitions back to
+    // Today. Total duration ~1.4s.
+    await playMarkReviewedAnimation();
+
     switchTab('today');
+  }
+
+  // Plays the "mark as reviewed" success animation: a progress bar fills
+  // left-to-right, then a checkmark scales in with a soft bounce, then
+  // the overlay fades. Returns a promise that resolves when the animation
+  // is complete. Built standalone so the same animation can be triggered
+  // from anywhere if we want.
+  function playMarkReviewedAnimation() {
+    return new Promise((resolve) => {
+      const overlay = $('markreview-overlay');
+      const fill    = $('markreview-fill');
+      const check   = $('markreview-check');
+
+      // Reset to initial state
+      fill.style.transition = 'none';
+      fill.style.width = '0%';
+      check.classList.remove('on');
+      overlay.classList.remove('fade-out');
+      overlay.classList.add('open');
+
+      // Kick off the bar fill on the next frame so the transition applies
+      requestAnimationFrame(() => {
+        fill.style.transition = 'width 0.75s cubic-bezier(0.4, 0, 0.2, 1)';
+        fill.style.width = '100%';
+      });
+
+      // Reveal checkmark just before the bar finishes — feels snappier
+      setTimeout(() => check.classList.add('on'), 600);
+
+      // Fade out + resolve
+      setTimeout(() => overlay.classList.add('fade-out'), 1100);
+      setTimeout(() => {
+        overlay.classList.remove('open', 'fade-out');
+        resolve();
+      }, 1400);
+    });
   }
 
   // ============================================================
@@ -2080,12 +2268,16 @@
       (data.timestamp ? ' &middot; ' + escapeHtml(fmtTimestamp12h(data.timestamp)) : '') +
       '</div>';
     for (const it of data.items) {
+      const pack = it.pack || '';
       html += '<div class="review-row">' +
         '<div class="review-info">' +
           '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
           '<p class="item-meta">' + escapeHtml(it.onHand == null ? '—' : it.onHand) + ' ' + escapeHtml(t('onHand')) + '</p>' +
         '</div>' +
-        '<div class="review-qty"><span class="qty-num">' + it.qty + '</span></div>' +
+        '<div class="review-qty">' +
+          '<span class="qty-num">' + it.qty + '</span>' +
+          (pack ? '<span class="qty-x">&times;</span><span class="qty-unit">' + escapeHtml(pack) + '</span>' : '') +
+        '</div>' +
       '</div>';
     }
     html += '<div class="review-summary">' +
@@ -2112,12 +2304,80 @@
   }
 
   // ============================================================
+  // RECAP (master summary view) — shows every vendor's suggested order
+  // in one place. Reads the same data source the daily-summary email
+  // uses, just rendered inline rather than sent.
+  // ============================================================
+  async function openRecap() {
+    showView('recap');
+    const view = $('view-recap');
+    renderLoading(view);
+    try {
+      const data = await api('getRecapData');
+      state.cache.recap = data;
+      renderRecap(data);
+    } catch (err) {
+      console.error('openRecap error:', err);
+      renderError(view, openRecap);
+    }
+  }
+
+  function renderRecap(data) {
+    const view = $('view-recap');
+    if (!data.sections || !data.sections.length) {
+      view.innerHTML =
+        '<div class="empty-state" style="padding:64px 24px">' +
+          '<div class="empty-icon"><i class="ti ti-clipboard-list" aria-hidden="true"></i></div>' +
+          '<p class="empty-title">' + escapeHtml(t('fullOrderEmpty')) + '</p>' +
+          '<p class="empty-sub">' + escapeHtml(t('fullOrderEmptySub')) + '</p>' +
+        '</div>';
+      return;
+    }
+
+    let html = '';
+
+    // Summary strip — total counts up top so a KM glancing at the screen
+    // knows the scope before scrolling
+    html += '<div class="recap-summary">' +
+      '<span class="recap-summary-strong">' + data.vendorCount + ' ' +
+        (state.lang === 'en' ? (data.vendorCount === 1 ? 'vendor' : 'vendors') : 'proveedores') +
+      '</span>' +
+      '<span class="recap-summary-dot">&middot;</span>' +
+      '<span>' + data.itemCount + ' ' + escapeHtml(t('items')) + '</span>' +
+    '</div>';
+
+    for (const sec of data.sections) {
+      html += '<div class="recap-section">' +
+        '<div class="recap-vendor-head">' +
+          '<span class="recap-vendor-name">' + escapeHtml(sec.vendor) + '</span>' +
+          '<span class="recap-vendor-count">' + sec.itemCount + ' ' + escapeHtml(t('items')) + '</span>' +
+        '</div>';
+      for (const line of sec.lines) {
+        const pack = line.pack || '';
+        html += '<div class="review-row">' +
+          '<div class="review-info">' +
+            '<p class="item-name">' + escapeHtml(line.name) + '</p>' +
+            '<p class="item-meta">' + escapeHtml(line.onHand == null ? '—' : line.onHand) + ' ' + escapeHtml(t('onHand')) + '</p>' +
+          '</div>' +
+          '<div class="review-qty">' +
+            '<span class="qty-num">' + line.qty + '</span>' +
+            (pack ? '<span class="qty-x">&times;</span><span class="qty-unit">' + escapeHtml(pack) + '</span>' : '') +
+          '</div>' +
+        '</div>';
+      }
+      html += '</div>';
+    }
+
+    view.innerHTML = html;
+  }
+
+  // ============================================================
   // SETTINGS
   // ============================================================
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.13.0';
+    const versionStr = '0.14.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
     const emailDisplay = state.userEmail
       ? state.userEmail
@@ -2303,7 +2563,7 @@
   }
 
   function showView(viewName) {
-    ['today','count','review','history','history-detail','settings'].forEach(v => {
+    ['today','count','review','recap','history','history-detail','settings'].forEach(v => {
       $('view-' + v).style.display = v === viewName ? 'block' : 'none';
     });
     state.currentView = viewName;
@@ -2398,6 +2658,12 @@
       return;
     }
 
+    // Recap → today (no save needed)
+    if (v === 'recap') {
+      switchTab('today');
+      return;
+    }
+
     // Review → today (no save needed; counts already saved on entry)
     if (v === 'review') {
       switchTab('today');
@@ -2454,6 +2720,18 @@
     if (state.currentView === 'count') renderCount();
     if (state.currentView === 'review') renderReview();
   });
+
+  // Topbar shadow when content is scrolled — visually separates the
+  // sticky topbar from the content beneath it. Uses a class toggle so
+  // a single transition handles both states.
+  (() => {
+    const scrollEl = $('scroll-area');
+    const topbar   = document.querySelector('.topbar');
+    if (!scrollEl || !topbar) return;
+    scrollEl.addEventListener('scroll', () => {
+      topbar.classList.toggle('scrolled', scrollEl.scrollTop > 0);
+    }, { passive: true });
+  })();
 
   $('pin-submit').addEventListener('click', handlePinSubmit);
   $('stale-reset-btn').addEventListener('click', handleStaleReset);
