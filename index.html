@@ -846,6 +846,36 @@
       background: var(--teal);
       border-radius: 3px;
     }
+    /* Quick acknowledgment checkmark — same family as the mark-as-reviewed
+       check but smaller and faster, sized for "task complete" rather than
+       "vendor reviewed" celebration. */
+    .transition-check {
+      width: 44px; height: 44px;
+      opacity: 0;
+      transform: scale(0.4);
+      transition: opacity 0.18s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+      margin-top: 2px;
+    }
+    .transition-check.on { opacity: 1; transform: scale(1); }
+    .transition-check svg { width: 100%; height: 100%; display: block; }
+    .tr-check-circle { fill: var(--teal); stroke: none; }
+    .tr-check-mark {
+      fill: none;
+      stroke: white;
+      stroke-width: 4.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 48;
+      stroke-dashoffset: 48;
+    }
+    /* Gate the stroke draw on .on so it re-animates every time the check
+       is revealed, not just on first paint. */
+    .transition-check.on .tr-check-mark {
+      animation: tr-stroke 0.32s cubic-bezier(0.65, 0, 0.45, 1) 0.06s forwards;
+    }
+    @keyframes tr-stroke {
+      to { stroke-dashoffset: 0; }
+    }
 
     .modal {
       position: absolute; left: 50%; top: 50%;
@@ -1066,12 +1096,19 @@
   </div>
 
   <!-- Transition loading bar (PIN entry, going back to dashboard,
-       save & continue later). Same paced fill as the mark-as-reviewed
-       bar but without the checkmark/success ceremony. -->
+       save & continue later). Same family as the mark-as-reviewed bar
+       but tuned for transitions: slower ease-out fill + a smaller,
+       faster checkmark for quick acknowledgment rather than celebration. -->
   <div class="transition-overlay" id="transition-overlay">
     <div class="transition-card">
       <div class="transition-label" id="transition-label"></div>
       <div class="transition-bar"><div class="transition-fill" id="transition-fill"></div></div>
+      <div class="transition-check" id="transition-check">
+        <svg viewBox="0 0 52 52" aria-hidden="true">
+          <circle class="tr-check-circle" cx="26" cy="26" r="24"/>
+          <path class="tr-check-mark" d="M14 27 l8 8 l16 -18"/>
+        </svg>
+      </div>
     </div>
   </div>
 
@@ -2503,14 +2540,14 @@
     return saving ? 'Guardando y volviendo' : 'Volviendo a la pantalla principal';
   }
 
-  // Generic transition loading-bar animation. Same paced fill as the
-  // mark-as-reviewed bar but without the celebratory checkmark/success
-  // ceremony — used for navigation transitions (PIN entry, going back to
-  // dashboard, save & continue later). The bar fills at a calm constant
-  // rate from 0% → 92%, gently pulses if the work runs long, then snaps
-  // to 100% when the supplied promise resolves. Total flow guarantees a
-  // minimum perceived duration so even an instant response feels
-  // intentional, then fades cleanly to reveal whatever's underneath.
+  // Generic transition loading-bar animation. Same general feel as the
+  // mark-as-reviewed bar but tuned for navigation transitions (PIN entry,
+  // going back to dashboard, save & continue later). The bar fills with
+  // a strong ease-out curve so it visibly decelerates as it approaches
+  // the pre-fill cap — never feels "stuck" the way a linear bar does
+  // when work outlasts the minimum duration. When the promise resolves,
+  // the bar snaps to 100% and a small checkmark pops in as a quick
+  // completion acknowledgment, then fades.
   //
   // Params:
   //   workPromise — promise to sync to. The bar will not complete until
@@ -2523,32 +2560,41 @@
       const overlay = $('transition-overlay');
       const fill    = $('transition-fill');
       const labelEl = $('transition-label');
+      const check   = $('transition-check');
 
-      const MIN_DURATION_MS = 1500;   // matches mark-as-reviewed pacing
-      const PRE_FILL_PCT    = 92;
+      // Tunable timing constants. Longer MIN_DURATION + lower PRE_FILL_PCT
+      // + ease-out curve = bar still has visible runway when typical work
+      // (500–2000ms) resolves, and the final snap to 100% is satisfyingly
+      // large rather than a tiny nudge from 92→100.
+      const MIN_DURATION_MS = 2200;
+      const PRE_FILL_PCT    = 85;
 
       // Reset UI
       fill.style.transition = 'none';
       fill.style.width = '0%';
+      check.classList.remove('on');
       overlay.classList.remove('fade-out');
       labelEl.innerHTML = labelHtml || '';
       overlay.classList.add('open');
 
-      // Phase 1: slow steady fill to PRE_FILL_PCT
+      // Phase 1: ease-out fill to PRE_FILL_PCT. The bar moves quickly at
+      // the start (immediate response) and naturally slows as it nears
+      // the cap, so it always reads as "still progressing" instead of
+      // "frozen at 92%". Curve is Material's emphasized-decelerate.
       requestAnimationFrame(() => {
-        fill.style.transition = 'width ' + MIN_DURATION_MS + 'ms linear';
+        fill.style.transition = 'width ' + MIN_DURATION_MS + 'ms cubic-bezier(0.16, 1, 0.3, 1)';
         fill.style.width = PRE_FILL_PCT + '%';
       });
 
       // Phase 1b: if the promise takes longer than the min duration, keep
-      // the bar gently breathing between 92% ↔ 94% so it never reads as
-      // frozen. Cleared when we transition to phase 2.
+      // the bar gently breathing between PRE_FILL ↔ PRE_FILL+2 so it
+      // never reads as frozen. Cleared when we transition to phase 2.
       let pulseInterval = null;
       const startPulse = () => {
         let high = true;
         pulseInterval = setInterval(() => {
           fill.style.transition = 'width 600ms ease-in-out';
-          fill.style.width = high ? '94%' : '92%';
+          fill.style.width = high ? (PRE_FILL_PCT + 2) + '%' : PRE_FILL_PCT + '%';
           high = !high;
         }, 600);
       };
@@ -2561,16 +2607,20 @@
         clearTimeout(pulseTimer);
         if (pulseInterval) { clearInterval(pulseInterval); pulseInterval = null; }
 
-        // Phase 2: snap to 100%, then fade out. No checkmark/success
-        // ceremony — this is a transition, not a completion.
+        // Phase 2: snap to 100%, then a small check pops in as a quick
+        // acknowledgment that the navigation is done. Faster than the
+        // mark-as-reviewed ceremony — this is a transition, not a
+        // celebration, so we linger briefly and fade out.
         fill.style.transition = 'width 0.28s cubic-bezier(0.4, 0, 0.2, 1)';
         fill.style.width = '100%';
 
-        setTimeout(() => overlay.classList.add('fade-out'), 320);
+        setTimeout(() => check.classList.add('on'), 200);
+
+        setTimeout(() => overlay.classList.add('fade-out'), 850);
         setTimeout(() => {
           overlay.classList.remove('open', 'fade-out');
           resolve();
-        }, 620);
+        }, 1150);
       });
     });
   }
