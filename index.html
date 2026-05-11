@@ -807,6 +807,46 @@
     @keyframes mr-stroke {
       to { stroke-dashoffset: 0; }
     }
+
+    /* Transition loading bar — same paced fill behavior as the mark-as-
+       reviewed bar, but without the celebratory checkmark/success state.
+       Used for navigation transitions (PIN entry, going back to dashboard,
+       save & continue later). The bar gives the user a sense that the
+       system is doing something deliberate and tells them what's happening. */
+    .transition-overlay {
+      position: absolute; inset: 0;
+      background: rgba(255,255,255,0.96);
+      z-index: 80; display: none;
+      align-items: center; justify-content: center;
+      transition: opacity 0.28s ease;
+    }
+    .transition-overlay.open { display: flex; opacity: 1; }
+    .transition-overlay.fade-out { opacity: 0; }
+    .transition-card {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 14px;
+      width: 280px;
+    }
+    .transition-label {
+      font-size: 14px;
+      color: var(--text-2);
+      text-align: center;
+      min-height: 18px;
+      line-height: 1.3;
+    }
+    .transition-label-strong { color: var(--text); font-weight: 600; }
+    .transition-bar {
+      width: 100%; height: 6px;
+      background: var(--bg-mute);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .transition-fill {
+      height: 100%; width: 0%;
+      background: var(--teal);
+      border-radius: 3px;
+    }
+
     .modal {
       position: absolute; left: 50%; top: 50%;
       transform: translate(-50%, -50%);
@@ -884,7 +924,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -1022,6 +1062,16 @@
         </svg>
       </div>
       <div class="markreview-success" id="markreview-success"></div>
+    </div>
+  </div>
+
+  <!-- Transition loading bar (PIN entry, going back to dashboard,
+       save & continue later). Same paced fill as the mark-as-reviewed
+       bar but without the checkmark/success ceremony. -->
+  <div class="transition-overlay" id="transition-overlay">
+    <div class="transition-card">
+      <div class="transition-label" id="transition-label"></div>
+      <div class="transition-bar"><div class="transition-fill" id="transition-fill"></div></div>
     </div>
   </div>
 
@@ -1419,7 +1469,10 @@
     $('screen-pin').style.display = 'none';
     $('screen-stale').style.display = 'none';
     $('screen-main').style.display = 'flex';
-    switchTab('today');
+    // Return the promise so callers (e.g. the PIN transition animation)
+    // can await the initial dashboard fetch and keep their overlay up
+    // until the home screen is fully populated.
+    return switchTab('today');
   }
 
   function showStaleScreen(status) {
@@ -1450,10 +1503,10 @@
     try {
       const status = await api('getResetStatus');
       if (status.isStale) showStaleScreen(status);
-      else showMainApp();
+      else await showMainApp();
     } catch (err) {
       console.error('proceedAfterAuth error:', err);
-      showMainApp();
+      await showMainApp();
     }
   }
 
@@ -1508,9 +1561,12 @@
     btn.disabled = true;
     errEl.textContent = '';
     $('pin-input').classList.remove('error');
+
+    // Step 1: authenticate first (no overlay yet). We don't know the store
+    // name until the ping comes back, and a wrong PIN shouldn't flash a
+    // loading animation at the user.
     try {
       await tryPin(pin);
-      await proceedAfterAuth();
     } catch (err) {
       btn.disabled = false;
       $('pin-input').classList.add('error');
@@ -1519,7 +1575,21 @@
       else if (m === 'Invalid PIN') errEl.textContent = t('pinError');
       else if (m.indexOf('Failed to fetch') >= 0) errEl.textContent = t('pinNetworkError');
       else errEl.textContent = m;
+      return;
     }
+
+    // Step 2: auth succeeded — play the transition animation with the
+    // store name as the label while the rest of the boot flow runs
+    // (reset-status check + initial dashboard fetch). The bar fills at a
+    // calm pace and snaps to 100% when the dashboard is ready, so the
+    // user knows exactly which location they're loading into.
+    const storeName = state.location || '';
+    const strong = '<span class="transition-label-strong">' +
+                   escapeHtml(storeName) + '</span>';
+    const label = state.lang === 'en'
+      ? ('Loading ' + strong + ' order guide')
+      : ('Cargando gu&iacute;a de ' + strong);
+    await playTransitionAnimation(proceedAfterAuth(), label);
   }
 
   function signOut() {
@@ -2144,15 +2214,21 @@
     const btn = $('save-continue-btn');
     setCountActionsDisabled(true);
     btn.textContent = t('saving');
-    // Descriptive label so the KM knows what's about to happen — they're
-    // saving and heading back to the home screen.
-    showBusy(state.lang === 'en' ? 'Heading back to home screen…' : 'Volviendo a la pantalla principal…');
-    const result = await flushDirtyToServer();
-    hideBusy();
-    if (result.ok) {
-      // Don't toast — the save isn't the goal, getting back to dashboard is
-      switchTab('today');
-    } else {
+
+    // Run the save + tab-switch under the transition animation so the user
+    // sees a deliberate "saving and going back" loading bar instead of a
+    // spinner. The bar paces itself to a min duration so even an instant
+    // save feels intentional, then snaps to 100% when the dashboard is
+    // ready behind the overlay.
+    let saveOk = true;
+    const work = (async () => {
+      const result = await flushDirtyToServer();
+      if (!result.ok) { saveOk = false; return; }
+      await switchTab('today');
+    })();
+    await playTransitionAnimation(work, transitionLabelGoingBack(true));
+
+    if (!saveOk) {
       setCountActionsDisabled(false);
       btn.textContent = t('saveContinue');
       showToast(t('saveError'), 'error');
@@ -2395,6 +2471,88 @@
           labelEl.style.opacity = '';
           resolve();
         }, 1500);
+      });
+    });
+  }
+
+  // Builds the label shown on the "going back to dashboard" transition
+  // bar. When saving=true, copy makes clear that a save is happening so
+  // the KM knows their counts are being persisted.
+  function transitionLabelGoingBack(saving) {
+    if (state.lang === 'en') {
+      return saving ? 'Saving and going back' : 'Going back to dashboard';
+    }
+    return saving ? 'Guardando y volviendo' : 'Volviendo a la pantalla principal';
+  }
+
+  // Generic transition loading-bar animation. Same paced fill as the
+  // mark-as-reviewed bar but without the celebratory checkmark/success
+  // ceremony — used for navigation transitions (PIN entry, going back to
+  // dashboard, save & continue later). The bar fills at a calm constant
+  // rate from 0% → 92%, gently pulses if the work runs long, then snaps
+  // to 100% when the supplied promise resolves. Total flow guarantees a
+  // minimum perceived duration so even an instant response feels
+  // intentional, then fades cleanly to reveal whatever's underneath.
+  //
+  // Params:
+  //   workPromise — promise to sync to. The bar will not complete until
+  //   this resolves (or rejects — failure still ends the animation; the
+  //   caller is responsible for surfacing the error to the user).
+  //   labelHtml   — HTML string for the label (caller is responsible for
+  //   escaping any untrusted input).
+  function playTransitionAnimation(workPromise, labelHtml) {
+    return new Promise((resolve) => {
+      const overlay = $('transition-overlay');
+      const fill    = $('transition-fill');
+      const labelEl = $('transition-label');
+
+      const MIN_DURATION_MS = 1500;   // matches mark-as-reviewed pacing
+      const PRE_FILL_PCT    = 92;
+
+      // Reset UI
+      fill.style.transition = 'none';
+      fill.style.width = '0%';
+      overlay.classList.remove('fade-out');
+      labelEl.innerHTML = labelHtml || '';
+      overlay.classList.add('open');
+
+      // Phase 1: slow steady fill to PRE_FILL_PCT
+      requestAnimationFrame(() => {
+        fill.style.transition = 'width ' + MIN_DURATION_MS + 'ms linear';
+        fill.style.width = PRE_FILL_PCT + '%';
+      });
+
+      // Phase 1b: if the promise takes longer than the min duration, keep
+      // the bar gently breathing between 92% ↔ 94% so it never reads as
+      // frozen. Cleared when we transition to phase 2.
+      let pulseInterval = null;
+      const startPulse = () => {
+        let high = true;
+        pulseInterval = setInterval(() => {
+          fill.style.transition = 'width 600ms ease-in-out';
+          fill.style.width = high ? '94%' : '92%';
+          high = !high;
+        }, 600);
+      };
+      const pulseTimer = setTimeout(() => {
+        if (pulseInterval === null) startPulse();
+      }, MIN_DURATION_MS + 100);
+
+      const minDelay = new Promise(r => setTimeout(r, MIN_DURATION_MS));
+      Promise.allSettled([workPromise, minDelay]).then(() => {
+        clearTimeout(pulseTimer);
+        if (pulseInterval) { clearInterval(pulseInterval); pulseInterval = null; }
+
+        // Phase 2: snap to 100%, then fade out. No checkmark/success
+        // ceremony — this is a transition, not a completion.
+        fill.style.transition = 'width 0.28s cubic-bezier(0.4, 0, 0.2, 1)';
+        fill.style.width = '100%';
+
+        setTimeout(() => overlay.classList.add('fade-out'), 320);
+        setTimeout(() => {
+          overlay.classList.remove('open', 'fade-out');
+          resolve();
+        }, 620);
       });
     });
   }
@@ -2898,7 +3056,9 @@
       const ctx = state.countContext;
       const hasDirty = ctx && Object.keys(ctx.dirty).length > 0;
       if (!hasDirty) {
-        switchTab('today');
+        // No save needed — animate the dashboard reload so the user sees
+        // a deliberate "going back" transition.
+        await playTransitionAnimation(switchTab('today'), transitionLabelGoingBack(false));
         return;
       }
       const choice = await showConfirm({
@@ -2914,15 +3074,20 @@
       if (choice === 'tertiary') {
         ctx.dirty = {};
         clearDraft(ctx.dateStr, ctx.vendor);
-        switchTab('today');
+        await playTransitionAnimation(switchTab('today'), transitionLabelGoingBack(false));
         return;
       }
-      const result = await flushDirtyToServer();
-      if (result.ok) {
-        switchTab('today');
-      } else {
-        showToast(t('saveError'), 'error');
-      }
+      // Save + go: run both under the transition animation. If the save
+      // fails the bar still completes and fades, then we toast the error
+      // and stay on the count screen.
+      let saveOk = true;
+      const work = (async () => {
+        const result = await flushDirtyToServer();
+        if (!result.ok) { saveOk = false; return; }
+        await switchTab('today');
+      })();
+      await playTransitionAnimation(work, transitionLabelGoingBack(true));
+      if (!saveOk) showToast(t('saveError'), 'error');
       return;
     }
   }
