@@ -474,6 +474,14 @@
     }
     .recap-summary-strong { font-weight: 600; color: var(--text); }
     .recap-summary-dot { color: var(--text-3); }
+    /* Email-myself button row in the recap view. Sits between the summary
+       strip and the first vendor section. Uses .alldone-btn for the
+       button itself (same affordance as the home dashboard's all-done
+       panel) so the user recognizes the action across views. */
+    .recap-email-row {
+      margin-bottom: 22px;
+      text-align: center;
+    }
     .recap-section { margin-bottom: 22px; }
     .recap-section:last-child { margin-bottom: 0; }
     .recap-vendor-head {
@@ -1555,6 +1563,7 @@
       await api('commitReset');
       state.cache.dashboard = null;
       state.cache.history = null;
+      state.cache.recap = null;
       clearAllPerCycleLocalState_();
       hideBusy();
       showMainApp();
@@ -1634,6 +1643,7 @@
     localStorage.removeItem('mog_loc_abbr');
     state.cache.dashboard = null;
     state.cache.history = null;
+    state.cache.recap = null;
     showPinScreen();
   }
 
@@ -2239,6 +2249,18 @@
         await api('saveOnHand', { vendor: ctx.vendor, items: items });
         ctx.dirty = {};
         clearDraft(ctx.dateStr, ctx.vendor);
+
+        // If this vendor was previously marked reviewed, the new edits
+        // mean the review is no longer up-to-date. Clear the reviewed
+        // flag so the dashboard pill drops back to yellow (in_progress)
+        // and the user is prompted to re-review before sending. Without
+        // this, you'd be able to change on-hand numbers under a green
+        // "reviewed" pill — which would silently desync what was
+        // reviewed from what will get ordered.
+        const reviewedSet = getReviewedSet(ctx.dateStr);
+        if (reviewedSet[ctx.vendor]) {
+          setReviewed(ctx.dateStr, ctx.vendor, false);
+        }
         // Patch the dashboard cache locally instead of invalidating it.
         //
         // Rationale: a save touches exactly one vendor's on-hand counts.
@@ -2269,6 +2291,12 @@
             cached.status = enteredCount > 0 ? 'in_progress' : 'not_started';
           }
         }
+        // The recap is a server-side rollup of suggested quantities
+        // across every vendor. Suggested quantity for this vendor's
+        // items just changed (on-hand drives the formula). Drop the
+        // recap cache so the next "View full order list" tap fetches
+        // fresh numbers instead of showing stale suggestions.
+        state.cache.recap = null;
       }
       if (refetch) {
         const fresh = await api('getVendorItems', { vendor: ctx.vendor });
@@ -2769,6 +2797,15 @@
   async function openRecap() {
     showView('recap');
     const view = $('view-recap');
+    // Fast path: same pattern as loadToday / loadHistory. The recap is a
+    // server-side rollup of every vendor's suggested order quantities,
+    // so we invalidate it whenever something could move those numbers:
+    // any save (flushDirtyToServer), reset, or sign-out. On a cache hit
+    // the rendering is instant.
+    if (state.cache.recap) {
+      renderRecap(state.cache.recap);
+      return;
+    }
     renderLoading(view);
     try {
       const data = await api('getRecapData');
@@ -2804,6 +2841,31 @@
       '<span>' + data.itemCount + ' ' + escapeHtml(t('items')) + '</span>' +
     '</div>';
 
+    // Email-myself button — same code path as the home dashboard's
+    // all-done panel (shared sendDailyRecap()). The cycle date used to
+    // gate the "already sent" badge comes from data.cycleDate, falling
+    // back to the dashboard cache so the two views stay consistent if
+    // they ever disagree (they shouldn't, but defending against drift).
+    const cycleDate = data.cycleDate ||
+      (state.cache.dashboard && state.cache.dashboard.date) || '';
+    const recapSent = cycleDate && !!localStorage.getItem('mog_recap_sent_' + cycleDate);
+    html += '<div class="recap-email-row">' +
+      (recapSent
+        ? '<button class="alldone-btn" id="recap-email-btn">' +
+            '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
+            '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
+          '</button>' +
+          '<div class="alldone-sent" style="margin-top:8px">' +
+            '<i class="ti ti-circle-check" aria-hidden="true"></i>' +
+            '<span class="lang-en">Already sent today</span>' +
+            '<span class="lang-es">Ya enviado hoy</span>' +
+          '</div>'
+        : '<button class="alldone-btn" id="recap-email-btn">' +
+            '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
+            '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
+          '</button>') +
+    '</div>';
+
     for (const sec of data.sections) {
       html += '<div class="recap-section">' +
         '<div class="recap-vendor-head">' +
@@ -2827,6 +2889,51 @@
     }
 
     view.innerHTML = html;
+
+    // Wire the email button. Re-rendering the recap view (which we do
+    // after a successful send to flip to the "already sent" state)
+    // re-runs this listener attachment, so no duplicate handlers.
+    const emailBtn = $('recap-email-btn');
+    if (emailBtn) emailBtn.addEventListener('click', onRecapEmailClick);
+  }
+
+  // Email-from-recap-view handler. Mirrors onSendDailyRecap but scoped
+  // to the recap view's own button, and re-renders the recap on success
+  // so the "already sent" badge appears immediately.
+  async function onRecapEmailClick() {
+    const btn = $('recap-email-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.querySelector('span').textContent = t('emailing');
+    }
+    const result = await sendDailyRecap();
+    if (result.cancelled) {
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = t('emailMyCopy');
+      }
+      return;
+    }
+    if (result.ok) {
+      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+      // Re-render so the "already sent today" badge appears, and also
+      // re-render the dashboard cache (if any) so the home panel stays
+      // in sync if the user navigates back.
+      if (state.cache.recap) renderRecap(state.cache.recap);
+      if (state.cache.dashboard) {
+        // Don't actually re-paint the dashboard since user isn't on it —
+        // just leave the cache; next render will read the updated
+        // localStorage flag and show the correct state.
+      }
+    } else {
+      const m = String((result.error && result.error.message) || '');
+      if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      else showToast(m || 'Error', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = t('emailMyCopy');
+      }
+    }
   }
 
   // ============================================================
@@ -2982,6 +3089,7 @@
       // self-heal in loadToday has the cleanest possible starting state.
       state.cache.dashboard = null;
       state.cache.history   = null;
+      state.cache.recap     = null;
       clearAllPerCycleLocalState_();
 
       // Sanity-check the cleanup actually worked. If a key with one of
