@@ -750,8 +750,15 @@
     .markreview-overlay.fade-out { opacity: 0; }
     .markreview-card {
       display: flex; flex-direction: column; align-items: center;
-      gap: 24px;
-      width: 220px;
+      gap: 16px;
+      width: 240px;
+    }
+    .markreview-label {
+      font-size: 13px;
+      color: var(--text-2);
+      text-align: center;
+      transition: opacity 0.2s ease;
+      min-height: 16px;
     }
     .markreview-bar {
       width: 100%; height: 6px;
@@ -769,9 +776,21 @@
       opacity: 0;
       transform: scale(0.4);
       transition: opacity 0.18s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+      margin-top: 4px;
     }
     .markreview-check.on { opacity: 1; transform: scale(1); }
     .markreview-check svg { width: 100%; height: 100%; display: block; }
+    .markreview-success {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--teal-dark);
+      text-align: center;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.24s ease, transform 0.24s ease;
+      min-height: 20px;
+    }
+    .markreview-success.on { opacity: 1; transform: translateY(0); }
     .mr-check-circle {
       fill: var(--teal); stroke: none;
     }
@@ -865,7 +884,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -994,6 +1013,7 @@
   <!-- Mark-as-reviewed success animation -->
   <div class="markreview-overlay" id="markreview-overlay">
     <div class="markreview-card">
+      <div class="markreview-label" id="markreview-label"></div>
       <div class="markreview-bar"><div class="markreview-fill" id="markreview-fill"></div></div>
       <div class="markreview-check" id="markreview-check">
         <svg viewBox="0 0 52 52" aria-hidden="true">
@@ -1001,6 +1021,7 @@
           <path class="mr-check-mark" d="M14 27 l8 8 l16 -18"/>
         </svg>
       </div>
+      <div class="markreview-success" id="markreview-success"></div>
     </div>
   </div>
 
@@ -1826,10 +1847,15 @@
       // We trust status directly rather than enteredCount because status
       // is the authoritative answer the API returns to "is this vendor
       // started?" and matches the dashboard pill logic.
+      //
+      // Both 'not_started' AND 'sent' clear the localStorage flag:
+      //   - not_started: on-hand was wiped, vendor reverts to fresh
+      //   - sent: vendor was logged to LOG_ORDERS; the "reviewed in
+      //     localStorage" flag from this session is no longer the truth
       const reviewed = getReviewedSet(data.date);
       let mutated = false;
       for (const v of data.vendors) {
-        if (reviewed[v.name] && v.status === 'not_started') {
+        if (reviewed[v.name] && (v.status === 'not_started' || v.status === 'sent')) {
           delete reviewed[v.name];
           mutated = true;
         }
@@ -2118,7 +2144,9 @@
     const btn = $('save-continue-btn');
     setCountActionsDisabled(true);
     btn.textContent = t('saving');
-    showBusy(state.lang === 'en' ? 'Saving…' : 'Guardando…');
+    // Descriptive label so the KM knows what's about to happen — they're
+    // saving and heading back to the home screen.
+    showBusy(state.lang === 'en' ? 'Heading back to home screen…' : 'Volviendo a la pantalla principal…');
     const result = await flushDirtyToServer();
     hideBusy();
     if (result.ok) {
@@ -2132,13 +2160,15 @@
   }
 
   async function onReviewClick() {
+    const ctx = state.countContext;
     const btn = $('review-btn');
     setCountActionsDisabled(true);
     btn.textContent = t('saving');
-    // Show the busy overlay too — clearer signal than just a text swap on
-    // the button. The button text change alone is too easy to miss on
-    // a long page.
-    showBusy(state.lang === 'en' ? 'Saving…' : 'Guardando…');
+    // Descriptive label so the KM sees specifically what's being saved.
+    const vendorName = (ctx && ctx.vendor) || '';
+    showBusy(
+      (state.lang === 'en' ? 'Saving on hand for ' : 'Guardando inventario de ') + vendorName + '…'
+    );
     // Refetch so the review screen has accurate suggestions even for items
     // where target par couldn't be inferred locally.
     const result = await flushDirtyToServer({ refetch: true });
@@ -2250,7 +2280,7 @@
     // the bar exactly when the fetch resolves (with a floor so super-fast
     // responses still get a satisfying minimum animation).
     const fetchPromise = api('getDashboard').then(d => { state.cache.dashboard = d; return d; });
-    await playMarkReviewedAnimation(fetchPromise);
+    await playMarkReviewedAnimation(fetchPromise, ctx.vendor);
 
     // Dashboard is already in cache; render it directly instead of doing
     // a second fetch via switchTab → loadToday.
@@ -2262,7 +2292,7 @@
         const reviewed = getReviewedSet(state.cache.dashboard.date);
         let mutated = false;
         for (const v of state.cache.dashboard.vendors) {
-          if (reviewed[v.name] && v.status === 'not_started') {
+          if (reviewed[v.name] && (v.status === 'not_started' || v.status === 'sent')) {
             delete reviewed[v.name];
             mutated = true;
           }
@@ -2287,44 +2317,84 @@
   //   workPromise — promise to sync to. The bar will not complete until
   //   this resolves (or rejects — failure still ends the animation, but
   //   the caller should handle the error separately).
-  function playMarkReviewedAnimation(workPromise) {
+  function playMarkReviewedAnimation(workPromise, vendorName) {
     return new Promise((resolve) => {
       const overlay = $('markreview-overlay');
       const fill    = $('markreview-fill');
       const check   = $('markreview-check');
+      const labelEl = $('markreview-label');
+      const successEl = $('markreview-success');
 
-      const MIN_DURATION_MS = 900;   // floor so fast responses still feel real
-      const PRE_FILL_PCT    = 85;    // bar stops at 85% until the promise resolves
-      const startedAt = Date.now();
+      // Pace the bar over a longer minimum so it never looks frozen. The
+      // bar animates at a single constant rate from 0% → 92% over this
+      // duration. When the workPromise resolves AND the bar has had at
+      // least MIN_DURATION_MS to animate, we snap to 100% + checkmark.
+      //
+      // If the network is faster than MIN_DURATION_MS (common): the bar
+      // keeps filling at its calm pace until the minimum elapses, then
+      // snaps. Looks intentional, not frozen.
+      //
+      // If the network is slower: the bar reaches 92% at MIN_DURATION_MS
+      // and gently pulses there until the promise resolves. The pulsing
+      // is achieved via a second transition to 94% on a loop so the bar
+      // is never visually static.
+      const MIN_DURATION_MS = 1500;   // calmer pace so it doesn't look frozen
+      const PRE_FILL_PCT    = 92;
+      const startedAt       = Date.now();
 
-      // Reset
+      // Reset UI
       fill.style.transition = 'none';
       fill.style.width = '0%';
       check.classList.remove('on');
+      successEl.classList.remove('on');
       overlay.classList.remove('fade-out');
+      labelEl.textContent = (state.lang === 'en' ? 'Saving ' : 'Guardando ') + vendorName + '…';
+      successEl.textContent = vendorName + (state.lang === 'en' ? ' reviewed!' : ' revisado!');
       overlay.classList.add('open');
 
-      // Phase 1: animate to PRE_FILL_PCT over MIN_DURATION_MS. The
-      // promise might resolve before, during, or after this phase.
+      // Phase 1: slow steady fill to PRE_FILL_PCT
       requestAnimationFrame(() => {
-        fill.style.transition = 'width ' + MIN_DURATION_MS + 'ms cubic-bezier(0.4, 0, 0.2, 1)';
+        fill.style.transition = 'width ' + MIN_DURATION_MS + 'ms linear';
         fill.style.width = PRE_FILL_PCT + '%';
       });
 
-      // When the work finishes AND the minimum duration has elapsed,
-      // snap to 100% and reveal the checkmark. Promise.allSettled handles
-      // the rejection case so a failed reload still ends the animation.
+      // Phase 1b: if the promise takes longer than the min duration, keep
+      // the bar gently breathing between 92% ↔ 94% so it never reads as
+      // frozen. Cleared when we transition to phase 2.
+      let pulseInterval = null;
+      const startPulse = () => {
+        let high = true;
+        pulseInterval = setInterval(() => {
+          fill.style.transition = 'width 600ms ease-in-out';
+          fill.style.width = high ? '94%' : '92%';
+          high = !high;
+        }, 600);
+      };
+      const pulseTimer = setTimeout(() => {
+        // Only start pulsing if the promise hasn't already resolved.
+        if (pulseInterval === null) startPulse();
+      }, MIN_DURATION_MS + 100);
+
       const minDelay = new Promise(r => setTimeout(r, MIN_DURATION_MS));
       Promise.allSettled([workPromise, minDelay]).then(() => {
-        fill.style.transition = 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1)';
+        clearTimeout(pulseTimer);
+        if (pulseInterval) { clearInterval(pulseInterval); pulseInterval = null; }
+
+        // Phase 2: snap to 100% + reveal check + show success callout
+        fill.style.transition = 'width 0.28s cubic-bezier(0.4, 0, 0.2, 1)';
         fill.style.width = '100%';
-        // Checkmark right as bar completes
-        setTimeout(() => check.classList.add('on'), 120);
-        setTimeout(() => overlay.classList.add('fade-out'), 600);
+        labelEl.style.opacity = '0';
+
+        setTimeout(() => check.classList.add('on'), 180);
+        setTimeout(() => successEl.classList.add('on'), 280);
+
+        // Linger on the success state, then fade out
+        setTimeout(() => overlay.classList.add('fade-out'), 1100);
         setTimeout(() => {
           overlay.classList.remove('open', 'fade-out');
+          labelEl.style.opacity = '';
           resolve();
-        }, 900);
+        }, 1500);
       });
     });
   }
@@ -2506,7 +2576,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.15.0';
+    const versionStr = '0.16.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
     const emailDisplay = state.userEmail
       ? state.userEmail
@@ -2642,10 +2712,33 @@
 
     showBusy(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
     try {
-      await api('commitReset');
+      const result = await api('commitReset');
+      console.log('[reset] api result:', result);
+
+      // Wipe caches and per-cycle localStorage BEFORE the reload so the
+      // self-heal in loadToday has the cleanest possible starting state.
       state.cache.dashboard = null;
       state.cache.history   = null;
       clearAllPerCycleLocalState_();
+
+      // Sanity-check the cleanup actually worked. If a key with one of
+      // our prefixes is still around, force-delete by direct scan.
+      // This shouldn't be needed but guards against any subtle bug in
+      // the prefix loop above.
+      try {
+        const survivors = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('mog_reviewed_') || k.startsWith('mog_recap_sent_') || k.startsWith('mog_draft_'))) {
+            survivors.push(k);
+          }
+        }
+        if (survivors.length) {
+          console.warn('[reset] cleanup survivors, force-removing:', survivors);
+          survivors.forEach(k => localStorage.removeItem(k));
+        }
+      } catch (e) { /* non-fatal */ }
+
       await loadToday();
       showToast(state.lang === 'en' ? 'Reset complete' : 'Reinicio completo', 'success');
     } catch (err) {
