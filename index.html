@@ -226,6 +226,12 @@
       background: var(--teal-light);
       border-color: #b8dccd;
     }
+    .vendor-card.status-sent {
+      /* Already-submitted state — neutral grey, visually de-emphasized */
+      background: var(--bg-soft);
+      border-color: var(--border);
+    }
+    .vendor-card.status-sent .vendor-name { color: var(--text-2); }
     .vendor-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .vendor-name { font-size: 16px; font-weight: 600; }
     .vendor-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
@@ -260,6 +266,11 @@
       background: white;
       color: var(--red-dark);
       border-color: rgba(163,45,45,0.4);
+    }
+    .pill-sent {
+      background: white;
+      color: var(--text-2);
+      border-color: var(--border-2);
     }
 
     .empty-state { padding: 48px 24px; text-align: center; }
@@ -444,32 +455,6 @@
       padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
     }
     .cta-danger:active { background: var(--red-light); }
-
-    /* Reviewed banner shown atop a locked vendor */
-    .locked-banner {
-      background: var(--teal-light);
-      border-radius: var(--r-md);
-      padding: 12px 14px;
-      margin-bottom: 14px;
-      font-size: 13px;
-      color: var(--teal-dark);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .locked-banner i { font-size: 18px; }
-    .locked-banner-msg { flex: 1; min-width: 0; }
-    .locked-banner-edit {
-      background: transparent;
-      border: 0.5px solid var(--teal);
-      color: var(--teal-dark);
-      border-radius: var(--r-md);
-      padding: 6px 12px;
-      font-size: 12px;
-      font-weight: 600;
-      flex-shrink: 0;
-    }
-    .locked-banner-edit:active { background: rgba(15,110,86,0.08); }
 
     /* Settings */
     .profile-card {
@@ -745,7 +730,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -892,7 +877,7 @@
     currentTab: 'today',
     currentView: 'today',
     historyDetailContext: null, // { vendor, date }
-    countContext: null, // { vendor, items, dirty: { itemId: value }, isLocked }
+    countContext: null, // { vendor, items, dirty: { itemId: value } }
     cache: { dashboard: null, history: null }
   };
 
@@ -972,6 +957,7 @@
       cantLoadSub:      { en: 'Check your connection and try again.', es: 'Revisa tu conexi&oacute;n y reintenta.' },
       reviewed:         { en: 'Reviewed', es: 'Revisado' },
       notStarted:       { en: 'Not started', es: 'No iniciado' },
+      submitted:        { en: 'Submitted', es: 'Enviado' },
       inProgress:       { en: 'In progress', es: 'En progreso' },
       itemsToOrder:     { en: 'to order', es: 'por pedir' },
       entered:          { en: 'entered', es: 'ingresados' },
@@ -1448,13 +1434,24 @@
   // ============================================================
   function effectiveStatus(v, dateStr) {
     // API returns 'sent' | 'in_progress' | 'not_started'.
-    // We treat reviewed-in-localStorage as the new "done" state.
-    // The "sent" status from the API only happens if a vendor has rows in
-    // LOG_ORDERS for today — which only happens after reset, so it's rare
-    // for today's dashboard to ever see 'sent'. We honor it if present.
+    //
+    // 'reviewed' is a PWA-only state, stored in localStorage when the user
+    // taps "Mark as reviewed" inside a vendor. It must NOT be conflated
+    // with the API's 'sent' status — 'sent' means LOG_ORDERS already has
+    // a row for today's date for this vendor, which happens after reset.
+    //
+    // Why the distinction matters: if a user resets twice in one day
+    // (or normally, after tomorrow's reset stamps yesterday's order), the
+    // API correctly reports those vendors as 'sent'. We treat that as a
+    // distinct fourth state so it doesn't appear as if the user reviewed
+    // them in-session.
+    //
+    // Priority:
+    //   1. localStorage reviewed flag (user clicked Mark as reviewed)
+    //   2. API status as-is
     const reviewed = getReviewedSet(dateStr);
     if (reviewed[v.name]) return 'reviewed';
-    return v.status === 'sent' ? 'reviewed' : v.status; // map sent→reviewed visually
+    return v.status; // 'sent' | 'in_progress' | 'not_started'
   }
 
   function renderToday(data) {
@@ -1479,7 +1476,10 @@
     // list has been reviewed. Tracks "did the user already email this
     // cycle's recap?" via a per-date localStorage flag so we can show a
     // confirmation state instead of letting them spam-send.
-    const allReviewed = data.vendors.every(v => effectiveStatus(v, data.date) === 'reviewed');
+    const allReviewed = data.vendors.every(v => {
+      const s = effectiveStatus(v, data.date);
+      return s === 'reviewed' || s === 'sent';
+    });
     const recapSent   = !!localStorage.getItem('mog_recap_sent_' + data.date);
     if (allReviewed) {
       html += '<div class="alldone-panel">' +
@@ -1539,14 +1539,20 @@
     const cutoffStr = v.cutoffTime ? (' &middot; ' + escapeHtml(t('cutoff')) + ' ' + escapeHtml(fmt12h(v.cutoffTime))) : '';
     metaText = v.itemCount + ' ' + t('items') + cutoffStr;
 
-    if (status === 'reviewed') {
+    if (status === 'sent') {
+      // Vendor already has a LOG_ORDERS row stamped with the current cycle
+      // date. Happens when reset has already logged this vendor's order
+      // for the cycle (normal: yesterday's reset commits yesterday's data
+      // with yesterday's date, so today's dashboard rarely sees this).
+      // Rendered as a distinct grey "Submitted" state — neither red nor
+      // green — to signal it isn't a fresh count.
+      statusClass = ' status-sent';
+      pillHtml = '<span class="pill pill-sent"><i class="ti ti-archive" aria-hidden="true"></i>' + escapeHtml(t('submitted')) + '</span>';
+    } else if (status === 'reviewed') {
       statusClass = ' status-reviewed';
       pillHtml = '<span class="pill pill-done"><i class="ti ti-check" aria-hidden="true"></i>' + escapeHtml(t('reviewed')) + '</span>';
     } else if (status === 'in_progress') {
       statusClass = ' status-progress';
-      // "X / Y entered" — mirrors the sheet's home dashboard counter so KMs
-      // see consistent terminology between the two surfaces. Falls back to
-      // a generic label only if enteredCount somehow isn't available.
       const entered = (v.enteredCount != null) ? v.enteredCount : null;
       const total   = v.itemCount || 0;
       const label   = (entered != null)
@@ -1614,7 +1620,7 @@
   // COUNT
   // ============================================================
   async function openCount(vendor) {
-    state.countContext = { vendor: vendor, items: [], dirty: {}, isLocked: false };
+    state.countContext = { vendor: vendor, items: [], dirty: {} };
     showView('count');
     renderLoading($('view-count'));
     try {
@@ -1622,7 +1628,6 @@
       state.countContext.items = data.items;
       const dateStr = (state.cache.dashboard && state.cache.dashboard.date) || new Date().toISOString().slice(0,10);
       state.countContext.dateStr = dateStr;
-      state.countContext.isLocked = !!getReviewedSet(dateStr)[vendor];
 
       // Merge localStorage draft on top of server values (drafts win — that's
       // the "unsaved" tier the user expects to see when they return)
@@ -1689,7 +1694,6 @@
     const ctx = state.countContext;
     const view = $('view-count');
     const items = ctx.items;
-    const isLocked = ctx.isLocked;
 
     let toOrder = 0;
     let counted = 0;
@@ -1702,14 +1706,6 @@
     }
 
     let html = '';
-    if (isLocked) {
-      html += '<div class="locked-banner">' +
-        '<i class="ti ti-lock" aria-hidden="true"></i>' +
-        '<span class="locked-banner-msg">' + escapeHtml(t('lockedMsg')) + '</span>' +
-        '<button class="locked-banner-edit" id="unlock-btn">' + escapeHtml(t('edit')) + '</button>' +
-      '</div>';
-    }
-
     html += '<div class="count-progress">' +
       '<span><span class="count-progress-strong">' + counted + ' ' +
         (state.lang === 'en' ? 'of' : 'de') + ' ' + items.length + '</span> ' +
@@ -1750,23 +1746,18 @@
           '<p class="item-meta">' + escapeHtml(it.pack || '') + '</p>' +
         '</div>' +
         '<div class="stepper">' +
-          '<button class="step-btn" data-step="-1"' + (isLocked ? ' disabled' : '') + '>&minus;</button>' +
-          '<input class="step-val" type="number" inputmode="numeric" placeholder="—" ' +
-            'value="' + valStr + '" ' + (isLocked ? 'readonly' : '') + '>' +
-          '<button class="step-btn" data-step="1"' + (isLocked ? ' disabled' : '') + '>+</button>' +
+          '<button class="step-btn" data-step="-1">&minus;</button>' +
+          '<input class="step-val" type="number" inputmode="numeric" placeholder="—" value="' + valStr + '">' +
+          '<button class="step-btn" data-step="1">+</button>' +
         '</div>' +
         '<span class="' + pillCls + '">' + pillTxt + '</span>' +
       '</div>';
     }
 
-    if (!isLocked) {
-      // Save and continue later goes ABOVE Review order so the primary
-      // CTA (Review) sits at the bottom edge — closer to the thumb.
-      html += '<button class="cta-secondary" id="save-continue-btn" style="margin-top:18px">' + escapeHtml(t('saveContinue')) + '</button>';
-      html += '<button class="cta" id="review-btn" style="margin-top:8px">' + escapeHtml(t('reviewOrder')) + '</button>';
-    } else {
-      html += '<button class="cta" id="review-btn">' + escapeHtml(t('reviewOrder')) + '</button>';
-    }
+    // Save and continue later goes ABOVE Review order so the primary
+    // CTA (Review) sits at the bottom edge — closer to the thumb.
+    html += '<button class="cta-secondary" id="save-continue-btn" style="margin-top:18px">' + escapeHtml(t('saveContinue')) + '</button>';
+    html += '<button class="cta" id="review-btn" style="margin-top:8px">' + escapeHtml(t('reviewOrder')) + '</button>';
 
     view.innerHTML = html;
     setTitle('count', ctx.vendor);
@@ -1782,11 +1773,9 @@
 
     if ($('review-btn'))         $('review-btn').addEventListener('click', onReviewClick);
     if ($('save-continue-btn'))  $('save-continue-btn').addEventListener('click', onSaveContinueClick);
-    if ($('unlock-btn'))         $('unlock-btn').addEventListener('click', onUnlockClick);
   }
 
   function onStepperClick(btn) {
-    if (state.countContext.isLocked) return;
     const itemRow = btn.closest('.item');
     const id = itemRow.getAttribute('data-id');
     const input = itemRow.querySelector('.step-val');
@@ -1913,11 +1902,6 @@
   }
 
   async function onReviewClick() {
-    if (state.countContext.isLocked) {
-      // Already reviewed — go to review screen as read-only
-      openReview();
-      return;
-    }
     const btn = $('review-btn');
     setCountActionsDisabled(true);
     btn.textContent = t('saving');
@@ -1931,21 +1915,6 @@
       return;
     }
     openReview();
-  }
-
-  async function onUnlockClick() {
-    const ok = await showConfirm({
-      kind: 'warn',
-      icon: 'edit',
-      title: t('confirmEdit'),
-      msg: t('confirmEditMsg'),
-      confirmLabel: t('edit'),
-      cancelLabel: t('cancel')
-    });
-    if (!ok) return;
-    setReviewed(state.countContext.dateStr, state.countContext.vendor, false);
-    state.countContext.isLocked = false;
-    renderCount();
   }
 
   // ============================================================
@@ -1962,7 +1931,6 @@
     const ctx = state.countContext;
     const view = $('view-review');
     const items = ctx.items;
-    const isLocked = ctx.isLocked;
 
     const reviewed = items.filter(it => it.onHand !== null && it.onHand !== '' && it.onHand !== undefined);
     const toOrder = reviewed.filter(it => {
@@ -1971,15 +1939,6 @@
     });
 
     let html = '';
-
-    if (isLocked) {
-      html += '<div class="locked-banner">' +
-        '<i class="ti ti-lock" aria-hidden="true"></i>' +
-        '<span class="locked-banner-msg">' + escapeHtml(t('lockedMsg')) + '</span>' +
-        '<button class="locked-banner-edit" id="unlock-btn-review">' + escapeHtml(t('edit')) + '</button>' +
-      '</div>';
-    }
-
     html += '<div class="section-label" style="margin-bottom:14px">' +
       escapeHtml(ctx.vendor) + '</div>';
 
@@ -2013,33 +1972,13 @@
       '</div>' +
     '</div>';
 
-    if (!isLocked) {
-      html += '<button class="cta" id="markreview-btn">' + escapeHtml(t('markReviewed')) + '</button>';
-      html += '<button class="cta-secondary" id="back-count-btn">' + escapeHtml(t('backToCount')) + '</button>';
-    } else {
-      html += '<button class="cta-secondary" id="back-today-btn" style="margin-top:18px">' +
-        (state.lang === 'en' ? "Back to today's orders" : 'Volver a pedidos de hoy') + '</button>';
-    }
+    html += '<button class="cta" id="markreview-btn">' + escapeHtml(t('markReviewed')) + '</button>';
+    html += '<button class="cta-secondary" id="back-count-btn">' + escapeHtml(t('backToCount')) + '</button>';
 
     view.innerHTML = html;
 
     if ($('markreview-btn'))    $('markreview-btn').addEventListener('click', onMarkReviewedClick);
     if ($('back-count-btn'))    $('back-count-btn').addEventListener('click', () => openCount(ctx.vendor));
-    if ($('back-today-btn'))    $('back-today-btn').addEventListener('click', () => switchTab('today'));
-    if ($('unlock-btn-review')) $('unlock-btn-review').addEventListener('click', async () => {
-      const ok = await showConfirm({
-        kind: 'warn',
-        icon: 'edit',
-        title: t('confirmEdit'),
-        msg: t('confirmEditMsg'),
-        confirmLabel: t('edit'),
-        cancelLabel: t('cancel')
-      });
-      if (!ok) return;
-      setReviewed(ctx.dateStr, ctx.vendor, false);
-      ctx.isLocked = false;
-      openCount(ctx.vendor);
-    });
   }
 
   async function onMarkReviewedClick() {
@@ -2178,7 +2117,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.11.0';
+    const versionStr = '0.13.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
     const emailDisplay = state.userEmail
       ? state.userEmail
