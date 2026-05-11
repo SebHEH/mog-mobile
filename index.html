@@ -2620,6 +2620,15 @@
 
   async function loadHistory() {
     const view = $('view-history');
+    // Fast path: same pattern as loadToday. History is invalidated when
+    // an action could change it — sending the daily recap (writes to
+    // LOG_ORDERS), resetting on hand (logs current counts then clears),
+    // stale-reset on launch, signing out. On a cache hit the list
+    // renders instantly with no network round-trip.
+    if (state.cache.history) {
+      renderHistory(state.cache.history);
+      return;
+    }
     renderLoading(view);
     try {
       const today = new Date();
@@ -2838,6 +2847,10 @@
       // confirmation state and discourage spam-resends.
       const cycleDate = (state.cache.dashboard && state.cache.dashboard.date) || result.cycleDate;
       if (cycleDate) localStorage.setItem('mog_recap_sent_' + cycleDate, '1');
+      // Recap may have committed today's orders to LOG_ORDERS — drop the
+      // history cache so the next History open shows the new entry
+      // instead of stale data.
+      state.cache.history = null;
       return { ok: true, vendorCount: result.vendorCount, itemCount: result.itemCount };
     } catch (err) {
       console.error('emailRecap error:', err);
