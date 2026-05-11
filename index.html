@@ -924,7 +924,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = 'PASTE_YOUR_DEPLOYMENT_URL_HERE';
 </script>
 
 <div class="app en" id="app">
@@ -1898,6 +1898,20 @@
 
   async function loadToday() {
     const view = $('view-today');
+    // Fast path: if we have a dashboard cache, render it immediately and
+    // skip the network round-trip. The cache is invalidated whenever the
+    // user takes an action that changes server state — saving counts
+    // (flushDirtyToServer), marking reviewed, resetting on hand, signing
+    // out — so a cache hit here means "nothing that could change the
+    // dashboard has happened since the last fetch." This makes
+    // Settings → Today and back-from-vendor (no edits) feel instant.
+    // The self-heal / GC pass below only needs to run on a fresh fetch;
+    // on a cache hit, those localStorage states are already reconciled
+    // from when the cache was first populated.
+    if (state.cache.dashboard) {
+      renderToday(state.cache.dashboard);
+      return;
+    }
     renderLoading(view);
     try {
       const data = await api('getDashboard');
@@ -2187,6 +2201,10 @@
         await api('saveOnHand', { vendor: ctx.vendor, items: items });
         ctx.dirty = {};
         clearDraft(ctx.dateStr, ctx.vendor);
+        // Server-side vendor state just changed (counts persisted, status
+        // may move from not_started → in_progress, enteredCount shifts).
+        // Drop the dashboard cache so the next today render refetches.
+        state.cache.dashboard = null;
       }
       if (refetch) {
         const fresh = await api('getVendorItems', { vendor: ctx.vendor });
