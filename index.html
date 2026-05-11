@@ -2239,10 +2239,36 @@
         await api('saveOnHand', { vendor: ctx.vendor, items: items });
         ctx.dirty = {};
         clearDraft(ctx.dateStr, ctx.vendor);
-        // Server-side vendor state just changed (counts persisted, status
-        // may move from not_started → in_progress, enteredCount shifts).
-        // Drop the dashboard cache so the next today render refetches.
-        state.cache.dashboard = null;
+        // Patch the dashboard cache locally instead of invalidating it.
+        //
+        // Rationale: a save touches exactly one vendor's on-hand counts.
+        // The fields that drive the dashboard pill for that vendor are
+        // (a) enteredCount and (b) status. Both can be derived from
+        // ctx.items, which we just kept in sync with the saved data. No
+        // other vendor's render output changes. Refetching the entire
+        // dashboard would be ~100% wasted work in the steady-state case
+        // (single KM per phone) — we'd ask the server to recompute every
+        // vendor's status, send it back, and end up with the same answer
+        // we already have locally for the only vendor that changed.
+        //
+        // Guardrails:
+        //  - We never patch to 'sent'. That's a LOG_ORDERS-stamped state
+        //    only the server can assign.
+        //  - We never patch a vendor already in 'sent' state — it's
+        //    frozen there until reset, and we shouldn't touch it.
+        //  - If the cache is empty, no-op. The next loadToday will fetch
+        //    fresh as always.
+        if (state.cache.dashboard && state.cache.dashboard.vendors) {
+          const cached = state.cache.dashboard.vendors.find(x => x.name === ctx.vendor);
+          if (cached && cached.status !== 'sent') {
+            const enteredCount = ctx.items.reduce((n, it) => {
+              const v = it.onHand;
+              return n + ((v !== null && v !== undefined && v !== '') ? 1 : 0);
+            }, 0);
+            cached.enteredCount = enteredCount;
+            cached.status = enteredCount > 0 ? 'in_progress' : 'not_started';
+          }
+        }
       }
       if (refetch) {
         const fresh = await api('getVendorItems', { vendor: ctx.vendor });
@@ -2404,34 +2430,31 @@
     if (!ok) return;
 
     setReviewed(ctx.dateStr, ctx.vendor, true);
-    state.cache.dashboard = null; // force refresh on next today render
 
-    // Sync the bar-fill animation to the real dashboard reload so the
-    // KM sees a progress signal that matches the actual work. We kick off
-    // both the network call and the animation in parallel, then complete
-    // the bar exactly when the fetch resolves (with a floor so super-fast
-    // responses still get a satisfying minimum animation).
-    const fetchPromise = api('getDashboard').then(d => { state.cache.dashboard = d; return d; });
-    await playMarkReviewedAnimation(fetchPromise, ctx.vendor);
+    // No server-side dashboard refetch needed.
+    //
+    // The "reviewed" state is a PWA-local concept stored in localStorage
+    // (see effectiveStatus). The server doesn't know or care about it,
+    // and nothing else about the dashboard could have changed since we
+    // last loaded it — the user has been in this vendor's count screen
+    // the whole time, and any saves they made already patched the cache
+    // for this vendor in flushDirtyToServer.
+    //
+    // We pass a no-op resolved promise to the animation, which has its
+    // own MIN_DURATION_MS floor (~1500ms), so the bar still fills at its
+    // calm pace and the user still gets the satisfying check at the end.
+    // The animation's UX doesn't depend on a real fetch — it just needs
+    // *something* to await, and now that something is instant.
+    await playMarkReviewedAnimation(Promise.resolve(), ctx.vendor);
 
-    // Dashboard is already in cache; render it directly instead of doing
-    // a second fetch via switchTab → loadToday.
-    if (state.cache.dashboard) {
-      // self-heal pass (matches loadToday behavior)
-      try {
-        gcReviewedFlags(state.cache.dashboard.date);
-        gcDrafts(state.cache.dashboard.date);
-        const reviewed = getReviewedSet(state.cache.dashboard.date);
-        let mutated = false;
-        for (const v of state.cache.dashboard.vendors) {
-          if (reviewed[v.name] && (v.status === 'not_started' || v.status === 'sent')) {
-            delete reviewed[v.name];
-            mutated = true;
-          }
-        }
-        if (mutated) localStorage.setItem(reviewedKey(state.cache.dashboard.date), JSON.stringify(reviewed));
-      } catch (e) { /* non-fatal */ }
-    }
+    // Self-heal pass: previously this ran against a freshly-fetched
+    // dashboard to drop reviewed flags for vendors the server reports as
+    // 'not_started' or 'sent'. With no fetch, the only way a vendor's
+    // server-side state could have changed underneath us is if someone
+    // else hit reset on the sheet during this exact operation — vanishingly
+    // unlikely in our single-KM-per-store workflow. The next full
+    // loadToday() will run its own self-heal as before, catching anything
+    // weird that happened in the background. We don't need to repeat it here.
     state.currentTab = 'today';
     document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.getAttribute('data-tab') === 'today'));
     showView('today');
