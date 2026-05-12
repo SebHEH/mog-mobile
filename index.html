@@ -1158,7 +1158,21 @@
     currentView: 'today',
     historyDetailContext: null, // { vendor, date }
     countContext: null, // { vendor, items, dirty: { itemId: value } }
-    cache: { dashboard: null, history: null }
+    cache: {
+      dashboard: null,
+      history: null,
+      recap: null,
+      // Vendor items keyed by vendor name. Populated by the background
+      // prefetch that runs after the dashboard loads, and by openCount
+      // itself. Read on every openCount before falling back to the
+      // network. Dropped on sign-out and reset; otherwise persists for
+      // the session.
+      vendorItems: {}
+    },
+    // In-flight vendor fetches, keyed by vendor name. Prevents a double
+    // fetch when the user taps a vendor that's still being prefetched —
+    // we await the in-flight promise instead of firing a second request.
+    inflightVendorFetches: {}
   };
 
   // Reviewed flags live in localStorage keyed by date so they auto-expire
@@ -1583,6 +1597,7 @@
       state.cache.dashboard = null;
       state.cache.history = null;
       state.cache.recap = null;
+      state.cache.vendorItems = {};
       clearAllPerCycleLocalState_();
       hideBusy();
       showMainApp();
@@ -1663,6 +1678,7 @@
     state.cache.dashboard = null;
     state.cache.history = null;
     state.cache.recap = null;
+    state.cache.vendorItems = {};
     showPinScreen();
   }
 
@@ -1977,6 +1993,11 @@
     // from when the cache was first populated.
     if (state.cache.dashboard) {
       renderToday(state.cache.dashboard);
+      // Re-kick the prefetch in case the cache was filled by a prior
+      // session and the prefetch never ran (or the user refreshed
+      // mid-prefetch). Idempotent — vendors already in the cache are
+      // skipped by prefetchTodaysVendors_.
+      prefetchTodaysVendors_();
       return;
     }
     renderLoading(view);
@@ -2015,6 +2036,10 @@
         localStorage.setItem(reviewedKey(data.date), JSON.stringify(reviewed));
       }
       renderToday(data);
+      // Background prefetch — warms the vendor-items cache so the
+      // first vendor tap is instant (or near-instant). Fire-and-
+      // forget; failures are logged but don't affect the dashboard.
+      prefetchTodaysVendors_();
     } catch (err) {
       console.error('loadToday error:', err);
       renderError(view, loadToday);
@@ -2024,12 +2049,82 @@
   // ============================================================
   // COUNT
   // ============================================================
+
+  // Shared vendor-items fetcher. Three call sites use this: openCount
+  // (foreground, blocks the UI), the post-dashboard prefetch
+  // (background, runs while the user is looking at the dashboard), and
+  // the flush+refetch path. The function coordinates three caches to
+  // avoid redundant work:
+  //
+  //   1. state.cache.vendorItems[vendor] — completed fetches. A cache
+  //      hit means we already have a snapshot, return it immediately.
+  //   2. state.inflightVendorFetches[vendor] — currently-running
+  //      fetches. If the user taps a vendor that's mid-prefetch, we
+  //      await the same promise instead of firing a second request.
+  //   3. The network — only reached if neither cache nor in-flight
+  //      promise exists.
+  //
+  // `force: true` bypasses the cache (used when we know the server
+  // state changed and we explicitly want fresh data — currently only
+  // the flush+refetch path).
+  function fetchVendorItems_(vendor, opts) {
+    opts = opts || {};
+    if (!opts.force && state.cache.vendorItems[vendor]) {
+      return Promise.resolve(state.cache.vendorItems[vendor]);
+    }
+    if (!opts.force && state.inflightVendorFetches[vendor]) {
+      return state.inflightVendorFetches[vendor];
+    }
+    const p = api('getVendorItems', { vendor: vendor }).then(data => {
+      state.cache.vendorItems[vendor] = data;
+      delete state.inflightVendorFetches[vendor];
+      return data;
+    }).catch(err => {
+      delete state.inflightVendorFetches[vendor];
+      throw err;
+    });
+    state.inflightVendorFetches[vendor] = p;
+    return p;
+  }
+
+  // Background prefetch: warm the vendor-items cache for every vendor
+  // on today's dashboard, sequentially. Runs after the dashboard loads
+  // and finishes around the time the KM is deciding which vendor to
+  // tap. Sequential not parallel: Apps Script invocations are heavy
+  // server-side and we don't want to fire 5-8 at once and risk hitting
+  // concurrency limits.
+  //
+  // The prefetch only fills empty cache slots — if a vendor was
+  // already fetched (e.g. user tapped it before the prefetch reached
+  // it), we skip it. If the prefetch fails for one vendor, we log and
+  // continue to the next; the foreground openCount call will retry on
+  // demand.
+  async function prefetchTodaysVendors_() {
+    const data = state.cache.dashboard;
+    if (!data || !data.vendors || !data.vendors.length) return;
+    for (const v of data.vendors) {
+      // Skip vendors already 'sent' — the user can't open them anyway.
+      if (v.status === 'sent') continue;
+      if (state.cache.vendorItems[v.name]) continue;
+      try {
+        await fetchVendorItems_(v.name);
+      } catch (err) {
+        console.warn('[prefetch] failed for', v.name, err);
+        // Don't bail the whole prefetch on one failure
+      }
+    }
+  }
+
   async function openCount(vendor) {
     state.countContext = { vendor: vendor, items: [], dirty: {} };
     showView('count');
     renderLoadingBar($('view-count'), vendor);
     try {
-      const data = await api('getVendorItems', { vendor: vendor });
+      // Goes through the shared fetcher so we hit the prefetch cache
+      // when available. On a cache hit this resolves on the same tick
+      // — the loading bar barely flashes before the count screen
+      // renders, which is exactly what we want.
+      const data = await fetchVendorItems_(vendor);
       state.countContext.items = data.items;
       const dateStr = (state.cache.dashboard && state.cache.dashboard.date) || new Date().toISOString().slice(0,10);
       state.countContext.dateStr = dateStr;
@@ -2318,9 +2413,15 @@
         state.cache.recap = null;
       }
       if (refetch) {
-        const fresh = await api('getVendorItems', { vendor: ctx.vendor });
+        const fresh = await fetchVendorItems_(ctx.vendor, { force: true });
         ctx.items = fresh.items;
         cacheTargetPars(ctx.items);
+      } else {
+        // Invalidate the cached vendor items even when we don't
+        // refetch — the saved on-hand values mean the cache snapshot
+        // no longer matches the server. Next time someone (the user
+        // or the prefetch) reads this vendor, they get fresh data.
+        delete state.cache.vendorItems[ctx.vendor];
       }
       return { saved: dirtyIds.length, ok: true };
     } catch (err) {
@@ -2374,9 +2475,19 @@
     showBusy(
       (state.lang === 'en' ? 'Saving on hand for ' : 'Guardando inventario de ') + vendorName + '…'
     );
-    // Refetch so the review screen has accurate suggestions even for items
-    // where target par couldn't be inferred locally.
-    const result = await flushDirtyToServer({ refetch: true });
+    // No refetch: ctx.items already has accurate targetPar for every
+    // item (set on initial openCount fetch), and computeSuggested uses
+    // it to recompute live as the user types. The previous refetch was
+    // a legacy safety net for older API versions that didn't return
+    // targetPar — current API does, so the refetch is redundant. This
+    // drops a full vendor-tab scan off the path between count and
+    // review, which is the slow part the KM was waiting on.
+    //
+    // The save itself still blocks: we need the on-hand values on the
+    // server before the user can mark this vendor reviewed (otherwise
+    // a network failure here means counts get reviewed locally but
+    // never hit LOG_ORDERS via the recap email).
+    const result = await flushDirtyToServer();
     hideBusy();
     setCountActionsDisabled(false);
     btn.textContent = t('reviewOrder');
@@ -3111,6 +3222,7 @@
       state.cache.dashboard = null;
       state.cache.history   = null;
       state.cache.recap     = null;
+      state.cache.vendorItems = {};
       clearAllPerCycleLocalState_();
 
       // Sanity-check the cleanup actually worked. If a key with one of
