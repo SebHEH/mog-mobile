@@ -263,6 +263,45 @@
       border-color: var(--border);
     }
     .vendor-card.status-sent .vendor-name { color: var(--text-2); }
+
+    /* Cutoff urgency states — layered ON TOP of the status tint, so a
+       "missed cutoff in_progress" vendor still has its amber-yellow
+       background but gains a red left border to surface the time
+       pressure. These only paint for non-reviewed, non-sent vendors;
+       once reviewed/sent the visual urgency goes away (the order is
+       handled either way).
+       The left-border accent is intentionally heavier than a regular
+       border so it reads at a glance even when the rest of the card is
+       already colored. */
+    .vendor-card.cutoff-approaching {
+      box-shadow: inset 4px 0 0 0 #ed8936;
+    }
+    .vendor-card.cutoff-missed {
+      box-shadow: inset 4px 0 0 0 var(--red);
+    }
+    /* When a missed-cutoff card sits next to its red "not started" tint,
+       de-emphasize the body slightly so the urgency reads as a fading
+       window of action rather than a fresh alarm. */
+    .vendor-card.cutoff-missed.status-todo {
+      background: #fbecec;
+    }
+    /* Inline urgency badges in the meta line. Use existing spacing
+       conventions (small middot, badge-style spans) so the meta row
+       stays compact. */
+    .cutoff-badge-warn {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 11px; font-weight: 600;
+      padding: 1px 6px; border-radius: 3px;
+      background: #fff3e0; color: #c2410c;
+    }
+    .cutoff-badge-missed {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 11px; font-weight: 600;
+      padding: 1px 6px; border-radius: 3px;
+      background: #fee2e2; color: #991b1b;
+    }
+    .cutoff-badge-warn i, .cutoff-badge-missed i { font-size: 11px; }
+
     .vendor-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .vendor-name { font-size: 16px; font-weight: 600; }
     .vendor-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
@@ -1239,6 +1278,9 @@
       entered:          { en: 'entered', es: 'ingresados' },
       items:            { en: 'items', es: 'art&iacute;culos' },
       cutoff:           { en: 'cutoff', es: 'corte' },
+      orderByLabel:     { en: 'Order by', es: 'Ordenar antes de' },
+      cutoffApproaching:{ en: 'cutoff approaching', es: 'corte pr&oacute;ximo' },
+      cutoffMissed:     { en: 'cutoff missed', es: 'corte vencido' },
       pickup:           { en: 'pick up', es: 'recoger' },
       vendorsToday:     { en: 'Vendors today', es: 'Proveedores hoy' },
       today:            { en: 'Today', es: 'Hoy' },
@@ -1660,6 +1702,7 @@
     state.cache.history = null;
     state.cache.recap = null;
     state.cache.vendorItems = {};
+    stopCutoffTick_();
     showPinScreen();
   }
 
@@ -1695,6 +1738,51 @@
     const m = ts.match(/(\d{2}):(\d{2})/);
     if (!m) return ts;
     return fmt12h(m[1] + ':' + m[2]);
+  }
+
+  // Computes urgency state for a vendor's cutoff time relative to "now".
+  //
+  // Returns one of:
+  //   'none'        — no cutoff time set, or vendor has plenty of time
+  //   'approaching' — within APPROACH_MINUTES of cutoff
+  //   'missed'      — cutoff has passed
+  //
+  // Comparison is wall-clock: we anchor cutoff to today's date in the
+  // device's local timezone. This is correct as long as the phone clock
+  // is in the same timezone as the kitchen (which it always is in
+  // practice — if a KM's phone is set to the wrong timezone, the date
+  // header at the top of the dashboard would also be wrong and they'd
+  // notice). Works fully offline since it only reads device time.
+  //
+  // We also accept the dashboard's `data.date` so a stale cache from
+  // yesterday doesn't paint cutoffs as "missed" — if the dashboard
+  // date isn't today, urgency returns 'none' (we have no basis for
+  // comparison without trusting the device clock to also know what
+  // "today" the data is from).
+  function getCutoffUrgency(cutoffTime, dashboardDateStr) {
+    if (!cutoffTime) return 'none';
+    const APPROACH_MINUTES = 90;  // 1.5 hours — early enough to act
+    const now   = new Date();
+    const today = now.toISOString().slice(0, 10);
+    // If the dashboard is showing a different date than the device's
+    // today, don't attempt urgency math — we'd be comparing apples to
+    // oranges. (Happens if the cache is stale across a day rollover.)
+    if (dashboardDateStr && dashboardDateStr !== today) return 'none';
+
+    const parts = String(cutoffTime).split(':');
+    if (parts.length !== 2) return 'none';
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return 'none';
+
+    const cutoffDate = new Date(now);
+    cutoffDate.setHours(h, m, 0, 0);
+
+    const diffMs = cutoffDate.getTime() - now.getTime();
+    const diffMin = diffMs / 60000;
+    if (diffMin < 0) return 'missed';
+    if (diffMin <= APPROACH_MINUTES) return 'approaching';
+    return 'none';
   }
   function shortDate(dateStr) {
     const parts = dateStr.split('-');
@@ -1884,7 +1972,7 @@
 
     for (const v of sortedVendors) {
       const status = effectiveStatus(v, data.date);
-      html += renderVendorCard(v, status);
+      html += renderVendorCard(v, status, data.date);
     }
 
     view.innerHTML = html;
@@ -1916,11 +2004,65 @@
     if ($('home-reset-btn'))     $('home-reset-btn').addEventListener('click', onHomeResetClick);
   }
 
-  function renderVendorCard(v, status) {
+  function renderVendorCard(v, status, dashboardDateStr) {
     let statusClass = '', pillHtml = '', metaText = '';
 
-    const cutoffStr = v.cutoffTime ? (' &middot; ' + escapeHtml(t('cutoff')) + ' ' + escapeHtml(fmt12h(v.cutoffTime))) : '';
-    metaText = v.itemCount + ' ' + t('items') + cutoffStr;
+    // Cutoff urgency only paints for vendors that still need action.
+    // Once a vendor is reviewed or sent, the cutoff stops being a
+    // pressure signal — the order is handled — so we suppress the red
+    // border and "missed" badge. For reviewed vendors we still want
+    // the time displayed, but framed as informational ("order by
+    // 2:00 PM") rather than urgent.
+    const isActionable = (status === 'not_started' || status === 'in_progress');
+    const urgency = isActionable
+      ? getCutoffUrgency(v.cutoffTime, dashboardDateStr)
+      : 'none';
+
+    // Build the meta line. Three shapes depending on cutoff urgency:
+    //
+    //   1. Approaching / missed (actionable):
+    //        "23 items · ⚠ cutoff approaching 2:00 PM"
+    //        "23 items · ⚠ cutoff missed (was 2:00 PM)"
+    //      The badge styles draw the eye; the time is included so the
+    //      KM knows exactly how much runway they have or had.
+    //
+    //   2. Reviewed (cutoff still relevant but informational):
+    //        "23 items · Order by 2:00 PM"
+    //      No urgency badge — just a clear directive for the recap
+    //      email later in the day.
+    //
+    //   3. No cutoff or no urgency:
+    //        "23 items · cutoff 2:00 PM" or just "23 items"
+    //      The pre-existing format. Kept for vendors with cutoffs
+    //      that aren't yet approaching, and for vendors with no
+    //      cutoff at all (e.g. walk-in pickup).
+    let cutoffSegment = '';
+    if (v.cutoffTime) {
+      if (urgency === 'missed') {
+        cutoffSegment =
+          ' &middot; <span class="cutoff-badge-missed">' +
+            '<i class="ti ti-alert-triangle" aria-hidden="true"></i>' +
+            escapeHtml(t('cutoffMissed')) +
+            ' (' + escapeHtml(fmt12h(v.cutoffTime)) + ')' +
+          '</span>';
+      } else if (urgency === 'approaching') {
+        cutoffSegment =
+          ' &middot; <span class="cutoff-badge-warn">' +
+            '<i class="ti ti-clock" aria-hidden="true"></i>' +
+            escapeHtml(t('cutoffApproaching')) +
+            ' ' + escapeHtml(fmt12h(v.cutoffTime)) +
+          '</span>';
+      } else if (status === 'reviewed' || status === 'sent') {
+        cutoffSegment =
+          ' &middot; ' + escapeHtml(t('orderByLabel')) +
+          ' ' + escapeHtml(fmt12h(v.cutoffTime));
+      } else {
+        cutoffSegment =
+          ' &middot; ' + escapeHtml(t('cutoff')) +
+          ' ' + escapeHtml(fmt12h(v.cutoffTime));
+      }
+    }
+    metaText = v.itemCount + ' ' + t('items') + cutoffSegment;
 
     if (status === 'sent') {
       // Vendor already has a LOG_ORDERS row stamped with the current cycle
@@ -1947,8 +2089,15 @@
       pillHtml = '<span class="pill pill-todo">' + escapeHtml(t('notStarted')) + '</span>';
     }
 
+    // Layer urgency class on top of the status class so the left-border
+    // accent appears without overriding the status tint. Only actionable
+    // vendors get the urgency class (see isActionable above).
+    let urgencyClass = '';
+    if (urgency === 'approaching') urgencyClass = ' cutoff-approaching';
+    else if (urgency === 'missed') urgencyClass = ' cutoff-missed';
+
     return (
-      '<div class="vendor-card tappable' + statusClass + '" data-vendor="' + escapeHtml(v.name) + '">' +
+      '<div class="vendor-card tappable' + statusClass + urgencyClass + '" data-vendor="' + escapeHtml(v.name) + '">' +
         '<div class="vendor-row">' +
           '<div>' +
             '<div class="vendor-name">' + escapeHtml(v.name) + '</div>' +
@@ -3294,6 +3443,38 @@
   // load completes (success or failure).
   let isSwitchingTab = false;
 
+  // Cutoff-urgency auto-refresh.
+  //
+  // Vendor card urgency states ("approaching cutoff" warning, "missed
+  // cutoff" red border) are derived from current wall-clock time
+  // relative to each vendor's HH:MM cutoff. The dashboard can sit open
+  // for hours while a KM does their counts, so without periodic
+  // refresh, a vendor whose cutoff just crossed the 90-minute warning
+  // threshold (or just passed entirely) would silently stay in the
+  // older state until the user navigates away and back.
+  //
+  // We tick once a minute while the today view is active. Each tick
+  // calls renderToday from the cached dashboard data — no network — so
+  // it's cheap and works fully offline. The interval is cleared
+  // whenever we leave today so we don't waste cycles on background tabs.
+  let cutoffTickInterval = null;
+  function startCutoffTick_() {
+    if (cutoffTickInterval) return;
+    cutoffTickInterval = setInterval(() => {
+      // Only re-render if we're still on today AND the dashboard cache
+      // exists. Otherwise no-op until conditions are right again.
+      if (state.currentView === 'today' && state.cache.dashboard) {
+        renderToday(state.cache.dashboard);
+      }
+    }, 60000);
+  }
+  function stopCutoffTick_() {
+    if (cutoffTickInterval) {
+      clearInterval(cutoffTickInterval);
+      cutoffTickInterval = null;
+    }
+  }
+
   async function switchTab(tab) {
     if (isSwitchingTab) return;
     isSwitchingTab = true;
@@ -3304,6 +3485,10 @@
     });
     const tabRoot = { today:'today', history:'history', settings:'settings' }[tab];
     showView(tabRoot);
+    // Cutoff tick only runs on the today tab. Start it when we land
+    // there, stop when we leave — see startCutoffTick_ for rationale.
+    if (tab === 'today') startCutoffTick_();
+    else                 stopCutoffTick_();
     try {
       if (tab === 'today')    await loadToday();
       if (tab === 'history')  await loadHistory();
