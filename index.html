@@ -965,6 +965,34 @@
     }
     .modal-tertiary:active { background: var(--red-light); }
 
+
+    /* Offline banner — thin status strip that sits above the topbar
+       when the device is offline OR when an API call failed with a
+       network-class error. Cleared when the next API call succeeds
+       AND the browser reports online. Informational only; blocks
+       nothing. The .stale variant is shown when the save queue has
+       any entry older than 24h. */
+    .offline-banner {
+      display: none;
+      flex-shrink: 0;
+      padding: 6px 14px;
+      padding-top: max(6px, env(safe-area-inset-top));
+      background: var(--amber-light);
+      color: var(--amber-dark);
+      font-size: 13px;
+      font-weight: 500;
+      text-align: center;
+      line-height: 1.35;
+      border-bottom: 1px solid rgba(186, 117, 23, 0.25);
+    }
+    .offline-banner.show { display: block; }
+    .offline-banner.stale { background: #f5dfb8; }
+    .offline-banner .ti { vertical-align: -2px; margin-right: 4px; font-size: 14px; }
+    /* When the banner is showing, it already consumes the iOS safe
+       area at top. The topbar below it should drop back to a plain
+       padding-top so notched devices don't get a double stripe. */
+    .offline-banner.show + .topbar { padding-top: 10px; }
+
     /* Toast */
     .toast {
       position: fixed;
@@ -1061,6 +1089,13 @@
 
   <!-- MAIN APP -->
   <div id="screen-main" style="display:none; flex: 1; flex-direction: column; min-height: 0;">
+
+    <div class="offline-banner" id="offline-banner">
+      <i class="ti ti-wifi-off" aria-hidden="true"></i>
+      <span class="lang-en" id="offline-banner-text-en">Offline &mdash; using last loaded data</span>
+      <span class="lang-es" id="offline-banner-text-es">Sin conexi&oacute;n &mdash; usando los &uacute;ltimos datos cargados</span>
+    </div>
+
 
     <div class="topbar">
       <div class="topbar-side">
@@ -1215,6 +1250,339 @@
       const k = localStorage.key(i);
       if (k && k.startsWith('mog_reviewed_') && k !== reviewedKey(currentDateStr)) {
         localStorage.removeItem(k);
+      }
+    }
+  }
+
+  // ============================================================
+  // OFFLINE SUPPORT (Phase 1-3)
+  //
+  // Three pieces in one block, kept together because they share the
+  // namespace prefix and the same staleness model:
+  //
+  //   1. Namespaced localStorage caches for read endpoints
+  //      (dashboard, history, recap, per-vendor items). Hydrated on
+  //      boot so the app paints last-known data even when offline.
+  //
+  //   2. Offline banner — flips on for `offline` window events OR
+  //      when an API call fails with a network-class error. Cleared
+  //      when navigator reports online AND a subsequent API call
+  //      lands.
+  //
+  //   3. Save queue — failed `saveOnHand` calls are persisted and
+  //      replayed on reconnect. The UI treats the save as successful
+  //      so the KM keeps moving; conflict reasoning is the same as
+  //      the online case (last-write-wins).
+  //
+  // Namespacing: every key written by this block is prefixed with a
+  // short identifier derived from the Apps Script deployment URL.
+  // This lets multiple stores' PWAs share a single GitHub Pages
+  // origin without their caches or queues colliding when the
+  // multi-store router lands. Existing per-cycle keys (mog_draft_,
+  // mog_reviewed_, mog_recap_sent_) are NOT namespaced yet — that's
+  // a known gap to address when the router work starts.
+  // ============================================================
+
+  function deploymentNs_() {
+    const url = state.apiUrl || '';
+    // Apps Script deployment URLs look like
+    //   /macros/s/AKfycb...XYZ/exec
+    // First 12 chars of the deployment ID is plenty unique for this
+    // purpose (collision risk is functionally zero across HEH's
+    // handful of stores).
+    const m = url.match(/\/macros\/s\/([^\/]+)\/exec/);
+    if (m && m[1]) return m[1].substring(0, 12);
+    // Fallback: hash the whole URL so we still namespace if the URL
+    // format ever changes.
+    let h = 0;
+    for (let i = 0; i < url.length; i++) {
+      h = ((h << 5) - h) + url.charCodeAt(i);
+      h |= 0;
+    }
+    return 'h' + Math.abs(h).toString(36);
+  }
+  function nsKey_(slot) { return 'mog_' + deploymentNs_() + '_' + slot; }
+
+  // Slot names used throughout. Listed here so the cleanup paths
+  // (signOut, reset, etc.) can drop them in one pass.
+  const OFFLINE_SLOTS = {
+    DASHBOARD: 'cache_dashboard',
+    HISTORY:   'cache_history',
+    RECAP:     'cache_recap',
+    VENDOR:    'cache_vendor_',     // prefix; full key adds vendor name
+    QUEUE:     'save_queue'
+  };
+
+  function todayStr_() { return new Date().toISOString().slice(0, 10); }
+
+  // ---------- Cache layer ----------
+  // Every successful read-endpoint response gets written here with a
+  // timestamp and (where applicable) the dashboard date it belongs
+  // to. Reads validate staleness before returning the value.
+
+  function writeOfflineCache_(slot, data, extras) {
+    try {
+      const entry = {
+        data: data,
+        fetchedAt: Date.now()
+      };
+      if (extras) {
+        for (const k of Object.keys(extras)) entry[k] = extras[k];
+      }
+      localStorage.setItem(nsKey_(slot), JSON.stringify(entry));
+    } catch (e) {
+      // QuotaExceeded or serialization issue — non-fatal. The cache
+      // is best-effort; the app still works without it.
+      console.warn('[offline] cache write failed for', slot, e);
+    }
+  }
+
+  function readOfflineCache_(slot, validator) {
+    try {
+      const raw = localStorage.getItem(nsKey_(slot));
+      if (!raw) return null;
+      const entry = JSON.parse(raw);
+      if (!entry || !entry.data) return null;
+      if (validator && !validator(entry)) return null;
+      return entry.data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Validators per slot — see staleness rules in the handoff doc.
+  function isFreshDashboard_(entry) {
+    // Dashboard belongs to a specific calendar day. If it's not
+    // today's, drop it — we don't want yesterday's vendors painted
+    // when the user opens the app after midnight offline.
+    return entry && entry.data && entry.data.date === todayStr_();
+  }
+  function isFreshVendor_(entry, dashDate) {
+    // Vendor items are tied to the current dashboard date and only
+    // valid for 24h.
+    if (!entry || !entry.data) return false;
+    if (Date.now() - (entry.fetchedAt || 0) > 24 * 3600 * 1000) return false;
+    if (dashDate && entry.date && entry.date !== dashDate) return false;
+    return true;
+  }
+  function isFreshHistory_(entry) {
+    // History is a 30-day rolling window from today. Valid same calendar day.
+    return entry && entry.data && entry.date === todayStr_();
+  }
+  function isFreshRecap_(entry) {
+    // Recap is today's rollup. Same staleness model as dashboard.
+    return entry && entry.data && entry.date === todayStr_();
+  }
+
+  // Hydrates state.cache.* from localStorage on boot. Called BEFORE
+  // any network call fires, so loadToday/etc. see a cache hit
+  // instead of triggering a fetch.
+  function hydrateOfflineCache_() {
+    const dash = readOfflineCache_(OFFLINE_SLOTS.DASHBOARD, isFreshDashboard_);
+    if (dash) state.cache.dashboard = dash;
+    const hist = readOfflineCache_(OFFLINE_SLOTS.HISTORY, isFreshHistory_);
+    if (hist) state.cache.history = hist;
+    const recap = readOfflineCache_(OFFLINE_SLOTS.RECAP, isFreshRecap_);
+    if (recap) state.cache.recap = recap;
+    // Vendor caches are loaded lazily in fetchVendorItems_ rather than
+    // bulk-loaded here, so we don't pay the JSON.parse cost for
+    // vendors the user may never tap.
+  }
+
+  function readVendorOfflineCache_(vendor) {
+    const dashDate = state.cache.dashboard && state.cache.dashboard.date;
+    return readOfflineCache_(OFFLINE_SLOTS.VENDOR + vendor,
+      (entry) => isFreshVendor_(entry, dashDate));
+  }
+
+  function writeVendorOfflineCache_(vendor, data) {
+    const dashDate = (state.cache.dashboard && state.cache.dashboard.date) || todayStr_();
+    writeOfflineCache_(OFFLINE_SLOTS.VENDOR + vendor, data, { date: dashDate });
+  }
+
+  // Wipes every offline-system key in localStorage. Used by signOut
+  // and reset paths. Iterates by prefix because vendor caches are
+  // an open-ended set (one key per vendor name we've ever cached).
+  function clearAllOfflineState_() {
+    const prefix = 'mog_' + deploymentNs_() + '_';
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf(prefix) === 0) localStorage.removeItem(k);
+    }
+  }
+
+  // ---------- Offline banner ----------
+  // The banner has two visual states:
+  //   - default: amber strip with "Offline — using last loaded data"
+  //   - .stale variant: shown when the save queue has entries older
+  //     than 24h, with a count of pending changes
+  // Only one of {online, offline-fresh, offline-stale} is active at
+  // any time. setOnline_() removes both; setOffline_() applies the
+  // right one based on queue age.
+
+  let offlineState = false;  // mirror of nav.onLine + last API outcome
+
+  function isNetworkError_(err) {
+    if (!err) return false;
+    const m = String(err.message || err);
+    // Browsers throw TypeError 'Failed to fetch' on network errors.
+    // Some engines use 'NetworkError' or 'Load failed' (Safari).
+    return m.indexOf('Failed to fetch') >= 0 ||
+           m.indexOf('NetworkError') >= 0 ||
+           m.indexOf('Load failed') >= 0;
+  }
+
+  function setOffline_() {
+    offlineState = true;
+    refreshBanner_();
+  }
+  function setOnline_() {
+    if (!offlineState) { refreshBanner_(); return; }
+    offlineState = false;
+    refreshBanner_();
+    // A reconnection event is the canonical trigger for draining
+    // any queued saves. drainSaveQueue_ is a no-op if the queue is
+    // empty, so calling it here is safe and idempotent.
+    drainSaveQueue_();
+  }
+
+  function refreshBanner_() {
+    const el = document.getElementById('offline-banner');
+    if (!el) return;
+    const queue = readSaveQueue_();
+    const hasStale = queue.some(q => (Date.now() - (q.queuedAt || 0)) > 24 * 3600 * 1000);
+    const en = document.getElementById('offline-banner-text-en');
+    const es = document.getElementById('offline-banner-text-es');
+
+    if (offlineState) {
+      el.classList.add('show');
+      el.classList.toggle('stale', hasStale);
+      if (en && es) {
+        if (hasStale) {
+          const n = queue.length;
+          en.textContent = n + (T.msg.offlineBannerStale ? T.msg.offlineBannerStale.en : ' unsynced changes from earlier');
+          es.textContent = n + (T.msg.offlineBannerStale ? T.msg.offlineBannerStale.es : ' cambios sin sincronizar de antes');
+        } else {
+          en.textContent = T.msg.offlineBanner ? T.msg.offlineBanner.en : 'Offline — using last loaded data';
+          es.textContent = T.msg.offlineBanner ? T.msg.offlineBanner.es : 'Sin conexión — usando los últimos datos cargados';
+        }
+      }
+    } else if (hasStale) {
+      // Online but with stale queue entries — keep the strip visible
+      // so the KM knows something's still pending. Same .stale styling.
+      el.classList.add('show', 'stale');
+      if (en && es) {
+        const n = queue.length;
+        en.textContent = n + (T.msg.offlineBannerStale ? T.msg.offlineBannerStale.en : ' unsynced changes from earlier');
+        es.textContent = n + (T.msg.offlineBannerStale ? T.msg.offlineBannerStale.es : ' cambios sin sincronizar de antes');
+      }
+    } else {
+      el.classList.remove('show', 'stale');
+    }
+  }
+
+  // ---------- Save queue ----------
+  // Persists failed `saveOnHand` calls and replays them when the
+  // device reconnects. Coalesces multiple saves for the same vendor
+  // (later writes win per item ID).
+
+  function readSaveQueue_() {
+    try {
+      const raw = localStorage.getItem(nsKey_(OFFLINE_SLOTS.QUEUE));
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+
+  function writeSaveQueue_(queue) {
+    try {
+      if (!queue.length) {
+        localStorage.removeItem(nsKey_(OFFLINE_SLOTS.QUEUE));
+      } else {
+        localStorage.setItem(nsKey_(OFFLINE_SLOTS.QUEUE), JSON.stringify(queue));
+      }
+    } catch (e) {
+      console.warn('[offline] queue write failed', e);
+    }
+  }
+
+  function enqueueSave_(vendor, items) {
+    const queue = readSaveQueue_();
+    // Coalesce: if an entry for this vendor already exists, merge by
+    // item ID (later wins). This handles the "save fails, KM keeps
+    // typing, save fails again" pattern without unbounded growth.
+    const existingIdx = queue.findIndex(e => e.vendor === vendor);
+    if (existingIdx >= 0) {
+      const merged = {};
+      for (const it of queue[existingIdx].items) merged[it.id] = it.onHand;
+      for (const it of items) merged[it.id] = it.onHand;  // later wins
+      queue[existingIdx].items = Object.keys(merged).map(id => ({ id: id, onHand: merged[id] }));
+      queue[existingIdx].queuedAt = Date.now();
+    } else {
+      queue.push({
+        id: 'save_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        vendor: vendor,
+        items: items,
+        queuedAt: Date.now()
+      });
+    }
+    writeSaveQueue_(queue);
+    refreshBanner_();
+  }
+
+  let draining = false;
+  async function drainSaveQueue_() {
+    if (draining) return;
+    const queue = readSaveQueue_();
+    if (!queue.length) return;
+    draining = true;
+    let drained = 0;
+    let toastShown = false;
+    try {
+      // Snapshot the queue length up front; entries we successfully
+      // flush are removed from the on-disk queue one at a time so a
+      // mid-drain failure leaves a consistent persisted state.
+      while (true) {
+        const current = readSaveQueue_();
+        if (!current.length) break;
+        const entry = current[0];
+        if (!toastShown) {
+          showToast(t('syncing'), 'success');
+          toastShown = true;
+        }
+        try {
+          await api('saveOnHand', { vendor: entry.vendor, items: entry.items });
+          // Success — remove this entry and continue
+          const after = readSaveQueue_().filter(e => e.id !== entry.id);
+          writeSaveQueue_(after);
+          drained++;
+        } catch (err) {
+          // Failure mid-drain. If it's a network error, stop and
+          // try again on the next online event. If it's a server
+          // error (e.g. permission denied, vendor renamed) keep
+          // the entry — surfacing it requires a UI path we don't
+          // have yet; the next drain attempt will hit the same
+          // error and we can decide later. For now: stop.
+          console.warn('[offline] drain stopped at', entry.vendor, err);
+          break;
+        }
+      }
+    } finally {
+      draining = false;
+      refreshBanner_();
+      if (drained > 0) {
+        showToast(t('synced'), 'success');
+        // Drained saves may have changed dashboard / vendor item /
+        // recap state on the server. Drop those caches so the next
+        // open reads fresh — same invalidation pattern as a normal
+        // successful save.
+        state.cache.dashboard = null;
+        state.cache.recap = null;
+        // Don't touch state.cache.vendorItems[vendor] here — the
+        // localStorage vendor cache has already been patched at
+        // enqueue time, and the in-memory cache may not exist for
+        // the drained vendor; force-refresh happens lazily.
       }
     }
   }
@@ -1375,7 +1743,13 @@
       version:          { en: 'Version', es: 'Versi&oacute;n' },
       signOut:          { en: 'Sign out', es: 'Cerrar sesi&oacute;n' },
       yourEmail:        { en: 'Your email', es: 'Tu correo' },
-      notSet:           { en: 'Not set', es: 'No configurado' }
+      notSet:           { en: 'Not set', es: 'No configurado' },
+      offlineBanner:    { en: 'Offline — using last loaded data', es: 'Sin conexión — usando los últimos datos cargados' },
+      offlineBannerStale: { en: ' unsynced changes from earlier', es: ' cambios sin sincronizar de antes' },
+      offlineRetry:     { en: 'Offline. Try again when connected.', es: 'Sin conexión. Intenta cuando vuelva.' },
+      savedOffline:     { en: 'Saved offline — will sync when back online', es: 'Guardado sin conexión — se sincronizará al volver' },
+      syncing:          { en: 'Syncing offline changes…', es: 'Sincronizando cambios…' },
+      synced:           { en: 'Offline changes synced', es: 'Cambios sincronizados' }
     }
   };
   const t = (key) => (T.msg[key] && T.msg[key][state.lang]) || key;
@@ -1525,18 +1899,32 @@
     if (!state.apiUrl || state.apiUrl.indexOf('PASTE_YOUR') === 0) {
       throw new Error('CONFIG_MISSING');
     }
-    const resp = await fetch(state.apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ pin: state.pin, action: action, payload: payload || {} }),
-      redirect: 'follow'
-    });
-    const text = await resp.text();
-    let json;
-    try { json = JSON.parse(text); }
-    catch (e) { throw new Error('BAD_JSON: ' + text.substring(0, 200)); }
-    if (!json.ok) throw new Error(json.error || 'Unknown error');
-    return json.data;
+    try {
+      const resp = await fetch(state.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ pin: state.pin, action: action, payload: payload || {} }),
+        redirect: 'follow'
+      });
+      const text = await resp.text();
+      let json;
+      try { json = JSON.parse(text); }
+      catch (e) { throw new Error('BAD_JSON: ' + text.substring(0, 200)); }
+      if (!json.ok) throw new Error(json.error || 'Unknown error');
+      // Any successful response means we're online — flip the banner
+      // off if it was on (e.g. after navigator.onLine lied to us) and
+      // opportunistically drain any queued saves.
+      if (offlineState) setOnline_();
+      else if (readSaveQueue_().length) drainSaveQueue_();
+      return json.data;
+    } catch (err) {
+      // Treat network-class errors as a signal to flip the banner on.
+      // Server errors (BAD_JSON, application errors) are NOT offline
+      // signals — those mean we reached the server, it just answered
+      // unhappily.
+      if (isNetworkError_(err)) setOffline_();
+      throw err;
+    }
   }
 
   // ============================================================
@@ -1622,6 +2010,7 @@
       state.cache.recap = null;
       state.cache.vendorItems = {};
       clearAllPerCycleLocalState_();
+      clearAllOfflineState_();
       hideBusy();
       showMainApp();
     } catch (err) {
@@ -1702,6 +2091,9 @@
     state.cache.history = null;
     state.cache.recap = null;
     state.cache.vendorItems = {};
+    // Drop offline caches + save queue under the current namespace.
+    // Drafts and reviewed flags are handled by their own GC paths.
+    clearAllOfflineState_();
     stopCutoffTick_();
     showPinScreen();
   }
@@ -2134,6 +2526,7 @@
     try {
       const data = await api('getDashboard');
       state.cache.dashboard = data;
+      writeOfflineCache_(OFFLINE_SLOTS.DASHBOARD, data);
       // GC stale localStorage on first today-load of a new day
       gcReviewedFlags(data.date);
       gcDrafts(data.date);
@@ -2205,8 +2598,30 @@
     if (!opts.force && state.inflightVendorFetches[vendor]) {
       return state.inflightVendorFetches[vendor];
     }
+    // Try localStorage before the network so a freshly-opened app
+    // (no in-memory cache yet) can paint vendor screens offline.
+    // Only used when not forcing a refresh.
+    if (!opts.force) {
+      const persisted = readVendorOfflineCache_(vendor);
+      if (persisted) {
+        state.cache.vendorItems[vendor] = persisted;
+        // Still kick a background refresh so the cache catches up
+        // with any server-side changes — but we don't await it. The
+        // returned promise resolves immediately with persisted data.
+        if (navigator.onLine !== false) {
+          api('getVendorItems', { vendor: vendor })
+            .then(fresh => {
+              state.cache.vendorItems[vendor] = fresh;
+              writeVendorOfflineCache_(vendor, fresh);
+            })
+            .catch(() => { /* offline or transient; ignore */ });
+        }
+        return Promise.resolve(persisted);
+      }
+    }
     const p = api('getVendorItems', { vendor: vendor }).then(data => {
       state.cache.vendorItems[vendor] = data;
+      writeVendorOfflineCache_(vendor, data);
       delete state.inflightVendorFetches[vendor];
       return data;
     }).catch(err => {
@@ -2490,7 +2905,34 @@
     try {
       if (dirtyIds.length) {
         const items = dirtyIds.map(id => ({ id: id, onHand: ctx.dirty[id] }));
-        await api('saveOnHand', { vendor: ctx.vendor, items: items });
+        try {
+          await api('saveOnHand', { vendor: ctx.vendor, items: items });
+        } catch (saveErr) {
+          // Network failure: queue the save, patch local caches so
+          // the UI reflects the saved state, and treat as success
+          // from the caller's perspective. Server errors fall
+          // through to the outer catch and surface to the user.
+          if (!isNetworkError_(saveErr)) throw saveErr;
+          enqueueSave_(ctx.vendor, items);
+          // Patch the vendor's localStorage cache so reopening the
+          // vendor (even after a full app close) shows the saved
+          // counts. The in-memory cache slot is dropped below
+          // alongside the online path's drop.
+          const vCacheData = readVendorOfflineCache_(ctx.vendor) ||
+            (state.cache.vendorItems[ctx.vendor] ? JSON.parse(JSON.stringify(state.cache.vendorItems[ctx.vendor])) : null);
+          if (vCacheData && vCacheData.items) {
+            const byId = {};
+            for (const it of items) byId[it.id] = it.onHand;
+            for (const it of vCacheData.items) {
+              if (Object.prototype.hasOwnProperty.call(byId, it.id)) it.onHand = byId[it.id];
+            }
+            writeVendorOfflineCache_(ctx.vendor, vCacheData);
+            state.cache.vendorItems[ctx.vendor] = vCacheData;
+          }
+          showToast(t('savedOffline'), 'success');
+          // Fall through to the success path below so the dashboard
+          // patch, dirty clear, etc. happen identically.
+        }
         ctx.dirty = {};
         clearDraft(ctx.dateStr, ctx.vendor);
 
@@ -2534,6 +2976,10 @@
             cached.enteredCount = enteredCount;
             cached.status = enteredCount > 0 ? 'in_progress' : 'not_started';
           }
+          // Mirror the patched dashboard to localStorage so a reload
+          // (especially offline) renders the new pill state instead
+          // of reverting to pre-save.
+          writeOfflineCache_(OFFLINE_SLOTS.DASHBOARD, state.cache.dashboard);
         }
         // The recap is a server-side rollup of suggested quantities
         // across every vendor. Suggested quantity for this vendor's
@@ -3002,9 +3448,11 @@
         dateTo:   today.toISOString().slice(0, 10)
       });
       state.cache.history = data;
+      writeOfflineCache_(OFFLINE_SLOTS.HISTORY, data, { date: todayStr_() });
       renderHistory(data);
     } catch (err) {
       console.error('loadHistory error:', err);
+      if (isNetworkError_(err)) showToast(t('offlineRetry'), 'error');
       renderError(view, loadHistory);
     }
   }
@@ -3072,9 +3520,11 @@
     try {
       const data = await api('getRecapData');
       state.cache.recap = data;
+      writeOfflineCache_(OFFLINE_SLOTS.RECAP, data, { date: todayStr_() });
       renderRecap(data);
     } catch (err) {
       console.error('openRecap error:', err);
+      if (isNetworkError_(err)) showToast(t('offlineRetry'), 'error');
       renderError(view, openRecap);
     }
   }
@@ -3189,7 +3639,8 @@
       }
     } else {
       const m = String((result.error && result.error.message) || '');
-      if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      if (result.offline) showToast(t('offlineRetry'), 'error');
+      else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
       else showToast(m || 'Error', 'error');
       if (btn) {
         btn.disabled = false;
@@ -3297,6 +3748,9 @@
       return { ok: true, vendorCount: result.vendorCount, itemCount: result.itemCount };
     } catch (err) {
       console.error('emailRecap error:', err);
+      if (isNetworkError_(err)) {
+        return { ok: false, offline: true, error: err };
+      }
       return { ok: false, error: err };
     }
   }
@@ -3321,7 +3775,8 @@
       if (state.cache.dashboard) renderToday(state.cache.dashboard);
     } else {
       const m = String((result.error && result.error.message) || '');
-      if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      if (result.offline) showToast(t('offlineRetry'), 'error');
+      else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
       else showToast(m || 'Error', 'error');
       if (btn) {
         btn.disabled = false;
@@ -3354,6 +3809,7 @@
       state.cache.recap     = null;
       state.cache.vendorItems = {};
       clearAllPerCycleLocalState_();
+      clearAllOfflineState_();
 
       // Sanity-check the cleanup actually worked. If a key with one of
       // our prefixes is still around, force-delete by direct scan.
@@ -3405,7 +3861,8 @@
       showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
     } else {
       const m = String((result.error && result.error.message) || '');
-      if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      if (result.offline) showToast(t('offlineRetry'), 'error');
+      else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
       else showToast(m || 'Error', 'error');
     }
     row.classList.remove('disabled');
@@ -3660,6 +4117,39 @@
   // BOOT
   // ============================================================
   setLang(state.lang);
+
+  // Hydrate offline caches BEFORE any auth/dashboard call so a cold
+  // boot offline still paints last-known data. Safe to run before
+  // PIN auth — these caches are namespaced per deployment, not per
+  // session.
+  hydrateOfflineCache_();
+
+  // Wire offline/online detection. The window events handle the
+  // standard transitions; the api() wrapper handles "browser thinks
+  // it's online but actually isn't" (Wi-Fi association without
+  // working uplink). Run an initial check so a page loaded offline
+  // shows the banner immediately.
+  window.addEventListener('online',  setOnline_);
+  window.addEventListener('offline', setOffline_);
+  if (navigator.onLine === false) setOffline_();
+  // If there's already a queue from a previous session, show the
+  // stale-queue variant of the banner regardless of online state.
+  refreshBanner_();
+  // And if we're online and have queued saves on boot, drain.
+  if (navigator.onLine !== false && readSaveQueue_().length) drainSaveQueue_();
+
+  // Register the service worker for offline page loads. Scope is the
+  // directory the SW lives in (same directory as index.html), which
+  // is what we want — one PWA per subdirectory under the GitHub
+  // Pages origin. Failures are non-fatal: the app works without it,
+  // just won't load offline-from-cold.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .catch(err => console.warn('[sw] registration failed', err));
+    });
+  }
+
   if (state.pin) {
     tryPin(state.pin)
       .then(() => proceedAfterAuth())
