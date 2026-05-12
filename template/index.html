@@ -1,0 +1,4361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Ordering">
+  <meta name="theme-color" content="#0F6E56">
+  <title>Master Ordering Guide</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, sans-serif;
+      font-size: 15px;
+      color: #1f1e1b;
+      background: #ebe9e0;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
+    }
+    button, input, select, textarea { font-family: inherit; }
+    button { -webkit-tap-highlight-color: transparent; cursor: pointer; }
+
+    :root {
+      --teal: #0f6e56;
+      --teal-light: #e1f5ee;
+      --teal-dark: #04342c;
+      --amber-light: #faeeda;
+      --amber-mid: #BA7517;
+      --amber-dark: #412402;
+      --red: #A32D2D;
+      --red-light: #FCEBEB;
+      --red-dark: #501313;
+      --bg: #ffffff;
+      --bg-soft: #f5f4ed;
+      --bg-mute: #ebe9e0;
+      --text: #1f1e1b;
+      --text-2: #5f5e5a;
+      --text-3: #8a8a85;
+      --border: rgba(0,0,0,0.10);
+      --border-2: rgba(0,0,0,0.20);
+      --r-md: 10px;
+      --r-lg: 14px;
+    }
+
+    .app {
+      max-width: 480px;
+      margin: 0 auto;
+      background: var(--bg);
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      padding-top: max(10px, env(safe-area-inset-top));
+      border-bottom: 1px solid var(--border-2);
+      background: var(--bg);
+      flex-shrink: 0;
+      gap: 8px;
+      position: relative;
+      z-index: 10;
+      transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .topbar.scrolled {
+      border-bottom-color: rgba(0,0,0,0.15);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    }
+    .topbar-title { font-weight: 600; font-size: 16px; flex: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .topbar-side { display: flex; align-items: center; min-width: 64px; }
+    .topbar-side.right { justify-content: flex-end; }
+
+    .back-btn {
+      background: transparent;
+      border: none;
+      color: var(--teal);
+      font-size: 15px;
+      font-weight: 500;
+      padding: 6px 4px 6px 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 1px;
+    }
+    .back-btn i { font-size: 22px; margin-right: -2px; }
+    .back-btn:active { opacity: 0.5; }
+
+    .lang-btn {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-2);
+      border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      padding: 5px 10px;
+      background: transparent;
+    }
+    .lang-btn:active { opacity: 0.6; }
+
+    .scroll-area { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .screen { padding: 16px 14px 24px; }
+
+    .tabbar {
+      display: flex;
+      border-top: 0.5px solid var(--border);
+      background: var(--bg);
+      flex-shrink: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 8px 6px 6px;
+      background: transparent;
+      border: none;
+      color: var(--text-3);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .tab i { font-size: 22px; }
+    .tab.active { color: var(--teal); }
+    .tab.busy { opacity: 0.6; pointer-events: none; }
+    .tab:active { opacity: 0.6; }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+
+    .hero-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 4px;
+    }
+    .hero-row-text { flex: 1; min-width: 0; }
+    .hero-day { font-size: 24px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+    .hero-loc {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+      margin: 6px 0 20px;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .hero-loc i { font-size: 17px; color: var(--text-2); }
+
+    /* Tiny red reset button in the hero row — visually quiet but
+       discoverable for the "I messed up" case. Real safety comes from
+       the strong confirm modal, not from hiding the button. */
+    .hero-reset {
+      flex-shrink: 0;
+      display: inline-flex; align-items: center; gap: 5px;
+      background: transparent;
+      color: var(--red);
+      border: 1px solid rgba(163,45,45,0.35);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px; font-weight: 600;
+      margin-top: 4px;
+    }
+    .hero-reset:active { background: var(--red-light); }
+    .hero-reset i { font-size: 14px; }
+    .hero-reset-label { /* hidden on very narrow screens */ }
+    @media (max-width: 340px) {
+      .hero-reset-label { display: none; }
+      .hero-reset { padding: 6px 8px; }
+    }
+
+    /* "View full order list" pinned at top once any vendor is reviewed.
+       Slightly bolder than the default secondary CTA to stand out as a
+       top-of-page anchor without competing with the all-done panel. */
+    .view-full-top {
+      margin: 0 0 18px !important;
+      border: 1px solid var(--teal) !important;
+      color: var(--teal-dark) !important;
+      font-weight: 600;
+      gap: 6px;
+    }
+    .view-full-top i { font-size: 16px; }
+
+    /* End-of-day "all done" panel — appears at top of Today when every
+       vendor on today's list has been reviewed. Celebratory + email CTA. */
+    .alldone-panel {
+      background: var(--teal-light);
+      border: 0.5px solid #b8dccd;
+      border-radius: var(--r-lg);
+      padding: 18px;
+      margin-bottom: 18px;
+      text-align: center;
+    }
+    .alldone-icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--teal); color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 30px; margin-bottom: 10px;
+    }
+    .alldone-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; color: var(--teal-dark); }
+    .alldone-sub { font-size: 13px; color: var(--text-2); margin: 0 0 14px; line-height: 1.4; }
+    .alldone-btn {
+      width: 100%;
+      background: var(--teal); color: white;
+      border: none; border-radius: var(--r-md);
+      padding: 12px;
+      font-size: 14px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px;
+    }
+    .alldone-btn:active { background: var(--teal-dark); }
+    .alldone-btn:disabled { opacity: 0.6; }
+    .alldone-btn i { font-size: 17px; }
+    .alldone-sent {
+      font-size: 12px; color: var(--teal-dark); margin-top: 8px;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .alldone-sent i { font-size: 14px; }
+
+    .vendor-card {
+      background: var(--bg);
+      border: 0.5px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 14px;
+      margin-bottom: 10px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .vendor-card.tappable { cursor: pointer; }
+    .vendor-card.tappable:active { filter: brightness(0.97); }
+    .vendor-card.muted { background: var(--bg-soft); }
+
+    /* Status-tinted cards — soft tints, not saturated, so 9 stacked cards
+       don't burn the user's eyes. The pill on the right keeps the explicit
+       label for accessibility / clarity. */
+    .vendor-card.status-todo {
+      background: #fde4e4;       /* soft red */
+      border-color: #f5c2c2;
+    }
+    .vendor-card.status-progress {
+      background: var(--amber-light);
+      border-color: #f0d9a8;
+    }
+    .vendor-card.status-reviewed {
+      background: var(--teal-light);
+      border-color: #b8dccd;
+    }
+    .vendor-card.status-sent {
+      /* Already-submitted state — neutral grey, visually de-emphasized */
+      background: var(--bg-soft);
+      border-color: var(--border);
+    }
+    .vendor-card.status-sent .vendor-name { color: var(--text-2); }
+
+    /* Cutoff urgency states — layered ON TOP of the status tint, so a
+       "missed cutoff in_progress" vendor still has its amber-yellow
+       background but gains a red left border to surface the time
+       pressure. These only paint for non-reviewed, non-sent vendors;
+       once reviewed/sent the visual urgency goes away (the order is
+       handled either way).
+       The left-border accent is intentionally heavier than a regular
+       border so it reads at a glance even when the rest of the card is
+       already colored. */
+    .vendor-card.cutoff-approaching {
+      box-shadow: inset 4px 0 0 0 #ed8936;
+    }
+    .vendor-card.cutoff-missed {
+      box-shadow: inset 4px 0 0 0 var(--red);
+    }
+    /* When a missed-cutoff card sits next to its red "not started" tint,
+       de-emphasize the body slightly so the urgency reads as a fading
+       window of action rather than a fresh alarm. */
+    .vendor-card.cutoff-missed.status-todo {
+      background: #fbecec;
+    }
+    /* Inline urgency badges in the meta line. Use existing spacing
+       conventions (small middot, badge-style spans) so the meta row
+       stays compact. */
+    .cutoff-badge-warn {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 11px; font-weight: 600;
+      padding: 1px 6px; border-radius: 3px;
+      background: #fff3e0; color: #c2410c;
+    }
+    .cutoff-badge-missed {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 11px; font-weight: 600;
+      padding: 1px 6px; border-radius: 3px;
+      background: #fee2e2; color: #991b1b;
+    }
+    .cutoff-badge-warn i, .cutoff-badge-missed i { font-size: 11px; }
+
+    .vendor-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .vendor-name { font-size: 16px; font-weight: 600; }
+    .vendor-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .vendor-meta.urgent { color: var(--red); font-weight: 600; }
+    .vendor-meta i { font-size: 13px; }
+
+    .pill {
+      font-size: 12px;
+      font-weight: 700;
+      padding: 7px 12px;
+      border-radius: 999px;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      letter-spacing: 0.01em;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      border: 1px solid transparent;
+    }
+    .pill i { font-size: 14px; }
+    .pill-done {
+      background: white;
+      color: var(--teal-dark);
+      border-color: rgba(15,110,86,0.35);
+    }
+    .pill-progress {
+      background: white;
+      color: var(--amber-dark);
+      border-color: rgba(186,117,23,0.45);
+    }
+    .pill-todo {
+      background: white;
+      color: var(--red-dark);
+      border-color: rgba(163,45,45,0.4);
+    }
+    .pill-sent {
+      background: white;
+      color: var(--text-2);
+      border-color: var(--border-2);
+    }
+
+    .empty-state { padding: 48px 24px; text-align: center; }
+    .empty-icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--bg-soft);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 28px; color: var(--text-3); margin-bottom: 14px;
+    }
+    .empty-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+    .empty-sub { font-size: 13px; color: var(--text-2); margin: 0 0 18px; }
+
+    .history-group { margin-bottom: 18px; }
+    .history-group-header {
+      font-size: 11px; font-weight: 600; color: var(--text-3);
+      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
+    }
+    .history-row {
+      background: var(--bg); border: 0.5px solid var(--border);
+      border-radius: var(--r-md); padding: 12px 14px; margin-bottom: 6px;
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer;
+    }
+    .history-row:active { background: var(--bg-soft); }
+    .history-vendor { font-size: 14px; font-weight: 600; }
+    .history-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+    .history-arrow { color: var(--text-3); font-size: 18px; }
+
+    /* Count screen */
+    .count-progress {
+      background: var(--bg-soft);
+      border-radius: var(--r-md);
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--text-2);
+      gap: 10px;
+    }
+    .count-progress-strong { color: var(--text); font-weight: 600; }
+
+    /* Sticky column header strip — pinned to the top of the scroll area
+       so the user always knows which column is on-hand vs order while
+       scrolling through a long vendor list. */
+    .count-colheader {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0 8px;
+      margin-bottom: 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-2);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      gap: 8px;
+    }
+    .count-colheader .ch-item   { flex: 1; min-width: 0; }
+    .count-colheader .ch-onhand { width: 110px; text-align: center; }
+    .count-colheader .ch-order  { width: 44px; text-align: center; }
+
+    .area-header {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin: 22px 0 8px;
+      padding-bottom: 8px;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .area-header:first-child { margin-top: 4px; }
+
+    .item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 0;
+      border-bottom: 0.5px solid var(--border);
+    }
+    .item:last-of-type { border-bottom: none; }
+    .item-info { flex: 1; min-width: 0; }
+    .item-name { font-size: 15px; font-weight: 500; margin: 0; }
+    .item-meta { font-size: 12px; color: var(--text-3); margin: 2px 0 0; font-style: italic; }
+
+    .stepper {
+      display: flex;
+      align-items: center;
+      border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .step-btn {
+      background: var(--bg-soft);
+      border: none;
+      width: 34px;
+      height: 38px;
+      font-size: 17px;
+      color: var(--text);
+      padding: 0;
+      font-weight: 500;
+    }
+    .step-btn:active { background: var(--bg-mute); }
+    .step-val {
+      width: 38px;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      background: transparent;
+      outline: none;
+      padding: 0;
+      -moz-appearance: textfield;
+      height: 38px;
+      color: var(--text);
+    }
+    .step-val::-webkit-outer-spin-button,
+    .step-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .step-val::placeholder { color: var(--text-3); font-weight: 400; }
+
+    .suggest {
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--teal-light);
+      color: var(--teal-dark);
+      padding: 6px 9px;
+      border-radius: var(--r-md);
+      min-width: 34px;
+      text-align: center;
+    }
+    .suggest.empty { background: transparent; color: var(--text-3); font-weight: 400; }
+    .suggest.zero { background: var(--bg-mute); color: var(--text-3); }
+
+    .review-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0; border-bottom: 0.5px solid var(--border); gap: 10px;
+    }
+    .review-row:last-of-type { border-bottom: none; }
+    .review-info { flex: 1; min-width: 0; }
+    .review-qty { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+    .qty-num { font-size: 22px; font-weight: 700; }
+    .qty-x   { font-size: 14px; color: var(--text-3); font-weight: 500; margin: 0 1px; }
+    .qty-unit { font-size: 13px; color: var(--text-2); font-weight: 500; }
+
+    .review-summary {
+      background: var(--bg-soft);
+      padding: 14px;
+      border-radius: var(--r-md);
+      margin-top: 16px;
+      font-size: 14px;
+    }
+
+    /* Recap (master summary) view */
+    .recap-summary {
+      background: var(--bg-soft);
+      padding: 12px 14px;
+      border-radius: var(--r-md);
+      font-size: 13px;
+      color: var(--text-2);
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 18px;
+    }
+    .recap-summary-strong { font-weight: 600; color: var(--text); }
+    .recap-summary-dot { color: var(--text-3); }
+    /* Email-myself button row in the recap view. Sits between the summary
+       strip and the first vendor section. Uses .alldone-btn for the
+       button itself (same affordance as the home dashboard's all-done
+       panel) so the user recognizes the action across views. */
+    .recap-email-row {
+      margin-bottom: 22px;
+      text-align: center;
+    }
+    .recap-section { margin-bottom: 22px; }
+    .recap-section:last-child { margin-bottom: 0; }
+    .recap-vendor-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      padding: 8px 0 10px;
+      border-bottom: 0.5px solid var(--border);
+      margin-bottom: 4px;
+    }
+    .recap-vendor-name { font-size: 16px; font-weight: 700; color: var(--text); }
+    .recap-vendor-count { font-size: 12px; color: var(--text-2); }
+    .summary-row { display: flex; justify-content: space-between; align-items: center; }
+    .summary-row + .summary-row { margin-top: 6px; color: var(--text-2); font-size: 12px; }
+    .progress-strong { color: var(--text); font-weight: 600; }
+    .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; }
+
+    .cta {
+      width: 100%; background: var(--teal); color: white;
+      border: none; border-radius: var(--r-md);
+      padding: 14px; font-size: 15px; font-weight: 600;
+      margin-top: 18px;
+    }
+    .cta:active { background: var(--teal-dark); }
+    .cta:disabled { opacity: 0.4; }
+    .cta-secondary {
+      width: 100%; background: transparent; color: var(--text);
+      border: 0.5px solid var(--border-2); border-radius: var(--r-md);
+      padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
+    }
+    .cta-secondary:active { background: var(--bg-soft); }
+    .cta-secondary:disabled { opacity: 0.4; }
+    .cta-danger {
+      width: 100%; background: transparent; color: var(--red);
+      border: 0.5px solid var(--border-2); border-radius: var(--r-md);
+      padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
+    }
+    .cta-danger:active { background: var(--red-light); }
+
+    /* Settings */
+    .profile-card {
+      background: var(--bg-soft); border-radius: var(--r-lg); padding: 16px;
+      margin-bottom: 18px; display: flex; align-items: center; gap: 14px;
+    }
+    .avatar {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--teal); color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 600; flex-shrink: 0;
+    }
+    .profile-info { flex: 1; min-width: 0; }
+    .profile-name { font-size: 16px; font-weight: 600; }
+    .profile-email { font-size: 12px; color: var(--text-2); margin-top: 2px; word-break: break-all; }
+
+    .settings-section-label {
+      font-size: 11px; font-weight: 600; color: var(--text-3);
+      text-transform: uppercase; letter-spacing: 0.06em; padding: 0 4px 8px;
+    }
+    .settings-group {
+      background: var(--bg); border: 0.5px solid var(--border);
+      border-radius: var(--r-lg); overflow: hidden; margin-bottom: 14px;
+    }
+    .settings-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px; gap: 12px; background: var(--bg);
+      border-bottom: 0.5px solid var(--border);
+    }
+    .settings-row:last-child { border-bottom: none; }
+    .settings-row.tappable { cursor: pointer; }
+    .settings-row.tappable:active { background: var(--bg-soft); }
+    .settings-row.disabled { opacity: 0.5; cursor: default; }
+    .settings-row.disabled:active { background: var(--bg); }
+    .settings-label { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; }
+    .settings-label i { color: var(--text-2); margin-right: 10px; font-size: 18px; vertical-align: middle; }
+
+    /* ============================================================
+       LOADING BAR SYSTEM
+       Single source of truth for every loading/progress bar in the
+       app. Built in three orthogonal layers so each piece does one
+       job and we can compose them without duplication:
+
+         1. .bar              — the track (background, shape, overflow)
+         2. .bar.sm | .bar.md — size modifier (height + max-width)
+         3. .bar-fill-*       — fill behavior:
+              .bar-fill-indeterminate  CSS infinite slide; for
+                                       unknown-duration loading
+              .bar-fill-progress       JS-controlled 0→100% width; for
+                                       tracked progress (mark-as-
+                                       reviewed, transition overlay)
+
+       Adding a new variant (e.g. an error-state red fill) means
+       adding a new .bar-fill-* class, not modifying the existing
+       ones. Sizes and fills are independent — you can pair any size
+       with any fill kind.
+       ============================================================ */
+    .bar {
+      width: 100%;
+      background: var(--bg-mute);
+      overflow: hidden;
+      position: relative;
+    }
+    .bar.sm { height: 4px; max-width: 200px; border-radius: 2px; }
+    .bar.md { height: 6px; max-width: 280px; border-radius: 3px; }
+
+    .bar-fill-indeterminate {
+      position: absolute; top: 0; left: 0;
+      height: 100%; width: 40%;
+      background: linear-gradient(90deg, transparent, var(--text-3), transparent);
+      border-radius: inherit;
+      animation: bar-slide 1.1s ease-in-out infinite;
+    }
+    .bar-fill-progress {
+      height: 100%; width: 0%;
+      background: var(--teal);
+      border-radius: inherit;
+    }
+    @keyframes bar-slide {
+      0%   { left: -40%; }
+      100% { left: 100%; }
+    }
+
+    /* Inline contexts (e.g. settings rows) need a top margin to sit
+       cleanly below their label. Applied as a separate modifier so the
+       base .bar class stays layout-neutral. */
+    .bar.inline { margin-top: 6px; }
+
+    .settings-value { font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .settings-value i { font-size: 16px; color: var(--text-3); }
+
+    /* PIN screen */
+    .pin-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      padding-top: max(24px, env(safe-area-inset-top));
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+      background: var(--bg);
+    }
+    .pin-logo {
+      width: 64px; height: 64px; border-radius: 16px;
+      background: var(--teal); color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 32px; margin-bottom: 18px;
+    }
+    .pin-title { font-size: 22px; font-weight: 600; margin: 0 0 4px; text-align: center; }
+    .pin-sub { font-size: 14px; color: var(--text-2); margin: 0 0 28px; text-align: center; }
+    .pin-input {
+      width: 100%; max-width: 280px;
+      padding: 14px 16px; border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md); font-size: 22px; font-weight: 600;
+      text-align: center; letter-spacing: 0.4em;
+      margin-bottom: 14px; outline: none; background: var(--bg-soft);
+    }
+    .pin-input:focus { border-color: var(--teal); background: var(--bg); }
+    .pin-input.error { border-color: var(--red); background: var(--red-light); animation: shake 0.3s; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-6px); }
+      75% { transform: translateX(6px); }
+    }
+    .pin-error {
+      color: var(--red); font-size: 13px; font-weight: 500;
+      min-height: 18px; margin-bottom: 14px;
+    }
+    .pin-cta {
+      width: 100%; max-width: 280px;
+      background: var(--teal); color: white; border: none;
+      border-radius: var(--r-md); padding: 14px;
+      font-size: 15px; font-weight: 600;
+    }
+    .pin-cta:active { background: var(--teal-dark); }
+    .pin-cta:disabled { opacity: 0.4; }
+    .pin-help {
+      margin-top: 28px; font-size: 12px; color: var(--text-3);
+      text-align: center; max-width: 280px;
+    }
+
+    /* Stale reset screen */
+    .stale-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      padding-top: max(24px, env(safe-area-inset-top));
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+      background: var(--bg);
+      text-align: center;
+    }
+    .stale-icon {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: var(--amber-light); color: var(--amber-mid);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 38px; margin-bottom: 18px;
+    }
+    .stale-title { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+    .stale-sub {
+      font-size: 14px; color: var(--text-2);
+      margin: 0 0 22px; max-width: 320px; line-height: 1.45;
+    }
+    .stale-meta-card {
+      background: var(--bg-soft); border-radius: var(--r-md);
+      padding: 14px 16px; max-width: 320px; width: 100%;
+      margin-bottom: 22px; font-size: 13px; text-align: left;
+    }
+    .stale-meta-row { display: flex; justify-content: space-between; align-items: center; }
+    .stale-meta-row + .stale-meta-row { margin-top: 6px; }
+    .stale-meta-row .label { color: var(--text-2); }
+    .stale-meta-row .val { font-weight: 600; }
+    .stale-cta {
+      width: 100%; max-width: 320px;
+      background: var(--teal); color: white;
+      border: none; border-radius: var(--r-md);
+      padding: 14px; font-size: 15px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px;
+    }
+    .stale-cta:active { background: var(--teal-dark); }
+    .stale-cta:disabled { opacity: 0.6; }
+    .stale-cta i { font-size: 18px; }
+    .stale-help {
+      margin-top: 18px; font-size: 12px; color: var(--text-3);
+      max-width: 320px; line-height: 1.45;
+    }
+    .stale-error {
+      color: var(--red); font-size: 13px; font-weight: 500;
+      min-height: 18px; margin-top: 12px;
+    }
+
+    /* In-content loading layout — wraps a label + .bar.md for the
+       Today/History/Recap/Review/count screens. The bar itself is the
+       shared .bar atom; this layout only positions the elements. */
+    .loading-bar-state {
+      padding: 80px 24px;
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+    }
+    .loading-bar-label {
+      font-size: 14px; color: var(--text-2);
+    }
+    .loading-bar-label-strong { color: var(--text); font-weight: 600; }
+
+    /* Error state */
+    .error-state { padding: 32px 24px; text-align: center; }
+    .error-icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--red-light); color: var(--red);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 28px; margin-bottom: 14px;
+    }
+    .error-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+    .error-sub { font-size: 13px; color: var(--text-2); margin: 0 0 18px; }
+
+    /* Modal (confirm dialog) */
+    .modal-backdrop {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 50; display: none;
+      animation: fadeIn 0.18s ease;
+    }
+    .modal-backdrop.open { display: block; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Full-screen busy overlay used during destructive ops (reset).
+       Higher z-index than the modal so it covers any open confirm.
+       Uses an indeterminate loading bar instead of a spinner — matches
+       the rest of the app's loading visual language. */
+    .busy-overlay {
+      position: absolute; inset: 0;
+      background: rgba(255,255,255,0.92);
+      z-index: 70; display: none;
+      align-items: center; justify-content: center;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .busy-overlay.open { display: flex; }
+    .busy-overlay .busy-label {
+      font-size: 14px; font-weight: 600; color: var(--text);
+    }
+
+
+    /* Mark-as-reviewed success animation: bar fills, check pops, fades. */
+    .markreview-overlay {
+      position: absolute; inset: 0;
+      background: rgba(255,255,255,0.96);
+      z-index: 80; display: none;
+      align-items: center; justify-content: center;
+      transition: opacity 0.28s ease;
+    }
+    .markreview-overlay.open { display: flex; opacity: 1; }
+    .markreview-overlay.fade-out { opacity: 0; }
+    .markreview-card {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 16px;
+      width: 240px;
+    }
+    .markreview-label {
+      font-size: 13px;
+      color: var(--text-2);
+      text-align: center;
+      transition: opacity 0.2s ease;
+      min-height: 16px;
+    }
+    .markreview-check {
+      width: 64px; height: 64px;
+      opacity: 0;
+      transform: scale(0.4);
+      transition: opacity 0.18s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+      margin-top: 4px;
+    }
+    .markreview-check.on { opacity: 1; transform: scale(1); }
+    .markreview-check svg { width: 100%; height: 100%; display: block; }
+    .markreview-success {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--teal-dark);
+      text-align: center;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.24s ease, transform 0.24s ease;
+      min-height: 20px;
+    }
+    .markreview-success.on { opacity: 1; transform: translateY(0); }
+    .mr-check-circle {
+      fill: var(--teal); stroke: none;
+    }
+    .mr-check-mark {
+      fill: none;
+      stroke: white;
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 48;
+      stroke-dashoffset: 48;
+      animation: mr-stroke 0.32s cubic-bezier(0.65, 0, 0.45, 1) 0.06s forwards;
+    }
+    @keyframes mr-stroke {
+      to { stroke-dashoffset: 0; }
+    }
+
+    /* Transition loading bar — same paced fill behavior as the mark-as-
+       reviewed bar, but without the celebratory checkmark/success state.
+       Used for navigation transitions (PIN entry, going back to dashboard,
+       save & continue later). The bar gives the user a sense that the
+       system is doing something deliberate and tells them what's happening. */
+    .transition-overlay {
+      position: absolute; inset: 0;
+      background: rgba(255,255,255,0.96);
+      z-index: 80; display: none;
+      align-items: center; justify-content: center;
+      transition: opacity 0.28s ease;
+    }
+    .transition-overlay.open { display: flex; opacity: 1; }
+    .transition-overlay.fade-out { opacity: 0; }
+    .transition-card {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 14px;
+      width: 280px;
+    }
+    .transition-label {
+      font-size: 14px;
+      color: var(--text-2);
+      text-align: center;
+      min-height: 18px;
+      line-height: 1.3;
+    }
+    .transition-label-strong { color: var(--text); font-weight: 600; }
+    /* Quick acknowledgment checkmark — same family as the mark-as-reviewed
+       check but smaller and faster, sized for "task complete" rather than
+       "vendor reviewed" celebration. */
+    .transition-check {
+      width: 44px; height: 44px;
+      opacity: 0;
+      transform: scale(0.4);
+      transition: opacity 0.18s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+      margin-top: 2px;
+    }
+    .transition-check.on { opacity: 1; transform: scale(1); }
+    .transition-check svg { width: 100%; height: 100%; display: block; }
+    .tr-check-circle { fill: var(--teal); stroke: none; }
+    .tr-check-mark {
+      fill: none;
+      stroke: white;
+      stroke-width: 4.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 48;
+      stroke-dashoffset: 48;
+    }
+    /* Gate the stroke draw on .on so it re-animates every time the check
+       is revealed, not just on first paint. */
+    .transition-check.on .tr-check-mark {
+      animation: tr-stroke 0.32s cubic-bezier(0.65, 0, 0.45, 1) 0.06s forwards;
+    }
+    @keyframes tr-stroke {
+      to { stroke-dashoffset: 0; }
+    }
+
+    .modal {
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--bg);
+      border-radius: var(--r-lg);
+      width: calc(100% - 36px);
+      max-width: 360px;
+      z-index: 51;
+      padding: 22px 20px 18px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .modal-icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 28px; margin-bottom: 12px;
+    }
+    .modal-icon.success { background: var(--teal-light); color: var(--teal); }
+    .modal-icon.warn    { background: var(--amber-light); color: var(--amber-mid); }
+    .modal-icon.danger  { background: var(--red-light); color: var(--red); }
+    .modal-title { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+    .modal-msg { font-size: 14px; color: var(--text-2); margin: 0 0 18px; line-height: 1.4; }
+    .modal-actions { display: flex; flex-direction: column; gap: 8px; }
+    .modal-cta {
+      background: var(--teal); color: white;
+      border: none; border-radius: var(--r-md);
+      padding: 12px; font-size: 15px; font-weight: 600;
+    }
+    .modal-cta:active { background: var(--teal-dark); }
+    .modal-cancel {
+      background: transparent; color: var(--text);
+      border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      padding: 11px;
+      font-size: 14px; font-weight: 500;
+    }
+    .modal-cancel:active { background: var(--bg-soft); }
+    .modal-tertiary {
+      background: transparent; color: var(--red);
+      border: 0.5px solid rgba(163,45,45,0.45);
+      border-radius: var(--r-md);
+      padding: 11px;
+      font-size: 14px; font-weight: 500;
+    }
+    .modal-tertiary:active { background: var(--red-light); }
+
+
+    /* Offline banner — thin status strip that sits above the topbar
+       when the device is offline OR when an API call failed with a
+       network-class error. Cleared when the next API call succeeds
+       AND the browser reports online. Informational only; blocks
+       nothing. The .stale variant is shown when the save queue has
+       any entry older than 24h. */
+    .offline-banner {
+      display: none;
+      flex-shrink: 0;
+      padding: 6px 14px;
+      padding-top: max(6px, env(safe-area-inset-top));
+      background: var(--amber-light);
+      color: var(--amber-dark);
+      font-size: 13px;
+      font-weight: 500;
+      text-align: center;
+      line-height: 1.35;
+      border-bottom: 1px solid rgba(186, 117, 23, 0.25);
+    }
+    .offline-banner.show { display: block; }
+    .offline-banner.stale { background: #f5dfb8; }
+    .offline-banner .ti { vertical-align: -2px; margin-right: 4px; font-size: 14px; }
+    /* When the banner is showing, it already consumes the iOS safe
+       area at top. The topbar below it should drop back to a plain
+       padding-top so notched devices don't get a double stripe. */
+    .offline-banner.show ~ .topbar { padding-top: 10px; }
+
+    /* Manager-mode banner — shown when the active session was authenticated
+       via the master (multi-unit manager) PIN, not the store's own PIN.
+       Distinct color (teal) from the offline banner (amber) so the two
+       are never confused. Persistent across the session. */
+    .manager-banner {
+      display: none;
+      flex-shrink: 0;
+      padding: 6px 14px;
+      padding-top: max(6px, env(safe-area-inset-top));
+      background: var(--teal-light);
+      color: var(--teal-dark);
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.35;
+      border-bottom: 1px solid rgba(15, 110, 86, 0.25);
+      align-items: center;
+      gap: 8px;
+    }
+    .manager-banner.show { display: flex; }
+    .manager-banner .label { flex: 1; text-align: center; }
+    .manager-banner .label .ti { vertical-align: -2px; margin-right: 4px; font-size: 14px; }
+    .manager-banner .exit-btn {
+      background: transparent;
+      border: 1px solid rgba(15, 110, 86, 0.35);
+      color: var(--teal-dark);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+    .manager-banner.show ~ .topbar { padding-top: 10px; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: max(80px, calc(80px + env(safe-area-inset-bottom)));
+      left: 50%; transform: translate(-50%, 24px);
+      background: var(--text); color: white;
+      padding: 12px 18px;
+      border-radius: 24px;
+      font-size: 14px; font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      max-width: 340px;
+      z-index: 60;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.25s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast.success { background: #0e554a; }
+    .toast.error   { background: var(--red-dark); }
+
+    .es .lang-en { display: none; }
+    .en .lang-es { display: none; }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  </style>
+</head>
+<body>
+
+<!-- ============================================================
+     CONFIG — set this to your deployed Apps Script Web App URL
+     ============================================================ -->
+<script>
+  window.MOG_API_URL = '__MOG_API_URL__';
+</script>
+
+<div class="app en" id="app">
+
+  <!-- PIN GATE -->
+  <div class="pin-screen" id="screen-pin">
+    <div class="pin-logo"><i class="ti ti-clipboard-list" aria-hidden="true"></i></div>
+    <h1 class="pin-title">Master Ordering Guide</h1>
+    <p class="pin-sub">
+      <span class="lang-en">Enter the location PIN to continue.</span>
+      <span class="lang-es">Ingresa el PIN para continuar.</span>
+    </p>
+    <input class="pin-input" id="pin-input" type="password" inputmode="numeric"
+           autocomplete="off" maxlength="8" placeholder="••••">
+    <p class="pin-error" id="pin-error"></p>
+    <button class="pin-cta" id="pin-submit">
+      <span class="lang-en">Sign in</span><span class="lang-es">Entrar</span>
+    </button>
+    <p class="pin-help">
+      <span class="lang-en">If you don't know the PIN, ask your GM.</span>
+      <span class="lang-es">Si no sabes el PIN, pregunta a tu gerente.</span>
+    </p>
+  </div>
+
+  <!-- STALE RESET GATE -->
+  <div class="stale-screen" id="screen-stale" style="display:none">
+    <div class="stale-icon"><i class="ti ti-refresh-alert" aria-hidden="true"></i></div>
+    <h1 class="stale-title">
+      <span class="lang-en">Start the new day</span>
+      <span class="lang-es">Empezar el d&iacute;a</span>
+    </h1>
+    <p class="stale-sub">
+      <span class="lang-en">Reset On Hand to clear yesterday's counts and load today's pars before you begin counting.</span>
+      <span class="lang-es">Reinicia el inventario para borrar los conteos de ayer y cargar los pars de hoy antes de contar.</span>
+    </p>
+
+    <div class="stale-meta-card">
+      <div class="stale-meta-row">
+        <span class="label"><span class="lang-en">Last reset</span><span class="lang-es">&Uacute;ltimo reinicio</span></span>
+        <span class="val" id="stale-lastreset">—</span>
+      </div>
+      <div class="stale-meta-row">
+        <span class="label"><span class="lang-en">Today</span><span class="lang-es">Hoy</span></span>
+        <span class="val" id="stale-today">—</span>
+      </div>
+    </div>
+
+    <button class="stale-cta" id="stale-reset-btn">
+      <i class="ti ti-refresh" aria-hidden="true"></i>
+      <span class="lang-en">Reset On Hand</span>
+      <span class="lang-es">Reiniciar Inventario</span>
+    </button>
+
+    <p class="stale-error" id="stale-error"></p>
+
+    <p class="stale-help">
+      <span class="lang-en">This logs yesterday's order, clears all On Hand counts, and updates the date so today's multipliers apply.</span>
+      <span class="lang-es">Esto registra el pedido de ayer, borra los conteos y actualiza la fecha para los multiplicadores de hoy.</span>
+    </p>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="screen-main" style="display:none; flex: 1; flex-direction: column; min-height: 0;">
+
+    <div class="offline-banner" id="offline-banner">
+      <i class="ti ti-wifi-off" aria-hidden="true"></i>
+      <span class="lang-en" id="offline-banner-text-en">Offline &mdash; using last loaded data</span>
+      <span class="lang-es" id="offline-banner-text-es">Sin conexi&oacute;n &mdash; usando los &uacute;ltimos datos cargados</span>
+    </div>
+
+    <div class="manager-banner" id="manager-banner" role="status" aria-live="polite">
+      <span class="label">
+        <i class="ti ti-id-badge-2" aria-hidden="true"></i>
+        <span class="lang-en">Manager mode &mdash; <strong id="manager-store-en">&nbsp;</strong></span>
+        <span class="lang-es">Modo gerente &mdash; <strong id="manager-store-es">&nbsp;</strong></span>
+      </span>
+      <button class="exit-btn" id="manager-exit-btn" type="button">
+        <span class="lang-en">Exit</span>
+        <span class="lang-es">Salir</span>
+      </button>
+    </div>
+
+
+    <div class="topbar">
+      <div class="topbar-side">
+        <button class="back-btn" id="back-btn" aria-label="Back" style="display:none">
+          <i class="ti ti-chevron-left" aria-hidden="true"></i>
+          <span class="lang-en">Back</span><span class="lang-es">Atr&aacute;s</span>
+        </button>
+      </div>
+      <div class="topbar-title" id="topbar-title">
+        <span class="lang-en">Today's orders</span><span class="lang-es">Pedidos de hoy</span>
+      </div>
+      <div class="topbar-side right">
+        <button class="lang-btn" id="lang-btn">
+          <span class="lang-en">ES</span><span class="lang-es">EN</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="scroll-area" id="scroll-area">
+      <div class="screen" id="view-today" style="display:none"></div>
+      <div class="screen" id="view-count" style="display:none"></div>
+      <div class="screen" id="view-review" style="display:none"></div>
+      <div class="screen" id="view-recap" style="display:none"></div>
+      <div class="screen" id="view-history" style="display:none"></div>
+      <div class="screen" id="view-history-detail" style="display:none"></div>
+      <div class="screen" id="view-settings" style="display:none"></div>
+    </div>
+
+    <div class="tabbar">
+      <button class="tab active" data-tab="today">
+        <i class="ti ti-home" aria-hidden="true"></i>
+        <span><span class="lang-en">Today</span><span class="lang-es">Hoy</span></span>
+      </button>
+      <button class="tab" data-tab="history">
+        <i class="ti ti-clock" aria-hidden="true"></i>
+        <span><span class="lang-en">History</span><span class="lang-es">Historial</span></span>
+      </button>
+      <button class="tab" data-tab="settings">
+        <i class="ti ti-settings" aria-hidden="true"></i>
+        <span><span class="lang-en">Settings</span><span class="lang-es">Ajustes</span></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Confirm modal -->
+  <div class="modal-backdrop" id="modal-backdrop"></div>
+  <div class="modal" id="modal" style="display:none">
+    <div class="modal-icon" id="modal-icon"><i class="ti ti-check" aria-hidden="true"></i></div>
+    <h3 class="modal-title" id="modal-title"></h3>
+    <p class="modal-msg" id="modal-msg"></p>
+    <div class="modal-actions">
+      <button class="modal-cta" id="modal-confirm"></button>
+      <button class="modal-cancel" id="modal-cancel"></button>
+    </div>
+  </div>
+
+  <!-- Busy overlay -->
+  <div class="busy-overlay" id="busy-overlay">
+    <div class="busy-label" id="busy-label"></div>
+    <div class="bar md"><div class="bar-fill-indeterminate"></div></div>
+  </div>
+
+  <!-- Mark-as-reviewed success animation -->
+  <div class="markreview-overlay" id="markreview-overlay">
+    <div class="markreview-card">
+      <div class="markreview-label" id="markreview-label"></div>
+      <div class="bar md"><div class="bar-fill-progress" id="markreview-fill"></div></div>
+      <div class="markreview-check" id="markreview-check">
+        <svg viewBox="0 0 52 52" aria-hidden="true">
+          <circle class="mr-check-circle" cx="26" cy="26" r="24"/>
+          <path class="mr-check-mark" d="M14 27 l8 8 l16 -18"/>
+        </svg>
+      </div>
+      <div class="markreview-success" id="markreview-success"></div>
+    </div>
+  </div>
+
+  <!-- Transition loading bar (PIN entry, going back to dashboard,
+       save & continue later). Same family as the mark-as-reviewed bar
+       but tuned for transitions: slower ease-out fill + a smaller,
+       faster checkmark for quick acknowledgment rather than celebration. -->
+  <div class="transition-overlay" id="transition-overlay">
+    <div class="transition-card">
+      <div class="transition-label" id="transition-label"></div>
+      <div class="bar md"><div class="bar-fill-progress" id="transition-fill"></div></div>
+      <div class="transition-check" id="transition-check">
+        <svg viewBox="0 0 52 52" aria-hidden="true">
+          <circle class="tr-check-circle" cx="26" cy="26" r="24"/>
+          <path class="tr-check-mark" d="M14 27 l8 8 l16 -18"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  const state = {
+    apiUrl:     window.MOG_API_URL,
+    pin:        localStorage.getItem('mog_pin') || '',
+    // When set, the session was authenticated with the multi-unit
+    // manager master PIN (set by the hub via sessionStorage before
+    // redirect). Drives the manager-mode banner and the exit path.
+    isManagerMode: false,
+    lang:       localStorage.getItem('mog_lang') || 'en',
+    location:   localStorage.getItem('mog_location') || '',
+    locAbbr:    localStorage.getItem('mog_loc_abbr') || '',
+    userEmail:  localStorage.getItem('mog_user_email') || '',
+    currentTab: 'today',
+    currentView: 'today',
+    historyDetailContext: null, // { vendor, date }
+    countContext: null, // { vendor, items, dirty: { itemId: value } }
+    cache: {
+      dashboard: null,
+      history: null,
+      recap: null,
+      // Vendor items keyed by vendor name. Populated by the background
+      // prefetch that runs after the dashboard loads, and by openCount
+      // itself. Read on every openCount before falling back to the
+      // network. Dropped on sign-out and reset; otherwise persists for
+      // the session.
+      vendorItems: {}
+    },
+    // In-flight vendor fetches, keyed by vendor name. Prevents a double
+    // fetch when the user taps a vendor that's still being prefetched —
+    // we await the in-flight promise instead of firing a second request.
+    inflightVendorFetches: {}
+  };
+
+  // Reviewed flags live in localStorage keyed by date so they auto-expire
+  // when the calendar day rolls over. Stored as a JSON object:
+  //   mog_<ns>_reviewed_2026-05-09 -> {"Sysco":true,"Baldor":true}
+  //
+  // Namespaced by deployment so each store on a shared origin (hub
+  // router) keeps its own reviewed flags. Legacy unprefixed keys are
+  // migrated once at boot by migratePerCycleKeys_().
+  function reviewedKey(dateStr) { return nsKey_('reviewed_' + dateStr); }
+  function getReviewedSet(dateStr) {
+    try {
+      return JSON.parse(localStorage.getItem(reviewedKey(dateStr)) || '{}');
+    } catch (e) { return {}; }
+  }
+  function setReviewed(dateStr, vendor, val) {
+    const m = getReviewedSet(dateStr);
+    if (val) m[vendor] = true; else delete m[vendor];
+    localStorage.setItem(reviewedKey(dateStr), JSON.stringify(m));
+  }
+  // Garbage-collect old reviewed-flag keys on boot. Scoped to the
+  // current deployment's namespace — other stores' reviewed flags
+  // are not touched.
+  function gcReviewedFlags(currentDateStr) {
+    const prefix = nsKey_('reviewed_');
+    const keep   = reviewedKey(currentDateStr);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix) && k !== keep) {
+        localStorage.removeItem(k);
+      }
+    }
+  }
+
+  // ============================================================
+  // OFFLINE SUPPORT (Phase 1-3)
+  //
+  // Three pieces in one block, kept together because they share the
+  // namespace prefix and the same staleness model:
+  //
+  //   1. Namespaced localStorage caches for read endpoints
+  //      (dashboard, history, recap, per-vendor items). Hydrated on
+  //      boot so the app paints last-known data even when offline.
+  //
+  //   2. Offline banner — flips on for `offline` window events OR
+  //      when an API call fails with a network-class error. Cleared
+  //      when navigator reports online AND a subsequent API call
+  //      lands.
+  //
+  //   3. Save queue — failed `saveOnHand` calls are persisted and
+  //      replayed on reconnect. The UI treats the save as successful
+  //      so the KM keeps moving; conflict reasoning is the same as
+  //      the online case (last-write-wins).
+  //
+  // Namespacing: every key written by this block is prefixed with a
+  // short identifier derived from the Apps Script deployment URL.
+  // This lets multiple stores' PWAs share a single GitHub Pages
+  // origin without their caches or queues colliding. Per-cycle keys
+  // (mog_<ns>_draft_, mog_<ns>_reviewed_, mog_<ns>_recap_sent_) are
+  // also namespaced under this scheme as of the hub router rollout;
+  // legacy unprefixed keys are migrated once at boot by
+  // migratePerCycleKeys_().
+  // ============================================================
+
+  function deploymentNs_() {
+    const url = state.apiUrl || '';
+    // Apps Script deployment URLs look like
+    //   /macros/s/AKfycb...XYZ/exec
+    // First 12 chars of the deployment ID is plenty unique for this
+    // purpose (collision risk is functionally zero across HEH's
+    // handful of stores).
+    const m = url.match(/\/macros\/s\/([^\/]+)\/exec/);
+    if (m && m[1]) return m[1].substring(0, 12);
+    // Fallback: hash the whole URL so we still namespace if the URL
+    // format ever changes.
+    let h = 0;
+    for (let i = 0; i < url.length; i++) {
+      h = ((h << 5) - h) + url.charCodeAt(i);
+      h |= 0;
+    }
+    return 'h' + Math.abs(h).toString(36);
+  }
+  function nsKey_(slot) { return 'mog_' + deploymentNs_() + '_' + slot; }
+
+  // One-time migration: legacy unprefixed per-cycle keys (mog_reviewed_*,
+  // mog_draft_*, mog_recap_sent_*) get renamed to the namespaced form
+  // (mog_<ns>_<rest>) so they survive the multi-store router rollout.
+  //
+  // Idempotent — guarded by the mog_migration_v1_done flag, which is
+  // intentionally NOT namespaced (the migration is a one-shot for this
+  // browser, not per-store). Legacy keys are claimed by whichever store
+  // the user PINs into first after this deploy lands; this is correct
+  // for the actual rollout state (one live store today → that store's
+  // PWA is the only thing that could have written legacy keys).
+  function migratePerCycleKeys_() {
+    try {
+      if (localStorage.getItem('mog_migration_v1_done') === '1') return;
+      const legacyPrefixes = ['mog_reviewed_', 'mog_draft_', 'mog_recap_sent_'];
+      const toMigrate = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        for (const p of legacyPrefixes) {
+          if (k.startsWith(p) && k.length > p.length) {
+            // Drop the leading 'mog_' — nsKey_() prepends 'mog_<ns>_'.
+            toMigrate.push({ key: k, suffix: k.substring(4) });
+            break;
+          }
+        }
+      }
+      for (const item of toMigrate) {
+        const value = localStorage.getItem(item.key);
+        if (value !== null) {
+          localStorage.setItem(nsKey_(item.suffix), value);
+          localStorage.removeItem(item.key);
+        }
+      }
+      localStorage.setItem('mog_migration_v1_done', '1');
+      if (toMigrate.length) {
+        console.log('[migrate] moved', toMigrate.length, 'legacy per-cycle keys to', deploymentNs_());
+      }
+    } catch (e) {
+      // Non-fatal — the app works without migration; users just see
+      // fresh state for the namespaced store.
+      console.warn('[migrate] failed', e);
+    }
+  }
+
+  // Slot names used throughout. Listed here so the cleanup paths
+  // (signOut, reset, etc.) can drop them in one pass.
+  const OFFLINE_SLOTS = {
+    DASHBOARD: 'cache_dashboard',
+    HISTORY:   'cache_history',
+    RECAP:     'cache_recap',
+    VENDOR:    'cache_vendor_',     // prefix; full key adds vendor name
+    QUEUE:     'save_queue'
+  };
+
+  function todayStr_() { return new Date().toISOString().slice(0, 10); }
+
+  // ---------- Cache layer ----------
+  // Every successful read-endpoint response gets written here with a
+  // timestamp and (where applicable) the dashboard date it belongs
+  // to. Reads validate staleness before returning the value.
+
+  function writeOfflineCache_(slot, data, extras) {
+    try {
+      const entry = {
+        data: data,
+        fetchedAt: Date.now()
+      };
+      if (extras) {
+        for (const k of Object.keys(extras)) entry[k] = extras[k];
+      }
+      localStorage.setItem(nsKey_(slot), JSON.stringify(entry));
+    } catch (e) {
+      // QuotaExceeded or serialization issue — non-fatal. The cache
+      // is best-effort; the app still works without it.
+      console.warn('[offline] cache write failed for', slot, e);
+    }
+  }
+
+  function readOfflineCache_(slot, validator) {
+    try {
+      const raw = localStorage.getItem(nsKey_(slot));
+      if (!raw) return null;
+      const entry = JSON.parse(raw);
+      if (!entry || !entry.data) return null;
+      if (validator && !validator(entry)) return null;
+      return entry.data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Validators per slot — see staleness rules in the handoff doc.
+  function isFreshDashboard_(entry) {
+    // Dashboard belongs to a specific calendar day. If it's not
+    // today's, drop it — we don't want yesterday's vendors painted
+    // when the user opens the app after midnight offline.
+    return entry && entry.data && entry.data.date === todayStr_();
+  }
+  function isFreshVendor_(entry, dashDate) {
+    // Vendor items are tied to the current dashboard date and only
+    // valid for 24h.
+    if (!entry || !entry.data) return false;
+    if (Date.now() - (entry.fetchedAt || 0) > 24 * 3600 * 1000) return false;
+    if (dashDate && entry.date && entry.date !== dashDate) return false;
+    return true;
+  }
+  function isFreshHistory_(entry) {
+    // History is a 30-day rolling window from today. Valid same calendar day.
+    return entry && entry.data && entry.date === todayStr_();
+  }
+  function isFreshRecap_(entry) {
+    // Recap is today's rollup. Same staleness model as dashboard.
+    return entry && entry.data && entry.date === todayStr_();
+  }
+
+  // Hydrates state.cache.* from localStorage on boot. Called BEFORE
+  // any network call fires, so loadToday/etc. see a cache hit
+  // instead of triggering a fetch.
+  function hydrateOfflineCache_() {
+    const dash = readOfflineCache_(OFFLINE_SLOTS.DASHBOARD, isFreshDashboard_);
+    if (dash) state.cache.dashboard = dash;
+    const hist = readOfflineCache_(OFFLINE_SLOTS.HISTORY, isFreshHistory_);
+    if (hist) state.cache.history = hist;
+    const recap = readOfflineCache_(OFFLINE_SLOTS.RECAP, isFreshRecap_);
+    if (recap) state.cache.recap = recap;
+    // Vendor caches are loaded lazily in fetchVendorItems_ rather than
+    // bulk-loaded here, so we don't pay the JSON.parse cost for
+    // vendors the user may never tap.
+  }
+
+  function readVendorOfflineCache_(vendor) {
+    const dashDate = state.cache.dashboard && state.cache.dashboard.date;
+    return readOfflineCache_(OFFLINE_SLOTS.VENDOR + vendor,
+      (entry) => isFreshVendor_(entry, dashDate));
+  }
+
+  function writeVendorOfflineCache_(vendor, data) {
+    const dashDate = (state.cache.dashboard && state.cache.dashboard.date) || todayStr_();
+    writeOfflineCache_(OFFLINE_SLOTS.VENDOR + vendor, data, { date: dashDate });
+  }
+
+  // Wipes every offline-system key in localStorage. Used by signOut
+  // and reset paths. Iterates by prefix because vendor caches are
+  // an open-ended set (one key per vendor name we've ever cached).
+  function clearAllOfflineState_() {
+    const prefix = 'mog_' + deploymentNs_() + '_';
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf(prefix) === 0) localStorage.removeItem(k);
+    }
+  }
+
+  // ---------- Offline banner ----------
+  // The banner has two visual states:
+  //   - default: amber strip with "Offline — using last loaded data"
+  //   - .stale variant: shown when the save queue has entries older
+  //     than 24h, with a count of pending changes
+  // Only one of {online, offline-fresh, offline-stale} is active at
+  // any time. setOnline_() removes both; setOffline_() applies the
+  // right one based on queue age.
+
+  let offlineState = false;  // mirror of nav.onLine + last API outcome
+
+  function isNetworkError_(err) {
+    if (!err) return false;
+    const m = String(err.message || err);
+    // Browsers throw TypeError 'Failed to fetch' on network errors.
+    // Some engines use 'NetworkError' or 'Load failed' (Safari).
+    return m.indexOf('Failed to fetch') >= 0 ||
+           m.indexOf('NetworkError') >= 0 ||
+           m.indexOf('Load failed') >= 0;
+  }
+
+  function setOffline_() {
+    offlineState = true;
+    refreshBanner_();
+  }
+  function setOnline_() {
+    if (!offlineState) { refreshBanner_(); return; }
+    offlineState = false;
+    refreshBanner_();
+    // A reconnection event is the canonical trigger for draining
+    // any queued saves. drainSaveQueue_ is a no-op if the queue is
+    // empty, so calling it here is safe and idempotent.
+    drainSaveQueue_();
+  }
+
+  function refreshBanner_() {
+    const el = document.getElementById('offline-banner');
+    if (!el) return;
+    const queue = readSaveQueue_();
+    const hasStale = queue.some(q => (Date.now() - (q.queuedAt || 0)) > 24 * 3600 * 1000);
+    const en = document.getElementById('offline-banner-text-en');
+    const es = document.getElementById('offline-banner-text-es');
+
+    if (offlineState) {
+      el.classList.add('show');
+      el.classList.toggle('stale', hasStale);
+      if (en && es) {
+        if (hasStale) {
+          const n = queue.length;
+          en.textContent = n + (T.msg.offlineBannerStale ? T.msg.offlineBannerStale.en : ' unsynced changes from earlier');
+          es.textContent = n + (T.msg.offlineBannerStale ? T.msg.offlineBannerStale.es : ' cambios sin sincronizar de antes');
+        } else {
+          en.textContent = T.msg.offlineBanner ? T.msg.offlineBanner.en : 'Offline — using last loaded data';
+          es.textContent = T.msg.offlineBanner ? T.msg.offlineBanner.es : 'Sin conexión — usando los últimos datos cargados';
+        }
+      }
+    } else if (hasStale) {
+      // Online but with stale queue entries — keep the strip visible
+      // so the KM knows something's still pending. Same .stale styling.
+      el.classList.add('show', 'stale');
+      if (en && es) {
+        const n = queue.length;
+        en.textContent = n + (T.msg.offlineBannerStale ? T.msg.offlineBannerStale.en : ' unsynced changes from earlier');
+        es.textContent = n + (T.msg.offlineBannerStale ? T.msg.offlineBannerStale.es : ' cambios sin sincronizar de antes');
+      }
+    } else {
+      el.classList.remove('show', 'stale');
+    }
+  }
+
+  // ---------- Save queue ----------
+  // Persists failed `saveOnHand` calls and replays them when the
+  // device reconnects. Coalesces multiple saves for the same vendor
+  // (later writes win per item ID).
+
+  function readSaveQueue_() {
+    try {
+      const raw = localStorage.getItem(nsKey_(OFFLINE_SLOTS.QUEUE));
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+
+  function writeSaveQueue_(queue) {
+    try {
+      if (!queue.length) {
+        localStorage.removeItem(nsKey_(OFFLINE_SLOTS.QUEUE));
+      } else {
+        localStorage.setItem(nsKey_(OFFLINE_SLOTS.QUEUE), JSON.stringify(queue));
+      }
+    } catch (e) {
+      console.warn('[offline] queue write failed', e);
+    }
+  }
+
+  function enqueueSave_(vendor, items) {
+    const queue = readSaveQueue_();
+    // Coalesce: if an entry for this vendor already exists, merge by
+    // item ID (later wins). This handles the "save fails, KM keeps
+    // typing, save fails again" pattern without unbounded growth.
+    const existingIdx = queue.findIndex(e => e.vendor === vendor);
+    if (existingIdx >= 0) {
+      const merged = {};
+      for (const it of queue[existingIdx].items) merged[it.id] = it.onHand;
+      for (const it of items) merged[it.id] = it.onHand;  // later wins
+      queue[existingIdx].items = Object.keys(merged).map(id => ({ id: id, onHand: merged[id] }));
+      queue[existingIdx].queuedAt = Date.now();
+    } else {
+      queue.push({
+        id: 'save_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        vendor: vendor,
+        items: items,
+        queuedAt: Date.now()
+      });
+    }
+    writeSaveQueue_(queue);
+    refreshBanner_();
+  }
+
+  let draining = false;
+  async function drainSaveQueue_() {
+    if (draining) return;
+    const queue = readSaveQueue_();
+    if (!queue.length) return;
+    draining = true;
+    let drained = 0;
+    let toastShown = false;
+    try {
+      // Snapshot the queue length up front; entries we successfully
+      // flush are removed from the on-disk queue one at a time so a
+      // mid-drain failure leaves a consistent persisted state.
+      while (true) {
+        const current = readSaveQueue_();
+        if (!current.length) break;
+        const entry = current[0];
+        if (!toastShown) {
+          showToast(t('syncing'), 'success');
+          toastShown = true;
+        }
+        try {
+          await api('saveOnHand', { vendor: entry.vendor, items: entry.items });
+          // Success — remove this entry and continue
+          const after = readSaveQueue_().filter(e => e.id !== entry.id);
+          writeSaveQueue_(after);
+          drained++;
+        } catch (err) {
+          // Failure mid-drain. If it's a network error, stop and
+          // try again on the next online event. If it's a server
+          // error (e.g. permission denied, vendor renamed) keep
+          // the entry — surfacing it requires a UI path we don't
+          // have yet; the next drain attempt will hit the same
+          // error and we can decide later. For now: stop.
+          console.warn('[offline] drain stopped at', entry.vendor, err);
+          break;
+        }
+      }
+    } finally {
+      draining = false;
+      refreshBanner_();
+      if (drained > 0) {
+        showToast(t('synced'), 'success');
+        // Drained saves may have changed dashboard / vendor item /
+        // recap state on the server. Drop those caches so the next
+        // open reads fresh — same invalidation pattern as a normal
+        // successful save.
+        state.cache.dashboard = null;
+        state.cache.recap = null;
+        // Don't touch state.cache.vendorItems[vendor] here — the
+        // localStorage vendor cache has already been patched at
+        // enqueue time, and the in-memory cache may not exist for
+        // the drained vendor; force-refresh happens lazily.
+      }
+    }
+  }
+
+  // Draft counts per vendor for crash safety. Keyed by vendor + date.
+  //   mog_<ns>_draft_2026-05-09_Sysco -> {"ITEM-0001":3,"ITEM-0002":null,...}
+  //
+  // Namespaced by deployment so each store on a shared origin keeps
+  // its own drafts. Legacy unprefixed keys are migrated once at boot
+  // by migratePerCycleKeys_().
+  function draftKey(dateStr, vendor) { return nsKey_('draft_' + dateStr + '_' + vendor); }
+  function loadDraft(dateStr, vendor) {
+    try {
+      return JSON.parse(localStorage.getItem(draftKey(dateStr, vendor)) || '{}');
+    } catch (e) { return {}; }
+  }
+  function saveDraft(dateStr, vendor, draft) {
+    if (!Object.keys(draft).length) {
+      localStorage.removeItem(draftKey(dateStr, vendor));
+    } else {
+      localStorage.setItem(draftKey(dateStr, vendor), JSON.stringify(draft));
+    }
+  }
+  function clearDraft(dateStr, vendor) {
+    localStorage.removeItem(draftKey(dateStr, vendor));
+  }
+  // GC scoped to the current deployment's draft namespace — other
+  // stores' drafts are not touched.
+  function gcDrafts(currentDateStr) {
+    const prefix = nsKey_('draft_');
+    const keep   = nsKey_('draft_' + currentDateStr + '_');
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix) && !k.startsWith(keep)) {
+        localStorage.removeItem(k);
+      }
+    }
+  }
+
+  // ============================================================
+  // I18N
+  // ============================================================
+  const T = {
+    titles: {
+      today:           { en: "Today's orders",  es: 'Pedidos de hoy' },
+      count:           { en: 'Count',           es: 'Contar' },
+      review:          { en: 'Review',          es: 'Revisar' },
+      recap:           { en: 'Full order list', es: 'Lista completa' },
+      history:         { en: 'History',         es: 'Historial' },
+      'history-detail':{ en: 'Order details',   es: 'Detalles' },
+      settings:        { en: 'Settings',        es: 'Ajustes' }
+    },
+    msg: {
+      noVendors:        { en: 'No vendors today', es: 'No hay proveedores hoy' },
+      noVendorsSub:     { en: "Nothing scheduled for today.", es: 'No hay entregas programadas hoy.' },
+      noHistory:        { en: 'No orders yet', es: 'A&uacute;n no hay pedidos' },
+      noHistorySub:     { en: 'Past orders will appear here.', es: 'Los pedidos aparecer&aacute;n aqu&iacute;.' },
+      loading:          { en: 'Loading…', es: 'Cargando…' },
+      retry:            { en: 'Retry', es: 'Reintentar' },
+      cantLoad:         { en: "Couldn't load", es: 'No se pudo cargar' },
+      cantLoadSub:      { en: 'Check your connection and try again.', es: 'Revisa tu conexi&oacute;n y reintenta.' },
+      reviewed:         { en: 'Reviewed', es: 'Revisado' },
+      notStarted:       { en: 'Not started', es: 'No iniciado' },
+      submitted:        { en: 'Submitted', es: 'Enviado' },
+      inProgress:       { en: 'In progress', es: 'En progreso' },
+      itemsToOrder:     { en: 'to order', es: 'por pedir' },
+      entered:          { en: 'entered', es: 'ingresados' },
+      items:            { en: 'items', es: 'art&iacute;culos' },
+      cutoff:           { en: 'cutoff', es: 'corte' },
+      orderByLabel:     { en: 'Order by', es: 'Ordenar antes de' },
+      cutoffApproaching:{ en: 'cutoff approaching', es: 'corte pr&oacute;ximo' },
+      cutoffMissed:     { en: 'cutoff missed', es: 'corte vencido' },
+      pickup:           { en: 'pick up', es: 'recoger' },
+      vendorsToday:     { en: 'Vendors today', es: 'Proveedores hoy' },
+      today:            { en: 'Today', es: 'Hoy' },
+      orderHistory:     { en: 'Order history', es: 'Historial' },
+      itemsOrdered:     { en: 'Items ordered', es: 'Art&iacute;culos pedidos' },
+      reference:        { en: 'Reference', es: 'Referencia' },
+      onHand:           { en: 'on hand', es: 'stock' },
+      counted:          { en: 'counted', es: 'contados' },
+      walkPickPath:     { en: 'Walk the pick path', es: 'Recorre la ruta' },
+      reviewOrder:      { en: 'Review order', es: 'Revisar pedido' },
+      saveContinue:     { en: 'Save and continue later', es: 'Guardar y continuar despu&eacute;s' },
+      saving:           { en: 'Saving…', es: 'Guardando…' },
+      saveError:        { en: "Couldn't save. Try again.", es: 'No se pudo guardar. Intenta de nuevo.' },
+      backToCount:      { en: 'Back to count', es: 'Volver a contar' },
+      markReviewed:     { en: 'Mark as reviewed', es: 'Marcar como revisado' },
+      itemsReviewed:    { en: 'items reviewed', es: 'art&iacute;culos revisados' },
+      lockedMsg:        { en: 'Reviewed. Edit to make changes.', es: 'Revisado. Edita para cambiar.' },
+      edit:             { en: 'Edit', es: 'Editar' },
+      vendorReviewed:   { en: 'Vendor reviewed', es: 'Proveedor revisado' },
+      done:             { en: 'Done', es: 'Listo' },
+      cancel:           { en: 'Cancel', es: 'Cancelar' },
+      confirmReview:    { en: 'Mark as reviewed?', es: '¿Marcar como revisado?' },
+      confirmReviewMsg: {
+        en: 'This locks counts for this vendor. You can still come back and edit if you need to.',
+        es: 'Esto bloquea los conteos. Puedes volver y editar si lo necesitas.'
+      },
+      confirmEdit:      { en: 'Edit reviewed vendor?', es: '¿Editar proveedor revisado?' },
+      confirmOpenReviewed: { en: 'Open reviewed vendor?', es: '¿Abrir proveedor revisado?' },
+      confirmOpenReviewedMsg: {
+        en: "This vendor is already marked as reviewed. You can still make changes — they'll save as you type.",
+        es: 'Este proveedor ya est&aacute; revisado. A&uacute;n puedes cambiarlo \u2014 se guarda autom&aacute;ticamente.'
+      },
+      openVendor:       { en: 'Open', es: 'Abrir' },
+      viewFullOrder:    { en: 'View full order list', es: 'Ver lista completa' },
+      fullOrderEmpty:   { en: 'Nothing to order yet', es: 'A&uacute;n no hay nada por pedir' },
+      fullOrderEmptySub:{
+        en: 'Start counting vendors and items will appear here as you go.',
+        es: 'Comienza a contar proveedores y los art&iacute;culos aparecer&aacute;n aqu&iacute;.'
+      },
+      confirmGoBack:    { en: 'Save your changes?', es: '¿Guardar cambios?' },
+      confirmGoBackMsg: {
+        en: "You've entered counts that haven't been saved. Save them before continuing?",
+        es: 'Tienes conteos sin guardar. ¿Guardarlos antes de continuar?'
+      },
+      saveAndGoBack:    { en: 'Save and continue', es: 'Guardar y continuar' },
+      discardChanges:   { en: "Don't save, continue", es: 'No guardar, continuar' },
+      // End-of-day panel
+      allDoneTitle:     { en: 'All vendors reviewed', es: 'Todos los proveedores revisados' },
+      allDoneSub:       { en: "You're set for the day. Email yourself a copy to place the orders.", es: 'Listo para hoy. Env\u00edate una copia para hacer los pedidos.' },
+      emailMyCopy:      { en: 'Email me the daily summary', es: 'Env\u00edame el resumen' },
+      emailing:         { en: 'Sending…', es: 'Enviando…' },
+      // Reset card on home
+      resetHomeTitle:   { en: 'Reset on hand', es: 'Reiniciar inventario' },
+      resetHomeSub: {
+        en: 'Logs all current counts and clears on hand for every vendor. Use only if you need to start over.',
+        es: 'Registra todo y borra el stock de todos los proveedores. Usar solo si necesitas reiniciar.'
+      },
+      resetHomeCta:     { en: 'Reset on hand', es: 'Reiniciar inventario' },
+      confirmReset:     { en: 'Reset on hand for everyone?', es: '¿Reiniciar inventario para todos?' },
+      confirmResetMsg: {
+        en: "This logs every vendor's current counts to history and clears on hand across the whole sheet. This affects everyone, not just one vendor.",
+        es: 'Esto registra todos los conteos actuales y borra el inventario de todo el sistema. Afecta a todos los proveedores, no solo a uno.'
+      },
+      yesReset:         { en: 'Yes, reset everything', es: 'S\u00ed, reiniciar todo' },
+      confirmEditMsg: {
+        en: "You'll be able to change counts. Mark as reviewed again when you're done.",
+        es: 'Podr&aacute;s cambiar los conteos. Marca como revisado al terminar.'
+      },
+      confirmEmpty:     { en: 'Send empty order?', es: '¿Pedido vac&iacute;o?' },
+      confirmEmptyMsg: {
+        en: 'No items have a quantity to order. Mark as reviewed anyway?',
+        es: 'No hay art&iacute;culos por pedir. ¿Marcar como revisado?'
+      },
+      pinError:         { en: 'Wrong PIN. Try again.', es: 'PIN incorrecto. Intenta de nuevo.' },
+      pinNetworkError:  { en: "Couldn't reach the server. Check your connection.", es: 'Sin conexi&oacute;n. Revisa tu internet.' },
+      pinConfigError:   { en: 'App not configured. Contact your GM.', es: 'App no configurada. Contacta tu gerente.' },
+      reviewedToast:    { en: 'Vendor reviewed', es: 'Proveedor revisado' },
+      summarySent:      { en: 'Daily summary emailed', es: 'Resumen enviado' },
+      summaryEmpty:     { en: 'Nothing to send yet', es: 'No hay nada que enviar' },
+      dailySummary:     { en: 'Daily summary', es: 'Resumen diario' },
+      dailySummaryHelp: { en: 'Email yourself a copy of all suggested orders', es: 'Recibe por correo todos los pedidos sugeridos' },
+      sendingSummary:   { en: 'Sending…', es: 'Enviando…' },
+      enterEmail:       { en: 'Your email', es: 'Tu correo' },
+      enterEmailMsg: {
+        en: "We'll send the daily summary here. We'll remember it on this device.",
+        es: 'Enviaremos el resumen aqu&iacute;. Lo guardaremos en este dispositivo.'
+      },
+      enterEmailPlaceholder: { en: 'name@example.com', es: 'tu@correo.com' },
+      send:             { en: 'Send', es: 'Enviar' },
+      english:          { en: 'English', es: 'Espa&ntilde;ol' },
+      language:         { en: 'Language', es: 'Idioma' },
+      version:          { en: 'Version', es: 'Versi&oacute;n' },
+      signOut:          { en: 'Sign out', es: 'Cerrar sesi&oacute;n' },
+      yourEmail:        { en: 'Your email', es: 'Tu correo' },
+      notSet:           { en: 'Not set', es: 'No configurado' },
+      offlineBanner:    { en: 'Offline — using last loaded data', es: 'Sin conexión — usando los últimos datos cargados' },
+      offlineBannerStale: { en: ' unsynced changes from earlier', es: ' cambios sin sincronizar de antes' },
+      offlineRetry:     { en: 'Offline. Try again when connected.', es: 'Sin conexión. Intenta cuando vuelva.' },
+      savedOffline:     { en: 'Saved offline — will sync when back online', es: 'Guardado sin conexión — se sincronizará al volver' },
+      syncing:          { en: 'Syncing offline changes…', es: 'Sincronizando cambios…' },
+      synced:           { en: 'Offline changes synced', es: 'Cambios sincronizados' }
+    }
+  };
+  const t = (key) => (T.msg[key] && T.msg[key][state.lang]) || key;
+
+  // ============================================================
+  // DOM helpers
+  // ============================================================
+  const $ = (id) => document.getElementById(id);
+  const escapeHtml = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  function setLang(lang) {
+    state.lang = lang;
+    localStorage.setItem('mog_lang', lang);
+    document.getElementById('app').classList.toggle('en', lang === 'en');
+    document.getElementById('app').classList.toggle('es', lang === 'es');
+  }
+
+  function showToast(msg, kind) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.className = 'toast' + (kind ? ' ' + kind : '');
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => el.classList.remove('show'), 2400);
+  }
+
+  // Block the entire app behind a centered loading bar. Use sparingly —
+  // only for destructive ops where the user needs to know "something is
+  // happening, don't tap again." Always pair with a try/finally so a
+  // failure doesn't leave the overlay stuck.
+  function showBusy(label) {
+    $('busy-label').textContent = label || t('loading');
+    $('busy-overlay').classList.add('open');
+  }
+  function hideBusy() {
+    $('busy-overlay').classList.remove('open');
+  }
+
+  // ============================================================
+  // CONFIRM MODAL
+  // ============================================================
+  function showConfirm(opts) {
+    return new Promise((resolve) => {
+      $('modal-icon').className = 'modal-icon ' + (opts.kind || 'success');
+      $('modal-icon').innerHTML = '<i class="ti ti-' + (opts.icon || 'check') + '" aria-hidden="true"></i>';
+      $('modal-title').textContent = opts.title || '';
+      $('modal-msg').textContent   = opts.msg || '';
+
+      // Rebuild the actions container to support an optional tertiary
+      // (destructive) button between confirm and cancel. Layout: confirm
+      // (primary) on top, tertiary (red) middle if present, cancel below.
+      const actionsEl = document.querySelector('.modal-actions');
+      const hasTertiary = !!opts.tertiaryLabel;
+      let html =
+        '<button class="modal-cta" id="modal-confirm">' + escapeHtml(opts.confirmLabel || t('done')) + '</button>';
+      if (hasTertiary) {
+        html += '<button class="modal-tertiary" id="modal-tertiary">' + escapeHtml(opts.tertiaryLabel) + '</button>';
+      }
+      html +=
+        '<button class="modal-cancel" id="modal-cancel">' + escapeHtml(opts.cancelLabel || t('cancel')) + '</button>';
+      actionsEl.innerHTML = html;
+
+      $('modal-backdrop').classList.add('open');
+      $('modal').style.display = 'block';
+
+      const cleanup = (val) => {
+        $('modal').style.display = 'none';
+        $('modal-backdrop').classList.remove('open');
+        $('modal-backdrop').onclick = null;
+        // Restore default action buttons for the next caller (other modals
+        // mutate this container too, e.g. the email prompt).
+        actionsEl.innerHTML =
+          '<button class="modal-cta" id="modal-confirm"></button>' +
+          '<button class="modal-cancel" id="modal-cancel"></button>';
+        resolve(val);
+      };
+
+      // For backward compatibility: when there's no tertiary, resolve to
+      // boolean (true/false). When tertiary is present, resolve to string
+      // ('confirm'|'tertiary'|'cancel') so callers can distinguish.
+      $('modal-confirm').onclick   = () => cleanup(hasTertiary ? 'confirm' : true);
+      $('modal-cancel').onclick    = () => cleanup(hasTertiary ? 'cancel'  : false);
+      if (hasTertiary) $('modal-tertiary').onclick = () => cleanup('tertiary');
+      $('modal-backdrop').onclick  = () => cleanup(hasTertiary ? 'cancel'  : false);
+    });
+  }
+
+  // Email prompt modal — stripped-down version that takes an input
+  function showEmailPrompt() {
+    return new Promise((resolve) => {
+      $('modal-icon').className = 'modal-icon success';
+      $('modal-icon').innerHTML = '<i class="ti ti-mail" aria-hidden="true"></i>';
+      $('modal-title').textContent = t('enterEmail');
+      $('modal-msg').textContent = t('enterEmailMsg');
+
+      // Replace actions with input + send/cancel
+      const actionsEl = document.querySelector('.modal-actions');
+      const placeholder = t('enterEmailPlaceholder');
+      actionsEl.innerHTML =
+        '<input type="email" id="email-input" autocomplete="email" inputmode="email" ' +
+        'placeholder="' + escapeHtml(placeholder) + '" ' +
+        'style="width:100%;padding:12px;border:0.5px solid var(--border-2);border-radius:var(--r-md);' +
+        'font-size:15px;margin-bottom:8px;outline:none">' +
+        '<button class="modal-cta" id="modal-send">' + escapeHtml(t('send')) + '</button>' +
+        '<button class="modal-cancel" id="modal-cancel-2">' + escapeHtml(t('cancel')) + '</button>';
+
+      const input = $('email-input');
+      input.value = state.userEmail || '';
+      $('modal-backdrop').classList.add('open');
+      $('modal').style.display = 'block';
+      setTimeout(() => input.focus(), 80);
+
+      const cleanup = (val) => {
+        $('modal').style.display = 'none';
+        $('modal-backdrop').classList.remove('open');
+        // Restore default action buttons for next confirm modal
+        actionsEl.innerHTML =
+          '<button class="modal-cta" id="modal-confirm"></button>' +
+          '<button class="modal-cancel" id="modal-cancel"></button>';
+        resolve(val);
+      };
+
+      const submit = () => {
+        const v = (input.value || '').trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+          input.style.borderColor = 'var(--red)';
+          input.style.background = 'var(--red-light)';
+          return;
+        }
+        cleanup(v);
+      };
+      $('modal-send').onclick = submit;
+      $('modal-cancel-2').onclick = () => cleanup(null);
+      $('modal-backdrop').onclick = () => cleanup(null);
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter') submit();
+        else { input.style.borderColor = ''; input.style.background = ''; }
+      };
+    });
+  }
+
+  // ============================================================
+  // MANAGER-MODE BANNER
+  // ============================================================
+  //
+  // Shown when state.isManagerMode is true (set by tryPin based on the
+  // server's authType response). Displays the current store name and an
+  // Exit button that wipes the manager-mode session and bounces back to
+  // the hub.
+  function refreshManagerBanner_() {
+    const banner = document.getElementById('manager-banner');
+    if (!banner) return;
+    if (state.isManagerMode) {
+      const nameEn = document.getElementById('manager-store-en');
+      const nameEs = document.getElementById('manager-store-es');
+      if (nameEn) nameEn.textContent = state.location || '';
+      if (nameEs) nameEs.textContent = state.location || '';
+      banner.classList.add('show');
+    } else {
+      banner.classList.remove('show');
+    }
+  }
+
+  function exitManagerMode() {
+    try {
+      sessionStorage.removeItem('mog_master_pin');
+      sessionStorage.removeItem('mog_master_active');
+    } catch (e) { /* non-fatal */ }
+    state.isManagerMode = false;
+    // Send the manager back to the hub. Returning to the per-store PIN
+    // gate would be wrong — they don't necessarily know this store's
+    // PIN; the master PIN was their access.
+    window.location.href = '../';
+  }
+
+  // ============================================================
+  // API client
+  // ============================================================
+  async function api(action, payload) {
+    if (!state.apiUrl || state.apiUrl.indexOf('PASTE_YOUR') === 0) {
+      throw new Error('CONFIG_MISSING');
+    }
+    try {
+      const resp = await fetch(state.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ pin: state.pin, action: action, payload: payload || {} }),
+        redirect: 'follow'
+      });
+      const text = await resp.text();
+      let json;
+      try { json = JSON.parse(text); }
+      catch (e) { throw new Error('BAD_JSON: ' + text.substring(0, 200)); }
+      if (!json.ok) throw new Error(json.error || 'Unknown error');
+      // Any successful response means we're online — flip the banner
+      // off if it was on (e.g. after navigator.onLine lied to us) and
+      // opportunistically drain any queued saves.
+      if (offlineState) setOnline_();
+      else if (readSaveQueue_().length) drainSaveQueue_();
+      return json.data;
+    } catch (err) {
+      // Treat network-class errors as a signal to flip the banner on.
+      // Server errors (BAD_JSON, application errors) are NOT offline
+      // signals — those mean we reached the server, it just answered
+      // unhappily.
+      if (isNetworkError_(err)) setOffline_();
+      throw err;
+    }
+  }
+
+  // ============================================================
+  // PIN GATE / STALE / SIGNOUT
+  // ============================================================
+  async function tryPin(pin) {
+    state.pin = pin;
+    const data = await api('ping');
+    state.location = data.location || '';
+    state.locAbbr  = data.abbr     || '';
+    // Server tells us whether this auth was via master PIN. Trust the
+    // server's classification — the client's sessionStorage flag is
+    // only a hint.
+    state.isManagerMode = !!data.isManagerMode;
+    // Only persist the PIN to localStorage in normal (store-PIN) mode.
+    // Master-mode credentials live in sessionStorage and die on tab
+    // close; we never want them written to localStorage where they'd
+    // survive past the manager's session.
+    if (!state.isManagerMode) {
+      localStorage.setItem('mog_pin', pin);
+      localStorage.setItem('mog_location', state.location);
+      localStorage.setItem('mog_loc_abbr', state.locAbbr);
+    }
+    refreshManagerBanner_();
+    return data;
+  }
+
+  function showPinScreen() {
+    $('screen-pin').style.display = 'flex';
+    $('screen-stale').style.display = 'none';
+    $('screen-main').style.display = 'none';
+    $('pin-input').value = '';
+    $('pin-error').textContent = '';
+    setTimeout(() => $('pin-input').focus(), 100);
+  }
+
+  function showMainApp() {
+    $('screen-pin').style.display = 'none';
+    $('screen-stale').style.display = 'none';
+    $('screen-main').style.display = 'flex';
+    // Return the promise so callers (e.g. the PIN transition animation)
+    // can await the initial dashboard fetch and keep their overlay up
+    // until the home screen is fully populated.
+    return switchTab('today');
+  }
+
+  function showStaleScreen(status) {
+    $('screen-pin').style.display = 'none';
+    $('screen-main').style.display = 'none';
+    $('screen-stale').style.display = 'flex';
+    $('stale-lastreset').textContent = status.lastReset
+      ? formatDateForStale(status.lastReset)
+      : (state.lang === 'en' ? 'Never' : 'Nunca');
+    $('stale-today').textContent = formatDateForStale(status.today);
+    $('stale-error').textContent = '';
+    $('stale-reset-btn').disabled = false;
+    $('stale-reset-btn').querySelector('span.lang-en').textContent = 'Reset On Hand';
+    $('stale-reset-btn').querySelector('span.lang-es').textContent = 'Reiniciar Inventario';
+  }
+
+  function formatDateForStale(yyyymmdd) {
+    if (!yyyymmdd) return '—';
+    const parts = yyyymmdd.split('-');
+    if (parts.length !== 3) return yyyymmdd;
+    const monthsEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthsEs = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const months = state.lang === 'en' ? monthsEn : monthsEs;
+    return months[+parts[1] - 1] + ' ' + (+parts[2]) + ', ' + parts[0];
+  }
+
+  async function proceedAfterAuth() {
+    try {
+      const status = await api('getResetStatus');
+      if (status.isStale) showStaleScreen(status);
+      else await showMainApp();
+    } catch (err) {
+      console.error('proceedAfterAuth error:', err);
+      await showMainApp();
+    }
+  }
+
+  async function handleStaleReset() {
+    const btn   = $('stale-reset-btn');
+    const errEl = $('stale-error');
+    btn.disabled = true;
+    errEl.textContent = '';
+    btn.querySelector('span.lang-en').textContent = 'Resetting…';
+    btn.querySelector('span.lang-es').textContent = 'Reiniciando…';
+    showBusy(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
+    try {
+      await api('commitReset');
+      state.cache.dashboard = null;
+      state.cache.history = null;
+      state.cache.recap = null;
+      state.cache.vendorItems = {};
+      clearAllPerCycleLocalState_();
+      clearAllOfflineState_();
+      hideBusy();
+      showMainApp();
+    } catch (err) {
+      console.error('reset error:', err);
+      hideBusy();
+      btn.disabled = false;
+      btn.querySelector('span.lang-en').textContent = 'Reset On Hand';
+      btn.querySelector('span.lang-es').textContent = 'Reiniciar Inventario';
+      const m = String(err.message || '');
+      errEl.textContent = (m.indexOf('Failed to fetch') >= 0)
+        ? (state.lang === 'en' ? "Couldn't reach the server. Try again." : 'Sin conexión. Intenta de nuevo.')
+        : (m || (state.lang === 'en' ? 'Reset failed.' : 'Error al reiniciar.'));
+    }
+  }
+
+  // Wipes every piece of localStorage tied to the current ordering cycle.
+  // Called whenever a reset is committed from any path (stale gate, home
+  // dashboard button, etc.) so reviewed flags / drafts / recap markers
+  // don't carry over and confuse the next cycle.
+  //
+  // Scoped to the current deployment's namespace — a reset at one
+  // store does NOT wipe other stores' per-cycle state on the same
+  // browser.
+  function clearAllPerCycleLocalState_() {
+    const prefixes = [
+      nsKey_('reviewed_'),
+      nsKey_('draft_'),
+      nsKey_('recap_sent_')
+    ];
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      for (const p of prefixes) {
+        if (k.indexOf(p) === 0) { localStorage.removeItem(k); break; }
+      }
+    }
+  }
+
+  async function handlePinSubmit() {
+    const pin = $('pin-input').value.trim();
+    const errEl = $('pin-error');
+    const btn = $('pin-submit');
+    if (!pin) return;
+    btn.disabled = true;
+    errEl.textContent = '';
+    $('pin-input').classList.remove('error');
+
+    // Step 1: authenticate first (no overlay yet). We don't know the store
+    // name until the ping comes back, and a wrong PIN shouldn't flash a
+    // loading animation at the user.
+    try {
+      await tryPin(pin);
+    } catch (err) {
+      btn.disabled = false;
+      $('pin-input').classList.add('error');
+      const m = String(err.message || '');
+      if (m === 'CONFIG_MISSING') errEl.textContent = t('pinConfigError');
+      else if (m === 'Invalid PIN') errEl.textContent = t('pinError');
+      else if (m.indexOf('Failed to fetch') >= 0) errEl.textContent = t('pinNetworkError');
+      else errEl.textContent = m;
+      return;
+    }
+
+    // Step 2: auth succeeded — play the transition animation with the
+    // store name as the label while the rest of the boot flow runs
+    // (reset-status check + initial dashboard fetch). The bar fills at a
+    // calm pace and snaps to 100% when the dashboard is ready, so the
+    // user knows exactly which location they're loading into.
+    const storeName = state.location || '';
+    const strong = '<span class="transition-label-strong">' +
+                   escapeHtml(storeName) + '</span>';
+    const label = state.lang === 'en'
+      ? ('Loading ' + strong + ' order guide')
+      : ('Cargando gu&iacute;a de ' + strong);
+    await playTransitionAnimation(proceedAfterAuth(), label);
+  }
+
+  function signOut() {
+    state.pin = '';
+    state.location = '';
+    state.locAbbr = '';
+    localStorage.removeItem('mog_pin');
+    localStorage.removeItem('mog_location');
+    localStorage.removeItem('mog_loc_abbr');
+    state.cache.dashboard = null;
+    state.cache.history = null;
+    state.cache.recap = null;
+    state.cache.vendorItems = {};
+    // Drop offline caches + save queue under the current namespace.
+    // Drafts and reviewed flags are handled by their own GC paths.
+    clearAllOfflineState_();
+    stopCutoffTick_();
+    showPinScreen();
+  }
+
+  // ============================================================
+  // SHARED RENDER HELPERS
+  // ============================================================
+  function dayName(dayCode) {
+    const map = {
+      en: { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' },
+      es: { Mon: 'Lunes', Tue: 'Martes', Wed: 'Mi&eacute;rcoles', Thu: 'Jueves', Fri: 'Viernes', Sat: 'S&aacute;bado', Sun: 'Domingo' }
+    };
+    return map[state.lang][dayCode] || dayCode;
+  }
+  function formatDateLong(dateStr, dayCode) {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    const monthsEn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const monthsEs = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    const month = state.lang === 'en' ? monthsEn[+parts[1] - 1] : monthsEs[+parts[1] - 1];
+    const day = +parts[2];
+    if (state.lang === 'en') return dayName(dayCode) + ', ' + month + ' ' + day;
+    return dayName(dayCode) + ', ' + day + ' de ' + month;
+  }
+  function fmt12h(hhmm) {
+    if (!hhmm) return '';
+    const [h, m] = hhmm.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const hr12 = h % 12 || 12;
+    return hr12 + ':' + String(m).padStart(2, '0') + ' ' + ampm;
+  }
+  function fmtTimestamp12h(ts) {
+    if (!ts) return '';
+    const m = ts.match(/(\d{2}):(\d{2})/);
+    if (!m) return ts;
+    return fmt12h(m[1] + ':' + m[2]);
+  }
+
+  // Computes urgency state for a vendor's cutoff time relative to "now".
+  //
+  // Returns one of:
+  //   'none'        — no cutoff time set, or vendor has plenty of time
+  //   'approaching' — within APPROACH_MINUTES of cutoff
+  //   'missed'      — cutoff has passed
+  //
+  // Comparison is wall-clock: we anchor cutoff to today's date in the
+  // device's local timezone. This is correct as long as the phone clock
+  // is in the same timezone as the kitchen (which it always is in
+  // practice — if a KM's phone is set to the wrong timezone, the date
+  // header at the top of the dashboard would also be wrong and they'd
+  // notice). Works fully offline since it only reads device time.
+  //
+  // We also accept the dashboard's `data.date` so a stale cache from
+  // yesterday doesn't paint cutoffs as "missed" — if the dashboard
+  // date isn't today, urgency returns 'none' (we have no basis for
+  // comparison without trusting the device clock to also know what
+  // "today" the data is from).
+  function getCutoffUrgency(cutoffTime, dashboardDateStr) {
+    if (!cutoffTime) return 'none';
+    const APPROACH_MINUTES = 90;  // 1.5 hours — early enough to act
+    const now   = new Date();
+    const today = now.toISOString().slice(0, 10);
+    // If the dashboard is showing a different date than the device's
+    // today, don't attempt urgency math — we'd be comparing apples to
+    // oranges. (Happens if the cache is stale across a day rollover.)
+    if (dashboardDateStr && dashboardDateStr !== today) return 'none';
+
+    const parts = String(cutoffTime).split(':');
+    if (parts.length !== 2) return 'none';
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return 'none';
+
+    const cutoffDate = new Date(now);
+    cutoffDate.setHours(h, m, 0, 0);
+
+    const diffMs = cutoffDate.getTime() - now.getTime();
+    const diffMin = diffMs / 60000;
+    if (diffMin < 0) return 'missed';
+    if (diffMin <= APPROACH_MINUTES) return 'approaching';
+    return 'none';
+  }
+  function shortDate(dateStr) {
+    const parts = dateStr.split('-');
+    const monthsEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthsEs = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const day = +parts[2];
+    const d = new Date(dateStr + 'T00:00:00');
+    if (state.lang === 'en') {
+      const dayCodes = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      return dayCodes[d.getDay()] + ' ' + monthsEn[+parts[1] - 1] + ' ' + day;
+    }
+    const dayCodesEs = ['dom','lun','mar','mi&eacute;','jue','vie','s&aacute;b'];
+    return dayCodesEs[d.getDay()] + ' ' + day + ' ' + monthsEs[+parts[1] - 1];
+  }
+  function formatHistoryDate(dateStr) {
+    if (!dateStr) return '';
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const yesterday = new Date(today.getTime() - 86400000);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    if (dateStr === todayStr)     return t('today') + ' &middot; ' + shortDate(dateStr);
+    if (dateStr === yesterdayStr) return (state.lang === 'en' ? 'Yesterday' : 'Ayer') + ' &middot; ' + shortDate(dateStr);
+    return shortDate(dateStr);
+  }
+
+  function renderLoading(el) {
+    // Indeterminate loading bar — same visual family as renderLoadingBar
+    // and the transition overlay. We previously used a rotating spinner
+    // here but moved everything to bars for consistency: bars read more
+    // clearly as "progress" and feel less ambiguous than a spinning
+    // circle (which can look like the page hung).
+    el.innerHTML =
+      '<div class="loading-bar-state">' +
+        '<div class="loading-bar-label">' + escapeHtml(t('loading')) + '</div>' +
+        '<div class="bar md"><div class="bar-fill-indeterminate"></div></div>' +
+      '</div>';
+  }
+
+  // Bar-style loader for vendor count screen — visually consistent with
+  // the mark-as-reviewed success bar. An indeterminate gray bar fills and
+  // resets in a loop while the data is fetched. Label sits above the bar
+  // (typically the vendor name).
+  function renderLoadingBar(el, label) {
+    el.innerHTML =
+      '<div class="loading-bar-state">' +
+        '<div class="loading-bar-label">' +
+          (state.lang === 'en' ? 'Loading ' : 'Cargando ') +
+          '<span class="loading-bar-label-strong">' + escapeHtml(label || '') + '</span>' +
+        '</div>' +
+        '<div class="bar md"><div class="bar-fill-indeterminate"></div></div>' +
+      '</div>';
+  }
+  function renderError(el, retryFn) {
+    el.innerHTML =
+      '<div class="error-state">' +
+        '<div class="error-icon"><i class="ti ti-cloud-off" aria-hidden="true"></i></div>' +
+        '<p class="error-title">' + escapeHtml(t('cantLoad')) + '</p>' +
+        '<p class="error-sub">' + escapeHtml(t('cantLoadSub')) + '</p>' +
+        '<button class="cta-secondary" id="retry-btn" style="max-width:200px;display:inline-block;width:auto">' +
+          '<i class="ti ti-refresh" aria-hidden="true" style="vertical-align:middle"></i> ' +
+          escapeHtml(t('retry')) +
+        '</button>' +
+      '</div>';
+    $('retry-btn').addEventListener('click', retryFn);
+  }
+
+  // ============================================================
+  // TODAY
+  // ============================================================
+  function effectiveStatus(v, dateStr) {
+    // API returns 'sent' | 'in_progress' | 'not_started'.
+    //
+    // 'reviewed' is a PWA-only state, stored in localStorage when the user
+    // taps "Mark as reviewed" inside a vendor. It must NOT be conflated
+    // with the API's 'sent' status — 'sent' means LOG_ORDERS already has
+    // a row for today's date for this vendor, which happens after reset.
+    //
+    // Why the distinction matters: if a user resets twice in one day
+    // (or normally, after tomorrow's reset stamps yesterday's order), the
+    // API correctly reports those vendors as 'sent'. We treat that as a
+    // distinct fourth state so it doesn't appear as if the user reviewed
+    // them in-session.
+    //
+    // Priority:
+    //   1. localStorage reviewed flag (user clicked Mark as reviewed)
+    //   2. API status as-is
+    const reviewed = getReviewedSet(dateStr);
+    if (reviewed[v.name]) return 'reviewed';
+    return v.status; // 'sent' | 'in_progress' | 'not_started'
+  }
+
+  function renderToday(data) {
+    const view = $('view-today');
+    if (!data || !data.vendors || !data.vendors.length) {
+      view.innerHTML =
+        '<p class="hero-day">' + escapeHtml(formatDateLong(data ? data.date : '', data ? data.dayOfWeek : '')) + '</p>' +
+        '<p class="hero-loc"><i class="ti ti-map-pin" aria-hidden="true"></i>' + escapeHtml(data ? data.location : state.location) + '</p>' +
+        '<div class="empty-state">' +
+          '<div class="empty-icon"><i class="ti ti-coffee" aria-hidden="true"></i></div>' +
+          '<p class="empty-title">' + escapeHtml(t('noVendors')) + '</p>' +
+          '<p class="empty-sub">' + escapeHtml(t('noVendorsSub')) + '</p>' +
+        '</div>';
+      return;
+    }
+
+    let html = '';
+
+    // Hero row: day + location on the left, small reset affordance on the
+    // right. The reset is small, red, and intentionally less prominent
+    // than the vendor cards — it's a "fix-it" button, not a default flow.
+    // Hidden initially and revealed via a long-press gesture / tap? No:
+    // it stays visible but visually quiet. The strong confirm modal does
+    // the heavy lifting on safety.
+    html += '<div class="hero-row">' +
+      '<div class="hero-row-text">' +
+        '<p class="hero-day">' + escapeHtml(formatDateLong(data.date, data.dayOfWeek)) + '</p>' +
+        '<p class="hero-loc"><i class="ti ti-map-pin" aria-hidden="true"></i>' + escapeHtml(data.location) + '</p>' +
+      '</div>' +
+      '<button class="hero-reset" id="home-reset-btn" aria-label="' + escapeHtml(t('resetHomeTitle')) + '">' +
+        '<i class="ti ti-refresh" aria-hidden="true"></i>' +
+        '<span class="hero-reset-label">' + escapeHtml(t('resetHomeCta')) + '</span>' +
+      '</button>' +
+    '</div>';
+
+    // Determine cycle-level state
+    const allReviewed = data.vendors.length > 0 && data.vendors.every(v => {
+      const s = effectiveStatus(v, data.date);
+      return s === 'reviewed' || s === 'sent';
+    });
+    const anyReviewed = data.vendors.some(v => {
+      const s = effectiveStatus(v, data.date);
+      return s === 'reviewed' || s === 'sent';
+    });
+    const recapSent = !!localStorage.getItem(nsKey_('recap_sent_' + data.date));
+
+    // Celebratory all-done panel — only when every vendor is done.
+    if (allReviewed) {
+      html += '<div class="alldone-panel">' +
+        '<div class="alldone-icon"><i class="ti ti-check" aria-hidden="true"></i></div>' +
+        '<p class="alldone-title">' + escapeHtml(t('allDoneTitle')) + '</p>' +
+        '<p class="alldone-sub">' + escapeHtml(t('allDoneSub')) + '</p>' +
+        (recapSent
+          ? '<button class="alldone-btn" id="alldone-resend-btn">' +
+              '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
+              '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
+            '</button>' +
+            '<div class="alldone-sent">' +
+              '<i class="ti ti-circle-check" aria-hidden="true"></i>' +
+              '<span class="lang-en">Already sent today</span>' +
+              '<span class="lang-es">Ya enviado hoy</span>' +
+            '</div>'
+          : '<button class="alldone-btn" id="alldone-email-btn">' +
+              '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
+              '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
+            '</button>') +
+      '</div>';
+    }
+
+    // "View full order list" appears at the top whenever at least one
+    // vendor is reviewed. As more vendors get reviewed and sort to the
+    // bottom, this button stays put as a stable anchor — the master
+    // picture is always one tap away once the cycle is in motion.
+    if (anyReviewed) {
+      html += '<button class="cta-secondary view-full-top" id="view-full-btn">' +
+        '<i class="ti ti-list-details" aria-hidden="true"></i>' +
+        '<span>' + escapeHtml(t('viewFullOrder')) + '</span>' +
+      '</button>';
+    }
+
+    html += '<div class="section-label">' + escapeHtml(t('vendorsToday')) + ' &middot; ' + data.vendors.length + '</div>';
+
+    // Sort vendors: reviewed/sent move to bottom so what's pending is
+    // always at the top of the list.
+    //
+    // Priority: not_started (0) → in_progress (1) → reviewed/sent (2)
+    const sortedVendors = data.vendors.slice().sort((a, b) => {
+      const rank = (v) => {
+        const s = effectiveStatus(v, data.date);
+        if (s === 'reviewed' || s === 'sent') return 2;
+        if (s === 'in_progress') return 1;
+        return 0;
+      };
+      const ra = rank(a), rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      return 0; // stable — preserves API order within bucket
+    });
+
+    for (const v of sortedVendors) {
+      const status = effectiveStatus(v, data.date);
+      html += renderVendorCard(v, status, data.date);
+    }
+
+    view.innerHTML = html;
+
+    view.querySelectorAll('.vendor-card.tappable').forEach(card => {
+      card.addEventListener('click', async () => {
+        const vendor = card.getAttribute('data-vendor');
+        // If this vendor is already reviewed, confirm before opening — gives
+        // a soft safety net against re-opening one you thought was done.
+        // Reviewed remains purely visual; this is just a "you sure?" gate.
+        const reviewedSet = getReviewedSet(data.date);
+        if (reviewedSet[vendor]) {
+          const ok = await showConfirm({
+            kind: 'warn',
+            icon: 'edit',
+            title: t('confirmOpenReviewed'),
+            msg:   t('confirmOpenReviewedMsg'),
+            confirmLabel: t('openVendor'),
+            cancelLabel:  t('cancel')
+          });
+          if (!ok) return;
+        }
+        openCount(vendor);
+      });
+    });
+    if ($('alldone-email-btn'))  $('alldone-email-btn').addEventListener('click', onSendDailyRecap);
+    if ($('alldone-resend-btn')) $('alldone-resend-btn').addEventListener('click', onSendDailyRecap);
+    if ($('view-full-btn'))      $('view-full-btn').addEventListener('click', openRecap);
+    if ($('home-reset-btn'))     $('home-reset-btn').addEventListener('click', onHomeResetClick);
+  }
+
+  function renderVendorCard(v, status, dashboardDateStr) {
+    let statusClass = '', pillHtml = '', metaText = '';
+
+    // Cutoff urgency only paints for vendors that still need action.
+    // Once a vendor is reviewed or sent, the cutoff stops being a
+    // pressure signal — the order is handled — so we suppress the red
+    // border and "missed" badge. For reviewed vendors we still want
+    // the time displayed, but framed as informational ("order by
+    // 2:00 PM") rather than urgent.
+    const isActionable = (status === 'not_started' || status === 'in_progress');
+    const urgency = isActionable
+      ? getCutoffUrgency(v.cutoffTime, dashboardDateStr)
+      : 'none';
+
+    // Build the meta line. Three shapes depending on cutoff urgency:
+    //
+    //   1. Approaching / missed (actionable):
+    //        "23 items · ⚠ cutoff approaching 2:00 PM"
+    //        "23 items · ⚠ cutoff missed (was 2:00 PM)"
+    //      The badge styles draw the eye; the time is included so the
+    //      KM knows exactly how much runway they have or had.
+    //
+    //   2. Reviewed (cutoff still relevant but informational):
+    //        "23 items · Order by 2:00 PM"
+    //      No urgency badge — just a clear directive for the recap
+    //      email later in the day.
+    //
+    //   3. No cutoff or no urgency:
+    //        "23 items · cutoff 2:00 PM" or just "23 items"
+    //      The pre-existing format. Kept for vendors with cutoffs
+    //      that aren't yet approaching, and for vendors with no
+    //      cutoff at all (e.g. walk-in pickup).
+    let cutoffSegment = '';
+    if (v.cutoffTime) {
+      if (urgency === 'missed') {
+        cutoffSegment =
+          ' &middot; <span class="cutoff-badge-missed">' +
+            '<i class="ti ti-alert-triangle" aria-hidden="true"></i>' +
+            escapeHtml(t('cutoffMissed')) +
+            ' (' + escapeHtml(fmt12h(v.cutoffTime)) + ')' +
+          '</span>';
+      } else if (urgency === 'approaching') {
+        cutoffSegment =
+          ' &middot; <span class="cutoff-badge-warn">' +
+            '<i class="ti ti-clock" aria-hidden="true"></i>' +
+            escapeHtml(t('cutoffApproaching')) +
+            ' ' + escapeHtml(fmt12h(v.cutoffTime)) +
+          '</span>';
+      } else if (status === 'reviewed' || status === 'sent') {
+        cutoffSegment =
+          ' &middot; ' + escapeHtml(t('orderByLabel')) +
+          ' ' + escapeHtml(fmt12h(v.cutoffTime));
+      } else {
+        cutoffSegment =
+          ' &middot; ' + escapeHtml(t('cutoff')) +
+          ' ' + escapeHtml(fmt12h(v.cutoffTime));
+      }
+    }
+    metaText = v.itemCount + ' ' + t('items') + cutoffSegment;
+
+    if (status === 'sent') {
+      // Vendor already has a LOG_ORDERS row stamped with the current cycle
+      // date. Happens when reset has already logged this vendor's order
+      // for the cycle (normal: yesterday's reset commits yesterday's data
+      // with yesterday's date, so today's dashboard rarely sees this).
+      // Rendered as a distinct grey "Submitted" state — neither red nor
+      // green — to signal it isn't a fresh count.
+      statusClass = ' status-sent';
+      pillHtml = '<span class="pill pill-sent"><i class="ti ti-archive" aria-hidden="true"></i>' + escapeHtml(t('submitted')) + '</span>';
+    } else if (status === 'reviewed') {
+      statusClass = ' status-reviewed';
+      pillHtml = '<span class="pill pill-done"><i class="ti ti-check" aria-hidden="true"></i>' + escapeHtml(t('reviewed')) + '</span>';
+    } else if (status === 'in_progress') {
+      statusClass = ' status-progress';
+      const entered = (v.enteredCount != null) ? v.enteredCount : null;
+      const total   = v.itemCount || 0;
+      const label   = (entered != null)
+        ? entered + ' / ' + total + ' ' + escapeHtml(t('entered'))
+        : escapeHtml(t('inProgress'));
+      pillHtml = '<span class="pill pill-progress">' + label + '</span>';
+    } else {
+      statusClass = ' status-todo';
+      pillHtml = '<span class="pill pill-todo">' + escapeHtml(t('notStarted')) + '</span>';
+    }
+
+    // Layer urgency class on top of the status class so the left-border
+    // accent appears without overriding the status tint. Only actionable
+    // vendors get the urgency class (see isActionable above).
+    let urgencyClass = '';
+    if (urgency === 'approaching') urgencyClass = ' cutoff-approaching';
+    else if (urgency === 'missed') urgencyClass = ' cutoff-missed';
+
+    return (
+      '<div class="vendor-card tappable' + statusClass + urgencyClass + '" data-vendor="' + escapeHtml(v.name) + '">' +
+        '<div class="vendor-row">' +
+          '<div>' +
+            '<div class="vendor-name">' + escapeHtml(v.name) + '</div>' +
+            '<div class="vendor-meta">' + metaText + '</div>' +
+          '</div>' +
+          pillHtml +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  async function loadToday() {
+    const view = $('view-today');
+    // Fast path: if we have a dashboard cache, render it immediately and
+    // skip the network round-trip. The cache is invalidated whenever the
+    // user takes an action that changes server state — saving counts
+    // (flushDirtyToServer), marking reviewed, resetting on hand, signing
+    // out — so a cache hit here means "nothing that could change the
+    // dashboard has happened since the last fetch." This makes
+    // Settings → Today and back-from-vendor (no edits) feel instant.
+    // The self-heal / GC pass below only needs to run on a fresh fetch;
+    // on a cache hit, those localStorage states are already reconciled
+    // from when the cache was first populated.
+    if (state.cache.dashboard) {
+      renderToday(state.cache.dashboard);
+      // Re-kick the prefetch in case the cache was filled by a prior
+      // session and the prefetch never ran (or the user refreshed
+      // mid-prefetch). Idempotent — vendors already in the cache are
+      // skipped by prefetchTodaysVendors_.
+      prefetchTodaysVendors_();
+      return;
+    }
+    renderLoading(view);
+    try {
+      const data = await api('getDashboard');
+      state.cache.dashboard = data;
+      writeOfflineCache_(OFFLINE_SLOTS.DASHBOARD, data);
+      // GC stale localStorage on first today-load of a new day
+      gcReviewedFlags(data.date);
+      gcDrafts(data.date);
+      // Self-heal reviewed flags against the API's status field.
+      //
+      // The API computes status independently each call by looking at the
+      // vendor tab's actual on-hand state. If status is 'not_started', the
+      // vendor has no entered counts — period. A reviewed flag in
+      // localStorage for that vendor is therefore stale (could be from a
+      // GM resetting via the sheet, or any reset path that bypassed our
+      // local cleanup).
+      //
+      // We trust status directly rather than enteredCount because status
+      // is the authoritative answer the API returns to "is this vendor
+      // started?" and matches the dashboard pill logic.
+      //
+      // Both 'not_started' AND 'sent' clear the localStorage flag:
+      //   - not_started: on-hand was wiped, vendor reverts to fresh
+      //   - sent: vendor was logged to LOG_ORDERS; the "reviewed in
+      //     localStorage" flag from this session is no longer the truth
+      const reviewed = getReviewedSet(data.date);
+      let mutated = false;
+      for (const v of data.vendors) {
+        if (reviewed[v.name] && (v.status === 'not_started' || v.status === 'sent')) {
+          delete reviewed[v.name];
+          mutated = true;
+        }
+      }
+      if (mutated) {
+        localStorage.setItem(reviewedKey(data.date), JSON.stringify(reviewed));
+      }
+      renderToday(data);
+      // Background prefetch — warms the vendor-items cache so the
+      // first vendor tap is instant (or near-instant). Fire-and-
+      // forget; failures are logged but don't affect the dashboard.
+      prefetchTodaysVendors_();
+    } catch (err) {
+      console.error('loadToday error:', err);
+      renderError(view, loadToday);
+    }
+  }
+
+  // ============================================================
+  // COUNT
+  // ============================================================
+
+  // Shared vendor-items fetcher. Three call sites use this: openCount
+  // (foreground, blocks the UI), the post-dashboard prefetch
+  // (background, runs while the user is looking at the dashboard), and
+  // the flush+refetch path. The function coordinates three caches to
+  // avoid redundant work:
+  //
+  //   1. state.cache.vendorItems[vendor] — completed fetches. A cache
+  //      hit means we already have a snapshot, return it immediately.
+  //   2. state.inflightVendorFetches[vendor] — currently-running
+  //      fetches. If the user taps a vendor that's mid-prefetch, we
+  //      await the same promise instead of firing a second request.
+  //   3. The network — only reached if neither cache nor in-flight
+  //      promise exists.
+  //
+  // `force: true` bypasses the cache (used when we know the server
+  // state changed and we explicitly want fresh data — currently only
+  // the flush+refetch path).
+  function fetchVendorItems_(vendor, opts) {
+    opts = opts || {};
+    if (!opts.force && state.cache.vendorItems[vendor]) {
+      return Promise.resolve(state.cache.vendorItems[vendor]);
+    }
+    if (!opts.force && state.inflightVendorFetches[vendor]) {
+      return state.inflightVendorFetches[vendor];
+    }
+    // Try localStorage before the network so a freshly-opened app
+    // (no in-memory cache yet) can paint vendor screens offline.
+    // Only used when not forcing a refresh.
+    if (!opts.force) {
+      const persisted = readVendorOfflineCache_(vendor);
+      if (persisted) {
+        state.cache.vendorItems[vendor] = persisted;
+        // Still kick a background refresh so the cache catches up
+        // with any server-side changes — but we don't await it. The
+        // returned promise resolves immediately with persisted data.
+        if (navigator.onLine !== false) {
+          api('getVendorItems', { vendor: vendor })
+            .then(fresh => {
+              state.cache.vendorItems[vendor] = fresh;
+              writeVendorOfflineCache_(vendor, fresh);
+            })
+            .catch(() => { /* offline or transient; ignore */ });
+        }
+        return Promise.resolve(persisted);
+      }
+    }
+    const p = api('getVendorItems', { vendor: vendor }).then(data => {
+      state.cache.vendorItems[vendor] = data;
+      writeVendorOfflineCache_(vendor, data);
+      delete state.inflightVendorFetches[vendor];
+      return data;
+    }).catch(err => {
+      delete state.inflightVendorFetches[vendor];
+      throw err;
+    });
+    state.inflightVendorFetches[vendor] = p;
+    return p;
+  }
+
+  // Background prefetch: warm the vendor-items cache for every vendor
+  // on today's dashboard, sequentially. Runs after the dashboard loads
+  // and finishes around the time the KM is deciding which vendor to
+  // tap. Sequential not parallel: Apps Script invocations are heavy
+  // server-side and we don't want to fire 5-8 at once and risk hitting
+  // concurrency limits.
+  //
+  // The prefetch only fills empty cache slots — if a vendor was
+  // already fetched (e.g. user tapped it before the prefetch reached
+  // it), we skip it. If the prefetch fails for one vendor, we log and
+  // continue to the next; the foreground openCount call will retry on
+  // demand.
+  async function prefetchTodaysVendors_() {
+    const data = state.cache.dashboard;
+    if (!data || !data.vendors || !data.vendors.length) return;
+    for (const v of data.vendors) {
+      // Skip vendors already 'sent' — the user can't open them anyway.
+      if (v.status === 'sent') continue;
+      if (state.cache.vendorItems[v.name]) continue;
+      try {
+        await fetchVendorItems_(v.name);
+      } catch (err) {
+        console.warn('[prefetch] failed for', v.name, err);
+        // Don't bail the whole prefetch on one failure
+      }
+    }
+  }
+
+  async function openCount(vendor) {
+    state.countContext = { vendor: vendor, items: [], dirty: {} };
+    showView('count');
+    renderLoadingBar($('view-count'), vendor);
+    try {
+      // Goes through the shared fetcher so we hit the prefetch cache
+      // when available. On a cache hit this resolves on the same tick
+      // — the loading bar barely flashes before the count screen
+      // renders, which is exactly what we want.
+      const data = await fetchVendorItems_(vendor);
+      state.countContext.items = data.items;
+      const dateStr = (state.cache.dashboard && state.cache.dashboard.date) || new Date().toISOString().slice(0,10);
+      state.countContext.dateStr = dateStr;
+
+      // Merge localStorage draft on top of server values (drafts win — that's
+      // the "unsaved" tier the user expects to see when they return)
+      const draft = loadDraft(dateStr, vendor);
+      for (const id of Object.keys(draft)) {
+        const item = state.countContext.items.find(i => i.id === id);
+        if (item) item.onHand = draft[id];
+      }
+      // Cache target pars from the API's onHand+suggestedQty pairing so
+      // computeSuggested can update suggestions live as the user types.
+      cacheTargetPars(state.countContext.items);
+      renderCount();
+    } catch (err) {
+      console.error('openCount error:', err);
+      renderError($('view-count'), () => openCount(vendor));
+    }
+  }
+
+  function computeSuggested(item) {
+    // Returns the suggested order qty for the current On Hand value.
+    // Always rounds UP so partial-unit shortfalls always trigger an order
+    // (matches the sheet's behavior — you can't order half a case).
+    //
+    // Priority order for target par:
+    //   1. item.targetPar from the API (par × day multiplier, read from
+    //      the vendor tab) — works for every item, even ones not yet counted
+    //   2. item._targetPar inferred from API onHand+suggestedQty (legacy
+    //      fallback, kept for safety if older API versions don't send targetPar)
+    //   3. item.suggestedQty (only correct on initial render before any edit)
+    if (item.onHand === null || item.onHand === '' || item.onHand === undefined) return null;
+    const oh = Number(item.onHand);
+    if (isNaN(oh)) return null;
+
+    if (item.targetPar != null) {
+      return Math.max(0, Math.ceil(Number(item.targetPar) - oh));
+    }
+    if (item._targetPar != null) {
+      return Math.max(0, Math.ceil(Number(item._targetPar) - oh));
+    }
+    if (item.suggestedQty != null) {
+      return Math.ceil(Number(item.suggestedQty));
+    }
+    return null;
+  }
+
+  function cacheTargetPars(items) {
+    // The API now sends targetPar directly so live updates work for every
+    // item. This helper remains as a fallback that infers target par from
+    // (onHand + suggestedQty) when targetPar is missing — useful if the
+    // PWA is talking to an older API deployment.
+    for (const it of items) {
+      if (it.targetPar != null) continue;
+      if (it.onHand != null && it.onHand !== '' && it.suggestedQty != null) {
+        const oh = Number(it.onHand);
+        const sq = Number(it.suggestedQty);
+        if (!isNaN(oh) && !isNaN(sq)) {
+          it._targetPar = oh + sq;
+        }
+      }
+    }
+  }
+
+  function renderCount() {
+    const ctx = state.countContext;
+    const view = $('view-count');
+    const items = ctx.items;
+
+    let toOrder = 0;
+    let counted = 0;
+    for (const it of items) {
+      if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) {
+        counted++;
+        const s = computeSuggested(it);
+        if (s != null && s > 0) toOrder++;
+      }
+    }
+
+    let html = '';
+    html += '<div class="count-progress">' +
+      '<span><span class="count-progress-strong">' + counted + ' ' +
+        (state.lang === 'en' ? 'of' : 'de') + ' ' + items.length + '</span> ' +
+        escapeHtml(t('counted')) + '</span>' +
+      '<span style="font-size:12px">' +
+        (toOrder > 0 ? toOrder + ' ' + escapeHtml(t('itemsToOrder')) : '&nbsp;') +
+      '</span>' +
+    '</div>';
+
+    // Sticky column header strip — stays pinned to the top of the scroll
+    // area so the user always knows which column is which on long lists.
+    html += '<div class="count-colheader">' +
+      '<span class="ch-item">' +
+        '<span class="lang-en">Item</span><span class="lang-es">Art&iacute;culo</span>' +
+      '</span>' +
+      '<span class="ch-onhand">' +
+        '<span class="lang-en">On hand</span><span class="lang-es">Stock</span>' +
+      '</span>' +
+      '<span class="ch-order">' +
+        '<span class="lang-en">Order</span><span class="lang-es">Pedir</span>' +
+      '</span>' +
+    '</div>';
+
+    // Group by storage area, preserving the API's order
+    let lastArea = null;
+    for (const it of items) {
+      if (it.storageArea !== lastArea) {
+        html += '<div class="area-header">' + escapeHtml(it.storageArea || '—') + '</div>';
+        lastArea = it.storageArea;
+      }
+      const valStr = (it.onHand === null || it.onHand === undefined || it.onHand === '') ? '' : it.onHand;
+      const sug = computeSuggested(it);
+      const pillCls = sug == null ? 'suggest empty' : (sug === 0 ? 'suggest zero' : 'suggest');
+      const pillTxt = sug == null ? '—' : sug;
+      html += '<div class="item" data-id="' + escapeHtml(it.id) + '">' +
+        '<div class="item-info">' +
+          '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
+          '<p class="item-meta">' + escapeHtml(it.pack || '') + '</p>' +
+        '</div>' +
+        '<div class="stepper">' +
+          '<button class="step-btn" data-step="-1">&minus;</button>' +
+          '<input class="step-val" type="number" inputmode="numeric" placeholder="—" value="' + valStr + '">' +
+          '<button class="step-btn" data-step="1">+</button>' +
+        '</div>' +
+        '<span class="' + pillCls + '">' + pillTxt + '</span>' +
+      '</div>';
+    }
+
+    // Save and continue later goes ABOVE Review order so the primary
+    // CTA (Review) sits at the bottom edge — closer to the thumb.
+    html += '<button class="cta-secondary" id="save-continue-btn" style="margin-top:18px">' + escapeHtml(t('saveContinue')) + '</button>';
+    html += '<button class="cta" id="review-btn" style="margin-top:8px">' + escapeHtml(t('reviewOrder')) + '</button>';
+
+    view.innerHTML = html;
+    setTitle('count', ctx.vendor);
+
+    // Wire stepper events
+    view.querySelectorAll('.step-val').forEach(input => {
+      input.addEventListener('input', () => onCountInputChange(input));
+      input.addEventListener('focus', () => input.select());
+    });
+    view.querySelectorAll('.step-btn').forEach(btn => {
+      btn.addEventListener('click', () => onStepperClick(btn));
+    });
+
+    if ($('review-btn'))         $('review-btn').addEventListener('click', onReviewClick);
+    if ($('save-continue-btn'))  $('save-continue-btn').addEventListener('click', onSaveContinueClick);
+  }
+
+  function onStepperClick(btn) {
+    const itemRow = btn.closest('.item');
+    const id = itemRow.getAttribute('data-id');
+    const input = itemRow.querySelector('.step-val');
+    const delta = parseInt(btn.getAttribute('data-step'), 10) || 0;
+    const raw = input.value;
+    let next;
+    if (raw === '' || raw === null) {
+      if (delta > 0) next = 1;
+      else return; // negative from blank: no-op
+    } else {
+      const cur = parseInt(raw, 10) || 0;
+      next = Math.max(0, cur + delta);
+    }
+    input.value = next;
+    updateItem(id, next);
+  }
+
+  function onCountInputChange(input) {
+    const itemRow = input.closest('.item');
+    const id = itemRow.getAttribute('data-id');
+    const raw = input.value;
+    const val = (raw === '' || raw === null) ? null : parseInt(raw, 10);
+    updateItem(id, isNaN(val) ? null : val);
+  }
+
+  function updateItem(id, val) {
+    const ctx = state.countContext;
+    const item = ctx.items.find(i => i.id === id);
+    if (!item) return;
+    item.onHand = val;
+    ctx.dirty[id] = val;
+
+    // Update suggestion pill
+    const row = $('view-count').querySelector('.item[data-id="' + cssEscape(id) + '"]');
+    if (row) {
+      const pill = row.querySelector('.suggest');
+      const sug = computeSuggested(item);
+      pill.classList.remove('zero', 'empty');
+      if (sug == null) {
+        pill.textContent = '—';
+        pill.classList.add('empty');
+      } else {
+        pill.textContent = sug;
+        if (sug === 0) pill.classList.add('zero');
+      }
+    }
+
+    // Update progress block
+    const items = ctx.items;
+    let toOrder = 0, counted = 0;
+    for (const it of items) {
+      if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) {
+        counted++;
+        const s = computeSuggested(it);
+        if (s != null && s > 0) toOrder++;
+      }
+    }
+    const prog = $('view-count').querySelector('.count-progress-strong');
+    if (prog) prog.textContent = counted + ' ' + (state.lang === 'en' ? 'of' : 'de') + ' ' + items.length;
+    const orderEl = $('view-count').querySelector('.count-progress span:nth-child(2)');
+    if (orderEl) orderEl.innerHTML = toOrder > 0 ? toOrder + ' ' + escapeHtml(t('itemsToOrder')) : '&nbsp;';
+
+    // Persist draft to localStorage so a crash doesn't lose work
+    saveDraft(ctx.dateStr, ctx.vendor, ctx.dirty);
+  }
+
+  function cssEscape(s) {
+    // Items IDs in this system are like "ITEM-0001" — safe — but escape just in case
+    return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+  }
+
+  async function flushDirtyToServer(opts) {
+    // opts.refetch: if true, after a successful save (or even with no dirty
+    // items), pull fresh vendor items from the API. Used before the review
+    // screen so it shows accurate, formula-resolved suggestions — including
+    // for items where we couldn't infer target par locally.
+    const refetch = !!(opts && opts.refetch);
+    const ctx = state.countContext;
+    if (!ctx) return { saved: 0, ok: true };
+    const dirtyIds = Object.keys(ctx.dirty);
+
+    try {
+      if (dirtyIds.length) {
+        const items = dirtyIds.map(id => ({ id: id, onHand: ctx.dirty[id] }));
+        try {
+          await api('saveOnHand', { vendor: ctx.vendor, items: items });
+        } catch (saveErr) {
+          // Network failure: queue the save, patch local caches so
+          // the UI reflects the saved state, and treat as success
+          // from the caller's perspective. Server errors fall
+          // through to the outer catch and surface to the user.
+          if (!isNetworkError_(saveErr)) throw saveErr;
+          enqueueSave_(ctx.vendor, items);
+          // Patch the vendor's localStorage cache so reopening the
+          // vendor (even after a full app close) shows the saved
+          // counts. The in-memory cache slot is dropped below
+          // alongside the online path's drop.
+          const vCacheData = readVendorOfflineCache_(ctx.vendor) ||
+            (state.cache.vendorItems[ctx.vendor] ? JSON.parse(JSON.stringify(state.cache.vendorItems[ctx.vendor])) : null);
+          if (vCacheData && vCacheData.items) {
+            const byId = {};
+            for (const it of items) byId[it.id] = it.onHand;
+            for (const it of vCacheData.items) {
+              if (Object.prototype.hasOwnProperty.call(byId, it.id)) it.onHand = byId[it.id];
+            }
+            writeVendorOfflineCache_(ctx.vendor, vCacheData);
+            state.cache.vendorItems[ctx.vendor] = vCacheData;
+          }
+          showToast(t('savedOffline'), 'success');
+          // Fall through to the success path below so the dashboard
+          // patch, dirty clear, etc. happen identically.
+        }
+        ctx.dirty = {};
+        clearDraft(ctx.dateStr, ctx.vendor);
+
+        // If this vendor was previously marked reviewed, the new edits
+        // mean the review is no longer up-to-date. Clear the reviewed
+        // flag so the dashboard pill drops back to yellow (in_progress)
+        // and the user is prompted to re-review before sending. Without
+        // this, you'd be able to change on-hand numbers under a green
+        // "reviewed" pill — which would silently desync what was
+        // reviewed from what will get ordered.
+        const reviewedSet = getReviewedSet(ctx.dateStr);
+        if (reviewedSet[ctx.vendor]) {
+          setReviewed(ctx.dateStr, ctx.vendor, false);
+        }
+        // Patch the dashboard cache locally instead of invalidating it.
+        //
+        // Rationale: a save touches exactly one vendor's on-hand counts.
+        // The fields that drive the dashboard pill for that vendor are
+        // (a) enteredCount and (b) status. Both can be derived from
+        // ctx.items, which we just kept in sync with the saved data. No
+        // other vendor's render output changes. Refetching the entire
+        // dashboard would be ~100% wasted work in the steady-state case
+        // (single KM per phone) — we'd ask the server to recompute every
+        // vendor's status, send it back, and end up with the same answer
+        // we already have locally for the only vendor that changed.
+        //
+        // Guardrails:
+        //  - We never patch to 'sent'. That's a LOG_ORDERS-stamped state
+        //    only the server can assign.
+        //  - We never patch a vendor already in 'sent' state — it's
+        //    frozen there until reset, and we shouldn't touch it.
+        //  - If the cache is empty, no-op. The next loadToday will fetch
+        //    fresh as always.
+        if (state.cache.dashboard && state.cache.dashboard.vendors) {
+          const cached = state.cache.dashboard.vendors.find(x => x.name === ctx.vendor);
+          if (cached && cached.status !== 'sent') {
+            const enteredCount = ctx.items.reduce((n, it) => {
+              const v = it.onHand;
+              return n + ((v !== null && v !== undefined && v !== '') ? 1 : 0);
+            }, 0);
+            cached.enteredCount = enteredCount;
+            cached.status = enteredCount > 0 ? 'in_progress' : 'not_started';
+          }
+          // Mirror the patched dashboard to localStorage so a reload
+          // (especially offline) renders the new pill state instead
+          // of reverting to pre-save.
+          writeOfflineCache_(OFFLINE_SLOTS.DASHBOARD, state.cache.dashboard);
+        }
+        // The recap is a server-side rollup of suggested quantities
+        // across every vendor. Suggested quantity for this vendor's
+        // items just changed (on-hand drives the formula). Drop the
+        // recap cache so the next "View full order list" tap fetches
+        // fresh numbers instead of showing stale suggestions.
+        state.cache.recap = null;
+      }
+      if (refetch) {
+        const fresh = await fetchVendorItems_(ctx.vendor, { force: true });
+        ctx.items = fresh.items;
+        cacheTargetPars(ctx.items);
+      } else {
+        // Invalidate the cached vendor items even when we don't
+        // refetch — the saved on-hand values mean the cache snapshot
+        // no longer matches the server. Next time someone (the user
+        // or the prefetch) reads this vendor, they get fresh data.
+        delete state.cache.vendorItems[ctx.vendor];
+      }
+      return { saved: dirtyIds.length, ok: true };
+    } catch (err) {
+      console.error('flushDirtyToServer error:', err);
+      return { saved: 0, ok: false, error: err };
+    }
+  }
+
+  // Disable both action buttons in lockstep while either save flow runs,
+  // so a quick second tap on the other button can't fire a parallel save
+  // and double-flush the dirty buffer.
+  function setCountActionsDisabled(disabled) {
+    const a = $('save-continue-btn');
+    const b = $('review-btn');
+    if (a) a.disabled = disabled;
+    if (b) b.disabled = disabled;
+  }
+
+  async function onSaveContinueClick() {
+    const btn = $('save-continue-btn');
+    setCountActionsDisabled(true);
+    btn.textContent = t('saving');
+
+    // Run the save + tab-switch under the transition animation so the user
+    // sees a deliberate "saving and going back" loading bar instead of a
+    // spinner. The bar paces itself to a min duration so even an instant
+    // save feels intentional, then snaps to 100% when the dashboard is
+    // ready behind the overlay.
+    let saveOk = true;
+    const work = (async () => {
+      const result = await flushDirtyToServer();
+      if (!result.ok) { saveOk = false; return; }
+      await switchTab('today');
+    })();
+    await playTransitionAnimation(work, transitionLabelGoingBack(true));
+
+    if (!saveOk) {
+      setCountActionsDisabled(false);
+      btn.textContent = t('saveContinue');
+      showToast(t('saveError'), 'error');
+    }
+  }
+
+  async function onReviewClick() {
+    const ctx = state.countContext;
+    const btn = $('review-btn');
+    setCountActionsDisabled(true);
+    btn.textContent = t('saving');
+    // Descriptive label so the KM sees specifically what's being saved.
+    const vendorName = (ctx && ctx.vendor) || '';
+    showBusy(
+      (state.lang === 'en' ? 'Saving on hand for ' : 'Guardando inventario de ') + vendorName + '…'
+    );
+    // No refetch: ctx.items already has accurate targetPar for every
+    // item (set on initial openCount fetch), and computeSuggested uses
+    // it to recompute live as the user types. The previous refetch was
+    // a legacy safety net for older API versions that didn't return
+    // targetPar — current API does, so the refetch is redundant. This
+    // drops a full vendor-tab scan off the path between count and
+    // review, which is the slow part the KM was waiting on.
+    //
+    // The save itself still blocks: we need the on-hand values on the
+    // server before the user can mark this vendor reviewed (otherwise
+    // a network failure here means counts get reviewed locally but
+    // never hit LOG_ORDERS via the recap email).
+    const result = await flushDirtyToServer();
+    hideBusy();
+    setCountActionsDisabled(false);
+    btn.textContent = t('reviewOrder');
+    if (!result.ok) {
+      showToast(t('saveError'), 'error');
+      return;
+    }
+    openReview();
+  }
+
+  // ============================================================
+  // REVIEW
+  // ============================================================
+  function openReview() {
+    const ctx = state.countContext;
+    showView('review');
+    setTitle('review', ctx.vendor);
+    renderReview();
+  }
+
+  function renderReview() {
+    const ctx = state.countContext;
+    const view = $('view-review');
+    const items = ctx.items;
+
+    const reviewed = items.filter(it => it.onHand !== null && it.onHand !== '' && it.onHand !== undefined);
+    const toOrder = reviewed.filter(it => {
+      const s = computeSuggested(it);
+      return s != null && s > 0;
+    });
+
+    let html = '';
+    html += '<div class="section-label" style="margin-bottom:14px">' +
+      escapeHtml(ctx.vendor) + '</div>';
+
+    if (!toOrder.length) {
+      html += '<div class="empty-state" style="padding:32px 24px">' +
+        '<div class="empty-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>' +
+        '<p class="empty-title">' + (state.lang === 'en' ? 'Nothing to order' : 'Nada por pedir') + '</p>' +
+        '<p class="empty-sub">' + (state.lang === 'en' ? 'All counted items are at or above par.' : 'Todos los art&iacute;culos est&aacute;n en par o por encima.') + '</p>' +
+      '</div>';
+    } else {
+      for (const it of toOrder) {
+        const sug = computeSuggested(it);
+        const pack = it.pack || '';
+        html += '<div class="review-row">' +
+          '<div class="review-info">' +
+            '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
+            '<p class="item-meta">' + escapeHtml(it.onHand) + ' ' + escapeHtml(t('onHand')) + '</p>' +
+          '</div>' +
+          '<div class="review-qty">' +
+            '<span class="qty-num">' + sug + '</span>' +
+            (pack ? '<span class="qty-x">&times;</span><span class="qty-unit">' + escapeHtml(pack) + '</span>' : '') +
+          '</div>' +
+        '</div>';
+      }
+    }
+
+    html += '<div class="review-summary">' +
+      '<div class="summary-row">' +
+        '<span>' + reviewed.length + ' ' + escapeHtml(t('itemsReviewed')) + '</span>' +
+        '<span class="progress-strong">' + toOrder.length + ' ' + escapeHtml(t('itemsToOrder')) + '</span>' +
+      '</div>' +
+    '</div>';
+
+    html += '<button class="cta" id="markreview-btn">' + escapeHtml(t('markReviewed')) + '</button>';
+    html += '<button class="cta-secondary" id="back-count-btn">' + escapeHtml(t('backToCount')) + '</button>';
+
+    view.innerHTML = html;
+
+    if ($('markreview-btn'))    $('markreview-btn').addEventListener('click', onMarkReviewedClick);
+    if ($('back-count-btn'))    $('back-count-btn').addEventListener('click', () => openCount(ctx.vendor));
+  }
+
+  async function onMarkReviewedClick() {
+    const ctx = state.countContext;
+    const items = ctx.items;
+    const toOrder = items.filter(it => {
+      const s = computeSuggested(it);
+      return s != null && s > 0;
+    });
+
+    let confirmTitle = t('confirmReview');
+    let confirmMsg = t('confirmReviewMsg');
+    if (!toOrder.length) {
+      confirmTitle = t('confirmEmpty');
+      confirmMsg = t('confirmEmptyMsg');
+    }
+
+    const ok = await showConfirm({
+      kind: !toOrder.length ? 'warn' : 'success',
+      icon: !toOrder.length ? 'alert-triangle' : 'check',
+      title: confirmTitle,
+      msg: confirmMsg,
+      confirmLabel: t('markReviewed'),
+      cancelLabel: t('cancel')
+    });
+    if (!ok) return;
+
+    setReviewed(ctx.dateStr, ctx.vendor, true);
+
+    // No server-side dashboard refetch needed.
+    //
+    // The "reviewed" state is a PWA-local concept stored in localStorage
+    // (see effectiveStatus). The server doesn't know or care about it,
+    // and nothing else about the dashboard could have changed since we
+    // last loaded it — the user has been in this vendor's count screen
+    // the whole time, and any saves they made already patched the cache
+    // for this vendor in flushDirtyToServer.
+    //
+    // We pass a no-op resolved promise to the animation, which has its
+    // own MIN_DURATION_MS floor (~1500ms), so the bar still fills at its
+    // calm pace and the user still gets the satisfying check at the end.
+    // The animation's UX doesn't depend on a real fetch — it just needs
+    // *something* to await, and now that something is instant.
+    await playMarkReviewedAnimation(Promise.resolve(), ctx.vendor);
+
+    // Self-heal pass: previously this ran against a freshly-fetched
+    // dashboard to drop reviewed flags for vendors the server reports as
+    // 'not_started' or 'sent'. With no fetch, the only way a vendor's
+    // server-side state could have changed underneath us is if someone
+    // else hit reset on the sheet during this exact operation — vanishingly
+    // unlikely in our single-KM-per-store workflow. The next full
+    // loadToday() will run its own self-heal as before, catching anything
+    // weird that happened in the background. We don't need to repeat it here.
+    state.currentTab = 'today';
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.getAttribute('data-tab') === 'today'));
+    showView('today');
+    if (state.cache.dashboard) renderToday(state.cache.dashboard);
+    else loadToday();
+  }
+
+  // Bar-fill + checkmark animation synced to a real async operation.
+  // Plays the bar from 0% → ~85% at constant speed for a minimum duration.
+  // When the supplied promise resolves, the bar accelerates to 100% and
+  // the checkmark reveals. Total flow guarantees a minimum perceived
+  // duration so even instant responses feel intentional.
+  //
+  // Params:
+  //   workPromise — promise to sync to. The bar will not complete until
+  //   this resolves (or rejects — failure still ends the animation, but
+  //   the caller should handle the error separately).
+  function playMarkReviewedAnimation(workPromise, vendorName) {
+    return new Promise((resolve) => {
+      const overlay = $('markreview-overlay');
+      const fill    = $('markreview-fill');
+      const check   = $('markreview-check');
+      const labelEl = $('markreview-label');
+      const successEl = $('markreview-success');
+
+      // Pace the bar over a minimum duration so it never looks frozen,
+      // but keep it short enough that the celebration lands rather than
+      // overstays. Total animation time (bar + checkmark + success
+      // callout + fade) is roughly MIN_DURATION_MS + 700ms.
+      //
+      // The bar fills with ease-out so it visibly decelerates as it
+      // approaches the cap — never reads as frozen. If the (no-op)
+      // promise resolves before MIN_DURATION_MS the bar keeps filling
+      // calmly until the floor elapses, then snaps to 100% and the
+      // checkmark + success callout reveal.
+      const MIN_DURATION_MS = 900;
+      const PRE_FILL_PCT    = 85;
+      const startedAt       = Date.now();
+
+      // Reset UI
+      fill.style.transition = 'none';
+      fill.style.width = '0%';
+      check.classList.remove('on');
+      successEl.classList.remove('on');
+      overlay.classList.remove('fade-out');
+      labelEl.textContent = (state.lang === 'en' ? 'Saving ' : 'Guardando ') + vendorName + '…';
+      successEl.textContent = vendorName + (state.lang === 'en' ? ' reviewed!' : ' revisado!');
+      overlay.classList.add('open');
+
+      // Phase 1: ease-out fill to PRE_FILL_PCT. The decelerating curve
+      // means the bar always reads as "still progressing" right up to
+      // the snap, even if the promise has already resolved.
+      requestAnimationFrame(() => {
+        fill.style.transition = 'width ' + MIN_DURATION_MS + 'ms cubic-bezier(0.16, 1, 0.3, 1)';
+        fill.style.width = PRE_FILL_PCT + '%';
+      });
+
+      // Phase 1b: if the promise takes longer than the min duration, keep
+      // the bar gently breathing between PRE_FILL ↔ PRE_FILL+2 so it
+      // never reads as frozen. Cleared when we transition to phase 2.
+      let pulseInterval = null;
+      const startPulse = () => {
+        let high = true;
+        pulseInterval = setInterval(() => {
+          fill.style.transition = 'width 600ms ease-in-out';
+          fill.style.width = high ? (PRE_FILL_PCT + 2) + '%' : PRE_FILL_PCT + '%';
+          high = !high;
+        }, 600);
+      };
+      const pulseTimer = setTimeout(() => {
+        // Only start pulsing if the promise hasn't already resolved.
+        if (pulseInterval === null) startPulse();
+      }, MIN_DURATION_MS + 100);
+
+      const minDelay = new Promise(r => setTimeout(r, MIN_DURATION_MS));
+      Promise.allSettled([workPromise, minDelay]).then(() => {
+        clearTimeout(pulseTimer);
+        if (pulseInterval) { clearInterval(pulseInterval); pulseInterval = null; }
+
+        // Phase 2: snap to 100% + reveal check + show success callout.
+        // Tighter timings than before — the celebration still lands but
+        // doesn't overstay. ~700ms from snap to fade-complete.
+        fill.style.transition = 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1)';
+        fill.style.width = '100%';
+        labelEl.style.opacity = '0';
+
+        setTimeout(() => check.classList.add('on'), 140);
+        setTimeout(() => successEl.classList.add('on'), 220);
+
+        // Brief linger on the success state, then fade out.
+        setTimeout(() => overlay.classList.add('fade-out'), 700);
+        setTimeout(() => {
+          overlay.classList.remove('open', 'fade-out');
+          labelEl.style.opacity = '';
+          resolve();
+        }, 1000);
+      });
+    });
+  }
+
+  // Builds the label shown on the "going back to dashboard" transition
+  // bar. When saving=true, copy makes clear that a save is happening so
+  // the KM knows their counts are being persisted.
+  function transitionLabelGoingBack(saving) {
+    if (state.lang === 'en') {
+      return saving ? 'Saving and going back' : 'Going back to dashboard';
+    }
+    return saving ? 'Guardando y volviendo' : 'Volviendo a la pantalla principal';
+  }
+
+  // Generic transition loading-bar animation. Same general feel as the
+  // mark-as-reviewed bar but tuned for navigation transitions (PIN entry,
+  // going back to dashboard, save & continue later). The bar fills with
+  // a strong ease-out curve so it visibly decelerates as it approaches
+  // the pre-fill cap — never feels "stuck" the way a linear bar does
+  // when work outlasts the minimum duration. When the promise resolves,
+  // the bar snaps to 100% and a small checkmark pops in as a quick
+  // completion acknowledgment, then fades.
+  //
+  // Params:
+  //   workPromise — promise to sync to. The bar will not complete until
+  //   this resolves (or rejects — failure still ends the animation; the
+  //   caller is responsible for surfacing the error to the user).
+  //   labelHtml   — HTML string for the label (caller is responsible for
+  //   escaping any untrusted input).
+  function playTransitionAnimation(workPromise, labelHtml) {
+    return new Promise((resolve) => {
+      const overlay = $('transition-overlay');
+      const fill    = $('transition-fill');
+      const labelEl = $('transition-label');
+      const check   = $('transition-check');
+
+      // Acknowledgment timing, not celebration. Most transitions are now
+      // local-only operations (cache patches, no network round-trip), so
+      // the bar's job is just to confirm "yes, this is happening" and
+      // get out of the way. Total animation time is roughly
+      // MIN_DURATION_MS + 600ms.
+      const MIN_DURATION_MS = 1100;
+      const PRE_FILL_PCT    = 85;
+
+      // Reset UI
+      fill.style.transition = 'none';
+      fill.style.width = '0%';
+      check.classList.remove('on');
+      overlay.classList.remove('fade-out');
+      labelEl.innerHTML = labelHtml || '';
+      overlay.classList.add('open');
+
+      // Phase 1: ease-out fill to PRE_FILL_PCT. The bar moves quickly at
+      // the start (immediate response) and naturally slows as it nears
+      // the cap, so it always reads as "still progressing" instead of
+      // "frozen at 92%". Curve is Material's emphasized-decelerate.
+      requestAnimationFrame(() => {
+        fill.style.transition = 'width ' + MIN_DURATION_MS + 'ms cubic-bezier(0.16, 1, 0.3, 1)';
+        fill.style.width = PRE_FILL_PCT + '%';
+      });
+
+      // Phase 1b: if the promise takes longer than the min duration, keep
+      // the bar gently breathing between PRE_FILL ↔ PRE_FILL+2 so it
+      // never reads as frozen. Cleared when we transition to phase 2.
+      let pulseInterval = null;
+      const startPulse = () => {
+        let high = true;
+        pulseInterval = setInterval(() => {
+          fill.style.transition = 'width 600ms ease-in-out';
+          fill.style.width = high ? (PRE_FILL_PCT + 2) + '%' : PRE_FILL_PCT + '%';
+          high = !high;
+        }, 600);
+      };
+      const pulseTimer = setTimeout(() => {
+        if (pulseInterval === null) startPulse();
+      }, MIN_DURATION_MS + 100);
+
+      const minDelay = new Promise(r => setTimeout(r, MIN_DURATION_MS));
+      Promise.allSettled([workPromise, minDelay]).then(() => {
+        clearTimeout(pulseTimer);
+        if (pulseInterval) { clearInterval(pulseInterval); pulseInterval = null; }
+
+        // Phase 2: snap to 100%, then a small check pops in as a quick
+        // acknowledgment that the navigation is done. Tighter than the
+        // mark-as-reviewed ceremony — this is a transition, not a
+        // celebration.
+        fill.style.transition = 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1)';
+        fill.style.width = '100%';
+
+        setTimeout(() => check.classList.add('on'), 140);
+
+        setTimeout(() => overlay.classList.add('fade-out'), 480);
+        setTimeout(() => {
+          overlay.classList.remove('open', 'fade-out');
+          resolve();
+        }, 750);
+      });
+    });
+  }
+
+  // ============================================================
+  // HISTORY
+  // ============================================================
+  function renderHistory(data) {
+    const view = $('view-history');
+    if (!data || !data.groups || !data.groups.length) {
+      view.innerHTML =
+        '<p class="hero-day">' + escapeHtml(t('orderHistory')) + '</p>' +
+        '<div class="empty-state">' +
+          '<div class="empty-icon"><i class="ti ti-clock" aria-hidden="true"></i></div>' +
+          '<p class="empty-title">' + escapeHtml(t('noHistory')) + '</p>' +
+          '<p class="empty-sub">' + escapeHtml(t('noHistorySub')) + '</p>' +
+        '</div>';
+      return;
+    }
+
+    let html = '<p class="hero-day" style="margin-bottom:18px">' + escapeHtml(t('orderHistory')) + '</p>';
+    for (const g of data.groups) {
+      html += '<div class="history-group">';
+      html += '<div class="history-group-header">' + formatHistoryDate(g.date) + '</div>';
+      for (const v of g.vendors) {
+        html += '<div class="history-row" data-vendor="' + escapeHtml(v.vendor) + '" data-date="' + escapeHtml(g.date) + '">' +
+          '<div>' +
+            '<div class="history-vendor">' + escapeHtml(v.vendor) + '</div>' +
+            '<div class="history-meta">' + v.itemCount + ' ' + t('items') + ' &middot; ' + escapeHtml(fmtTimestamp12h(v.timestamp)) + '</div>' +
+          '</div>' +
+          '<i class="ti ti-chevron-right history-arrow" aria-hidden="true"></i>' +
+        '</div>';
+      }
+      html += '</div>';
+    }
+    view.innerHTML = html;
+
+    view.querySelectorAll('.history-row').forEach(row => {
+      row.addEventListener('click', () => {
+        openHistoryDetail({
+          vendor: row.getAttribute('data-vendor'),
+          date:   row.getAttribute('data-date')
+        });
+      });
+    });
+  }
+
+  async function loadHistory() {
+    const view = $('view-history');
+    // Fast path: same pattern as loadToday. History is invalidated when
+    // an action could change it — sending the daily recap (writes to
+    // LOG_ORDERS), resetting on hand (logs current counts then clears),
+    // stale-reset on launch, signing out. On a cache hit the list
+    // renders instantly with no network round-trip.
+    if (state.cache.history) {
+      renderHistory(state.cache.history);
+      return;
+    }
+    renderLoading(view);
+    try {
+      const today = new Date();
+      const fromDate = new Date(today.getTime() - 30 * 86400000);
+      const data = await api('getHistory', {
+        dateFrom: fromDate.toISOString().slice(0, 10),
+        dateTo:   today.toISOString().slice(0, 10)
+      });
+      state.cache.history = data;
+      writeOfflineCache_(OFFLINE_SLOTS.HISTORY, data, { date: todayStr_() });
+      renderHistory(data);
+    } catch (err) {
+      console.error('loadHistory error:', err);
+      if (isNetworkError_(err)) showToast(t('offlineRetry'), 'error');
+      renderError(view, loadHistory);
+    }
+  }
+
+  function renderHistoryDetail(data, ctx) {
+    const view = $('view-history-detail');
+    let html = '<div class="section-label" style="margin-bottom:14px">' +
+      escapeHtml(ctx.vendor) + ' &middot; ' + formatHistoryDate(ctx.date) +
+      (data.timestamp ? ' &middot; ' + escapeHtml(fmtTimestamp12h(data.timestamp)) : '') +
+      '</div>';
+    for (const it of data.items) {
+      const pack = it.pack || '';
+      html += '<div class="review-row">' +
+        '<div class="review-info">' +
+          '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
+          '<p class="item-meta">' + escapeHtml(it.onHand == null ? '—' : it.onHand) + ' ' + escapeHtml(t('onHand')) + '</p>' +
+        '</div>' +
+        '<div class="review-qty">' +
+          '<span class="qty-num">' + it.qty + '</span>' +
+          (pack ? '<span class="qty-x">&times;</span><span class="qty-unit">' + escapeHtml(pack) + '</span>' : '') +
+        '</div>' +
+      '</div>';
+    }
+    html += '<div class="review-summary">' +
+      '<div class="summary-row"><span>' + escapeHtml(t('itemsOrdered')) + '</span><span class="progress-strong">' + data.itemCount + '</span></div>';
+    if (data.reference) {
+      html += '<div class="summary-row"><span>' + escapeHtml(t('reference')) + '</span><span class="mono">' + escapeHtml(data.reference) + '</span></div>';
+    }
+    html += '</div>';
+    view.innerHTML = html;
+  }
+
+  async function openHistoryDetail(ctx) {
+    state.historyDetailContext = ctx;
+    showView('history-detail');
+    const view = $('view-history-detail');
+    renderLoading(view);
+    try {
+      const data = await api('getHistoryDetail', { vendor: ctx.vendor, date: ctx.date });
+      renderHistoryDetail(data, ctx);
+    } catch (err) {
+      console.error('historyDetail error:', err);
+      renderError(view, () => openHistoryDetail(ctx));
+    }
+  }
+
+  // ============================================================
+  // RECAP (master summary view) — shows every vendor's suggested order
+  // in one place. Reads the same data source the daily-summary email
+  // uses, just rendered inline rather than sent.
+  // ============================================================
+  async function openRecap() {
+    showView('recap');
+    const view = $('view-recap');
+    // Fast path: same pattern as loadToday / loadHistory. The recap is a
+    // server-side rollup of every vendor's suggested order quantities,
+    // so we invalidate it whenever something could move those numbers:
+    // any save (flushDirtyToServer), reset, or sign-out. On a cache hit
+    // the rendering is instant.
+    if (state.cache.recap) {
+      renderRecap(state.cache.recap);
+      return;
+    }
+    renderLoading(view);
+    try {
+      const data = await api('getRecapData');
+      state.cache.recap = data;
+      writeOfflineCache_(OFFLINE_SLOTS.RECAP, data, { date: todayStr_() });
+      renderRecap(data);
+    } catch (err) {
+      console.error('openRecap error:', err);
+      if (isNetworkError_(err)) showToast(t('offlineRetry'), 'error');
+      renderError(view, openRecap);
+    }
+  }
+
+  function renderRecap(data) {
+    const view = $('view-recap');
+    if (!data.sections || !data.sections.length) {
+      view.innerHTML =
+        '<div class="empty-state" style="padding:64px 24px">' +
+          '<div class="empty-icon"><i class="ti ti-clipboard-list" aria-hidden="true"></i></div>' +
+          '<p class="empty-title">' + escapeHtml(t('fullOrderEmpty')) + '</p>' +
+          '<p class="empty-sub">' + escapeHtml(t('fullOrderEmptySub')) + '</p>' +
+        '</div>';
+      return;
+    }
+
+    let html = '';
+
+    // Summary strip — total counts up top so a KM glancing at the screen
+    // knows the scope before scrolling
+    html += '<div class="recap-summary">' +
+      '<span class="recap-summary-strong">' + data.vendorCount + ' ' +
+        (state.lang === 'en' ? (data.vendorCount === 1 ? 'vendor' : 'vendors') : 'proveedores') +
+      '</span>' +
+      '<span class="recap-summary-dot">&middot;</span>' +
+      '<span>' + data.itemCount + ' ' + escapeHtml(t('items')) + '</span>' +
+    '</div>';
+
+    // Email-myself button — same code path as the home dashboard's
+    // all-done panel (shared sendDailyRecap()). The cycle date used to
+    // gate the "already sent" badge comes from data.cycleDate, falling
+    // back to the dashboard cache so the two views stay consistent if
+    // they ever disagree (they shouldn't, but defending against drift).
+    const cycleDate = data.cycleDate ||
+      (state.cache.dashboard && state.cache.dashboard.date) || '';
+    const recapSent = cycleDate && !!localStorage.getItem(nsKey_('recap_sent_' + cycleDate));
+    html += '<div class="recap-email-row">' +
+      (recapSent
+        ? '<button class="alldone-btn" id="recap-email-btn">' +
+            '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
+            '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
+          '</button>' +
+          '<div class="alldone-sent" style="margin-top:8px">' +
+            '<i class="ti ti-circle-check" aria-hidden="true"></i>' +
+            '<span class="lang-en">Already sent today</span>' +
+            '<span class="lang-es">Ya enviado hoy</span>' +
+          '</div>'
+        : '<button class="alldone-btn" id="recap-email-btn">' +
+            '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
+            '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
+          '</button>') +
+    '</div>';
+
+    for (const sec of data.sections) {
+      html += '<div class="recap-section">' +
+        '<div class="recap-vendor-head">' +
+          '<span class="recap-vendor-name">' + escapeHtml(sec.vendor) + '</span>' +
+          '<span class="recap-vendor-count">' + sec.itemCount + ' ' + escapeHtml(t('items')) + '</span>' +
+        '</div>';
+      for (const line of sec.lines) {
+        const pack = line.pack || '';
+        html += '<div class="review-row">' +
+          '<div class="review-info">' +
+            '<p class="item-name">' + escapeHtml(line.name) + '</p>' +
+            '<p class="item-meta">' + escapeHtml(line.onHand == null ? '—' : line.onHand) + ' ' + escapeHtml(t('onHand')) + '</p>' +
+          '</div>' +
+          '<div class="review-qty">' +
+            '<span class="qty-num">' + line.qty + '</span>' +
+            (pack ? '<span class="qty-x">&times;</span><span class="qty-unit">' + escapeHtml(pack) + '</span>' : '') +
+          '</div>' +
+        '</div>';
+      }
+      html += '</div>';
+    }
+
+    view.innerHTML = html;
+
+    // Wire the email button. Re-rendering the recap view (which we do
+    // after a successful send to flip to the "already sent" state)
+    // re-runs this listener attachment, so no duplicate handlers.
+    const emailBtn = $('recap-email-btn');
+    if (emailBtn) emailBtn.addEventListener('click', onRecapEmailClick);
+  }
+
+  // Email-from-recap-view handler. Mirrors onSendDailyRecap but scoped
+  // to the recap view's own button, and re-renders the recap on success
+  // so the "already sent" badge appears immediately.
+  async function onRecapEmailClick() {
+    const btn = $('recap-email-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.querySelector('span').textContent = t('emailing');
+    }
+    const result = await sendDailyRecap();
+    if (result.cancelled) {
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = t('emailMyCopy');
+      }
+      return;
+    }
+    if (result.ok) {
+      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+      // Re-render so the "already sent today" badge appears, and also
+      // re-render the dashboard cache (if any) so the home panel stays
+      // in sync if the user navigates back.
+      if (state.cache.recap) renderRecap(state.cache.recap);
+      if (state.cache.dashboard) {
+        // Don't actually re-paint the dashboard since user isn't on it —
+        // just leave the cache; next render will read the updated
+        // localStorage flag and show the correct state.
+      }
+    } else {
+      const m = String((result.error && result.error.message) || '');
+      if (result.offline) showToast(t('offlineRetry'), 'error');
+      else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      else showToast(m || 'Error', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = t('emailMyCopy');
+      }
+    }
+  }
+
+  // ============================================================
+  // SETTINGS
+  // ============================================================
+  function renderSettings() {
+    const view = $('view-settings');
+    const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
+    const versionStr = '0.16.0';
+    const langLabel = state.lang === 'en' ? 'English' : 'Español';
+    const emailDisplay = state.userEmail
+      ? state.userEmail
+      : '<span style="font-style:italic;color:var(--text-3)">' + escapeHtml(t('notSet')) + '</span>';
+
+    view.innerHTML =
+      '<p class="hero-day" style="margin-bottom:18px">' + escapeHtml(t('settings') || 'Settings') + '</p>' +
+
+      '<div class="profile-card">' +
+        '<div class="avatar">' + escapeHtml(initials) + '</div>' +
+        '<div class="profile-info">' +
+          '<div class="profile-name">' + escapeHtml(state.location || '—') + '</div>' +
+          '<div class="profile-email">' + escapeHtml(state.locAbbr || '') + '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="settings-section-label"><span class="lang-en">Actions</span><span class="lang-es">Acciones</span></div>' +
+      '<div class="settings-group">' +
+        '<div class="settings-row tappable" id="settings-summary">' +
+          '<div>' +
+            '<div class="settings-label"><i class="ti ti-mail-share" aria-hidden="true"></i>' + escapeHtml(t('dailySummary')) + '</div>' +
+            '<div style="font-size:12px;color:var(--text-3);margin-top:4px;margin-left:28px">' + escapeHtml(t('dailySummaryHelp')) + '</div>' +
+          '</div>' +
+          '<div class="settings-value"><i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="settings-section-label"><span class="lang-en">Preferences</span><span class="lang-es">Preferencias</span></div>' +
+      '<div class="settings-group">' +
+        '<div class="settings-row tappable" id="settings-lang">' +
+          '<div class="settings-label"><i class="ti ti-language" aria-hidden="true"></i>' + escapeHtml(t('language')) + '</div>' +
+          '<div class="settings-value">' + langLabel + '<i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
+        '</div>' +
+        '<div class="settings-row tappable" id="settings-email">' +
+          '<div class="settings-label"><i class="ti ti-mail" aria-hidden="true"></i>' + escapeHtml(t('yourEmail')) + '</div>' +
+          '<div class="settings-value" style="max-width:60%;overflow:hidden;text-overflow:ellipsis">' + emailDisplay + '<i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="settings-section-label"><span class="lang-en">About</span><span class="lang-es">Acerca de</span></div>' +
+      '<div class="settings-group">' +
+        '<div class="settings-row">' +
+          '<div class="settings-label"><i class="ti ti-info-circle" aria-hidden="true"></i>' + escapeHtml(t('version')) + '</div>' +
+          '<div class="settings-value">' + versionStr + '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<button class="cta-danger" id="signout-btn" style="margin-top:18px">' + escapeHtml(t('signOut')) + '</button>';
+
+    $('settings-lang').addEventListener('click', () => {
+      setLang(state.lang === 'en' ? 'es' : 'en');
+      renderSettings();
+      if (state.cache.dashboard) renderToday(state.cache.dashboard);
+      if (state.cache.history) renderHistory(state.cache.history);
+    });
+    $('settings-email').addEventListener('click', onChangeEmailClick);
+    $('settings-summary').addEventListener('click', onDailySummaryClick);
+    $('signout-btn').addEventListener('click', signOut);
+  }
+
+  async function onChangeEmailClick() {
+    const email = await showEmailPrompt();
+    if (!email) return;
+    state.userEmail = email;
+    localStorage.setItem('mog_user_email', email);
+    renderSettings();
+  }
+
+  // Shared core: ensures we have an email, sends the recap, returns
+  // { ok, vendorCount, error }. Used by both the Settings row and the
+  // end-of-day panel on the home dashboard.
+  async function sendDailyRecap() {
+    let email = state.userEmail;
+    if (!email) {
+      email = await showEmailPrompt();
+      if (!email) return { ok: false, cancelled: true };
+      state.userEmail = email;
+      localStorage.setItem('mog_user_email', email);
+    }
+    try {
+      const result = await api('emailRecap', { userEmail: email });
+      // Mark this cycle's recap as sent so the home panel can show a
+      // confirmation state and discourage spam-resends.
+      const cycleDate = (state.cache.dashboard && state.cache.dashboard.date) || result.cycleDate;
+      if (cycleDate) localStorage.setItem(nsKey_('recap_sent_' + cycleDate), '1');
+      // Recap may have committed today's orders to LOG_ORDERS — drop the
+      // history cache so the next History open shows the new entry
+      // instead of stale data.
+      state.cache.history = null;
+      return { ok: true, vendorCount: result.vendorCount, itemCount: result.itemCount };
+    } catch (err) {
+      console.error('emailRecap error:', err);
+      if (isNetworkError_(err)) {
+        return { ok: false, offline: true, error: err };
+      }
+      return { ok: false, error: err };
+    }
+  }
+
+  async function onSendDailyRecap() {
+    const btn = $('alldone-email-btn') || $('alldone-resend-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.querySelector('span').textContent = t('emailing');
+    }
+    const result = await sendDailyRecap();
+    if (result.cancelled) {
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = t('emailMyCopy');
+      }
+      return;
+    }
+    if (result.ok) {
+      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+      // Re-render Today so the panel flips to "already sent" state
+      if (state.cache.dashboard) renderToday(state.cache.dashboard);
+    } else {
+      const m = String((result.error && result.error.message) || '');
+      if (result.offline) showToast(t('offlineRetry'), 'error');
+      else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      else showToast(m || 'Error', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = t('emailMyCopy');
+      }
+    }
+  }
+
+  async function onHomeResetClick() {
+    // Strong confirm — this is destructive and affects every vendor.
+    const ok = await showConfirm({
+      kind: 'danger',
+      icon: 'alert-triangle',
+      title: t('confirmReset'),
+      msg:   t('confirmResetMsg'),
+      confirmLabel: t('yesReset'),
+      cancelLabel:  t('cancel')
+    });
+    if (!ok) return;
+
+    showBusy(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
+    try {
+      const result = await api('commitReset');
+      console.log('[reset] api result:', result);
+
+      // Wipe caches and per-cycle localStorage BEFORE the reload so the
+      // self-heal in loadToday has the cleanest possible starting state.
+      state.cache.dashboard = null;
+      state.cache.history   = null;
+      state.cache.recap     = null;
+      state.cache.vendorItems = {};
+      clearAllPerCycleLocalState_();
+      clearAllOfflineState_();
+
+      // Sanity-check the cleanup actually worked. If a key with one of
+      // our prefixes is still around, force-delete by direct scan.
+      // This shouldn't be needed but guards against any subtle bug in
+      // the prefix loop above. Scoped to the current deployment's
+      // namespace — other stores' keys are not touched.
+      try {
+        const sPrefixes = [
+          nsKey_('reviewed_'),
+          nsKey_('recap_sent_'),
+          nsKey_('draft_')
+        ];
+        const survivors = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && sPrefixes.some(p => k.startsWith(p))) {
+            survivors.push(k);
+          }
+        }
+        if (survivors.length) {
+          console.warn('[reset] cleanup survivors, force-removing:', survivors);
+          survivors.forEach(k => localStorage.removeItem(k));
+        }
+      } catch (e) { /* non-fatal */ }
+
+      await loadToday();
+      showToast(state.lang === 'en' ? 'Reset complete' : 'Reinicio completo', 'success');
+    } catch (err) {
+      console.error('home reset error:', err);
+      showToast(String(err.message || 'Error'), 'error');
+    } finally {
+      hideBusy();
+    }
+  }
+
+  async function onDailySummaryClick() {
+    const row = $('settings-summary');
+    row.classList.add('disabled');
+    const labelEl = row.querySelector('.settings-label');
+    const original = labelEl.innerHTML;
+    // Inline indeterminate bar below the label — replaces the rotating
+    // ti-loader icon for visual consistency with the rest of the app's
+    // loading states (everything is bars now, no spinning circles).
+    labelEl.innerHTML =
+      '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
+      escapeHtml(t('sendingSummary')) +
+      '<span class="bar sm inline"><span class="bar-fill-indeterminate"></span></span>';
+    const result = await sendDailyRecap();
+    if (result.cancelled) {
+      row.classList.remove('disabled');
+      labelEl.innerHTML = original;
+      return;
+    }
+    if (result.ok) {
+      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+    } else {
+      const m = String((result.error && result.error.message) || '');
+      if (result.offline) showToast(t('offlineRetry'), 'error');
+      else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      else showToast(m || 'Error', 'error');
+    }
+    row.classList.remove('disabled');
+    labelEl.innerHTML = original;
+    renderSettings();
+  }
+
+  // ============================================================
+  // VIEW SWITCHING
+  // ============================================================
+  function setTitle(view, suffix) {
+    const def = T.titles[view] || { en: '', es: '' };
+    const en = suffix ? suffix : def.en;
+    const es = suffix ? suffix : def.es;
+    $('topbar-title').innerHTML =
+      '<span class="lang-en">' + escapeHtml(en) + '</span><span class="lang-es">' + escapeHtml(es) + '</span>';
+  }
+
+  function showView(viewName) {
+    ['today','count','review','recap','history','history-detail','settings'].forEach(v => {
+      $('view-' + v).style.display = v === viewName ? 'block' : 'none';
+    });
+    state.currentView = viewName;
+    if (!['count','review'].includes(viewName)) setTitle(viewName);
+    // Back button: show whenever current view isn't a tab root
+    const tabRoots = { today:'today', history:'history', settings:'settings' };
+    const isTabRoot = (viewName === tabRoots[state.currentTab]);
+    $('back-btn').style.display = isTabRoot ? 'none' : 'inline-flex';
+    $('scroll-area').scrollTop = 0;
+  }
+
+  // While a tab's initial load is in flight, ignore further tab taps so a
+  // KM rapidly mashing buttons can't pile up parallel API calls. Tabs
+  // visually stay clickable but the click handler bails. Cleared when the
+  // load completes (success or failure).
+  let isSwitchingTab = false;
+
+  // Cutoff-urgency auto-refresh.
+  //
+  // Vendor card urgency states ("approaching cutoff" warning, "missed
+  // cutoff" red border) are derived from current wall-clock time
+  // relative to each vendor's HH:MM cutoff. The dashboard can sit open
+  // for hours while a KM does their counts, so without periodic
+  // refresh, a vendor whose cutoff just crossed the 90-minute warning
+  // threshold (or just passed entirely) would silently stay in the
+  // older state until the user navigates away and back.
+  //
+  // We tick once a minute while the today view is active. Each tick
+  // calls renderToday from the cached dashboard data — no network — so
+  // it's cheap and works fully offline. The interval is cleared
+  // whenever we leave today so we don't waste cycles on background tabs.
+  let cutoffTickInterval = null;
+  function startCutoffTick_() {
+    if (cutoffTickInterval) return;
+    cutoffTickInterval = setInterval(() => {
+      // Only re-render if we're still on today AND the dashboard cache
+      // exists. Otherwise no-op until conditions are right again.
+      if (state.currentView === 'today' && state.cache.dashboard) {
+        renderToday(state.cache.dashboard);
+      }
+    }, 60000);
+  }
+  function stopCutoffTick_() {
+    if (cutoffTickInterval) {
+      clearInterval(cutoffTickInterval);
+      cutoffTickInterval = null;
+    }
+  }
+
+  async function switchTab(tab) {
+    if (isSwitchingTab) return;
+    isSwitchingTab = true;
+    document.querySelectorAll('.tab').forEach(b => b.classList.add('busy'));
+    state.currentTab = tab;
+    document.querySelectorAll('.tab').forEach(b => {
+      b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+    });
+    const tabRoot = { today:'today', history:'history', settings:'settings' }[tab];
+    showView(tabRoot);
+    // Cutoff tick only runs on the today tab. Start it when we land
+    // there, stop when we leave — see startCutoffTick_ for rationale.
+    if (tab === 'today') startCutoffTick_();
+    else                 stopCutoffTick_();
+    try {
+      if (tab === 'today')    await loadToday();
+      if (tab === 'history')  await loadHistory();
+      if (tab === 'settings') renderSettings();
+    } finally {
+      isSwitchingTab = false;
+      document.querySelectorAll('.tab').forEach(b => b.classList.remove('busy'));
+    }
+  }
+
+  // Wraps switchTab with a dirty-state guard. Used by the tab bar buttons
+  // so a user mid-count doesn't lose their unsaved entries by tapping
+  // History or Settings by accident. Same confirm UX as the back button.
+  async function requestSwitchTab(tab) {
+    if (isSwitchingTab) return;
+    const v = state.currentView;
+    const ctx = state.countContext;
+    const dirtyMidCount = (v === 'count') && ctx && Object.keys(ctx.dirty || {}).length > 0;
+
+    if (!dirtyMidCount) {
+      switchTab(tab);
+      return;
+    }
+
+    const choice = await showConfirm({
+      kind: 'warn',
+      icon: 'arrow-left',
+      title: t('confirmGoBack'),
+      msg:   t('confirmGoBackMsg'),
+      confirmLabel:  t('saveAndGoBack'),
+      tertiaryLabel: t('discardChanges'),
+      cancelLabel:   t('cancel')
+    });
+
+    if (choice === 'cancel' || !choice) return;
+
+    if (choice === 'tertiary') {
+      // Discard: drop dirty edits in-memory and clear localStorage draft
+      // for this vendor so the next openCount won't restore them. The
+      // sheet keeps whatever was already saved before this session.
+      const ctx = state.countContext;
+      if (ctx) {
+        ctx.dirty = {};
+        clearDraft(ctx.dateStr, ctx.vendor);
+      }
+      switchTab(tab);
+      return;
+    }
+
+    // choice === 'confirm' → save and go
+    const result = await flushDirtyToServer();
+    if (result.ok) {
+      switchTab(tab);
+    } else {
+      showToast(t('saveError'), 'error');
+    }
+  }
+
+  async function goBack() {
+    const v = state.currentView;
+
+    // History detail → history list (no save needed)
+    if (v === 'history-detail') {
+      showView('history');
+      return;
+    }
+
+    // Recap → today (no save needed)
+    if (v === 'recap') {
+      switchTab('today');
+      return;
+    }
+
+    // Review → today (no save needed; counts already saved on entry)
+    if (v === 'review') {
+      switchTab('today');
+      return;
+    }
+
+    // Count → today. If there are unsaved counts, confirm save+go.
+    // If nothing dirty, just go back silently.
+    if (v === 'count') {
+      const ctx = state.countContext;
+      const hasDirty = ctx && Object.keys(ctx.dirty).length > 0;
+      if (!hasDirty) {
+        // No save needed — animate the dashboard reload so the user sees
+        // a deliberate "going back" transition.
+        await playTransitionAnimation(switchTab('today'), transitionLabelGoingBack(false));
+        return;
+      }
+      const choice = await showConfirm({
+        kind: 'warn',
+        icon: 'arrow-left',
+        title: t('confirmGoBack'),
+        msg:   t('confirmGoBackMsg'),
+        confirmLabel:  t('saveAndGoBack'),
+        tertiaryLabel: t('discardChanges'),
+        cancelLabel:   t('cancel')
+      });
+      if (choice === 'cancel' || !choice) return;
+      if (choice === 'tertiary') {
+        ctx.dirty = {};
+        clearDraft(ctx.dateStr, ctx.vendor);
+        await playTransitionAnimation(switchTab('today'), transitionLabelGoingBack(false));
+        return;
+      }
+      // Save + go: run both under the transition animation. If the save
+      // fails the bar still completes and fades, then we toast the error
+      // and stay on the count screen.
+      let saveOk = true;
+      const work = (async () => {
+        const result = await flushDirtyToServer();
+        if (!result.ok) { saveOk = false; return; }
+        await switchTab('today');
+      })();
+      await playTransitionAnimation(work, transitionLabelGoingBack(true));
+      if (!saveOk) showToast(t('saveError'), 'error');
+      return;
+    }
+  }
+
+  // ============================================================
+  // EVENT WIRING
+  // ============================================================
+  document.querySelectorAll('.tab').forEach(b => {
+    b.addEventListener('click', () => requestSwitchTab(b.getAttribute('data-tab')));
+  });
+  $('back-btn').addEventListener('click', goBack);
+  $('lang-btn').addEventListener('click', () => {
+    setLang(state.lang === 'en' ? 'es' : 'en');
+    if (state.cache.dashboard) renderToday(state.cache.dashboard);
+    if (state.cache.history) renderHistory(state.cache.history);
+    if (state.currentView === 'settings') renderSettings();
+    if (state.currentView === 'count') renderCount();
+    if (state.currentView === 'review') renderReview();
+  });
+
+  // Topbar shadow when content is scrolled — visually separates the
+  // sticky topbar from the content beneath it. Uses a class toggle so
+  // a single transition handles both states.
+  (() => {
+    const scrollEl = $('scroll-area');
+    const topbar   = document.querySelector('.topbar');
+    if (!scrollEl || !topbar) return;
+    scrollEl.addEventListener('scroll', () => {
+      topbar.classList.toggle('scrolled', scrollEl.scrollTop > 0);
+    }, { passive: true });
+  })();
+
+  $('pin-submit').addEventListener('click', handlePinSubmit);
+  // Manager-mode exit button — wired here in BOOT (the banner element
+  // is permanently in the DOM; .show class controls visibility).
+  const mgrExitBtn = document.getElementById('manager-exit-btn');
+  if (mgrExitBtn) mgrExitBtn.addEventListener('click', exitManagerMode);
+  $('stale-reset-btn').addEventListener('click', handleStaleReset);
+  $('pin-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') handlePinSubmit();
+  });
+  $('pin-input').addEventListener('input', () => {
+    $('pin-input').classList.remove('error');
+    $('pin-error').textContent = '';
+  });
+
+  // Flush draft writes when the page is hidden / closed
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && state.countContext && Object.keys(state.countContext.dirty).length) {
+      // Best-effort fire-and-forget
+      flushDirtyToServer();
+    }
+  });
+
+  // ============================================================
+  // BOOT
+  // ============================================================
+  setLang(state.lang);
+
+  // Migrate any legacy unprefixed per-cycle keys to the namespaced
+  // form. Runs once per browser; no-op on subsequent boots. Must
+  // happen before hydrateOfflineCache_() so the cache layer sees a
+  // consistent key namespace.
+  migratePerCycleKeys_();
+
+  // Hydrate offline caches BEFORE any auth/dashboard call so a cold
+  // boot offline still paints last-known data. Safe to run before
+  // PIN auth — these caches are namespaced per deployment, not per
+  // session.
+  hydrateOfflineCache_();
+
+  // Wire offline/online detection. The window events handle the
+  // standard transitions; the api() wrapper handles "browser thinks
+  // it's online but actually isn't" (Wi-Fi association without
+  // working uplink). Run an initial check so a page loaded offline
+  // shows the banner immediately.
+  window.addEventListener('online',  setOnline_);
+  window.addEventListener('offline', setOffline_);
+  if (navigator.onLine === false) setOffline_();
+  // If there's already a queue from a previous session, show the
+  // stale-queue variant of the banner regardless of online state.
+  refreshBanner_();
+  // And if we're online and have queued saves on boot, drain.
+  if (navigator.onLine !== false && readSaveQueue_().length) drainSaveQueue_();
+
+  // Register the service worker for offline page loads. Scope is the
+  // directory the SW lives in (same directory as index.html), which
+  // is what we want — one PWA per subdirectory under the GitHub
+  // Pages origin. Failures are non-fatal: the app works without it,
+  // just won't load offline-from-cold.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .catch(err => console.warn('[sw] registration failed', err));
+    });
+  }
+
+  // Manager-mode entry path: the hub stashed a master PIN in
+  // sessionStorage before redirecting us here. That credential takes
+  // precedence over any cached store PIN. On rejection (server doesn't
+  // accept the master PIN), bounce back to the hub with a failure flag
+  // so the hub can show a clear "wrong code" message instead of falling
+  // through to a confusing per-store PIN gate.
+  let masterPin = '';
+  try { masterPin = sessionStorage.getItem('mog_master_pin') || ''; }
+  catch (e) { masterPin = ''; }
+
+  if (masterPin) {
+    tryPin(masterPin)
+      .then(() => proceedAfterAuth())
+      .catch(() => {
+        try {
+          sessionStorage.removeItem('mog_master_pin');
+          sessionStorage.removeItem('mog_master_active');
+        } catch (e) { /* non-fatal */ }
+        window.location.href = '../?master_failed=1';
+      });
+  } else if (state.pin) {
+    tryPin(state.pin)
+      .then(() => proceedAfterAuth())
+      .catch(() => showPinScreen());
+  } else {
+    showPinScreen();
+  }
+})();
+</script>
+
+</body>
+</html>
