@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="HEH Ordering">
+  <meta name="theme-color" content="#0F6E56">
+  <title>HEH Ordering</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+  <style>
+    /* ============================================================
+       Visual language inherits from the store PWA so the handoff
+       from this hub to /<slug>/ feels like one app. Variables and
+       palette mirror template/index.html.
+       ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, sans-serif;
+      font-size: 15px;
+      color: #1f1e1b;
+      background: #ebe9e0;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
+    }
+    button, input { font-family: inherit; }
+    button { -webkit-tap-highlight-color: transparent; cursor: pointer; }
+
+    :root {
+      --teal: #0f6e56;
+      --teal-light: #e1f5ee;
+      --teal-dark: #04342c;
+      --amber-light: #faeeda;
+      --amber-mid: #BA7517;
+      --amber-dark: #412402;
+      --red: #A32D2D;
+      --red-light: #FCEBEB;
+      --red-dark: #501313;
+      --bg: #ffffff;
+      --bg-soft: #f5f4ed;
+      --bg-mute: #ebe9e0;
+      --text: #1f1e1b;
+      --text-2: #5f5e5a;
+      --text-3: #8a8a85;
+      --border: rgba(0,0,0,0.10);
+      --border-2: rgba(0,0,0,0.20);
+      --r-md: 10px;
+      --r-lg: 14px;
+    }
+
+    .app {
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100%;
+      padding: 32px 20px 40px;
+      padding-top: max(32px, env(safe-area-inset-top));
+      padding-bottom: max(40px, env(safe-area-inset-bottom));
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Each "screen" fills the .app area when shown; only one is
+       visible at a time. The boot logic flips display between
+       'flex' and 'none' on these. */
+    .screen { display: none; flex-direction: column; flex: 1; }
+    .screen.active { display: flex; }
+
+    /* Logo + title block at top of each picker screen. Borrowed
+       from the PWA's pin screen for visual continuity. */
+    .header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .header .logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      background: var(--teal);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      margin: 0 auto 14px;
+    }
+    .header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin: 0 0 6px;
+      color: var(--text);
+    }
+    .header .sub {
+      font-size: 14px;
+      color: var(--text-2);
+      margin: 0;
+      line-height: 1.4;
+    }
+
+    /* Back row sits above the header on non-home screens. Same
+       size as the PWA's back-btn so muscle memory carries over. */
+    .back-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 18px;
+      min-height: 36px;
+    }
+    .back-btn {
+      background: transparent;
+      border: none;
+      color: var(--teal);
+      font-size: 15px;
+      font-weight: 500;
+      padding: 6px 10px 6px 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .back-btn .ti { font-size: 18px; }
+
+    /* Concept / location / store cards. Big, tappable, clearly
+       a button. One per row at this width; could grid to 2 cols
+       on a wider viewport but the app is mobile-first. */
+    .cards {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      text-align: left;
+      width: 100%;
+      transition: border-color 0.12s, transform 0.05s;
+    }
+    .card:active { transform: scale(0.985); }
+    .card:hover  { border-color: var(--border-2); }
+    .card .ti-icon {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--teal-light);
+      color: var(--teal-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+    .card .content { flex: 1; min-width: 0; }
+    .card .title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.25;
+    }
+    .card .meta {
+      font-size: 13px;
+      color: var(--text-2);
+      margin-top: 2px;
+    }
+    .card .chev {
+      flex-shrink: 0;
+      color: var(--text-3);
+      font-size: 18px;
+    }
+
+    /* "Multi-Unit Manager" affordance at the bottom of the
+       concept picker. De-emphasized so KMs don't accidentally
+       tap it. */
+    .mgr-cta {
+      margin-top: 28px;
+      padding-top: 24px;
+      border-top: 1px dashed var(--border-2);
+      text-align: center;
+    }
+    .mgr-cta button {
+      background: transparent;
+      border: 1px solid var(--border-2);
+      border-radius: 999px;
+      color: var(--text-2);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 9px 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .mgr-cta button .ti { font-size: 14px; }
+    .mgr-cta .hint {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 8px;
+    }
+
+    /* Manager-mode code entry. Centered, generous, clear that
+       this is an elevated-privilege screen. */
+    .code-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+    }
+    .code-input {
+      width: 200px;
+      padding: 14px 16px;
+      font-size: 24px;
+      font-weight: 600;
+      text-align: center;
+      letter-spacing: 4px;
+      border: 2px solid var(--border-2);
+      border-radius: var(--r-lg);
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+      margin-top: 18px;
+    }
+    .code-input:focus { border-color: var(--teal); }
+    .code-input.error { border-color: var(--red); background: var(--red-light); }
+    .code-cta {
+      margin-top: 16px;
+      background: var(--teal);
+      color: white;
+      border: none;
+      border-radius: 999px;
+      padding: 12px 32px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .code-cta:disabled { opacity: 0.5; }
+    .code-error {
+      font-size: 13px;
+      color: var(--red);
+      margin-top: 12px;
+      min-height: 18px;
+      text-align: center;
+    }
+
+    /* Page-level error banner for things like "wrong master code,
+       try again" delivered via the URL. */
+    .error-banner {
+      background: var(--red-light);
+      color: var(--red-dark);
+      border: 1px solid rgba(163, 45, 45, 0.25);
+      border-radius: var(--r-md);
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-bottom: 18px;
+      display: none;
+    }
+    .error-banner.show { display: block; }
+
+    /* Language toggle pattern from the PWA. */
+    .es .lang-en { display: none; }
+    .en .lang-es { display: none; }
+  </style>
+</head>
+<body class="en">
+
+<!-- ============================================================
+     STORE REGISTRY — replaced at build time by build.py.
+     The marker comment is the anchor; do not edit the line
+     manually unless you understand build.py's injection logic.
+     ============================================================ -->
+<script>
+  const STORE_REGISTRY = [{"slug": "rpr", "concept": "Roll Play", "location": "Rosslyn"}];  // __STORE_REGISTRY__ build-injected
+</script>
+
+<div class="app" id="app">
+
+  <!-- CONCEPT PICKER (home) -->
+  <div class="screen" id="screen-concept">
+    <div class="error-banner" id="error-banner"></div>
+    <div class="header">
+      <div class="logo"><i class="ti ti-clipboard-list" aria-hidden="true"></i></div>
+      <h1>HEH Ordering</h1>
+      <p class="sub">
+        <span class="lang-en">Choose your concept</span>
+        <span class="lang-es">Elige tu concepto</span>
+      </p>
+    </div>
+    <div class="cards" id="concept-cards"></div>
+    <div class="mgr-cta">
+      <button id="open-mgr-btn" type="button">
+        <i class="ti ti-id-badge-2" aria-hidden="true"></i>
+        <span class="lang-en">Multi-Unit Manager</span>
+        <span class="lang-es">Gerente Multi-Unidad</span>
+      </button>
+      <div class="hint">
+        <span class="lang-en">Master code required</span>
+        <span class="lang-es">Se requiere c&oacute;digo maestro</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOCATION PICKER (after a concept is tapped) -->
+  <div class="screen" id="screen-location">
+    <div class="back-row">
+      <button class="back-btn" id="loc-back-btn" type="button">
+        <i class="ti ti-chevron-left" aria-hidden="true"></i>
+        <span class="lang-en">Back</span>
+        <span class="lang-es">Atr&aacute;s</span>
+      </button>
+    </div>
+    <div class="header">
+      <h1 id="location-title">&nbsp;</h1>
+      <p class="sub">
+        <span class="lang-en">Choose your location</span>
+        <span class="lang-es">Elige tu ubicaci&oacute;n</span>
+      </p>
+    </div>
+    <div class="cards" id="location-cards"></div>
+  </div>
+
+  <!-- MANAGER CODE ENTRY -->
+  <div class="screen" id="screen-mgr-code">
+    <div class="back-row">
+      <button class="back-btn" id="mgr-code-back-btn" type="button">
+        <i class="ti ti-chevron-left" aria-hidden="true"></i>
+        <span class="lang-en">Back</span>
+        <span class="lang-es">Atr&aacute;s</span>
+      </button>
+    </div>
+    <div class="header">
+      <div class="logo"><i class="ti ti-id-badge-2" aria-hidden="true"></i></div>
+      <h1>
+        <span class="lang-en">Manager Access</span>
+        <span class="lang-es">Acceso Gerente</span>
+      </h1>
+      <p class="sub">
+        <span class="lang-en">Enter the master code to access all locations</span>
+        <span class="lang-es">Ingresa el c&oacute;digo maestro para acceder a todas las ubicaciones</span>
+      </p>
+    </div>
+    <div class="code-screen">
+      <input type="password" inputmode="numeric" autocomplete="off"
+             maxlength="8" class="code-input" id="mgr-code-input"
+             placeholder="••••••">
+      <button class="code-cta" id="mgr-code-submit" type="button">
+        <span class="lang-en">Continue</span>
+        <span class="lang-es">Continuar</span>
+      </button>
+      <p class="code-error" id="mgr-code-error"></p>
+    </div>
+  </div>
+
+  <!-- MANAGER STORE PICKER (after master code accepted) -->
+  <div class="screen" id="screen-mgr-picker">
+    <div class="back-row">
+      <button class="back-btn" id="mgr-picker-back-btn" type="button">
+        <i class="ti ti-chevron-left" aria-hidden="true"></i>
+        <span class="lang-en">Back</span>
+        <span class="lang-es">Atr&aacute;s</span>
+      </button>
+    </div>
+    <div class="header">
+      <div class="logo"><i class="ti ti-id-badge-2" aria-hidden="true"></i></div>
+      <h1>
+        <span class="lang-en">All Locations</span>
+        <span class="lang-es">Todas las Ubicaciones</span>
+      </h1>
+      <p class="sub">
+        <span class="lang-en">Manager mode &mdash; pick a location</span>
+        <span class="lang-es">Modo gerente &mdash; elige una ubicaci&oacute;n</span>
+      </p>
+    </div>
+    <div class="cards" id="mgr-picker-cards"></div>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  const lang = localStorage.getItem('mog_lang') || 'en';
+  document.body.className = lang;
+
+  const params = new URLSearchParams(window.location.search);
+  const forcePicker  = params.has('force_picker');
+  const masterFailed = params.has('master_failed');
+
+  // Strip query params from the URL bar so reloads don't re-trigger
+  // these flags. Use replaceState — no history entry.
+  if (params.toString()) {
+    history.replaceState({}, '', window.location.pathname);
+  }
+
+  // ============================================================
+  // SYNCHRONOUS BOOT — AUTO-REDIRECT BEFORE PAINT
+  // ============================================================
+  //
+  // If the user has visited a store before AND that store is still
+  // in the registry AND they haven't asked for the picker AND there
+  // was no manager-mode failure to surface, redirect them straight
+  // to /<slug>/ without painting the picker. This is the "return
+  // visit feels like an app" path.
+  //
+  // The check is synchronous — runs before the screens are revealed
+  // — so there's no flash of picker before the redirect lands.
+  function attemptAutoRedirect_() {
+    if (forcePicker || masterFailed) return false;
+    const lastSlug = localStorage.getItem('mog_hub_last_slug') || '';
+    if (!lastSlug) return false;
+    const match = STORE_REGISTRY.find(s => s.slug === lastSlug);
+    if (!match) {
+      // Stale slug (store removed from registry) — drop it.
+      localStorage.removeItem('mog_hub_last_slug');
+      return false;
+    }
+    window.location.replace('./' + match.slug + '/');
+    return true;
+  }
+
+  if (attemptAutoRedirect_()) {
+    // Halt further script — the page is unloading.
+    return;
+  }
+
+  // ============================================================
+  // SCREEN MANAGEMENT
+  // ============================================================
+  const SCREENS = ['screen-concept', 'screen-location', 'screen-mgr-code', 'screen-mgr-picker'];
+  function showScreen(id) {
+    for (const s of SCREENS) {
+      const el = document.getElementById(s);
+      if (!el) continue;
+      el.classList.toggle('active', s === id);
+    }
+    // Scroll back to top whenever we switch screens — avoids the
+    // location picker opening mid-scroll if the concept list was
+    // scrolled.
+    window.scrollTo(0, 0);
+  }
+
+  // ============================================================
+  // CONCEPT GROUPING
+  // ============================================================
+  //
+  // Build concept -> [stores] from STORE_REGISTRY, sorted by
+  // location count desc (so Roll Play with 3 lands first), then
+  // alphabetically within tie.
+  function buildConceptGroups_() {
+    const groups = {};
+    for (const store of STORE_REGISTRY) {
+      const c = store.concept;
+      if (!groups[c]) groups[c] = [];
+      groups[c].push(store);
+    }
+    const sorted = Object.keys(groups).map(concept => ({
+      concept: concept,
+      stores: groups[concept].slice().sort((a, b) => a.location.localeCompare(b.location))
+    }));
+    sorted.sort((a, b) => {
+      // Primary: location count descending
+      const diff = b.stores.length - a.stores.length;
+      if (diff !== 0) return diff;
+      // Secondary: concept name alphabetical
+      return a.concept.localeCompare(b.concept);
+    });
+    return sorted;
+  }
+
+  // ============================================================
+  // RENDER — CONCEPT PICKER
+  // ============================================================
+  function renderConceptPicker_() {
+    const groups = buildConceptGroups_();
+    const container = document.getElementById('concept-cards');
+    container.innerHTML = '';
+
+    if (groups.length === 0) {
+      // Defensive: if stores.json is empty or the build failed to
+      // inject the registry, show a clear message instead of a
+      // mysterious blank screen.
+      const msg = document.createElement('div');
+      msg.style.cssText = 'color:var(--text-2); text-align:center; padding:24px 12px;';
+      msg.textContent = (lang === 'en')
+        ? 'No locations configured. Contact your administrator.'
+        : 'Ninguna ubicaci\u00f3n configurada. Contacta al administrador.';
+      container.appendChild(msg);
+      return;
+    }
+
+    for (const group of groups) {
+      const card = document.createElement('button');
+      card.className = 'card';
+      card.type = 'button';
+      const locCount = group.stores.length;
+      const meta = (lang === 'en')
+        ? (locCount === 1 ? '1 location' : locCount + ' locations')
+        : (locCount === 1 ? '1 ubicaci\u00f3n' : locCount + ' ubicaciones');
+      card.innerHTML =
+        '<span class="ti-icon"><i class="ti ti-building-store" aria-hidden="true"></i></span>' +
+        '<span class="content">' +
+          '<span class="title"></span>' +
+          '<span class="meta"></span>' +
+        '</span>' +
+        '<span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>';
+      card.querySelector('.title').textContent = group.concept;
+      card.querySelector('.meta').textContent = meta;
+      card.addEventListener('click', () => onConceptTap_(group));
+      container.appendChild(card);
+    }
+  }
+
+  // ============================================================
+  // RENDER — LOCATION PICKER
+  // ============================================================
+  function onConceptTap_(group) {
+    document.getElementById('location-title').textContent = group.concept;
+    const container = document.getElementById('location-cards');
+    container.innerHTML = '';
+    for (const store of group.stores) {
+      const card = document.createElement('button');
+      card.className = 'card';
+      card.type = 'button';
+      card.innerHTML =
+        '<span class="ti-icon"><i class="ti ti-map-pin" aria-hidden="true"></i></span>' +
+        '<span class="content">' +
+          '<span class="title"></span>' +
+        '</span>' +
+        '<span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>';
+      card.querySelector('.title').textContent = store.location;
+      card.addEventListener('click', () => onLocationTap_(store, /*isManager=*/false));
+      container.appendChild(card);
+    }
+    showScreen('screen-location');
+  }
+
+  // ============================================================
+  // STORE NAVIGATION
+  // ============================================================
+  //
+  // Normal path: write the slug to localStorage so the next visit
+  // auto-redirects, then navigate. Manager path: skip the
+  // localStorage write (manager mode shouldn't bias future
+  // non-manager visits), then navigate.
+  function onLocationTap_(store, isManager) {
+    if (!isManager) {
+      try { localStorage.setItem('mog_hub_last_slug', store.slug); }
+      catch (e) { /* non-fatal */ }
+    }
+    window.location.href = './' + store.slug + '/';
+  }
+
+  // ============================================================
+  // MANAGER MODE
+  // ============================================================
+  //
+  // Master-code entry doesn't validate the code itself — the hub
+  // has no knowledge of the master PIN (any verification client-
+  // side would just be hash-checking with the hash in source, which
+  // is theater). Instead, we stash the code in sessionStorage and
+  // let the first /<slug>/ API call validate against the Apps
+  // Script. On rejection, the per-store PWA bounces back here with
+  // ?master_failed=1 and we show an error.
+  function onOpenManagerCode_() {
+    document.getElementById('mgr-code-input').value = '';
+    document.getElementById('mgr-code-error').textContent = '';
+    document.getElementById('mgr-code-input').classList.remove('error');
+    showScreen('screen-mgr-code');
+    setTimeout(() => document.getElementById('mgr-code-input').focus(), 100);
+  }
+
+  function onMgrCodeSubmit_() {
+    const input = document.getElementById('mgr-code-input');
+    const errEl = document.getElementById('mgr-code-error');
+    const code = input.value.trim();
+    errEl.textContent = '';
+    input.classList.remove('error');
+    if (!/^\d{4,8}$/.test(code)) {
+      input.classList.add('error');
+      errEl.textContent = (lang === 'en')
+        ? 'Code must be 4–8 digits.'
+        : 'El c\u00f3digo debe tener 4 a 8 d\u00edgitos.';
+      return;
+    }
+    try {
+      sessionStorage.setItem('mog_master_pin',    code);
+      sessionStorage.setItem('mog_master_active', '1');
+    } catch (e) {
+      errEl.textContent = (lang === 'en')
+        ? 'Browser blocked session storage. Try again.'
+        : 'El navegador bloque\u00f3 sessionStorage. Intenta de nuevo.';
+      return;
+    }
+    renderManagerPicker_();
+    showScreen('screen-mgr-picker');
+  }
+
+  function renderManagerPicker_() {
+    const container = document.getElementById('mgr-picker-cards');
+    container.innerHTML = '';
+    // Flat list of all stores in array order from stores.json.
+    for (const store of STORE_REGISTRY) {
+      const card = document.createElement('button');
+      card.className = 'card';
+      card.type = 'button';
+      card.innerHTML =
+        '<span class="ti-icon"><i class="ti ti-map-pin" aria-hidden="true"></i></span>' +
+        '<span class="content">' +
+          '<span class="title"></span>' +
+          '<span class="meta"></span>' +
+        '</span>' +
+        '<span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>';
+      card.querySelector('.title').textContent = store.concept;
+      card.querySelector('.meta').textContent  = store.location;
+      card.addEventListener('click', () => onLocationTap_(store, /*isManager=*/true));
+      container.appendChild(card);
+    }
+  }
+
+  // ============================================================
+  // ERROR HANDLING — wrong master code
+  // ============================================================
+  if (masterFailed) {
+    const banner = document.getElementById('error-banner');
+    banner.textContent = (lang === 'en')
+      ? 'Master code not accepted. Please try again.'
+      : 'C\u00f3digo maestro rechazado. Intenta de nuevo.';
+    banner.classList.add('show');
+  }
+
+  // ============================================================
+  // WIRE UP & INITIAL RENDER
+  // ============================================================
+  document.getElementById('open-mgr-btn').addEventListener('click', onOpenManagerCode_);
+  document.getElementById('loc-back-btn').addEventListener('click', () => showScreen('screen-concept'));
+  document.getElementById('mgr-code-back-btn').addEventListener('click', () => showScreen('screen-concept'));
+  document.getElementById('mgr-picker-back-btn').addEventListener('click', () => showScreen('screen-mgr-code'));
+  document.getElementById('mgr-code-submit').addEventListener('click', onMgrCodeSubmit_);
+  document.getElementById('mgr-code-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') onMgrCodeSubmit_();
+    else {
+      document.getElementById('mgr-code-input').classList.remove('error');
+      document.getElementById('mgr-code-error').textContent = '';
+    }
+  });
+
+  renderConceptPicker_();
+  showScreen('screen-concept');
+
+  // ============================================================
+  // SERVICE WORKER
+  // ============================================================
+  //
+  // Hub SW lives at /sw.js with scope /. Per-store SWs at /<slug>/sw.js
+  // have more-specific scope and take precedence within their
+  // subdirectory, so this hub SW only intercepts the hub itself.
+  //
+  // Failures are non-fatal (offline-first is a bonus, not a requirement).
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .catch(err => console.warn('[hub sw] registration failed', err));
+    });
+  }
+})();
+</script>
+
+</body>
+</html>
