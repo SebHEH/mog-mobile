@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -24,932 +25,935 @@
     button, input, select, textarea { font-family: inherit; }
     button { -webkit-tap-highlight-color: transparent; cursor: pointer; }
 
-    :root {
-      --teal: #0f6e56;
-      --teal-light: #e1f5ee;
-      --teal-dark: #04342c;
-      --amber-light: #faeeda;
-      --amber-mid: #BA7517;
-      --amber-dark: #412402;
-      --red: #A32D2D;
-      --red-light: #FCEBEB;
-      --red-dark: #501313;
-      --bg: #ffffff;
-      --bg-soft: #f5f4ed;
-      --bg-mute: #ebe9e0;
-      --text: #1f1e1b;
-      --text-2: #5f5e5a;
-      --text-3: #8a8a85;
-      --border: rgba(0,0,0,0.10);
-      --border-2: rgba(0,0,0,0.20);
-      --r-md: 10px;
-      --r-lg: 14px;
-    }
+```
+:root {
+  --teal: #0f6e56;
+  --teal-light: #e1f5ee;
+  --teal-dark: #04342c;
+  --amber-light: #faeeda;
+  --amber-mid: #BA7517;
+  --amber-dark: #412402;
+  --red: #A32D2D;
+  --red-light: #FCEBEB;
+  --red-dark: #501313;
+  --bg: #ffffff;
+  --bg-soft: #f5f4ed;
+  --bg-mute: #ebe9e0;
+  --text: #1f1e1b;
+  --text-2: #5f5e5a;
+  --text-3: #8a8a85;
+  --border: rgba(0,0,0,0.10);
+  --border-2: rgba(0,0,0,0.20);
+  --r-md: 10px;
+  --r-lg: 14px;
+}
 
-    .app {
-      max-width: 480px;
-      margin: 0 auto;
-      background: var(--bg);
-      height: 100vh;
-      height: 100dvh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      position: relative;
-    }
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--bg);
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
 
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 12px;
-      padding-top: max(10px, env(safe-area-inset-top));
-      border-bottom: 1px solid var(--border-2);
-      background: var(--bg);
-      flex-shrink: 0;
-      gap: 8px;
-      position: relative;
-      z-index: 10;
-      transition: box-shadow 0.15s ease, border-color 0.15s ease;
-    }
-    .topbar.scrolled {
-      border-bottom-color: rgba(0,0,0,0.15);
-      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-    }
-    .topbar-title { font-weight: 600; font-size: 16px; flex: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .topbar-side { display: flex; align-items: center; min-width: 64px; }
-    .topbar-side.right { justify-content: flex-end; }
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  border-bottom: 1px solid var(--border-2);
+  background: var(--bg);
+  flex-shrink: 0;
+  gap: 8px;
+  position: relative;
+  z-index: 10;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.topbar.scrolled {
+  border-bottom-color: rgba(0,0,0,0.15);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+}
+.topbar-title { font-weight: 600; font-size: 16px; flex: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-side { display: flex; align-items: center; min-width: 64px; }
+.topbar-side.right { justify-content: flex-end; }
 
-    .back-btn {
-      background: transparent;
-      border: none;
-      color: var(--teal);
-      font-size: 15px;
-      font-weight: 500;
-      padding: 6px 4px 6px 0;
-      display: inline-flex;
-      align-items: center;
-      gap: 1px;
-    }
-    .back-btn i { font-size: 22px; margin-right: -2px; }
-    .back-btn:active { opacity: 0.5; }
+.back-btn {
+  background: transparent;
+  border: none;
+  color: var(--teal);
+  font-size: 15px;
+  font-weight: 500;
+  padding: 6px 4px 6px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+.back-btn i { font-size: 22px; margin-right: -2px; }
+.back-btn:active { opacity: 0.5; }
 
-    .lang-btn {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-2);
-      border: 0.5px solid var(--border-2);
-      border-radius: var(--r-md);
-      padding: 5px 10px;
-      background: transparent;
-    }
-    .lang-btn:active { opacity: 0.6; }
+.lang-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  border: 0.5px solid var(--border-2);
+  border-radius: var(--r-md);
+  padding: 5px 10px;
+  background: transparent;
+}
+.lang-btn:active { opacity: 0.6; }
 
-    .scroll-area { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-    .screen { padding: 16px 14px 24px; }
+.scroll-area { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.screen { padding: 16px 14px 24px; }
 
-    .tabbar {
-      display: flex;
-      border-top: 0.5px solid var(--border);
-      background: var(--bg);
-      flex-shrink: 0;
-      padding-bottom: env(safe-area-inset-bottom);
-    }
-    .tab {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
-      padding: 8px 6px 6px;
-      background: transparent;
-      border: none;
-      color: var(--text-3);
-      font-size: 11px;
-      font-weight: 500;
-    }
-    .tab i { font-size: 22px; }
-    .tab.active { color: var(--teal); }
-    .tab.busy { opacity: 0.6; pointer-events: none; }
-    .tab:active { opacity: 0.6; }
+.tabbar {
+  display: flex;
+  border-top: 0.5px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 6px 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+}
+.tab i { font-size: 22px; }
+.tab.active { color: var(--teal); }
+.tab.busy { opacity: 0.6; pointer-events: none; }
+.tab:active { opacity: 0.6; }
 
-    .section-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-3);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 10px;
-    }
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
 
-    .hero-row {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 4px;
-    }
-    .hero-row-text { flex: 1; min-width: 0; }
-    .hero-day { font-size: 24px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
-    .hero-loc {
-      font-size: 15px;
-      font-weight: 500;
-      color: var(--text);
-      margin: 6px 0 20px;
-      display: flex; align-items: center; gap: 5px;
-    }
-    .hero-loc i { font-size: 17px; color: var(--text-2); }
+.hero-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.hero-row-text { flex: 1; min-width: 0; }
+.hero-day { font-size: 24px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.hero-loc {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  margin: 6px 0 20px;
+  display: flex; align-items: center; gap: 5px;
+}
+.hero-loc i { font-size: 17px; color: var(--text-2); }
 
-    /* Tiny red reset button in the hero row — visually quiet but
-       discoverable for the "I messed up" case. Real safety comes from
-       the strong confirm modal, not from hiding the button. */
-    .hero-reset {
-      flex-shrink: 0;
-      display: inline-flex; align-items: center; gap: 5px;
-      background: transparent;
-      color: var(--red);
-      border: 1px solid rgba(163,45,45,0.35);
-      border-radius: 999px;
-      padding: 6px 10px;
-      font-size: 12px; font-weight: 600;
-      margin-top: 4px;
-    }
-    .hero-reset:active { background: var(--red-light); }
-    .hero-reset i { font-size: 14px; }
-    .hero-reset-label { /* hidden on very narrow screens */ }
-    @media (max-width: 340px) {
-      .hero-reset-label { display: none; }
-      .hero-reset { padding: 6px 8px; }
-    }
+/* Tiny red reset button in the hero row — visually quiet but
+   discoverable for the "I messed up" case. Real safety comes from
+   the strong confirm modal, not from hiding the button. */
+.hero-reset {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: transparent;
+  color: var(--red);
+  border: 1px solid rgba(163,45,45,0.35);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px; font-weight: 600;
+  margin-top: 4px;
+}
+.hero-reset:active { background: var(--red-light); }
+.hero-reset i { font-size: 14px; }
+.hero-reset-label { /* hidden on very narrow screens */ }
+@media (max-width: 340px) {
+  .hero-reset-label { display: none; }
+  .hero-reset { padding: 6px 8px; }
+}
 
-    /* "View full order list" pinned at top once any vendor is reviewed.
-       Slightly bolder than the default secondary CTA to stand out as a
-       top-of-page anchor without competing with the all-done panel. */
-    .view-full-top {
-      margin: 0 0 18px !important;
-      border: 1px solid var(--teal) !important;
-      color: var(--teal-dark) !important;
-      font-weight: 600;
-      gap: 6px;
-    }
-    .view-full-top i { font-size: 16px; }
+/* "View full order list" pinned at top once any vendor is reviewed.
+   Slightly bolder than the default secondary CTA to stand out as a
+   top-of-page anchor without competing with the all-done panel. */
+.view-full-top {
+  margin: 0 0 18px !important;
+  border: 1px solid var(--teal) !important;
+  color: var(--teal-dark) !important;
+  font-weight: 600;
+  gap: 6px;
+}
+.view-full-top i { font-size: 16px; }
 
-    /* End-of-day "all done" panel — appears at top of Today when every
-       vendor on today's list has been reviewed. Celebratory + email CTA. */
-    .alldone-panel {
-      background: var(--teal-light);
-      border: 0.5px solid #b8dccd;
-      border-radius: var(--r-lg);
-      padding: 18px;
-      margin-bottom: 18px;
-      text-align: center;
-    }
-    .alldone-icon {
-      width: 56px; height: 56px; border-radius: 50%;
-      background: var(--teal); color: white;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 30px; margin-bottom: 10px;
-    }
-    .alldone-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; color: var(--teal-dark); }
-    .alldone-sub { font-size: 13px; color: var(--text-2); margin: 0 0 14px; line-height: 1.4; }
-    .alldone-btn {
-      width: 100%;
-      background: var(--teal); color: white;
-      border: none; border-radius: var(--r-md);
-      padding: 12px;
-      font-size: 14px; font-weight: 600;
-      display: inline-flex; align-items: center; justify-content: center;
-      gap: 8px;
-    }
-    .alldone-btn:active { background: var(--teal-dark); }
-    .alldone-btn:disabled { opacity: 0.6; }
-    .alldone-btn i { font-size: 17px; }
-    .alldone-sent {
-      font-size: 12px; color: var(--teal-dark); margin-top: 8px;
-      display: inline-flex; align-items: center; gap: 4px;
-    }
-    .alldone-sent i { font-size: 14px; }
+/* End-of-day "all done" panel — appears at top of Today when every
+   vendor on today's list has been reviewed. Celebratory + email CTA. */
+.alldone-panel {
+  background: var(--teal-light);
+  border: 0.5px solid #b8dccd;
+  border-radius: var(--r-lg);
+  padding: 18px;
+  margin-bottom: 18px;
+  text-align: center;
+}
+.alldone-icon {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: var(--teal); color: white;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 30px; margin-bottom: 10px;
+}
+.alldone-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; color: var(--teal-dark); }
+.alldone-sub { font-size: 13px; color: var(--text-2); margin: 0 0 14px; line-height: 1.4; }
+.alldone-btn {
+  width: 100%;
+  background: var(--teal); color: white;
+  border: none; border-radius: var(--r-md);
+  padding: 12px;
+  font-size: 14px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px;
+}
+.alldone-btn:active { background: var(--teal-dark); }
+.alldone-btn:disabled { opacity: 0.6; }
+.alldone-btn i { font-size: 17px; }
+.alldone-sent {
+  font-size: 12px; color: var(--teal-dark); margin-top: 8px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.alldone-sent i { font-size: 14px; }
 
-    .vendor-card {
-      background: var(--bg);
-      border: 0.5px solid var(--border);
-      border-radius: var(--r-lg);
-      padding: 14px;
-      margin-bottom: 10px;
-      transition: background 0.15s, border-color 0.15s;
-    }
-    .vendor-card.tappable { cursor: pointer; }
-    .vendor-card.tappable:active { filter: brightness(0.97); }
-    .vendor-card.muted { background: var(--bg-soft); }
+.vendor-card {
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px;
+  margin-bottom: 10px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.vendor-card.tappable { cursor: pointer; }
+.vendor-card.tappable:active { filter: brightness(0.97); }
+.vendor-card.muted { background: var(--bg-soft); }
 
-    /* Status-tinted cards — soft tints, not saturated, so 9 stacked cards
-       don't burn the user's eyes. The pill on the right keeps the explicit
-       label for accessibility / clarity. */
-    .vendor-card.status-todo {
-      background: #fde4e4;       /* soft red */
-      border-color: #f5c2c2;
-    }
-    .vendor-card.status-progress {
-      background: var(--amber-light);
-      border-color: #f0d9a8;
-    }
-    .vendor-card.status-reviewed {
-      background: var(--teal-light);
-      border-color: #b8dccd;
-    }
-    .vendor-card.status-sent {
-      /* Already-submitted state — neutral grey, visually de-emphasized */
-      background: var(--bg-soft);
-      border-color: var(--border);
-    }
-    .vendor-card.status-sent .vendor-name { color: var(--text-2); }
-    .vendor-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-    .vendor-name { font-size: 16px; font-weight: 600; }
-    .vendor-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-    .vendor-meta.urgent { color: var(--red); font-weight: 600; }
-    .vendor-meta i { font-size: 13px; }
+/* Status-tinted cards — soft tints, not saturated, so 9 stacked cards
+   don't burn the user's eyes. The pill on the right keeps the explicit
+   label for accessibility / clarity. */
+.vendor-card.status-todo {
+  background: #fde4e4;       /* soft red */
+  border-color: #f5c2c2;
+}
+.vendor-card.status-progress {
+  background: var(--amber-light);
+  border-color: #f0d9a8;
+}
+.vendor-card.status-reviewed {
+  background: var(--teal-light);
+  border-color: #b8dccd;
+}
+.vendor-card.status-sent {
+  /* Already-submitted state — neutral grey, visually de-emphasized */
+  background: var(--bg-soft);
+  border-color: var(--border);
+}
+.vendor-card.status-sent .vendor-name { color: var(--text-2); }
+.vendor-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.vendor-name { font-size: 16px; font-weight: 600; }
+.vendor-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.vendor-meta.urgent { color: var(--red); font-weight: 600; }
+.vendor-meta i { font-size: 13px; }
 
-    .pill {
-      font-size: 12px;
-      font-weight: 700;
-      padding: 7px 12px;
-      border-radius: 999px;
-      white-space: nowrap;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      letter-spacing: 0.01em;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-      border: 1px solid transparent;
-    }
-    .pill i { font-size: 14px; }
-    .pill-done {
-      background: white;
-      color: var(--teal-dark);
-      border-color: rgba(15,110,86,0.35);
-    }
-    .pill-progress {
-      background: white;
-      color: var(--amber-dark);
-      border-color: rgba(186,117,23,0.45);
-    }
-    .pill-todo {
-      background: white;
-      color: var(--red-dark);
-      border-color: rgba(163,45,45,0.4);
-    }
-    .pill-sent {
-      background: white;
-      color: var(--text-2);
-      border-color: var(--border-2);
-    }
+.pill {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.01em;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  border: 1px solid transparent;
+}
+.pill i { font-size: 14px; }
+.pill-done {
+  background: white;
+  color: var(--teal-dark);
+  border-color: rgba(15,110,86,0.35);
+}
+.pill-progress {
+  background: white;
+  color: var(--amber-dark);
+  border-color: rgba(186,117,23,0.45);
+}
+.pill-todo {
+  background: white;
+  color: var(--red-dark);
+  border-color: rgba(163,45,45,0.4);
+}
+.pill-sent {
+  background: white;
+  color: var(--text-2);
+  border-color: var(--border-2);
+}
 
-    .empty-state { padding: 48px 24px; text-align: center; }
-    .empty-icon {
-      width: 56px; height: 56px; border-radius: 50%;
-      background: var(--bg-soft);
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 28px; color: var(--text-3); margin-bottom: 14px;
-    }
-    .empty-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
-    .empty-sub { font-size: 13px; color: var(--text-2); margin: 0 0 18px; }
+.empty-state { padding: 48px 24px; text-align: center; }
+.empty-icon {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: var(--bg-soft);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 28px; color: var(--text-3); margin-bottom: 14px;
+}
+.empty-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+.empty-sub { font-size: 13px; color: var(--text-2); margin: 0 0 18px; }
 
-    .history-group { margin-bottom: 18px; }
-    .history-group-header {
-      font-size: 11px; font-weight: 600; color: var(--text-3);
-      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
-    }
-    .history-row {
-      background: var(--bg); border: 0.5px solid var(--border);
-      border-radius: var(--r-md); padding: 12px 14px; margin-bottom: 6px;
-      display: flex; align-items: center; justify-content: space-between;
-      cursor: pointer;
-    }
-    .history-row:active { background: var(--bg-soft); }
-    .history-vendor { font-size: 14px; font-weight: 600; }
-    .history-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; }
-    .history-arrow { color: var(--text-3); font-size: 18px; }
+.history-group { margin-bottom: 18px; }
+.history-group-header {
+  font-size: 11px; font-weight: 600; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
+}
+.history-row {
+  background: var(--bg); border: 0.5px solid var(--border);
+  border-radius: var(--r-md); padding: 12px 14px; margin-bottom: 6px;
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer;
+}
+.history-row:active { background: var(--bg-soft); }
+.history-vendor { font-size: 14px; font-weight: 600; }
+.history-meta { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+.history-arrow { color: var(--text-3); font-size: 18px; }
 
-    /* Count screen */
-    .count-progress {
-      background: var(--bg-soft);
-      border-radius: var(--r-md);
-      padding: 12px 14px;
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 13px;
-      color: var(--text-2);
-      gap: 10px;
-    }
-    .count-progress-strong { color: var(--text); font-weight: 600; }
+/* Count screen */
+.count-progress {
+  background: var(--bg-soft);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-2);
+  gap: 10px;
+}
+.count-progress-strong { color: var(--text); font-weight: 600; }
 
-    /* Sticky column header strip — pinned to the top of the scroll area
-       so the user always knows which column is on-hand vs order while
-       scrolling through a long vendor list. */
-    .count-colheader {
-      position: sticky;
-      top: 0;
-      z-index: 5;
-      background: var(--bg);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 0 8px;
-      margin-bottom: 0;
-      border-bottom: 1px solid var(--border);
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--text-2);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      gap: 8px;
-    }
-    .count-colheader .ch-item   { flex: 1; min-width: 0; }
-    .count-colheader .ch-onhand { width: 110px; text-align: center; }
-    .count-colheader .ch-order  { width: 44px; text-align: center; }
+/* Sticky column header strip — pinned to the top of the scroll area
+   so the user always knows which column is on-hand vs order while
+   scrolling through a long vendor list. */
+.count-colheader {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0 8px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  gap: 8px;
+}
+.count-colheader .ch-item   { flex: 1; min-width: 0; }
+.count-colheader .ch-onhand { width: 110px; text-align: center; }
+.count-colheader .ch-order  { width: 44px; text-align: center; }
 
-    .area-header {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--text);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin: 22px 0 8px;
-      padding-bottom: 8px;
-      border-bottom: 0.5px solid var(--border);
-    }
-    .area-header:first-child { margin-top: 4px; }
+.area-header {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 22px 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 0.5px solid var(--border);
+}
+.area-header:first-child { margin-top: 4px; }
 
-    .item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 0;
-      border-bottom: 0.5px solid var(--border);
-    }
-    .item:last-of-type { border-bottom: none; }
-    .item-info { flex: 1; min-width: 0; }
-    .item-name { font-size: 15px; font-weight: 500; margin: 0; }
-    .item-meta { font-size: 12px; color: var(--text-3); margin: 2px 0 0; font-style: italic; }
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+.item:last-of-type { border-bottom: none; }
+.item-info { flex: 1; min-width: 0; }
+.item-name { font-size: 15px; font-weight: 500; margin: 0; }
+.item-meta { font-size: 12px; color: var(--text-3); margin: 2px 0 0; font-style: italic; }
 
-    .stepper {
-      display: flex;
-      align-items: center;
-      border: 0.5px solid var(--border-2);
-      border-radius: var(--r-md);
-      overflow: hidden;
-      background: var(--bg);
-    }
-    .step-btn {
-      background: var(--bg-soft);
-      border: none;
-      width: 34px;
-      height: 38px;
-      font-size: 17px;
-      color: var(--text);
-      padding: 0;
-      font-weight: 500;
-    }
-    .step-btn:active { background: var(--bg-mute); }
-    .step-val {
-      width: 38px;
-      text-align: center;
-      font-size: 15px;
-      font-weight: 600;
-      border: none;
-      background: transparent;
-      outline: none;
-      padding: 0;
-      -moz-appearance: textfield;
-      height: 38px;
-      color: var(--text);
-    }
-    .step-val::-webkit-outer-spin-button,
-    .step-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    .step-val::placeholder { color: var(--text-3); font-weight: 400; }
+.stepper {
+  display: flex;
+  align-items: center;
+  border: 0.5px solid var(--border-2);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--bg);
+}
+.step-btn {
+  background: var(--bg-soft);
+  border: none;
+  width: 34px;
+  height: 38px;
+  font-size: 17px;
+  color: var(--text);
+  padding: 0;
+  font-weight: 500;
+}
+.step-btn:active { background: var(--bg-mute); }
+.step-val {
+  width: 38px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  outline: none;
+  padding: 0;
+  -moz-appearance: textfield;
+  height: 38px;
+  color: var(--text);
+}
+.step-val::-webkit-outer-spin-button,
+.step-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.step-val::placeholder { color: var(--text-3); font-weight: 400; }
 
-    .suggest {
-      font-size: 12px;
-      font-weight: 600;
-      background: var(--teal-light);
-      color: var(--teal-dark);
-      padding: 6px 9px;
-      border-radius: var(--r-md);
-      min-width: 34px;
-      text-align: center;
-    }
-    .suggest.empty { background: transparent; color: var(--text-3); font-weight: 400; }
-    .suggest.zero { background: var(--bg-mute); color: var(--text-3); }
+.suggest {
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--teal-light);
+  color: var(--teal-dark);
+  padding: 6px 9px;
+  border-radius: var(--r-md);
+  min-width: 34px;
+  text-align: center;
+}
+.suggest.empty { background: transparent; color: var(--text-3); font-weight: 400; }
+.suggest.zero { background: var(--bg-mute); color: var(--text-3); }
 
-    .review-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 0; border-bottom: 0.5px solid var(--border); gap: 10px;
-    }
-    .review-row:last-of-type { border-bottom: none; }
-    .review-info { flex: 1; min-width: 0; }
-    .review-qty { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
-    .qty-num { font-size: 22px; font-weight: 700; }
-    .qty-x   { font-size: 14px; color: var(--text-3); font-weight: 500; margin: 0 1px; }
-    .qty-unit { font-size: 13px; color: var(--text-2); font-weight: 500; }
+.review-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 0; border-bottom: 0.5px solid var(--border); gap: 10px;
+}
+.review-row:last-of-type { border-bottom: none; }
+.review-info { flex: 1; min-width: 0; }
+.review-qty { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+.qty-num { font-size: 22px; font-weight: 700; }
+.qty-x   { font-size: 14px; color: var(--text-3); font-weight: 500; margin: 0 1px; }
+.qty-unit { font-size: 13px; color: var(--text-2); font-weight: 500; }
 
-    .review-summary {
-      background: var(--bg-soft);
-      padding: 14px;
-      border-radius: var(--r-md);
-      margin-top: 16px;
-      font-size: 14px;
-    }
+.review-summary {
+  background: var(--bg-soft);
+  padding: 14px;
+  border-radius: var(--r-md);
+  margin-top: 16px;
+  font-size: 14px;
+}
 
-    /* Recap (master summary) view */
-    .recap-summary {
-      background: var(--bg-soft);
-      padding: 12px 14px;
-      border-radius: var(--r-md);
-      font-size: 13px;
-      color: var(--text-2);
-      display: flex; align-items: center; gap: 8px;
-      margin-bottom: 18px;
-    }
-    .recap-summary-strong { font-weight: 600; color: var(--text); }
-    .recap-summary-dot { color: var(--text-3); }
-    /* Email-myself button row in the recap view. Sits between the summary
-       strip and the first vendor section. Uses .alldone-btn for the
-       button itself (same affordance as the home dashboard's all-done
-       panel) so the user recognizes the action across views. */
-    .recap-email-row {
-      margin-bottom: 22px;
-      text-align: center;
-    }
-    .recap-section { margin-bottom: 22px; }
-    .recap-section:last-child { margin-bottom: 0; }
-    .recap-vendor-head {
-      display: flex; align-items: baseline; justify-content: space-between;
-      padding: 8px 0 10px;
-      border-bottom: 0.5px solid var(--border);
-      margin-bottom: 4px;
-    }
-    .recap-vendor-name { font-size: 16px; font-weight: 700; color: var(--text); }
-    .recap-vendor-count { font-size: 12px; color: var(--text-2); }
-    .summary-row { display: flex; justify-content: space-between; align-items: center; }
-    .summary-row + .summary-row { margin-top: 6px; color: var(--text-2); font-size: 12px; }
-    .progress-strong { color: var(--text); font-weight: 600; }
-    .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; }
+/* Recap (master summary) view */
+.recap-summary {
+  background: var(--bg-soft);
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  color: var(--text-2);
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 18px;
+}
+.recap-summary-strong { font-weight: 600; color: var(--text); }
+.recap-summary-dot { color: var(--text-3); }
+/* Email-myself button row in the recap view. Sits between the summary
+   strip and the first vendor section. Uses .alldone-btn for the
+   button itself (same affordance as the home dashboard's all-done
+   panel) so the user recognizes the action across views. */
+.recap-email-row {
+  margin-bottom: 22px;
+  text-align: center;
+}
+.recap-section { margin-bottom: 22px; }
+.recap-section:last-child { margin-bottom: 0; }
+.recap-vendor-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 8px 0 10px;
+  border-bottom: 0.5px solid var(--border);
+  margin-bottom: 4px;
+}
+.recap-vendor-name { font-size: 16px; font-weight: 700; color: var(--text); }
+.recap-vendor-count { font-size: 12px; color: var(--text-2); }
+.summary-row { display: flex; justify-content: space-between; align-items: center; }
+.summary-row + .summary-row { margin-top: 6px; color: var(--text-2); font-size: 12px; }
+.progress-strong { color: var(--text); font-weight: 600; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; }
 
-    .cta {
-      width: 100%; background: var(--teal); color: white;
-      border: none; border-radius: var(--r-md);
-      padding: 14px; font-size: 15px; font-weight: 600;
-      margin-top: 18px;
-    }
-    .cta:active { background: var(--teal-dark); }
-    .cta:disabled { opacity: 0.4; }
-    .cta-secondary {
-      width: 100%; background: transparent; color: var(--text);
-      border: 0.5px solid var(--border-2); border-radius: var(--r-md);
-      padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
-    }
-    .cta-secondary:active { background: var(--bg-soft); }
-    .cta-secondary:disabled { opacity: 0.4; }
-    .cta-danger {
-      width: 100%; background: transparent; color: var(--red);
-      border: 0.5px solid var(--border-2); border-radius: var(--r-md);
-      padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
-    }
-    .cta-danger:active { background: var(--red-light); }
+.cta {
+  width: 100%; background: var(--teal); color: white;
+  border: none; border-radius: var(--r-md);
+  padding: 14px; font-size: 15px; font-weight: 600;
+  margin-top: 18px;
+}
+.cta:active { background: var(--teal-dark); }
+.cta:disabled { opacity: 0.4; }
+.cta-secondary {
+  width: 100%; background: transparent; color: var(--text);
+  border: 0.5px solid var(--border-2); border-radius: var(--r-md);
+  padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
+}
+.cta-secondary:active { background: var(--bg-soft); }
+.cta-secondary:disabled { opacity: 0.4; }
+.cta-danger {
+  width: 100%; background: transparent; color: var(--red);
+  border: 0.5px solid var(--border-2); border-radius: var(--r-md);
+  padding: 13px; font-size: 15px; font-weight: 500; margin-top: 8px;
+}
+.cta-danger:active { background: var(--red-light); }
 
-    /* Settings */
-    .profile-card {
-      background: var(--bg-soft); border-radius: var(--r-lg); padding: 16px;
-      margin-bottom: 18px; display: flex; align-items: center; gap: 14px;
-    }
-    .avatar {
-      width: 48px; height: 48px; border-radius: 50%;
-      background: var(--teal); color: white;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 18px; font-weight: 600; flex-shrink: 0;
-    }
-    .profile-info { flex: 1; min-width: 0; }
-    .profile-name { font-size: 16px; font-weight: 600; }
-    .profile-email { font-size: 12px; color: var(--text-2); margin-top: 2px; word-break: break-all; }
+/* Settings */
+.profile-card {
+  background: var(--bg-soft); border-radius: var(--r-lg); padding: 16px;
+  margin-bottom: 18px; display: flex; align-items: center; gap: 14px;
+}
+.avatar {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--teal); color: white;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 600; flex-shrink: 0;
+}
+.profile-info { flex: 1; min-width: 0; }
+.profile-name { font-size: 16px; font-weight: 600; }
+.profile-email { font-size: 12px; color: var(--text-2); margin-top: 2px; word-break: break-all; }
 
-    .settings-section-label {
-      font-size: 11px; font-weight: 600; color: var(--text-3);
-      text-transform: uppercase; letter-spacing: 0.06em; padding: 0 4px 8px;
-    }
-    .settings-group {
-      background: var(--bg); border: 0.5px solid var(--border);
-      border-radius: var(--r-lg); overflow: hidden; margin-bottom: 14px;
-    }
-    .settings-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 14px; gap: 12px; background: var(--bg);
-      border-bottom: 0.5px solid var(--border);
-    }
-    .settings-row:last-child { border-bottom: none; }
-    .settings-row.tappable { cursor: pointer; }
-    .settings-row.tappable:active { background: var(--bg-soft); }
-    .settings-row.disabled { opacity: 0.5; cursor: default; }
-    .settings-row.disabled:active { background: var(--bg); }
-    .settings-label { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; }
-    .settings-label i { color: var(--text-2); margin-right: 10px; font-size: 18px; vertical-align: middle; }
+.settings-section-label {
+  font-size: 11px; font-weight: 600; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: 0.06em; padding: 0 4px 8px;
+}
+.settings-group {
+  background: var(--bg); border: 0.5px solid var(--border);
+  border-radius: var(--r-lg); overflow: hidden; margin-bottom: 14px;
+}
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px; gap: 12px; background: var(--bg);
+  border-bottom: 0.5px solid var(--border);
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-row.tappable { cursor: pointer; }
+.settings-row.tappable:active { background: var(--bg-soft); }
+.settings-row.disabled { opacity: 0.5; cursor: default; }
+.settings-row.disabled:active { background: var(--bg); }
+.settings-label { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; }
+.settings-label i { color: var(--text-2); margin-right: 10px; font-size: 18px; vertical-align: middle; }
 
-    /* ============================================================
-       LOADING BAR SYSTEM
-       Single source of truth for every loading/progress bar in the
-       app. Built in three orthogonal layers so each piece does one
-       job and we can compose them without duplication:
+/* ============================================================
+   LOADING BAR SYSTEM
+   Single source of truth for every loading/progress bar in the
+   app. Built in three orthogonal layers so each piece does one
+   job and we can compose them without duplication:
 
-         1. .bar              — the track (background, shape, overflow)
-         2. .bar.sm | .bar.md — size modifier (height + max-width)
-         3. .bar-fill-*       — fill behavior:
-              .bar-fill-indeterminate  CSS infinite slide; for
-                                       unknown-duration loading
-              .bar-fill-progress       JS-controlled 0→100% width; for
-                                       tracked progress (mark-as-
-                                       reviewed, transition overlay)
+     1. .bar              — the track (background, shape, overflow)
+     2. .bar.sm | .bar.md — size modifier (height + max-width)
+     3. .bar-fill-*       — fill behavior:
+          .bar-fill-indeterminate  CSS infinite slide; for
+                                   unknown-duration loading
+          .bar-fill-progress       JS-controlled 0→100% width; for
+                                   tracked progress (mark-as-
+                                   reviewed, transition overlay)
 
-       Adding a new variant (e.g. an error-state red fill) means
-       adding a new .bar-fill-* class, not modifying the existing
-       ones. Sizes and fills are independent — you can pair any size
-       with any fill kind.
-       ============================================================ */
-    .bar {
-      width: 100%;
-      background: var(--bg-mute);
-      overflow: hidden;
-      position: relative;
-    }
-    .bar.sm { height: 4px; max-width: 200px; border-radius: 2px; }
-    .bar.md { height: 6px; max-width: 280px; border-radius: 3px; }
+   Adding a new variant (e.g. an error-state red fill) means
+   adding a new .bar-fill-* class, not modifying the existing
+   ones. Sizes and fills are independent — you can pair any size
+   with any fill kind.
+   ============================================================ */
+.bar {
+  width: 100%;
+  background: var(--bg-mute);
+  overflow: hidden;
+  position: relative;
+}
+.bar.sm { height: 4px; max-width: 200px; border-radius: 2px; }
+.bar.md { height: 6px; max-width: 280px; border-radius: 3px; }
 
-    .bar-fill-indeterminate {
-      position: absolute; top: 0; left: 0;
-      height: 100%; width: 40%;
-      background: linear-gradient(90deg, transparent, var(--text-3), transparent);
-      border-radius: inherit;
-      animation: bar-slide 1.1s ease-in-out infinite;
-    }
-    .bar-fill-progress {
-      height: 100%; width: 0%;
-      background: var(--teal);
-      border-radius: inherit;
-    }
-    @keyframes bar-slide {
-      0%   { left: -40%; }
-      100% { left: 100%; }
-    }
+.bar-fill-indeterminate {
+  position: absolute; top: 0; left: 0;
+  height: 100%; width: 40%;
+  background: linear-gradient(90deg, transparent, var(--text-3), transparent);
+  border-radius: inherit;
+  animation: bar-slide 1.1s ease-in-out infinite;
+}
+.bar-fill-progress {
+  height: 100%; width: 0%;
+  background: var(--teal);
+  border-radius: inherit;
+}
+@keyframes bar-slide {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
 
-    /* Inline contexts (e.g. settings rows) need a top margin to sit
-       cleanly below their label. Applied as a separate modifier so the
-       base .bar class stays layout-neutral. */
-    .bar.inline { margin-top: 6px; }
+/* Inline contexts (e.g. settings rows) need a top margin to sit
+   cleanly below their label. Applied as a separate modifier so the
+   base .bar class stays layout-neutral. */
+.bar.inline { margin-top: 6px; }
 
-    .settings-value { font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-    .settings-value i { font-size: 16px; color: var(--text-3); }
+.settings-value { font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.settings-value i { font-size: 16px; color: var(--text-3); }
 
-    /* PIN screen */
-    .pin-screen {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      padding-top: max(24px, env(safe-area-inset-top));
-      padding-bottom: max(24px, env(safe-area-inset-bottom));
-      background: var(--bg);
-    }
-    .pin-logo {
-      width: 64px; height: 64px; border-radius: 16px;
-      background: var(--teal); color: white;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 32px; margin-bottom: 18px;
-    }
-    .pin-title { font-size: 22px; font-weight: 600; margin: 0 0 4px; text-align: center; }
-    .pin-sub { font-size: 14px; color: var(--text-2); margin: 0 0 28px; text-align: center; }
-    .pin-input {
-      width: 100%; max-width: 280px;
-      padding: 14px 16px; border: 0.5px solid var(--border-2);
-      border-radius: var(--r-md); font-size: 22px; font-weight: 600;
-      text-align: center; letter-spacing: 0.4em;
-      margin-bottom: 14px; outline: none; background: var(--bg-soft);
-    }
-    .pin-input:focus { border-color: var(--teal); background: var(--bg); }
-    .pin-input.error { border-color: var(--red); background: var(--red-light); animation: shake 0.3s; }
-    @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      25% { transform: translateX(-6px); }
-      75% { transform: translateX(6px); }
-    }
-    .pin-error {
-      color: var(--red); font-size: 13px; font-weight: 500;
-      min-height: 18px; margin-bottom: 14px;
-    }
-    .pin-cta {
-      width: 100%; max-width: 280px;
-      background: var(--teal); color: white; border: none;
-      border-radius: var(--r-md); padding: 14px;
-      font-size: 15px; font-weight: 600;
-    }
-    .pin-cta:active { background: var(--teal-dark); }
-    .pin-cta:disabled { opacity: 0.4; }
-    .pin-help {
-      margin-top: 28px; font-size: 12px; color: var(--text-3);
-      text-align: center; max-width: 280px;
-    }
+/* PIN screen */
+.pin-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  padding-top: max(24px, env(safe-area-inset-top));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+.pin-logo {
+  width: 64px; height: 64px; border-radius: 16px;
+  background: var(--teal); color: white;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 32px; margin-bottom: 18px;
+}
+.pin-title { font-size: 22px; font-weight: 600; margin: 0 0 4px; text-align: center; }
+.pin-sub { font-size: 14px; color: var(--text-2); margin: 0 0 28px; text-align: center; }
+.pin-input {
+  width: 100%; max-width: 280px;
+  padding: 14px 16px; border: 0.5px solid var(--border-2);
+  border-radius: var(--r-md); font-size: 22px; font-weight: 600;
+  text-align: center; letter-spacing: 0.4em;
+  margin-bottom: 14px; outline: none; background: var(--bg-soft);
+}
+.pin-input:focus { border-color: var(--teal); background: var(--bg); }
+.pin-input.error { border-color: var(--red); background: var(--red-light); animation: shake 0.3s; }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+.pin-error {
+  color: var(--red); font-size: 13px; font-weight: 500;
+  min-height: 18px; margin-bottom: 14px;
+}
+.pin-cta {
+  width: 100%; max-width: 280px;
+  background: var(--teal); color: white; border: none;
+  border-radius: var(--r-md); padding: 14px;
+  font-size: 15px; font-weight: 600;
+}
+.pin-cta:active { background: var(--teal-dark); }
+.pin-cta:disabled { opacity: 0.4; }
+.pin-help {
+  margin-top: 28px; font-size: 12px; color: var(--text-3);
+  text-align: center; max-width: 280px;
+}
 
-    /* Stale reset screen */
-    .stale-screen {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      padding-top: max(24px, env(safe-area-inset-top));
-      padding-bottom: max(24px, env(safe-area-inset-bottom));
-      background: var(--bg);
-      text-align: center;
-    }
-    .stale-icon {
-      width: 72px; height: 72px; border-radius: 50%;
-      background: var(--amber-light); color: var(--amber-mid);
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 38px; margin-bottom: 18px;
-    }
-    .stale-title { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
-    .stale-sub {
-      font-size: 14px; color: var(--text-2);
-      margin: 0 0 22px; max-width: 320px; line-height: 1.45;
-    }
-    .stale-meta-card {
-      background: var(--bg-soft); border-radius: var(--r-md);
-      padding: 14px 16px; max-width: 320px; width: 100%;
-      margin-bottom: 22px; font-size: 13px; text-align: left;
-    }
-    .stale-meta-row { display: flex; justify-content: space-between; align-items: center; }
-    .stale-meta-row + .stale-meta-row { margin-top: 6px; }
-    .stale-meta-row .label { color: var(--text-2); }
-    .stale-meta-row .val { font-weight: 600; }
-    .stale-cta {
-      width: 100%; max-width: 320px;
-      background: var(--teal); color: white;
-      border: none; border-radius: var(--r-md);
-      padding: 14px; font-size: 15px; font-weight: 600;
-      display: inline-flex; align-items: center; justify-content: center;
-      gap: 8px;
-    }
-    .stale-cta:active { background: var(--teal-dark); }
-    .stale-cta:disabled { opacity: 0.6; }
-    .stale-cta i { font-size: 18px; }
-    .stale-help {
-      margin-top: 18px; font-size: 12px; color: var(--text-3);
-      max-width: 320px; line-height: 1.45;
-    }
-    .stale-error {
-      color: var(--red); font-size: 13px; font-weight: 500;
-      min-height: 18px; margin-top: 12px;
-    }
+/* Stale reset screen */
+.stale-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  padding-top: max(24px, env(safe-area-inset-top));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  background: var(--bg);
+  text-align: center;
+}
+.stale-icon {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: var(--amber-light); color: var(--amber-mid);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 38px; margin-bottom: 18px;
+}
+.stale-title { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+.stale-sub {
+  font-size: 14px; color: var(--text-2);
+  margin: 0 0 22px; max-width: 320px; line-height: 1.45;
+}
+.stale-meta-card {
+  background: var(--bg-soft); border-radius: var(--r-md);
+  padding: 14px 16px; max-width: 320px; width: 100%;
+  margin-bottom: 22px; font-size: 13px; text-align: left;
+}
+.stale-meta-row { display: flex; justify-content: space-between; align-items: center; }
+.stale-meta-row + .stale-meta-row { margin-top: 6px; }
+.stale-meta-row .label { color: var(--text-2); }
+.stale-meta-row .val { font-weight: 600; }
+.stale-cta {
+  width: 100%; max-width: 320px;
+  background: var(--teal); color: white;
+  border: none; border-radius: var(--r-md);
+  padding: 14px; font-size: 15px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px;
+}
+.stale-cta:active { background: var(--teal-dark); }
+.stale-cta:disabled { opacity: 0.6; }
+.stale-cta i { font-size: 18px; }
+.stale-help {
+  margin-top: 18px; font-size: 12px; color: var(--text-3);
+  max-width: 320px; line-height: 1.45;
+}
+.stale-error {
+  color: var(--red); font-size: 13px; font-weight: 500;
+  min-height: 18px; margin-top: 12px;
+}
 
-    /* In-content loading layout — wraps a label + .bar.md for the
-       Today/History/Recap/Review/count screens. The bar itself is the
-       shared .bar atom; this layout only positions the elements. */
-    .loading-bar-state {
-      padding: 80px 24px;
-      display: flex; flex-direction: column; align-items: center; gap: 14px;
-    }
-    .loading-bar-label {
-      font-size: 14px; color: var(--text-2);
-    }
-    .loading-bar-label-strong { color: var(--text); font-weight: 600; }
+/* In-content loading layout — wraps a label + .bar.md for the
+   Today/History/Recap/Review/count screens. The bar itself is the
+   shared .bar atom; this layout only positions the elements. */
+.loading-bar-state {
+  padding: 80px 24px;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.loading-bar-label {
+  font-size: 14px; color: var(--text-2);
+}
+.loading-bar-label-strong { color: var(--text); font-weight: 600; }
 
-    /* Error state */
-    .error-state { padding: 32px 24px; text-align: center; }
-    .error-icon {
-      width: 56px; height: 56px; border-radius: 50%;
-      background: var(--red-light); color: var(--red);
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 28px; margin-bottom: 14px;
-    }
-    .error-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
-    .error-sub { font-size: 13px; color: var(--text-2); margin: 0 0 18px; }
+/* Error state */
+.error-state { padding: 32px 24px; text-align: center; }
+.error-icon {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: var(--red-light); color: var(--red);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 28px; margin-bottom: 14px;
+}
+.error-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+.error-sub { font-size: 13px; color: var(--text-2); margin: 0 0 18px; }
 
-    /* Modal (confirm dialog) */
-    .modal-backdrop {
-      position: absolute; inset: 0;
-      background: rgba(0,0,0,0.4);
-      z-index: 50; display: none;
-      animation: fadeIn 0.18s ease;
-    }
-    .modal-backdrop.open { display: block; }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+/* Modal (confirm dialog) */
+.modal-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 50; display: none;
+  animation: fadeIn 0.18s ease;
+}
+.modal-backdrop.open { display: block; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-    /* Full-screen busy overlay used during destructive ops (reset).
-       Higher z-index than the modal so it covers any open confirm.
-       Uses an indeterminate loading bar instead of a spinner — matches
-       the rest of the app's loading visual language. */
-    .busy-overlay {
-      position: absolute; inset: 0;
-      background: rgba(255,255,255,0.92);
-      z-index: 70; display: none;
-      align-items: center; justify-content: center;
-      flex-direction: column;
-      gap: 14px;
-    }
-    .busy-overlay.open { display: flex; }
-    .busy-overlay .busy-label {
-      font-size: 14px; font-weight: 600; color: var(--text);
-    }
+/* Full-screen busy overlay used during destructive ops (reset).
+   Higher z-index than the modal so it covers any open confirm.
+   Uses an indeterminate loading bar instead of a spinner — matches
+   the rest of the app's loading visual language. */
+.busy-overlay {
+  position: absolute; inset: 0;
+  background: rgba(255,255,255,0.92);
+  z-index: 70; display: none;
+  align-items: center; justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+}
+.busy-overlay.open { display: flex; }
+.busy-overlay .busy-label {
+  font-size: 14px; font-weight: 600; color: var(--text);
+}
 
 
-    /* Mark-as-reviewed success animation: bar fills, check pops, fades. */
-    .markreview-overlay {
-      position: absolute; inset: 0;
-      background: rgba(255,255,255,0.96);
-      z-index: 80; display: none;
-      align-items: center; justify-content: center;
-      transition: opacity 0.28s ease;
-    }
-    .markreview-overlay.open { display: flex; opacity: 1; }
-    .markreview-overlay.fade-out { opacity: 0; }
-    .markreview-card {
-      display: flex; flex-direction: column; align-items: center;
-      gap: 16px;
-      width: 240px;
-    }
-    .markreview-label {
-      font-size: 13px;
-      color: var(--text-2);
-      text-align: center;
-      transition: opacity 0.2s ease;
-      min-height: 16px;
-    }
-    .markreview-check {
-      width: 64px; height: 64px;
-      opacity: 0;
-      transform: scale(0.4);
-      transition: opacity 0.18s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
-      margin-top: 4px;
-    }
-    .markreview-check.on { opacity: 1; transform: scale(1); }
-    .markreview-check svg { width: 100%; height: 100%; display: block; }
-    .markreview-success {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--teal-dark);
-      text-align: center;
-      opacity: 0;
-      transform: translateY(6px);
-      transition: opacity 0.24s ease, transform 0.24s ease;
-      min-height: 20px;
-    }
-    .markreview-success.on { opacity: 1; transform: translateY(0); }
-    .mr-check-circle {
-      fill: var(--teal); stroke: none;
-    }
-    .mr-check-mark {
-      fill: none;
-      stroke: white;
-      stroke-width: 4;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      stroke-dasharray: 48;
-      stroke-dashoffset: 48;
-      animation: mr-stroke 0.32s cubic-bezier(0.65, 0, 0.45, 1) 0.06s forwards;
-    }
-    @keyframes mr-stroke {
-      to { stroke-dashoffset: 0; }
-    }
+/* Mark-as-reviewed success animation: bar fills, check pops, fades. */
+.markreview-overlay {
+  position: absolute; inset: 0;
+  background: rgba(255,255,255,0.96);
+  z-index: 80; display: none;
+  align-items: center; justify-content: center;
+  transition: opacity 0.28s ease;
+}
+.markreview-overlay.open { display: flex; opacity: 1; }
+.markreview-overlay.fade-out { opacity: 0; }
+.markreview-card {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 16px;
+  width: 240px;
+}
+.markreview-label {
+  font-size: 13px;
+  color: var(--text-2);
+  text-align: center;
+  transition: opacity 0.2s ease;
+  min-height: 16px;
+}
+.markreview-check {
+  width: 64px; height: 64px;
+  opacity: 0;
+  transform: scale(0.4);
+  transition: opacity 0.18s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+  margin-top: 4px;
+}
+.markreview-check.on { opacity: 1; transform: scale(1); }
+.markreview-check svg { width: 100%; height: 100%; display: block; }
+.markreview-success {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--teal-dark);
+  text-align: center;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.24s ease, transform 0.24s ease;
+  min-height: 20px;
+}
+.markreview-success.on { opacity: 1; transform: translateY(0); }
+.mr-check-circle {
+  fill: var(--teal); stroke: none;
+}
+.mr-check-mark {
+  fill: none;
+  stroke: white;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: mr-stroke 0.32s cubic-bezier(0.65, 0, 0.45, 1) 0.06s forwards;
+}
+@keyframes mr-stroke {
+  to { stroke-dashoffset: 0; }
+}
 
-    /* Transition loading bar — same paced fill behavior as the mark-as-
-       reviewed bar, but without the celebratory checkmark/success state.
-       Used for navigation transitions (PIN entry, going back to dashboard,
-       save & continue later). The bar gives the user a sense that the
-       system is doing something deliberate and tells them what's happening. */
-    .transition-overlay {
-      position: absolute; inset: 0;
-      background: rgba(255,255,255,0.96);
-      z-index: 80; display: none;
-      align-items: center; justify-content: center;
-      transition: opacity 0.28s ease;
-    }
-    .transition-overlay.open { display: flex; opacity: 1; }
-    .transition-overlay.fade-out { opacity: 0; }
-    .transition-card {
-      display: flex; flex-direction: column; align-items: center;
-      gap: 14px;
-      width: 280px;
-    }
-    .transition-label {
-      font-size: 14px;
-      color: var(--text-2);
-      text-align: center;
-      min-height: 18px;
-      line-height: 1.3;
-    }
-    .transition-label-strong { color: var(--text); font-weight: 600; }
-    /* Quick acknowledgment checkmark — same family as the mark-as-reviewed
-       check but smaller and faster, sized for "task complete" rather than
-       "vendor reviewed" celebration. */
-    .transition-check {
-      width: 44px; height: 44px;
-      opacity: 0;
-      transform: scale(0.4);
-      transition: opacity 0.18s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
-      margin-top: 2px;
-    }
-    .transition-check.on { opacity: 1; transform: scale(1); }
-    .transition-check svg { width: 100%; height: 100%; display: block; }
-    .tr-check-circle { fill: var(--teal); stroke: none; }
-    .tr-check-mark {
-      fill: none;
-      stroke: white;
-      stroke-width: 4.5;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      stroke-dasharray: 48;
-      stroke-dashoffset: 48;
-    }
-    /* Gate the stroke draw on .on so it re-animates every time the check
-       is revealed, not just on first paint. */
-    .transition-check.on .tr-check-mark {
-      animation: tr-stroke 0.32s cubic-bezier(0.65, 0, 0.45, 1) 0.06s forwards;
-    }
-    @keyframes tr-stroke {
-      to { stroke-dashoffset: 0; }
-    }
+/* Transition loading bar — same paced fill behavior as the mark-as-
+   reviewed bar, but without the celebratory checkmark/success state.
+   Used for navigation transitions (PIN entry, going back to dashboard,
+   save & continue later). The bar gives the user a sense that the
+   system is doing something deliberate and tells them what's happening. */
+.transition-overlay {
+  position: absolute; inset: 0;
+  background: rgba(255,255,255,0.96);
+  z-index: 80; display: none;
+  align-items: center; justify-content: center;
+  transition: opacity 0.28s ease;
+}
+.transition-overlay.open { display: flex; opacity: 1; }
+.transition-overlay.fade-out { opacity: 0; }
+.transition-card {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px;
+  width: 280px;
+}
+.transition-label {
+  font-size: 14px;
+  color: var(--text-2);
+  text-align: center;
+  min-height: 18px;
+  line-height: 1.3;
+}
+.transition-label-strong { color: var(--text); font-weight: 600; }
+/* Quick acknowledgment checkmark — same family as the mark-as-reviewed
+   check but smaller and faster, sized for "task complete" rather than
+   "vendor reviewed" celebration. */
+.transition-check {
+  width: 44px; height: 44px;
+  opacity: 0;
+  transform: scale(0.4);
+  transition: opacity 0.18s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+  margin-top: 2px;
+}
+.transition-check.on { opacity: 1; transform: scale(1); }
+.transition-check svg { width: 100%; height: 100%; display: block; }
+.tr-check-circle { fill: var(--teal); stroke: none; }
+.tr-check-mark {
+  fill: none;
+  stroke: white;
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+}
+/* Gate the stroke draw on .on so it re-animates every time the check
+   is revealed, not just on first paint. */
+.transition-check.on .tr-check-mark {
+  animation: tr-stroke 0.32s cubic-bezier(0.65, 0, 0.45, 1) 0.06s forwards;
+}
+@keyframes tr-stroke {
+  to { stroke-dashoffset: 0; }
+}
 
-    .modal {
-      position: absolute; left: 50%; top: 50%;
-      transform: translate(-50%, -50%);
-      background: var(--bg);
-      border-radius: var(--r-lg);
-      width: calc(100% - 36px);
-      max-width: 360px;
-      z-index: 51;
-      padding: 22px 20px 18px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-    }
-    .modal-icon {
-      width: 56px; height: 56px; border-radius: 50%;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 28px; margin-bottom: 12px;
-    }
-    .modal-icon.success { background: var(--teal-light); color: var(--teal); }
-    .modal-icon.warn    { background: var(--amber-light); color: var(--amber-mid); }
-    .modal-icon.danger  { background: var(--red-light); color: var(--red); }
-    .modal-title { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
-    .modal-msg { font-size: 14px; color: var(--text-2); margin: 0 0 18px; line-height: 1.4; }
-    .modal-actions { display: flex; flex-direction: column; gap: 8px; }
-    .modal-cta {
-      background: var(--teal); color: white;
-      border: none; border-radius: var(--r-md);
-      padding: 12px; font-size: 15px; font-weight: 600;
-    }
-    .modal-cta:active { background: var(--teal-dark); }
-    .modal-cancel {
-      background: transparent; color: var(--text);
-      border: 0.5px solid var(--border-2);
-      border-radius: var(--r-md);
-      padding: 11px;
-      font-size: 14px; font-weight: 500;
-    }
-    .modal-cancel:active { background: var(--bg-soft); }
-    .modal-tertiary {
-      background: transparent; color: var(--red);
-      border: 0.5px solid rgba(163,45,45,0.45);
-      border-radius: var(--r-md);
-      padding: 11px;
-      font-size: 14px; font-weight: 500;
-    }
-    .modal-tertiary:active { background: var(--red-light); }
+.modal {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg);
+  border-radius: var(--r-lg);
+  width: calc(100% - 36px);
+  max-width: 360px;
+  z-index: 51;
+  padding: 22px 20px 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+}
+.modal-icon {
+  width: 56px; height: 56px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 28px; margin-bottom: 12px;
+}
+.modal-icon.success { background: var(--teal-light); color: var(--teal); }
+.modal-icon.warn    { background: var(--amber-light); color: var(--amber-mid); }
+.modal-icon.danger  { background: var(--red-light); color: var(--red); }
+.modal-title { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+.modal-msg { font-size: 14px; color: var(--text-2); margin: 0 0 18px; line-height: 1.4; }
+.modal-actions { display: flex; flex-direction: column; gap: 8px; }
+.modal-cta {
+  background: var(--teal); color: white;
+  border: none; border-radius: var(--r-md);
+  padding: 12px; font-size: 15px; font-weight: 600;
+}
+.modal-cta:active { background: var(--teal-dark); }
+.modal-cancel {
+  background: transparent; color: var(--text);
+  border: 0.5px solid var(--border-2);
+  border-radius: var(--r-md);
+  padding: 11px;
+  font-size: 14px; font-weight: 500;
+}
+.modal-cancel:active { background: var(--bg-soft); }
+.modal-tertiary {
+  background: transparent; color: var(--red);
+  border: 0.5px solid rgba(163,45,45,0.45);
+  border-radius: var(--r-md);
+  padding: 11px;
+  font-size: 14px; font-weight: 500;
+}
+.modal-tertiary:active { background: var(--red-light); }
 
-    /* Toast */
-    .toast {
-      position: fixed;
-      bottom: max(80px, calc(80px + env(safe-area-inset-bottom)));
-      left: 50%; transform: translate(-50%, 24px);
-      background: var(--text); color: white;
-      padding: 12px 18px;
-      border-radius: 24px;
-      font-size: 14px; font-weight: 500;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      max-width: 340px;
-      z-index: 60;
-      opacity: 0;
-      transition: opacity 0.2s, transform 0.25s;
-      pointer-events: none;
-    }
-    .toast.show { opacity: 1; transform: translate(-50%, 0); }
-    .toast.success { background: #0e554a; }
-    .toast.error   { background: var(--red-dark); }
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: max(80px, calc(80px + env(safe-area-inset-bottom)));
+  left: 50%; transform: translate(-50%, 24px);
+  background: var(--text); color: white;
+  padding: 12px 18px;
+  border-radius: 24px;
+  font-size: 14px; font-weight: 500;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  max-width: 340px;
+  z-index: 60;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.25s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.success { background: #0e554a; }
+.toast.error   { background: var(--red-dark); }
 
-    .es .lang-en { display: none; }
-    .en .lang-es { display: none; }
+.es .lang-en { display: none; }
+.en .lang-es { display: none; }
 
-    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+```
+
   </style>
 </head>
 <body>
@@ -957,6 +961,7 @@
 <!-- ============================================================
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
+
 <script>
   window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
 </script>
@@ -964,6 +969,7 @@
 <div class="app en" id="app">
 
   <!-- PIN GATE -->
+
   <div class="pin-screen" id="screen-pin">
     <div class="pin-logo"><i class="ti ti-clipboard-list" aria-hidden="true"></i></div>
     <h1 class="pin-title">Master Ordering Guide</h1>
@@ -984,6 +990,7 @@
   </div>
 
   <!-- STALE RESET GATE -->
+
   <div class="stale-screen" id="screen-stale" style="display:none">
     <div class="stale-icon"><i class="ti ti-refresh-alert" aria-hidden="true"></i></div>
     <h1 class="stale-title">
@@ -995,78 +1002,86 @@
       <span class="lang-es">Reinicia el inventario para borrar los conteos de ayer y cargar los pars de hoy antes de contar.</span>
     </p>
 
-    <div class="stale-meta-card">
-      <div class="stale-meta-row">
-        <span class="label"><span class="lang-en">Last reset</span><span class="lang-es">&Uacute;ltimo reinicio</span></span>
-        <span class="val" id="stale-lastreset">—</span>
-      </div>
-      <div class="stale-meta-row">
-        <span class="label"><span class="lang-en">Today</span><span class="lang-es">Hoy</span></span>
-        <span class="val" id="stale-today">—</span>
-      </div>
-    </div>
+```
+<div class="stale-meta-card">
+  <div class="stale-meta-row">
+    <span class="label"><span class="lang-en">Last reset</span><span class="lang-es">&Uacute;ltimo reinicio</span></span>
+    <span class="val" id="stale-lastreset">—</span>
+  </div>
+  <div class="stale-meta-row">
+    <span class="label"><span class="lang-en">Today</span><span class="lang-es">Hoy</span></span>
+    <span class="val" id="stale-today">—</span>
+  </div>
+</div>
 
-    <button class="stale-cta" id="stale-reset-btn">
-      <i class="ti ti-refresh" aria-hidden="true"></i>
-      <span class="lang-en">Reset On Hand</span>
-      <span class="lang-es">Reiniciar Inventario</span>
-    </button>
+<button class="stale-cta" id="stale-reset-btn">
+  <i class="ti ti-refresh" aria-hidden="true"></i>
+  <span class="lang-en">Reset On Hand</span>
+  <span class="lang-es">Reiniciar Inventario</span>
+</button>
 
-    <p class="stale-error" id="stale-error"></p>
+<p class="stale-error" id="stale-error"></p>
 
-    <p class="stale-help">
-      <span class="lang-en">This logs yesterday's order, clears all On Hand counts, and updates the date so today's multipliers apply.</span>
-      <span class="lang-es">Esto registra el pedido de ayer, borra los conteos y actualiza la fecha para los multiplicadores de hoy.</span>
-    </p>
+<p class="stale-help">
+  <span class="lang-en">This logs yesterday's order, clears all On Hand counts, and updates the date so today's multipliers apply.</span>
+  <span class="lang-es">Esto registra el pedido de ayer, borra los conteos y actualiza la fecha para los multiplicadores de hoy.</span>
+</p>
+```
+
   </div>
 
   <!-- MAIN APP -->
+
   <div id="screen-main" style="display:none; flex: 1; flex-direction: column; min-height: 0;">
 
-    <div class="topbar">
-      <div class="topbar-side">
-        <button class="back-btn" id="back-btn" aria-label="Back" style="display:none">
-          <i class="ti ti-chevron-left" aria-hidden="true"></i>
-          <span class="lang-en">Back</span><span class="lang-es">Atr&aacute;s</span>
-        </button>
-      </div>
-      <div class="topbar-title" id="topbar-title">
-        <span class="lang-en">Today's orders</span><span class="lang-es">Pedidos de hoy</span>
-      </div>
-      <div class="topbar-side right">
-        <button class="lang-btn" id="lang-btn">
-          <span class="lang-en">ES</span><span class="lang-es">EN</span>
-        </button>
-      </div>
-    </div>
+```
+<div class="topbar">
+  <div class="topbar-side">
+    <button class="back-btn" id="back-btn" aria-label="Back" style="display:none">
+      <i class="ti ti-chevron-left" aria-hidden="true"></i>
+      <span class="lang-en">Back</span><span class="lang-es">Atr&aacute;s</span>
+    </button>
+  </div>
+  <div class="topbar-title" id="topbar-title">
+    <span class="lang-en">Today's orders</span><span class="lang-es">Pedidos de hoy</span>
+  </div>
+  <div class="topbar-side right">
+    <button class="lang-btn" id="lang-btn">
+      <span class="lang-en">ES</span><span class="lang-es">EN</span>
+    </button>
+  </div>
+</div>
 
-    <div class="scroll-area" id="scroll-area">
-      <div class="screen" id="view-today" style="display:none"></div>
-      <div class="screen" id="view-count" style="display:none"></div>
-      <div class="screen" id="view-review" style="display:none"></div>
-      <div class="screen" id="view-recap" style="display:none"></div>
-      <div class="screen" id="view-history" style="display:none"></div>
-      <div class="screen" id="view-history-detail" style="display:none"></div>
-      <div class="screen" id="view-settings" style="display:none"></div>
-    </div>
+<div class="scroll-area" id="scroll-area">
+  <div class="screen" id="view-today" style="display:none"></div>
+  <div class="screen" id="view-count" style="display:none"></div>
+  <div class="screen" id="view-review" style="display:none"></div>
+  <div class="screen" id="view-recap" style="display:none"></div>
+  <div class="screen" id="view-history" style="display:none"></div>
+  <div class="screen" id="view-history-detail" style="display:none"></div>
+  <div class="screen" id="view-settings" style="display:none"></div>
+</div>
 
-    <div class="tabbar">
-      <button class="tab active" data-tab="today">
-        <i class="ti ti-home" aria-hidden="true"></i>
-        <span><span class="lang-en">Today</span><span class="lang-es">Hoy</span></span>
-      </button>
-      <button class="tab" data-tab="history">
-        <i class="ti ti-clock" aria-hidden="true"></i>
-        <span><span class="lang-en">History</span><span class="lang-es">Historial</span></span>
-      </button>
-      <button class="tab" data-tab="settings">
-        <i class="ti ti-settings" aria-hidden="true"></i>
-        <span><span class="lang-en">Settings</span><span class="lang-es">Ajustes</span></span>
-      </button>
-    </div>
+<div class="tabbar">
+  <button class="tab active" data-tab="today">
+    <i class="ti ti-home" aria-hidden="true"></i>
+    <span><span class="lang-en">Today</span><span class="lang-es">Hoy</span></span>
+  </button>
+  <button class="tab" data-tab="history">
+    <i class="ti ti-clock" aria-hidden="true"></i>
+    <span><span class="lang-en">History</span><span class="lang-es">Historial</span></span>
+  </button>
+  <button class="tab" data-tab="settings">
+    <i class="ti ti-settings" aria-hidden="true"></i>
+    <span><span class="lang-en">Settings</span><span class="lang-es">Ajustes</span></span>
+  </button>
+</div>
+```
+
   </div>
 
   <!-- Confirm modal -->
+
   <div class="modal-backdrop" id="modal-backdrop"></div>
   <div class="modal" id="modal" style="display:none">
     <div class="modal-icon" id="modal-icon"><i class="ti ti-check" aria-hidden="true"></i></div>
@@ -1079,12 +1094,14 @@
   </div>
 
   <!-- Busy overlay -->
+
   <div class="busy-overlay" id="busy-overlay">
     <div class="busy-label" id="busy-label"></div>
     <div class="bar md"><div class="bar-fill-indeterminate"></div></div>
   </div>
 
   <!-- Mark-as-reviewed success animation -->
+
   <div class="markreview-overlay" id="markreview-overlay">
     <div class="markreview-card">
       <div class="markreview-label" id="markreview-label"></div>
@@ -1103,6 +1120,7 @@
        save & continue later). Same family as the mark-as-reviewed bar
        but tuned for transitions: slower ease-out fill + a smaller,
        faster checkmark for quick acknowledgment rather than celebration. -->
+
   <div class="transition-overlay" id="transition-overlay">
     <div class="transition-card">
       <div class="transition-label" id="transition-label"></div>
@@ -1117,6 +1135,7 @@
   </div>
 
   <!-- Toast -->
+
   <div class="toast" id="toast"></div>
 
 </div>
@@ -2508,21 +2527,18 @@
       const labelEl = $('markreview-label');
       const successEl = $('markreview-success');
 
-      // Pace the bar over a longer minimum so it never looks frozen. The
-      // bar animates at a single constant rate from 0% → 92% over this
-      // duration. When the workPromise resolves AND the bar has had at
-      // least MIN_DURATION_MS to animate, we snap to 100% + checkmark.
+      // Pace the bar over a minimum duration so it never looks frozen,
+      // but keep it short enough that the celebration lands rather than
+      // overstays. Total animation time (bar + checkmark + success
+      // callout + fade) is roughly MIN_DURATION_MS + 700ms.
       //
-      // If the network is faster than MIN_DURATION_MS (common): the bar
-      // keeps filling at its calm pace until the minimum elapses, then
-      // snaps. Looks intentional, not frozen.
-      //
-      // If the network is slower: the bar reaches 92% at MIN_DURATION_MS
-      // and gently pulses there until the promise resolves. The pulsing
-      // is achieved via a second transition to 94% on a loop so the bar
-      // is never visually static.
-      const MIN_DURATION_MS = 1500;   // calmer pace so it doesn't look frozen
-      const PRE_FILL_PCT    = 92;
+      // The bar fills with ease-out so it visibly decelerates as it
+      // approaches the cap — never reads as frozen. If the (no-op)
+      // promise resolves before MIN_DURATION_MS the bar keeps filling
+      // calmly until the floor elapses, then snaps to 100% and the
+      // checkmark + success callout reveal.
+      const MIN_DURATION_MS = 900;
+      const PRE_FILL_PCT    = 85;
       const startedAt       = Date.now();
 
       // Reset UI
@@ -2535,21 +2551,23 @@
       successEl.textContent = vendorName + (state.lang === 'en' ? ' reviewed!' : ' revisado!');
       overlay.classList.add('open');
 
-      // Phase 1: slow steady fill to PRE_FILL_PCT
+      // Phase 1: ease-out fill to PRE_FILL_PCT. The decelerating curve
+      // means the bar always reads as "still progressing" right up to
+      // the snap, even if the promise has already resolved.
       requestAnimationFrame(() => {
-        fill.style.transition = 'width ' + MIN_DURATION_MS + 'ms linear';
+        fill.style.transition = 'width ' + MIN_DURATION_MS + 'ms cubic-bezier(0.16, 1, 0.3, 1)';
         fill.style.width = PRE_FILL_PCT + '%';
       });
 
       // Phase 1b: if the promise takes longer than the min duration, keep
-      // the bar gently breathing between 92% ↔ 94% so it never reads as
-      // frozen. Cleared when we transition to phase 2.
+      // the bar gently breathing between PRE_FILL ↔ PRE_FILL+2 so it
+      // never reads as frozen. Cleared when we transition to phase 2.
       let pulseInterval = null;
       const startPulse = () => {
         let high = true;
         pulseInterval = setInterval(() => {
           fill.style.transition = 'width 600ms ease-in-out';
-          fill.style.width = high ? '94%' : '92%';
+          fill.style.width = high ? (PRE_FILL_PCT + 2) + '%' : PRE_FILL_PCT + '%';
           high = !high;
         }, 600);
       };
@@ -2563,21 +2581,23 @@
         clearTimeout(pulseTimer);
         if (pulseInterval) { clearInterval(pulseInterval); pulseInterval = null; }
 
-        // Phase 2: snap to 100% + reveal check + show success callout
-        fill.style.transition = 'width 0.28s cubic-bezier(0.4, 0, 0.2, 1)';
+        // Phase 2: snap to 100% + reveal check + show success callout.
+        // Tighter timings than before — the celebration still lands but
+        // doesn't overstay. ~700ms from snap to fade-complete.
+        fill.style.transition = 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1)';
         fill.style.width = '100%';
         labelEl.style.opacity = '0';
 
-        setTimeout(() => check.classList.add('on'), 180);
-        setTimeout(() => successEl.classList.add('on'), 280);
+        setTimeout(() => check.classList.add('on'), 140);
+        setTimeout(() => successEl.classList.add('on'), 220);
 
-        // Linger on the success state, then fade out
-        setTimeout(() => overlay.classList.add('fade-out'), 1100);
+        // Brief linger on the success state, then fade out.
+        setTimeout(() => overlay.classList.add('fade-out'), 700);
         setTimeout(() => {
           overlay.classList.remove('open', 'fade-out');
           labelEl.style.opacity = '';
           resolve();
-        }, 1500);
+        }, 1000);
       });
     });
   }
@@ -2614,11 +2634,12 @@
       const labelEl = $('transition-label');
       const check   = $('transition-check');
 
-      // Tunable timing constants. Longer MIN_DURATION + lower PRE_FILL_PCT
-      // + ease-out curve = bar still has visible runway when typical work
-      // (500–2000ms) resolves, and the final snap to 100% is satisfyingly
-      // large rather than a tiny nudge from 92→100.
-      const MIN_DURATION_MS = 2200;
+      // Acknowledgment timing, not celebration. Most transitions are now
+      // local-only operations (cache patches, no network round-trip), so
+      // the bar's job is just to confirm "yes, this is happening" and
+      // get out of the way. Total animation time is roughly
+      // MIN_DURATION_MS + 600ms.
+      const MIN_DURATION_MS = 1100;
       const PRE_FILL_PCT    = 85;
 
       // Reset UI
@@ -2660,19 +2681,19 @@
         if (pulseInterval) { clearInterval(pulseInterval); pulseInterval = null; }
 
         // Phase 2: snap to 100%, then a small check pops in as a quick
-        // acknowledgment that the navigation is done. Faster than the
+        // acknowledgment that the navigation is done. Tighter than the
         // mark-as-reviewed ceremony — this is a transition, not a
-        // celebration, so we linger briefly and fade out.
-        fill.style.transition = 'width 0.28s cubic-bezier(0.4, 0, 0.2, 1)';
+        // celebration.
+        fill.style.transition = 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1)';
         fill.style.width = '100%';
 
-        setTimeout(() => check.classList.add('on'), 200);
+        setTimeout(() => check.classList.add('on'), 140);
 
-        setTimeout(() => overlay.classList.add('fade-out'), 850);
+        setTimeout(() => overlay.classList.add('fade-out'), 480);
         setTimeout(() => {
           overlay.classList.remove('open', 'fade-out');
           resolve();
-        }, 1150);
+        }, 750);
       });
     });
   }
