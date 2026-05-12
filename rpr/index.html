@@ -513,6 +513,26 @@
     }
     .recap-summary-strong { font-weight: 600; color: var(--text); }
     .recap-summary-dot { color: var(--text-3); }
+    /* Refresh pill — appears in the summary strip while a background
+       SWR revalidate is in flight. The recap is rendered from local
+       cache instantly; the pill signals that fresher numbers are on
+       the way. Hidden by default; toggled by revalidateRecapInBackground_. */
+    .recap-refresh-pill {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--bg);
+      border: 0.5px solid var(--border);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-2);
+    }
+    .recap-refresh-pill.show { display: inline-flex; }
+    .recap-refresh-pill .ti { font-size: 12px; animation: recap-spin 1s linear infinite; }
+    @keyframes recap-spin { to { transform: rotate(360deg); } }
     /* Email-myself button row in the recap view. Sits between the summary
        strip and the first vendor section. Uses .alldone-btn for the
        button itself (same affordance as the home dashboard's all-done
@@ -1058,7 +1078,7 @@
      CONFIG — set this to your deployed Apps Script Web App URL
      ============================================================ -->
 <script>
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbwsLAd0i9a4RnlGVJ5vPVRrcsCjWelAFFggswyUq7jJTwvFN8NZB5gjzWLonOc7R3QS/exec';
+  window.MOG_API_URL = '__MOG_API_URL__';
 </script>
 
 <div class="app en" id="app">
@@ -1276,7 +1296,11 @@
     // In-flight vendor fetches, keyed by vendor name. Prevents a double
     // fetch when the user taps a vendor that's still being prefetched —
     // we await the in-flight promise instead of firing a second request.
-    inflightVendorFetches: {}
+    inflightVendorFetches: {},
+    // True while a recap SWR background fetch is in flight. Used to
+    // dedup concurrent openRecap calls and to toggle the refresh pill
+    // in the recap header.
+    recapRevalidating: false
   };
 
   // Reviewed flags live in localStorage keyed by date so they auto-expire
@@ -1808,6 +1832,7 @@
       allDoneSub:       { en: "You're set for the day. Email yourself a copy to place the orders.", es: 'Listo para hoy. Env\u00edate una copia para hacer los pedidos.' },
       emailMyCopy:      { en: 'Email me the daily summary', es: 'Env\u00edame el resumen' },
       emailing:         { en: 'Sending…', es: 'Enviando…' },
+      refreshing:       { en: 'Refreshing…', es: 'Actualizando…' },
       // Reset card on home
       resetHomeTitle:   { en: 'Reset on hand', es: 'Reiniciar inventario' },
       resetHomeSub: {
@@ -3662,21 +3687,133 @@
 
   // ============================================================
   // RECAP (master summary view) — shows every vendor's suggested order
-  // in one place. Reads the same data source the daily-summary email
-  // uses, just rendered inline rather than sent.
+  // in one place.
+  //
+  // Four-tier load strategy, fastest to slowest. Each tier is a true
+  // fall-through: if it can't produce a render, the next tier runs.
+  //
+  //   Tier 0 — buildRecapLocally_(): derive the recap synchronously
+  //     from state.cache.dashboard + state.cache.vendorItems. The
+  //     server's buildRecapSections_ does exactly the same computation
+  //     (iterate today's vendors, filter items by suggestedQty > 0),
+  //     so when every active vendor's items are already cached client-
+  //     side we have all the inputs and need no network round-trip.
+  //     This is the steady-state path after the dashboard prefetch
+  //     completes — opens in <50ms, works fully offline.
+  //
+  //   Tier 1 — state.cache.recap hit: a prior server-fetched recap is
+  //     in memory and hasn't been invalidated since. Render and return.
+  //     Reached when Tier 0 can't compute (vendor cache gap) but a
+  //     server-fetched recap was cached earlier in the session.
+  //
+  //   Tier 2 — localStorage SWR fallback: in-memory recap is null but
+  //     a fresh-for-today recap exists in localStorage from a prior
+  //     fetch. Render the persisted (potentially stale-by-one-save)
+  //     data immediately, then kick a silent background revalidate
+  //     that swaps in the fresh data when it arrives. Mirrors the
+  //     fetchVendorItems_ pattern.
+  //
+  //   Tier 3 — cold network fetch: nothing cached anywhere. Show
+  //     loading and fetch. The original behavior, now reached only on
+  //     first-open-of-cycle / post-reset / post-signout.
   // ============================================================
+
+  // Tier 0 computation. Returns null if any active vendor's items aren't
+  // in cache (signaling "fall through to the next tier") or if the
+  // dashboard itself isn't cached. Otherwise returns the same shape
+  // buildRecapSections_ on the server produces.
+  //
+  // We exclude 'sent' vendors here for two reasons: the dashboard
+  // prefetch already skips them so they're never in vendorItems cache
+  // anyway, and once an order is logged the KM doesn't want it
+  // cluttering the "still to order" view.
+  function buildRecapLocally_() {
+    const dash = state.cache.dashboard;
+    if (!dash || !dash.vendors) return null;
+    const sections = [];
+    let totalItems = 0;
+    for (const v of dash.vendors) {
+      if (v.status === 'sent') continue;
+      const vData = state.cache.vendorItems[v.name];
+      if (!vData || !vData.items) return null;  // cache gap → bail
+      const lines = [];
+      for (const it of vData.items) {
+        if (it.suggestedQty != null && it.suggestedQty > 0) {
+          lines.push({
+            name:   it.name,
+            pack:   it.pack,
+            onHand: it.onHand,
+            qty:    it.suggestedQty,
+            area:   it.storageArea
+          });
+        }
+      }
+      if (lines.length) {
+        sections.push({ vendor: v.name, itemCount: lines.length, lines: lines });
+        totalItems += lines.length;
+      }
+    }
+    return {
+      cycleDate:   dash.date,
+      vendorCount: sections.length,
+      itemCount:   totalItems,
+      sections:    sections
+    };
+  }
+
   async function openRecap() {
     showView('recap');
     const view = $('view-recap');
-    // Fast path: same pattern as loadToday / loadHistory. The recap is a
-    // server-side rollup of every vendor's suggested order quantities,
-    // so we invalidate it whenever something could move those numbers:
-    // any save (flushDirtyToServer), reset, or sign-out. On a cache hit
-    // the rendering is instant.
+
+    // Tier 0 — derive locally if every active vendor is cached.
+    // The dashboard prefetch typically completes within seconds of
+    // sign-in, so this is the steady-state path. No spinner, no
+    // network, no stale-flash. Works fully offline once the vendor
+    // cache is warm.
+    //
+    // We also write back to state.cache.recap and localStorage here.
+    // Two reasons:
+    //   1. The email-send success handler re-renders via
+    //      `if (state.cache.recap) renderRecap(state.cache.recap)` to
+    //      flip the "Already sent today" badge. That path needs the
+    //      cache populated.
+    //   2. Writing to localStorage primes the next cold-boot hydrate
+    //      with the most recently-derived recap, so an offline reopen
+    //      shows fresh data even if no Tier 3 fetch happens for a
+    //      while.
+    // Safe because buildRecapLocally_ matches buildRecapSections_ on
+    // the server line-for-line; the two cache writers produce the
+    // same shape.
+    const local = buildRecapLocally_();
+    if (local) {
+      state.cache.recap = local;
+      writeOfflineCache_(OFFLINE_SLOTS.RECAP, local, { date: todayStr_() });
+      renderRecap(local);
+      return;
+    }
+
+    // Tier 1 — in-memory recap from a prior server fetch this session.
+    // Reached when a Tier 0 cache gap exists (e.g. prefetch hasn't
+    // finished or a vendor's items failed to fetch) but we previously
+    // got a server recap.
     if (state.cache.recap) {
       renderRecap(state.cache.recap);
       return;
     }
+
+    // Tier 2 — localStorage SWR. After flushDirtyToServer nulls the
+    // in-memory cache, the persisted recap still holds the prior
+    // render. Paint it instantly so the screen never blanks, then
+    // revalidate in the background and swap when fresh arrives.
+    const persisted = readOfflineCache_(OFFLINE_SLOTS.RECAP, isFreshRecap_);
+    if (persisted) {
+      state.cache.recap = persisted;
+      renderRecap(persisted);
+      revalidateRecapInBackground_();
+      return;
+    }
+
+    // Tier 3 — cold path. Nothing cached anywhere.
     renderLoading(view);
     try {
       const data = await api('getRecapData');
@@ -3688,6 +3825,42 @@
       if (isNetworkError_(err)) showToast(t('offlineRetry'), 'error');
       renderError(view, openRecap);
     }
+  }
+
+  // Silent background revalidation for Tier 2. The user already sees
+  // usable (stale-by-at-most-one-save) data, so failures are non-fatal
+  // and stay in the console. Only repaints if the user is still on the
+  // recap view when fresh data lands — if they navigated to a vendor
+  // count or back home mid-fetch, we update the cache for next open
+  // but don't paint over their current screen.
+  function revalidateRecapInBackground_() {
+    if (state.recapRevalidating) return;
+    state.recapRevalidating = true;
+    setRecapRefreshPill_(true);
+    api('getRecapData')
+      .then(data => {
+        state.cache.recap = data;
+        writeOfflineCache_(OFFLINE_SLOTS.RECAP, data, { date: todayStr_() });
+        if (state.currentView === 'recap') renderRecap(data);
+      })
+      .catch(err => {
+        console.warn('[recap] background revalidate failed', err);
+      })
+      .finally(() => {
+        state.recapRevalidating = false;
+        setRecapRefreshPill_(false);
+      });
+  }
+
+  // Toggle the "Refreshing…" pill in the recap summary strip. Tolerates
+  // the pill not being in the DOM (e.g. revalidation started just
+  // before a navigation rebuilt the view) by no-op'ing on missing
+  // element.
+  function setRecapRefreshPill_(on) {
+    const pill = document.getElementById('recap-refresh-pill');
+    if (!pill) return;
+    if (on) pill.classList.add('show');
+    else pill.classList.remove('show');
   }
 
   function renderRecap(data) {
@@ -3712,6 +3885,14 @@
       '</span>' +
       '<span class="recap-summary-dot">&middot;</span>' +
       '<span>' + data.itemCount + ' ' + escapeHtml(t('items')) + '</span>' +
+      // Refresh pill — visibility controlled by setRecapRefreshPill_().
+      // The full element ships in every render so re-renders during a
+      // background fetch don't lose the pill; the helper just re-applies
+      // the .show class against the freshly-rendered node.
+      '<span id="recap-refresh-pill" class="recap-refresh-pill" aria-hidden="true">' +
+        '<i class="ti ti-refresh"></i>' +
+        '<span>' + escapeHtml(t('refreshing')) + '</span>' +
+      '</span>' +
     '</div>';
 
     // Email-myself button — same code path as the home dashboard's
