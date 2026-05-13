@@ -5,5 +5,35 @@
     "location": "Rosslyn",
     "deployment": "https://script.google.com/macros/s/AKfycbxRbLvqVy8aU1S_bzc6jwWvNzGD6_lUA0aKPyANckBxj9g3qd_3bYf6a3MviuK3oZNZJw/exec"
   }
+  {
+  "slug": "rprfoh",
+  "concept": "Roll Play",
+  "location": "Rosslyn FOH",
+  "deployment": "INSERT"
+  }
+  {
+  "slug": "rpt",
+  "concept": "Roll Play",
+  "location": "Tysons",
+  "deployment": "INSERT"
+  }
+  {
+  "slug": "rpfr",
+  "concept": "Roll Play",
+  "location": "Founders Row",
+  "deployment": "INSERT"
+  }
+  {
+  "slug": "tnyt",
+  "concept": "Teas'n You",
+  "location": "Tysons",
+  "deployment": "INSERT"
+  }
+  {
+  "slug": "leidt",
+  "concept": "Lei'd",
+  "location": "Tysons",
+  "deployment": "INSERT"
+  }
 ]
 
