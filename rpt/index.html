@@ -230,6 +230,54 @@
     }
     .alldone-sent i { font-size: 14px; }
 
+    /* Empty-email reminder pill — shown above the vendor list when
+       state.userEmail is empty. Subtle teal styling so it nudges
+       without competing with vendor cards. Tap target opens Settings. */
+    .email-nudge-pill {
+      background: var(--teal-light);
+      border: 0.5px solid #b8dccd;
+      border-radius: var(--r-md);
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: var(--teal-dark);
+      cursor: pointer;
+    }
+    .email-nudge-pill:active { filter: brightness(0.97); }
+    .email-nudge-pill i.lead { font-size: 18px; flex-shrink: 0; }
+    .email-nudge-pill .nudge-text { flex: 1; line-height: 1.35; }
+    .email-nudge-pill .nudge-cta {
+      font-weight: 600; color: var(--teal-dark);
+      white-space: nowrap;
+    }
+    .email-nudge-pill i.chev { font-size: 16px; flex-shrink: 0; opacity: 0.7; }
+
+    /* Stale-summary banner — shown when recap_stale_<cycleDate> is set
+       (un-review after the email was sent). Warning amber, sits above
+       the all-done panel + vendor list. Inline Resend CTA. */
+    .recap-stale-banner {
+      background: #fef6e0;
+      border: 0.5px solid #f0c97a;
+      border-radius: var(--r-md);
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: #7a5a13;
+    }
+    .recap-stale-banner i.lead { font-size: 18px; flex-shrink: 0; color: #c08a1a; }
+    .recap-stale-banner .stale-text { flex: 1; line-height: 1.35; font-weight: 600; }
+    .recap-stale-banner .stale-resend {
+      background: #c08a1a; color: white;
+      border: none; border-radius: var(--r-sm, 6px);
+      padding: 7px 14px;
+      font-size: 13px; font-weight: 600;
+      white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .recap-stale-banner .stale-resend:active { background: #9c6e10; }
+    .recap-stale-banner .stale-resend:disabled { opacity: 0.6; }
+    .recap-stale-banner .stale-resend i { font-size: 14px; }
+
     .vendor-card {
       background: var(--bg);
       border: 0.5px solid var(--border);
@@ -1347,8 +1395,19 @@
   }
   function setReviewed(dateStr, vendor, val) {
     const m = getReviewedSet(dateStr);
+    const wasReviewed = !!m[vendor];
     if (val) m[vendor] = true; else delete m[vendor];
     localStorage.setItem(reviewedKey(dateStr), JSON.stringify(m));
+    // If un-reviewing AFTER the daily summary email has been sent, the
+    // sent email no longer reflects current state. Mark stale so the
+    // home banner prompts a resend. Re-reviewing the same vendor does
+    // NOT clear stale — counts may have changed between the toggles,
+    // and we err on "stale" until they explicitly resend.
+    if (wasReviewed && !val) {
+      if (localStorage.getItem(nsKey_('recap_sent_' + dateStr))) {
+        localStorage.setItem(nsKey_('recap_stale_' + dateStr), '1');
+      }
+    }
   }
   // Garbage-collect old reviewed-flag keys on boot. Scoped to the
   // current deployment's namespace — other stores' reviewed flags
@@ -1891,6 +1950,19 @@
         es: 'Enviaremos el resumen aqu&iacute;. Lo guardaremos en este dispositivo.'
       },
       enterEmailPlaceholder: { en: 'name@example.com', es: 'tu@correo.com' },
+      // Email auto-send feature
+      firstRunEmailTitle: { en: 'Want a copy of your daily order?', es: '¿Quieres una copia de tu pedido diario?' },
+      firstRunEmailMsg: {
+        en: "Add your email and we'll send you a summary when you finish reviewing or reset on hand. You can change this anytime in Settings.",
+        es: 'Agrega tu correo y te enviaremos un resumen al terminar de revisar o al reiniciar inventario. Puedes cambiarlo en Ajustes.'
+      },
+      firstRunEmailSkip: { en: 'Skip for now', es: 'Saltar por ahora' },
+      noEmailPillText: { en: 'Set your email to auto-send daily summaries', es: 'Configura tu correo para resumenes automaticos' },
+      noEmailPillCta: { en: 'Set email', es: 'Configurar' },
+      recapStaleText: { en: 'Daily summary is out of date', es: 'El resumen diario está desactualizado' },
+      recapStaleCta: { en: 'Resend', es: 'Reenviar' },
+      autoSendingSummary: { en: 'Sending order summary…', es: 'Enviando resumen…' },
+      autoSendFailed: { en: 'Daily summary email failed. Retry from home.', es: 'No se envió el resumen. Reinténtalo desde inicio.' },
       send:             { en: 'Send', es: 'Enviar' },
       language:         { en: 'Language', es: 'Idioma' },
       version:          { en: 'Version', es: 'Versi&oacute;n' },
@@ -1992,23 +2064,30 @@
   }
 
   // Email prompt modal — stripped-down version that takes an input
-  function showEmailPrompt() {
+  // Optional opts:
+  //   titleKey: translation key to override the default 'enterEmail' title
+  //   msgKey:   translation key to override the default 'enterEmailMsg' body
+  //   skipKey:  translation key for the cancel button label (e.g. 'Skip for now'
+  //             instead of 'Cancel') — used by the first-run prompt
+  function showEmailPrompt(opts) {
+    opts = opts || {};
     return new Promise((resolve) => {
       $('modal-icon').className = 'modal-icon success';
       $('modal-icon').innerHTML = '<i class="ti ti-mail" aria-hidden="true"></i>';
-      $('modal-title').textContent = t('enterEmail');
-      $('modal-msg').textContent = t('enterEmailMsg');
+      $('modal-title').textContent = t(opts.titleKey || 'enterEmail');
+      $('modal-msg').textContent = t(opts.msgKey || 'enterEmailMsg');
 
       // Replace actions with input + send/cancel
       const actionsEl = document.querySelector('.modal-actions');
       const placeholder = t('enterEmailPlaceholder');
+      const cancelLabel = opts.skipKey ? t(opts.skipKey) : t('cancel');
       actionsEl.innerHTML =
         '<input type="email" id="email-input" autocomplete="email" inputmode="email" ' +
         'placeholder="' + escapeHtml(placeholder) + '" ' +
         'style="width:100%;padding:12px;border:0.5px solid var(--border-2);border-radius:var(--r-md);' +
         'font-size:15px;margin-bottom:8px;outline:none">' +
         '<button class="modal-cta" id="modal-send">' + escapeHtml(t('send')) + '</button>' +
-        '<button class="modal-cancel" id="modal-cancel-2">' + escapeHtml(t('cancel')) + '</button>';
+        '<button class="modal-cancel" id="modal-cancel-2">' + escapeHtml(cancelLabel) + '</button>';
 
       const input = $('email-input');
       input.value = state.userEmail || '';
@@ -2211,14 +2290,45 @@
     return months[+parts[1] - 1] + ' ' + (+parts[2]) + ', ' + parts[0];
   }
 
+  // First-run email prompt — shown once per device after the first
+  // successful PIN entry where no email is saved. Skippable; the
+  // empty-email pill on the home dashboard handles persistent
+  // reminders thereafter.
+  async function maybePromptFirstRunEmail_() {
+    try {
+      if (state.userEmail) return;
+      if (localStorage.getItem('mog_first_run_email_prompted') === '1') return;
+      localStorage.setItem('mog_first_run_email_prompted', '1');
+      // Small delay so the dashboard render lands first — a modal
+      // popping up mid-transition feels jarring.
+      await new Promise(r => setTimeout(r, 600));
+      const email = await showEmailPrompt({
+        titleKey: 'firstRunEmailTitle',
+        msgKey:   'firstRunEmailMsg',
+        skipKey:  'firstRunEmailSkip'
+      });
+      if (email) {
+        state.userEmail = email;
+        localStorage.setItem('mog_user_email', email);
+        if (state.cache.dashboard) renderToday(state.cache.dashboard);
+      }
+    } catch (e) {
+      console.warn('[firstRunEmail] non-fatal:', e);
+    }
+  }
+
   async function proceedAfterAuth() {
     try {
       const status = await api('getResetStatus');
       if (status.isStale) showStaleScreen(status);
-      else await showMainApp();
+      else {
+        await showMainApp();
+        maybePromptFirstRunEmail_();
+      }
     } catch (err) {
       console.error('proceedAfterAuth error:', err);
       await showMainApp();
+      maybePromptFirstRunEmail_();
     }
   }
 
@@ -2265,7 +2375,8 @@
     const prefixes = [
       nsKey_('reviewed_'),
       nsKey_('draft_'),
-      nsKey_('recap_sent_')
+      nsKey_('recap_sent_'),
+      nsKey_('recap_stale_')
     ];
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
@@ -2575,6 +2686,32 @@
       '</div>';
     }
 
+    // Stale summary banner — shown whenever the user un-reviewed a
+    // vendor after the daily summary email was already sent. Persists
+    // until they tap Resend (which clears the stale flag) or reset.
+    const recapStale = !!localStorage.getItem(nsKey_('recap_stale_' + data.date));
+    if (recapStale) {
+      html += '<div class="recap-stale-banner">' +
+        '<i class="ti ti-alert-triangle lead" aria-hidden="true"></i>' +
+        '<span class="stale-text">' + escapeHtml(t('recapStaleText')) + '</span>' +
+        '<button class="stale-resend" id="stale-resend-btn">' +
+          '<i class="ti ti-refresh" aria-hidden="true"></i>' +
+          '<span>' + escapeHtml(t('recapStaleCta')) + '</span>' +
+        '</button>' +
+      '</div>';
+    }
+
+    // Empty-email reminder pill — shown whenever no email is configured.
+    // Subtle tap target opens Settings. Disappears once email is set.
+    if (!state.userEmail) {
+      html += '<div class="email-nudge-pill" id="email-nudge-pill">' +
+        '<i class="ti ti-mail lead" aria-hidden="true"></i>' +
+        '<span class="nudge-text">' + escapeHtml(t('noEmailPillText')) + '</span>' +
+        '<span class="nudge-cta">' + escapeHtml(t('noEmailPillCta')) + '</span>' +
+        '<i class="ti ti-chevron-right chev" aria-hidden="true"></i>' +
+      '</div>';
+    }
+
     // "View full order list" appears at the top whenever at least one
     // vendor is reviewed. As more vendors get reviewed and sort to the
     // bottom, this button stays put as a stable anchor — the master
@@ -2636,6 +2773,52 @@
     if ($('alldone-resend-btn')) $('alldone-resend-btn').addEventListener('click', onSendDailyRecap);
     if ($('view-full-btn'))      $('view-full-btn').addEventListener('click', openRecap);
     if ($('home-reset-btn'))     $('home-reset-btn').addEventListener('click', onHomeResetClick);
+    if ($('stale-resend-btn'))   $('stale-resend-btn').addEventListener('click', onStaleResendClick);
+    if ($('email-nudge-pill'))   $('email-nudge-pill').addEventListener('click', onEmailNudgeClick);
+  }
+
+  // Stale-banner Resend handler. Same code path as the all-done panel's
+  // Send/Resend button — sendDailyRecap() clears the stale flag on
+  // success, which removes the banner on the next render.
+  async function onStaleResendClick() {
+    const btn = $('stale-resend-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.querySelector('span').textContent = t('emailing');
+    }
+    const result = await sendDailyRecap();
+    if (result.cancelled) {
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = t('recapStaleCta');
+      }
+      return;
+    }
+    if (result.ok) {
+      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+      if (state.cache.dashboard) renderToday(state.cache.dashboard);
+    } else {
+      const m = String((result.error && result.error.message) || '');
+      if (result.offline) showToast(t('offlineRetry'), 'error');
+      else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      else showToast(m || 'Error', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('span').textContent = t('recapStaleCta');
+      }
+    }
+  }
+
+  // Empty-email pill handler — opens the email prompt directly rather
+  // than navigating to Settings. One tap → email set. Mirrors the same
+  // flow Settings uses.
+  async function onEmailNudgeClick() {
+    const email = await showEmailPrompt();
+    if (!email) return;
+    state.userEmail = email;
+    localStorage.setItem('mog_user_email', email);
+    if (state.cache.dashboard) renderToday(state.cache.dashboard);
+    renderSettings();
   }
 
   function renderVendorCard(v, status, dashboardDateStr) {
@@ -3436,6 +3619,11 @@
     showView('today');
     if (state.cache.dashboard) renderToday(state.cache.dashboard);
     else loadToday();
+
+    // If this was the last unreviewed vendor on today's list, fire the
+    // auto-send daily summary. Fire-and-forget — the user lands on the
+    // dashboard immediately; toast + re-render handle the result.
+    maybeAutoSendOnAllReviewed_();
   }
 
   // Bar-fill + checkmark animation synced to a real async operation.
@@ -4122,6 +4310,63 @@
     renderSettings();
   }
 
+  // ============================================================
+  // EMAIL AUTO-SEND HELPERS
+  //
+  // The daily summary email has three trigger points, all gated by a
+  // single localStorage flag per cycle (recap_sent_<cycleDate>):
+  //   1. Manual: user taps Send Email — always fires, ignores flag
+  //   2. Auto on all-reviewed: fires once when the last vendor is
+  //      reviewed (see onMarkReviewedClick)
+  //   3. Auto on reset on hand: fires before commitReset if not yet sent
+  // The flag prevents double-sends across triggers (2) and (3); (1) is
+  // the explicit user override.
+  // ============================================================
+
+  // Best-effort auto-send used by triggers (2) and (3). Silent on
+  // success beyond a toast + dashboard re-render. Silent on failure
+  // beyond an error toast. Never throws; never blocks the caller.
+  async function autoSendDailyRecap_(reason) {
+    if (!state.userEmail) return { ok: false, skipped: 'no-email' };
+    const cycleDate = state.cache.dashboard && state.cache.dashboard.date;
+    if (cycleDate && localStorage.getItem(nsKey_('recap_sent_' + cycleDate))) {
+      return { ok: false, skipped: 'already-sent' };
+    }
+    try {
+      const result = await sendDailyRecap();
+      if (result && result.ok) {
+        showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+        if (state.cache.dashboard) renderToday(state.cache.dashboard);
+      } else if (result && !result.cancelled) {
+        const m = String((result.error && result.error.message) || '');
+        if (result.offline) showToast(t('offlineRetry'), 'error');
+        else if (m.indexOf('Nothing to recap') >= 0) {
+          // Empty recap on auto-send isn't a user-visible error.
+        } else {
+          showToast(t('autoSendFailed'), 'error');
+        }
+      }
+      return result;
+    } catch (err) {
+      console.error('[autoSend ' + reason + '] error:', err);
+      showToast(t('autoSendFailed'), 'error');
+      return { ok: false, error: err };
+    }
+  }
+
+  // Called after every successful mark-reviewed. If this was the last
+  // unreviewed vendor, fires the auto-send (gated by recap_sent_).
+  async function maybeAutoSendOnAllReviewed_() {
+    const data = state.cache.dashboard;
+    if (!data || !data.vendors || !data.vendors.length) return;
+    const allReviewed = data.vendors.every(v => {
+      const s = effectiveStatus(v, data.date);
+      return s === 'reviewed' || s === 'sent';
+    });
+    if (!allReviewed) return;
+    await autoSendDailyRecap_('all-reviewed');
+  }
+
   // Shared core: ensures we have an email, sends the recap, returns
   // { ok, vendorCount, error }. Used by both the Settings row and the
   // end-of-day panel on the home dashboard.
@@ -4138,7 +4383,12 @@
       // Mark this cycle's recap as sent so the home panel can show a
       // confirmation state and discourage spam-resends.
       const cycleDate = (state.cache.dashboard && state.cache.dashboard.date) || result.cycleDate;
-      if (cycleDate) localStorage.setItem(nsKey_('recap_sent_' + cycleDate), '1');
+      if (cycleDate) {
+        localStorage.setItem(nsKey_('recap_sent_' + cycleDate), '1');
+        // Successful send clears any stale flag — the newly-sent email
+        // reflects current state, so the out-of-date banner should go.
+        localStorage.removeItem(nsKey_('recap_stale_' + cycleDate));
+      }
       // Recap may have committed today's orders to LOG_ORDERS — drop the
       // history cache so the next History open shows the new entry
       // instead of stale data.
@@ -4195,6 +4445,22 @@
     });
     if (!ok) return;
 
+    // Backup auto-send: if no email has been sent for this cycle yet,
+    // send it now BEFORE commitReset clears the live on-hand state.
+    // Best-effort — a failure does NOT block reset, since stranding the
+    // KM on a flaky network is worse than missing an email they can
+    // resend manually.
+    try {
+      const cycleDate = state.cache.dashboard && state.cache.dashboard.date;
+      const alreadySent = cycleDate && localStorage.getItem(nsKey_('recap_sent_' + cycleDate));
+      if (state.userEmail && !alreadySent) {
+        showBusy(t('autoSendingSummary'));
+        await autoSendDailyRecap_('pre-reset');
+      }
+    } catch (e) {
+      console.warn('[reset] pre-reset auto-send error (continuing):', e);
+    }
+
     showBusy(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
     try {
       const result = await api('commitReset');
@@ -4218,6 +4484,7 @@
         const sPrefixes = [
           nsKey_('reviewed_'),
           nsKey_('recap_sent_'),
+          nsKey_('recap_stale_'),
           nsKey_('draft_')
         ];
         const survivors = [];
