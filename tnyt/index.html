@@ -718,6 +718,21 @@
       margin-top: 28px; font-size: 12px; color: var(--text-3);
       text-align: center; max-width: 280px;
     }
+    /* Wrong-store escape link. Shows on the PIN screen and the stale-
+       reset screen — both are pre-action gates where being on the wrong
+       store is recoverable, and both need a fast exit. The label color
+       sits between passive help text and a true CTA so it reads as
+       tappable without competing with the primary Sign in button. */
+    .pin-switch-store {
+      margin-top: 16px; font-size: 13px;
+      text-align: center; color: var(--text-3);
+    }
+    .pin-switch-store-btn {
+      background: none; border: none; padding: 4px 8px;
+      color: var(--teal); font-size: 13px; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+    .pin-switch-store-btn:active { opacity: 0.6; }
 
     /* Stale reset screen */
     .stale-screen {
@@ -1101,6 +1116,13 @@
       <span class="lang-en">If you don't know the PIN, ask your GM.</span>
       <span class="lang-es">Si no sabes el PIN, pregunta a tu gerente.</span>
     </p>
+    <p class="pin-switch-store">
+      <span class="lang-en">Wrong store?</span>
+      <span class="lang-es">&iquest;Tienda equivocada?</span>
+      <button class="pin-switch-store-btn" id="pin-switch-store-btn" type="button">
+        <span class="lang-en">Switch</span><span class="lang-es">Cambiar</span>
+      </button>
+    </p>
   </div>
 
   <!-- STALE RESET GATE -->
@@ -1137,6 +1159,13 @@
     <p class="stale-help">
       <span class="lang-en">This logs yesterday's order, clears all On Hand counts, and updates the date so today's multipliers apply.</span>
       <span class="lang-es">Esto registra el pedido de ayer, borra los conteos y actualiza la fecha para los multiplicadores de hoy.</span>
+    </p>
+    <p class="pin-switch-store">
+      <span class="lang-en">Wrong store?</span>
+      <span class="lang-es">&iquest;Tienda equivocada?</span>
+      <button class="pin-switch-store-btn" id="stale-switch-store-btn" type="button">
+        <span class="lang-en">Switch</span><span class="lang-es">Cambiar</span>
+      </button>
     </p>
   </div>
 
@@ -1849,6 +1878,8 @@
       pinNetworkError:  { en: "Couldn't reach the server. Check your connection.", es: 'Sin conexi&oacute;n. Revisa tu internet.' },
       pinConfigError:   { en: 'App not configured. Contact your GM.', es: 'App no configurada. Contacta tu gerente.' },
       pinLockedError:   { en: 'Too many attempts. Try again in {minutes} minute(s).', es: 'Demasiados intentos. Espera {minutes} minuto(s).' },
+      wrongStore:       { en: 'Wrong store?', es: '\u00bfTienda equivocada?' },
+      switchStore:      { en: 'Switch', es: 'Cambiar' },
       summarySent:      { en: 'Daily summary emailed', es: 'Resumen enviado' },
       summaryEmpty:     { en: 'Nothing to send yet', es: 'No hay nada que enviar' },
       dailySummary:     { en: 'Daily summary', es: 'Resumen diario' },
@@ -2046,6 +2077,23 @@
     // gate would be wrong — they don't necessarily know this store's
     // PIN; the master PIN was their access.
     window.location.href = '../';
+  }
+
+  // Bounce back to the hub picker. Wired to the 'Switch' link on both the
+  // PIN screen and the stale-reset screen. Two safeguards against the
+  // hub's auto-redirect loop (the hub remembers mog_hub_last_slug and
+  // would otherwise send the user right back to this same store):
+  //   1. Clear mog_hub_last_slug directly so the hub can't recall it.
+  //   2. Append ?force_picker=1, the documented escape-hatch flag the
+  //      hub consumes to skip auto-redirect for this load (see README's
+  //      'URL flags' section).
+  // Belt-and-suspenders — either alone would work, both together
+  // survive any single-point-of-failure in the hub's redirect logic.
+  function switchStore_() {
+    try {
+      localStorage.removeItem('mog_hub_last_slug');
+    } catch (e) { /* non-fatal */ }
+    window.location.href = '../?force_picker=1';
   }
 
   // ============================================================
@@ -4452,6 +4500,11 @@
   })();
 
   $('pin-submit').addEventListener('click', handlePinSubmit);
+  // Switch-store links on PIN gate and stale-reset screen. Both
+  // share the same handler — clear hub's last-slug memory and
+  // navigate back with the force_picker flag.
+  $('pin-switch-store-btn').addEventListener('click', switchStore_);
+  $('stale-switch-store-btn').addEventListener('click', switchStore_);
   // Manager-mode exit button — wired here in BOOT (the banner element
   // is permanently in the DOM; .show class controls visibility).
   const mgrExitBtn = document.getElementById('manager-exit-btn');
