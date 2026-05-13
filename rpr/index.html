@@ -1754,10 +1754,6 @@
   const T = {
     titles: {
       today:           { en: "Today's orders",  es: 'Pedidos de hoy' },
-      count:           { en: 'Count',           es: 'Contar' },
-      review:          { en: 'Review',          es: 'Revisar' },
-      recap:           { en: 'Full order list', es: 'Lista completa' },
-      history:         { en: 'History',         es: 'Historial' },
       'history-detail':{ en: 'Order details',   es: 'Detalles' },
       settings:        { en: 'Settings',        es: 'Ajustes' }
     },
@@ -1781,7 +1777,6 @@
       orderByLabel:     { en: 'Order by', es: 'Ordenar antes de' },
       cutoffApproaching:{ en: 'cutoff approaching', es: 'corte pr&oacute;ximo' },
       cutoffMissed:     { en: 'cutoff missed', es: 'corte vencido' },
-      pickup:           { en: 'pick up', es: 'recoger' },
       vendorsToday:     { en: 'Vendors today', es: 'Proveedores hoy' },
       today:            { en: 'Today', es: 'Hoy' },
       orderHistory:     { en: 'Order history', es: 'Historial' },
@@ -1789,7 +1784,6 @@
       reference:        { en: 'Reference', es: 'Referencia' },
       onHand:           { en: 'on hand', es: 'stock' },
       counted:          { en: 'counted', es: 'contados' },
-      walkPickPath:     { en: 'Walk the pick path', es: 'Recorre la ruta' },
       reviewOrder:      { en: 'Review order', es: 'Revisar pedido' },
       saveContinue:     { en: 'Save and continue later', es: 'Guardar y continuar despu&eacute;s' },
       saving:           { en: 'Saving…', es: 'Guardando…' },
@@ -1797,9 +1791,6 @@
       backToCount:      { en: 'Back to count', es: 'Volver a contar' },
       markReviewed:     { en: 'Mark as reviewed', es: 'Marcar como revisado' },
       itemsReviewed:    { en: 'items reviewed', es: 'art&iacute;culos revisados' },
-      lockedMsg:        { en: 'Reviewed. Edit to make changes.', es: 'Revisado. Edita para cambiar.' },
-      edit:             { en: 'Edit', es: 'Editar' },
-      vendorReviewed:   { en: 'Vendor reviewed', es: 'Proveedor revisado' },
       done:             { en: 'Done', es: 'Listo' },
       cancel:           { en: 'Cancel', es: 'Cancelar' },
       confirmReview:    { en: 'Mark as reviewed?', es: '¿Marcar como revisado?' },
@@ -1807,7 +1798,6 @@
         en: 'This locks counts for this vendor. You can still come back and edit if you need to.',
         es: 'Esto bloquea los conteos. Puedes volver y editar si lo necesitas.'
       },
-      confirmEdit:      { en: 'Edit reviewed vendor?', es: '¿Editar proveedor revisado?' },
       confirmOpenReviewed: { en: 'Open reviewed vendor?', es: '¿Abrir proveedor revisado?' },
       confirmOpenReviewedMsg: {
         en: "This vendor is already marked as reviewed. You can still make changes — they'll save as you type.",
@@ -1858,7 +1848,7 @@
       pinError:         { en: 'Wrong PIN. Try again.', es: 'PIN incorrecto. Intenta de nuevo.' },
       pinNetworkError:  { en: "Couldn't reach the server. Check your connection.", es: 'Sin conexi&oacute;n. Revisa tu internet.' },
       pinConfigError:   { en: 'App not configured. Contact your GM.', es: 'App no configurada. Contacta tu gerente.' },
-      reviewedToast:    { en: 'Vendor reviewed', es: 'Proveedor revisado' },
+      pinLockedError:   { en: 'Too many attempts. Try again in {minutes} minute(s).', es: 'Demasiados intentos. Espera {minutes} minuto(s).' },
       summarySent:      { en: 'Daily summary emailed', es: 'Resumen enviado' },
       summaryEmpty:     { en: 'Nothing to send yet', es: 'No hay nada que enviar' },
       dailySummary:     { en: 'Daily summary', es: 'Resumen diario' },
@@ -1871,7 +1861,6 @@
       },
       enterEmailPlaceholder: { en: 'name@example.com', es: 'tu@correo.com' },
       send:             { en: 'Send', es: 'Enviar' },
-      english:          { en: 'English', es: 'Espa&ntilde;ol' },
       language:         { en: 'Language', es: 'Idioma' },
       version:          { en: 'Version', es: 'Versi&oacute;n' },
       signOut:          { en: 'Sign out', es: 'Cerrar sesi&oacute;n' },
@@ -2077,7 +2066,19 @@
       let json;
       try { json = JSON.parse(text); }
       catch (e) { throw new Error('BAD_JSON: ' + text.substring(0, 200)); }
-      if (!json.ok) throw new Error(json.error || 'Unknown error');
+      if (!json.ok) {
+        // Build an Error and attach the structured lockout fields when
+        // present, so PIN-screen logic can branch on them. The Error
+        // message itself stays human-readable for non-lockout errors
+        // (Invalid PIN, BAD_JSON, etc.) so existing string-match
+        // handling in handlePinSubmit still works.
+        const e = new Error(json.error || 'Unknown error');
+        if (json.lockout) {
+          e.lockout = true;
+          e.retryAfterMs = json.retryAfterMs || 0;
+        }
+        throw e;
+      }
       // Any successful response means we're online — flip the banner
       // off if it was on (e.g. after navigator.onLine lied to us) and
       // opportunistically drain any queued saves.
@@ -2245,7 +2246,14 @@
       btn.disabled = false;
       $('pin-input').classList.add('error');
       const m = String(err.message || '');
-      if (m === 'CONFIG_MISSING') errEl.textContent = t('pinConfigError');
+      if (err.lockout) {
+        // Round up so '90 seconds remaining' shows as '2 minutes' rather
+        // than '1' — overestimating retry time is friendlier than
+        // underestimating and having the user retry too early.
+        const mins = Math.max(1, Math.ceil((err.retryAfterMs || 0) / 60000));
+        errEl.textContent = t('pinLockedError').replace('{minutes}', mins);
+      }
+      else if (m === 'CONFIG_MISSING') errEl.textContent = t('pinConfigError');
       else if (m === 'Invalid PIN') errEl.textContent = t('pinError');
       else if (m.indexOf('Failed to fetch') >= 0) errEl.textContent = t('pinNetworkError');
       else errEl.textContent = m;
