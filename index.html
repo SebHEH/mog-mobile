@@ -52,6 +52,7 @@
     }
 
     .app {
+      position: relative;
       max-width: 480px;
       margin: 0 auto;
       min-height: 100%;
@@ -119,6 +120,26 @@
       gap: 4px;
     }
     .back-btn .ti { font-size: 18px; }
+
+    /* Hub language toggle — pinned top-right of the .app container so
+       it's available on every screen (concept, location, manager-code,
+       manager-picker). Same visual language as the store PWA's
+       topbar lang-btn so the affordance is consistent. */
+    .hub-lang-btn {
+      position: absolute;
+      top: max(14px, env(safe-area-inset-top));
+      right: 14px;
+      z-index: 5;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-2);
+      border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      padding: 5px 10px;
+      background: transparent;
+      cursor: pointer;
+    }
+    .hub-lang-btn:active { opacity: 0.6; }
 
     /* Concept / location / store cards. Big, tappable, clearly
        a button. One per row at this width; could grid to 2 cols
@@ -277,6 +298,10 @@
 
 <div class="app" id="app">
 
+  <button class="hub-lang-btn" id="hub-lang-btn" type="button" aria-label="Switch language">
+    <span class="lang-en">ES</span><span class="lang-es">EN</span>
+  </button>
+
   <!-- CONCEPT PICKER (home) -->
   <div class="screen" id="screen-concept">
     <div class="error-banner" id="error-banner"></div>
@@ -385,8 +410,18 @@
   // ============================================================
   // STATE
   // ============================================================
-  const lang = localStorage.getItem('mog_lang') || 'en';
-  document.body.className = lang;
+  let currentLang = localStorage.getItem('mog_lang') || 'en';
+  document.body.className = currentLang;
+
+  // Pre-PIN language toggle. The hub only displays static bilingual
+  // markup (every visible string has lang-en + lang-es spans) so a
+  // class flip on body is all that's needed — no re-render required.
+  function toggleHubLang_() {
+    currentLang = (currentLang === 'en') ? 'es' : 'en';
+    localStorage.setItem('mog_lang', currentLang);
+    document.body.className = currentLang;
+  }
+  document.getElementById('hub-lang-btn').addEventListener('click', toggleHubLang_);
 
   const params = new URLSearchParams(window.location.search);
   const forcePicker  = params.has('force_picker');
@@ -487,7 +522,7 @@
       // mysterious blank screen.
       const msg = document.createElement('div');
       msg.style.cssText = 'color:var(--text-2); text-align:center; padding:24px 12px;';
-      msg.textContent = (lang === 'en')
+      msg.textContent = (currentLang === 'en')
         ? 'No locations configured. Contact your administrator.'
         : 'Ninguna ubicaci\u00f3n configurada. Contacta al administrador.';
       container.appendChild(msg);
@@ -499,7 +534,7 @@
       card.className = 'card';
       card.type = 'button';
       const locCount = group.stores.length;
-      const meta = (lang === 'en')
+      const meta = (currentLang === 'en')
         ? (locCount === 1 ? '1 location' : locCount + ' locations')
         : (locCount === 1 ? '1 ubicaci\u00f3n' : locCount + ' ubicaciones');
       card.innerHTML =
@@ -583,7 +618,7 @@
     input.classList.remove('error');
     if (!/^\d{4,8}$/.test(code)) {
       input.classList.add('error');
-      errEl.textContent = (lang === 'en')
+      errEl.textContent = (currentLang === 'en')
         ? 'Code must be 4–8 digits.'
         : 'El c\u00f3digo debe tener 4 a 8 d\u00edgitos.';
       return;
@@ -592,7 +627,7 @@
       sessionStorage.setItem('mog_master_pin',    code);
       sessionStorage.setItem('mog_master_active', '1');
     } catch (e) {
-      errEl.textContent = (lang === 'en')
+      errEl.textContent = (currentLang === 'en')
         ? 'Browser blocked session storage. Try again.'
         : 'El navegador bloque\u00f3 sessionStorage. Intenta de nuevo.';
       return;
@@ -628,7 +663,7 @@
   // ============================================================
   if (masterFailed) {
     const banner = document.getElementById('error-banner');
-    banner.textContent = (lang === 'en')
+    banner.textContent = (currentLang === 'en')
       ? 'Master code not accepted. Please try again.'
       : 'C\u00f3digo maestro rechazado. Intenta de nuevo.';
     banner.classList.add('show');

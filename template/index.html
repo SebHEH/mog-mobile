@@ -718,6 +718,7 @@
 
     /* PIN screen */
     .pin-screen {
+      position: relative;
       flex: 1;
       display: flex;
       flex-direction: column;
@@ -745,6 +746,17 @@
     }
     .pin-input:focus { border-color: var(--teal); background: var(--bg); }
     .pin-input.error { border-color: var(--red); background: var(--red-light); animation: shake 0.3s; }
+
+    /* Pre-auth language toggle — pinned top-right of the PIN and stale
+       screens so KMs can flip EN/ES before they're past the gate.
+       Uses the same .lang-btn visual language as the in-app topbar
+       button so the affordance is consistent. */
+    .pre-auth-lang {
+      position: absolute;
+      top: max(14px, env(safe-area-inset-top));
+      right: 14px;
+      z-index: 5;
+    }
     @keyframes shake {
       0%, 100% { transform: translateX(0); }
       25% { transform: translateX(-6px); }
@@ -784,6 +796,7 @@
 
     /* Stale reset screen */
     .stale-screen {
+      position: relative;
       flex: 1;
       display: flex;
       flex-direction: column;
@@ -1148,6 +1161,11 @@
 
   <!-- PIN GATE -->
   <div class="pin-screen" id="screen-pin">
+    <div class="pre-auth-lang">
+      <button class="lang-btn" id="pin-lang-btn" type="button">
+        <span class="lang-en">ES</span><span class="lang-es">EN</span>
+      </button>
+    </div>
     <div class="pin-logo"><i class="ti ti-clipboard-list" aria-hidden="true"></i></div>
     <h1 class="pin-title">Master Ordering Guide</h1>
     <p class="pin-sub">
@@ -1175,6 +1193,11 @@
 
   <!-- STALE RESET GATE -->
   <div class="stale-screen" id="screen-stale" style="display:none">
+    <div class="pre-auth-lang">
+      <button class="lang-btn" id="stale-lang-btn" type="button">
+        <span class="lang-en">ES</span><span class="lang-es">EN</span>
+      </button>
+    </div>
     <div class="stale-icon"><i class="ti ti-refresh-alert" aria-hidden="true"></i></div>
     <h1 class="stale-title">
       <span class="lang-en">Start the new day</span>
@@ -4753,6 +4776,30 @@
     if (state.currentView === 'count') renderCount();
     if (state.currentView === 'review') renderReview();
   });
+
+  // Pre-auth language toggles. These are visible only on the PIN and
+  // stale screens (post-auth they're hidden under the main UI), so no
+  // re-render of in-app views needed — flipping the body class is
+  // enough because the screens use bilingual lang-en/lang-es spans
+  // throughout. The PIN error text uses t() and re-renders on the
+  // next submit attempt; the stale-screen reset button text gets
+  // re-applied by showStaleScreen on its next call.
+  function onPreAuthLangToggle_() {
+    setLang(state.lang === 'en' ? 'es' : 'en');
+    // If the stale screen is visible, re-render its dynamic text bits
+    // (Reset On Hand button label, error text) so they update too.
+    if ($('screen-stale') && $('screen-stale').style.display !== 'none') {
+      const btn = $('stale-reset-btn');
+      if (btn) {
+        const en = btn.querySelector('span.lang-en');
+        const es = btn.querySelector('span.lang-es');
+        if (en) en.textContent = 'Reset On Hand';
+        if (es) es.textContent = 'Reiniciar Inventario';
+      }
+    }
+  }
+  if ($('pin-lang-btn'))   $('pin-lang-btn').addEventListener('click', onPreAuthLangToggle_);
+  if ($('stale-lang-btn')) $('stale-lang-btn').addEventListener('click', onPreAuthLangToggle_);
 
   // Topbar shadow when content is scrolled — visually separates the
   // sticky topbar from the content beneath it. Uses a class toggle so
