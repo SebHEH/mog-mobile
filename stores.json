@@ -4,36 +4,23 @@
     "concept": "Roll Play",
     "location": "Rosslyn",
     "deployment": "https://script.google.com/macros/s/AKfycbxRbLvqVy8aU1S_bzc6jwWvNzGD6_lUA0aKPyANckBxj9g3qd_3bYf6a3MviuK3oZNZJw/exec"
-  }
+  },
   {
-  "slug": "rprfo",
-  "concept": "Roll Play",
-  "location": "Rosslyn FOH",
-  "deployment": "https://script.google.com/macros/s/AKfycbwFfttvgdYBOl_djrfhp3DluHrgByRIHid-opCl3yln2bovKzV23AaipPvj9ptc2kjG/exec"
-  }
+    "slug": "rprfo",
+    "concept": "Roll Play",
+    "location": "Rosslyn FOH",
+    "deployment": "https://script.google.com/macros/s/AKfycbwFfttvgdYBOl_djrfhp3DluHrgByRIHid-opCl3yln2bovKzV23AaipPvj9ptc2kjG/exec"
+  },
   {
-  "slug": "rpt",
-  "concept": "Roll Play",
-  "location": "Tysons",
-  "deployment": "https://script.google.com/macros/s/AKfycbybndYIG-bwC0rXzwYUiMTJUexuAGZMnixnBwsVUyPW6MpzUik5iFKEAprmVzcss6A7sg/exec"
-  }
+    "slug": "rpt",
+    "concept": "Roll Play",
+    "location": "Tysons",
+    "deployment": "https://script.google.com/macros/s/AKfycbybndYIG-bwC0rXzwYUiMTJUexuAGZMnixnBwsVUyPW6MpzUik5iFKEAprmVzcss6A7sg/exec"
+  },
   {
-  "slug": "rpfr",
-  "concept": "Roll Play",
-  "location": "Founders Row",
-  "deployment": "INSERT"
-  }
-  {
-  "slug": "tnyt",
-  "concept": "Teas'n You",
-  "location": "Tysons",
-  "deployment": "https://script.google.com/macros/s/AKfycbzb2173ENr43g4Y7r7QnaykAaFOEby0bpwlZwcpzpeBuFhpmrlv1NJFxD3J84jTnORKtw/exec"
-  }
-  {
-  "slug": "leidt",
-  "concept": "Lei'd",
-  "location": "Tysons",
-  "deployment": "INSERT"
+    "slug": "tnyt",
+    "concept": "Teas'n You",
+    "location": "Tysons",
+    "deployment": "https://script.google.com/macros/s/AKfycbzb2173ENr43g4Y7r7QnaykAaFOEby0bpwlZwcpzpeBuFhpmrlv1NJFxD3J84jTnORKtw/exec"
   }
 ]
-
