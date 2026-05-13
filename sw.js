@@ -19,7 +19,7 @@
 // structure that should evict old caches. Independent of the
 // per-store SW's CACHE_VERSION.
 
-const CACHE_VERSION = 'v3;
+const CACHE_VERSION = 'v3';
 const HUB_CACHE     = 'mog-hub-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'mog-hub-runtime-' + CACHE_VERSION;
 
