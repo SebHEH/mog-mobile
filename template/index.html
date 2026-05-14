@@ -230,6 +230,45 @@
     }
     .alldone-sent i { font-size: 14px; }
 
+    /* Per-vendor inline mark-reviewed action. Replaces the pill-progress
+       label on cards where enteredCount > 0. Same physical footprint as
+       the pill so the card layout doesn't shift between status changes.
+       Styled as a clickable affordance (teal, slightly more prominent)
+       to distinguish from the passive pill state. */
+    .pill-mark {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: var(--teal); color: white;
+      border: none;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 11px; font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .pill-mark:active { filter: brightness(0.92); }
+    .pill-mark i { font-size: 13px; }
+    .pill-mark:disabled { opacity: 0.6; }
+
+    /* Bulk "mark all remaining as reviewed" link. Appears below the
+       vendor list when every active vendor has at least one count
+       entered. Subtle text-link styling on purpose — this is a
+       shortcut, not a replacement for the per-vendor review flow. */
+    .bulk-mark-link {
+      display: block;
+      margin: 14px auto 4px;
+      padding: 10px 14px;
+      background: transparent;
+      border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      color: var(--teal-dark);
+      font-size: 13px; font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      width: 100%;
+    }
+    .bulk-mark-link:active { background: var(--teal-light); }
+    .bulk-mark-link i { font-size: 14px; vertical-align: middle; margin-right: 4px; }
+
     /* Empty-email reminder pill — shown above the vendor list when
        state.userEmail is empty. Subtle teal styling so it nudges
        without competing with vendor cards. Tap target opens Settings. */
@@ -1986,6 +2025,20 @@
       recapStaleCta: { en: 'Resend', es: 'Reenviar' },
       autoSendingSummary: { en: 'Sending order summary…', es: 'Enviando resumen…' },
       autoSendFailed: { en: 'Daily summary email failed. Retry from home.', es: 'No se envió el resumen. Reinténtalo desde inicio.' },
+      // Mark reviewed shortcuts (inline + bulk)
+      markReviewedShort: { en: 'Mark reviewed', es: 'Marcar revisado' },
+      confirmMarkVendorTitle: { en: 'Mark as reviewed?', es: '¿Marcar como revisado?' },
+      confirmMarkVendorMsg:   {
+        en: 'This will mark this vendor as fully reviewed for today. You can still un-review it by tapping the card.',
+        es: 'Esto marcará este proveedor como revisado para hoy. Puedes deshacerlo tocando la tarjeta.'
+      },
+      bulkMarkAllCta: { en: 'Mark all remaining as reviewed', es: 'Marcar todo lo demás como revisado' },
+      bulkMarkConfirmTitle: { en: 'Mark all as reviewed?', es: '¿Marcar todo como revisado?' },
+      bulkMarkConfirmMsg: {
+        en: 'These vendors will be marked as reviewed and the daily summary will be emailed:',
+        es: 'Estos proveedores se marcarán como revisados y se enviará el resumen diario:'
+      },
+      bulkMarkConfirmBtn: { en: 'Mark all reviewed', es: 'Marcar todo revisado' },
       send:             { en: 'Send', es: 'Enviar' },
       language:         { en: 'Language', es: 'Idioma' },
       version:          { en: 'Version', es: 'Versión' },
@@ -2769,10 +2822,33 @@
       html += renderVendorCard(v, status, data.date);
     }
 
+    // Bulk-mark CTA — appears at the bottom of the vendor list when EVERY
+    // not-yet-reviewed vendor has at least one count entered. Gate matches
+    // the "intentional zeros" use case: KMs sometimes leave items blank
+    // because they know they have enough, then forget to mark the vendor.
+    // The bulk button only shows up once they've engaged with every vendor,
+    // so accidental misuse on an untouched vendor isn't possible.
+    const unreviewedVendors = data.vendors.filter(v => {
+      const s = effectiveStatus(v, data.date);
+      return s === 'in_progress'; // exclude reviewed/sent and not_started
+    });
+    const eligibleForBulk = unreviewedVendors.length > 0 &&
+      unreviewedVendors.every(v => (v.enteredCount != null && v.enteredCount > 0));
+    if (eligibleForBulk) {
+      html += '<button class="bulk-mark-link" id="bulk-mark-btn" type="button">' +
+        '<i class="ti ti-checks" aria-hidden="true"></i>' +
+        '<span>' + escapeHtml(t('bulkMarkAllCta')) + '</span>' +
+      '</button>';
+    }
+
     view.innerHTML = html;
 
     view.querySelectorAll('.vendor-card.tappable').forEach(card => {
-      card.addEventListener('click', async () => {
+      card.addEventListener('click', async (e) => {
+        // The inline mark-reviewed button lives inside the card. If the
+        // click came from that button (or its children), do NOT open the
+        // vendor — the button's own handler will run instead.
+        if (e.target.closest('.pill-mark')) return;
         const vendor = card.getAttribute('data-vendor');
         // If this vendor is already reviewed, confirm before opening — gives
         // a soft safety net against re-opening one you thought was done.
@@ -2792,6 +2868,23 @@
         openCount(vendor);
       });
     });
+
+    // Wire up inline per-vendor mark-reviewed buttons. Each card with
+    // enteredCount > 0 has one. Single handler delegated by data attr.
+    view.querySelectorAll('.pill-mark[data-mark-vendor]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();  // don't trigger card click
+        const vendor = btn.getAttribute('data-mark-vendor');
+        await onInlineMarkReviewedClick_(vendor, data.date);
+      });
+    });
+
+    // Wire up bulk-mark link if present.
+    if ($('bulk-mark-btn')) {
+      $('bulk-mark-btn').addEventListener('click', async () => {
+        await onBulkMarkReviewedClick_(data);
+      });
+    }
     if ($('alldone-email-btn'))  $('alldone-email-btn').addEventListener('click', onSendDailyRecap);
     if ($('alldone-resend-btn')) $('alldone-resend-btn').addEventListener('click', onSendDailyRecap);
     if ($('view-full-btn'))      $('view-full-btn').addEventListener('click', openRecap);
@@ -2830,6 +2923,73 @@
         btn.querySelector('span').textContent = t('recapStaleCta');
       }
     }
+  }
+
+  // Inline per-vendor mark-reviewed handler. Runs from the dashboard
+  // without opening the vendor count screen. Confirmation modal names
+  // the vendor so the KM knows exactly what they're confirming.
+  // Reuses the existing setReviewed + maybeAutoSendOnAllReviewed_ path
+  // so the rest of the system (sort order, all-done panel, auto-send,
+  // stale-flag tracking) works identically to in-vendor mark-reviewed.
+  async function onInlineMarkReviewedClick_(vendor, dateStr) {
+    const ok = await showConfirm({
+      kind: 'success',
+      icon: 'check',
+      title: t('confirmMarkVendorTitle'),
+      msg:   t('confirmMarkVendorMsg') + '\n\n' + vendor,
+      confirmLabel: t('markReviewed'),
+      cancelLabel:  t('cancel')
+    });
+    if (!ok) return;
+
+    setReviewed(dateStr, vendor, true);
+    if (state.cache.dashboard) renderToday(state.cache.dashboard);
+
+    // Fire the auto-send check — same trigger as the in-vendor flow.
+    // No-op if other vendors are still un-reviewed.
+    maybeAutoSendOnAllReviewed_();
+  }
+
+  // Bulk mark-all-remaining handler. Confirms with a list of affected
+  // vendors, then loops setReviewed() with autoSend guarded so the
+  // recap fires exactly once at the end rather than firing partway
+  // through and hitting the recap_sent_ flag on subsequent vendors.
+  async function onBulkMarkReviewedClick_(data) {
+    const targets = data.vendors.filter(v => {
+      const s = effectiveStatus(v, data.date);
+      return s === 'in_progress';
+    });
+    if (!targets.length) return;
+
+    // Build a readable vendor list for the confirm modal. Bullet-prefix
+    // each so it reads as a checklist rather than a comma-run.
+    const vendorList = targets.map(v => '• ' + v.name).join('\n');
+
+    const ok = await showConfirm({
+      kind: 'success',
+      icon: 'checks',
+      title: t('bulkMarkConfirmTitle'),
+      msg:   t('bulkMarkConfirmMsg') + '\n\n' + vendorList,
+      confirmLabel: t('bulkMarkConfirmBtn'),
+      cancelLabel:  t('cancel')
+    });
+    if (!ok) return;
+
+    // Mark each target reviewed. Order doesn't matter because setReviewed
+    // is local-only (no server round-trip) and the auto-send trigger
+    // isn't fired here — we call it once at the end. This avoids the
+    // race where the first mark fires the trigger, sets recap_sent_,
+    // and subsequent marks see the flag and skip.
+    for (const v of targets) {
+      setReviewed(data.date, v.name, true);
+    }
+
+    // Re-render the dashboard with all marks applied.
+    if (state.cache.dashboard) renderToday(state.cache.dashboard);
+
+    // Now fire the consolidated auto-send — single email reflecting
+    // all the marks at once.
+    maybeAutoSendOnAllReviewed_();
   }
 
   // Empty-email pill handler — opens the email prompt directly rather
@@ -2920,10 +3080,28 @@
       statusClass = ' status-progress';
       const entered = (v.enteredCount != null) ? v.enteredCount : null;
       const total   = v.itemCount || 0;
-      const label   = (entered != null)
-        ? entered + ' / ' + total + ' ' + escapeHtml(t('entered'))
-        : escapeHtml(t('inProgress'));
-      pillHtml = '<span class="pill pill-progress">' + label + '</span>';
+      // Two sub-cases:
+      //   (a) entered > 0  → show a tappable "Mark reviewed" button in
+      //       place of the passive pill. Lets the KM finish a vendor
+      //       from the dashboard without scrolling through the count
+      //       screen. Button has a stopPropagation guard so tapping it
+      //       doesn't also trigger the card's open-vendor handler.
+      //   (b) entered == 0 (or null)  → keep the existing passive pill.
+      //       No tap-to-mark when the vendor hasn't been touched, since
+      //       that would let users skip the count flow entirely.
+      if (entered != null && entered > 0) {
+        pillHtml =
+          '<button class="pill-mark" data-mark-vendor="' + escapeHtml(v.name) + '" ' +
+                  'aria-label="' + escapeHtml(t('markReviewedShort')) + '">' +
+            '<i class="ti ti-check" aria-hidden="true"></i>' +
+            '<span>' + entered + ' / ' + total + '</span>' +
+          '</button>';
+      } else {
+        const label = (entered != null)
+          ? entered + ' / ' + total + ' ' + escapeHtml(t('entered'))
+          : escapeHtml(t('inProgress'));
+        pillHtml = '<span class="pill pill-progress">' + label + '</span>';
+      }
     } else {
       statusClass = ' status-todo';
       pillHtml = '<span class="pill pill-todo">' + escapeHtml(t('notStarted')) + '</span>';
