@@ -2025,6 +2025,10 @@
       recapStaleCta: { en: 'Resend', es: 'Reenviar' },
       autoSendingSummary: { en: 'Sending order summary…', es: 'Enviando resumen…' },
       autoSendFailed: { en: 'Daily summary email failed. Retry from home.', es: 'No se envió el resumen. Reinténtalo desde inicio.' },
+      flushPartialFail: {
+        en: 'Some counts didn\'t save — email may show partial data.',
+        es: 'Algunos conteos no se guardaron — el correo puede mostrar datos parciales.'
+      },
       // Mark reviewed shortcuts (inline + bulk)
       markReviewedShort: { en: 'Mark reviewed', es: 'Marcar revisado' },
       confirmMarkVendorTitle: { en: 'Mark as reviewed?', es: '¿Marcar como revisado?' },
@@ -2945,9 +2949,9 @@
     setReviewed(dateStr, vendor, true);
     if (state.cache.dashboard) renderToday(state.cache.dashboard);
 
-    // Fire the auto-send check — same trigger as the in-vendor flow.
-    // No-op if other vendors are still un-reviewed.
-    maybeAutoSendOnAllReviewed_();
+    // No auto-send here — see comment in onMarkReviewedClick. The
+    // all-done panel will appear if this was the last vendor; user
+    // taps Send Email explicitly.
   }
 
   // Bulk mark-all-remaining handler. Confirms with a list of affected
@@ -3821,10 +3825,17 @@
     if (state.cache.dashboard) renderToday(state.cache.dashboard);
     else loadToday();
 
-    // If this was the last unreviewed vendor on today's list, fire the
-    // auto-send daily summary. Fire-and-forget — the user lands on the
-    // dashboard immediately; toast + re-render handle the result.
-    maybeAutoSendOnAllReviewed_();
+    // No auto-send here. The all-done screen handles the "I'm finished"
+    // moment by surfacing the Send Email CTA explicitly. Auto-fire on
+    // last-vendor-reviewed has been removed because:
+    //   (a) It was firing emails users didn't realize had gone out
+    //   (b) It made the explicit Send button on the all-done panel
+    //       redundant and confusing
+    //   (c) The reset path tomorrow morning is the safety net for
+    //       cycles where no email ever got sent
+    // Bulk "Mark all reviewed" is the ONE exception that still
+    // auto-fires — it's the explicit "I'm done with the whole cycle"
+    // gesture and the confirmation modal mentions the email send.
   }
 
   // Bar-fill + checkmark animation synced to a real async operation.
@@ -4514,14 +4525,25 @@
   // ============================================================
   // EMAIL AUTO-SEND HELPERS
   //
-  // The daily summary email has three trigger points, all gated by a
-  // single localStorage flag per cycle (recap_sent_<cycleDate>):
-  //   1. Manual: user taps Send Email — always fires, ignores flag
-  //   2. Auto on all-reviewed: fires once when the last vendor is
-  //      reviewed (see onMarkReviewedClick)
-  //   3. Auto on reset on hand: fires before commitReset if not yet sent
-  // The flag prevents double-sends across triggers (2) and (3); (1) is
-  // the explicit user override.
+  // The daily summary email has three trigger points:
+  //   1. Manual: user taps Send Email — always fires, ignores flag.
+  //      Sources: all-done panel button, stale banner Resend.
+  //   2. Auto on bulk-mark-reviewed: user explicitly marks all
+  //      remaining vendors reviewed in one gesture. The confirmation
+  //      modal mentions the email send. Gated by recap_sent_ flag so
+  //      a second bulk-mark in the same cycle doesn't double-send.
+  //   3. Auto on reset on hand: backup trigger. Fires before
+  //      commitReset if no email has been sent for this cycle.
+  //
+  // Per-vendor mark-reviewed (in-vendor screen or inline pill on home)
+  // does NOT auto-send. The all-done panel surfaces the Send Email
+  // CTA when all vendors are reviewed; user taps it explicitly.
+  //
+  // All four send paths (manual, bulk-auto, reset-auto, stale-resend)
+  // route through sendDailyRecap(), which now calls
+  // flushAllPendingDrafts_() first to ensure the email reflects the
+  // device's most recent counts even if some vendors were edited
+  // offline and never explicitly saved.
   // ============================================================
 
   // Best-effort auto-send used by triggers (2) and (3). Silent on
@@ -4568,6 +4590,89 @@
     await autoSendDailyRecap_('all-reviewed');
   }
 
+  // Walks every namespaced draft_* key in localStorage and pushes each
+  // vendor's pending counts to the server via saveOnHand. Used as a
+  // pre-flight before any email send so the email reflects the device's
+  // most recent counts.
+  //
+  // Why this matters: drafts are written on every keystroke. They get
+  // converted to actual sheet writes when the user taps Save, Mark
+  // Reviewed, or one of the offline-replay paths. But a user can also
+  // type counts, navigate back to the dashboard without saving (the
+  // count screen does flush on its action buttons, but if the user
+  // backs out via the system back button or app switcher, drafts
+  // remain), and then trigger a send. Without this flush, the email
+  // would reflect older on-hand values than what the device has.
+  //
+  // Failure modes:
+  //   - Network error on save → enqueueSave_ queues for offline replay
+  //     and we still count as success from the user's perspective
+  //   - Other save error → counted as a failure; surfaced to caller
+  //
+  // Returns:
+  //   { hadAnything, flushed, failed: [vendorName, ...] }
+  async function flushAllPendingDrafts_() {
+    const result = { hadAnything: false, flushed: 0, failed: [] };
+    const draftPrefix = nsKey_('draft_');
+    // Snapshot the keys first — saveOnHand can mutate localStorage
+    // indirectly (e.g. via clearDraft after a successful save in
+    // some flows), and iterating while mutating is brittle.
+    const draftKeys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(draftPrefix)) draftKeys.push(k);
+    }
+    if (!draftKeys.length) return result;
+
+    for (const key of draftKeys) {
+      // Key shape: mog_<ns>_draft_<dateStr>_<vendor>
+      // Strip the prefix to get "<dateStr>_<vendor>" — the vendor name
+      // can contain underscores, so split on the FIRST underscore after
+      // the date (date format YYYY-MM-DD is fixed-width 10 chars).
+      const rest = key.substring(draftPrefix.length);
+      // rest is "<dateStr>_<vendor>"; dateStr is always 10 chars.
+      if (rest.length < 12) continue; // malformed
+      const dateStr = rest.substring(0, 10);
+      const vendor  = rest.substring(11);
+      if (!vendor) continue;
+
+      let draftObj;
+      try {
+        draftObj = JSON.parse(localStorage.getItem(key) || '{}');
+      } catch (e) { continue; }
+      const ids = Object.keys(draftObj);
+      if (!ids.length) continue;
+
+      result.hadAnything = true;
+      const items = ids.map(id => ({ id: id, onHand: draftObj[id] }));
+
+      try {
+        await api('saveOnHand', { vendor: vendor, items: items });
+        // Successful save — clear the draft so a future flush doesn't
+        // re-send the same payload. Matches the per-vendor save flow.
+        clearDraft(dateStr, vendor);
+        // Also drop any cached vendor items snapshot so the next read
+        // pulls fresh values that incorporate this save.
+        delete state.cache.vendorItems[vendor];
+        result.flushed++;
+      } catch (err) {
+        if (isNetworkError_(err)) {
+          // Offline: queue for later replay. Don't count as failure;
+          // when the replay runs, the saved values land on the sheet.
+          // The email going out now will not include them, but that's
+          // an acceptable degradation (no email is sent at all when
+          // truly offline since api('emailRecap') will also fail).
+          enqueueSave_(vendor, items);
+          result.flushed++;
+        } else {
+          console.error('[flushDrafts] save failed for ' + vendor + ':', err);
+          result.failed.push(vendor);
+        }
+      }
+    }
+    return result;
+  }
+
   // Shared core: ensures we have an email, sends the recap, returns
   // { ok, vendorCount, error }. Used by both the Settings row and the
   // end-of-day panel on the home dashboard.
@@ -4578,6 +4683,22 @@
       if (!email) return { ok: false, cancelled: true };
       state.userEmail = email;
       localStorage.setItem('mog_user_email', email);
+    }
+    // Flush any pending drafts before the server reads on-hand. This
+    // guarantees the email reflects the device's most recent counts.
+    // See flushAllPendingDrafts_ docstring for failure handling.
+    try {
+      const flushResult = await flushAllPendingDrafts_();
+      if (flushResult.failed.length) {
+        // Some vendors couldn't save (non-network errors). User
+        // explicitly asked for an email — proceed, but warn.
+        showToast(t('flushPartialFail'), 'error');
+      }
+    } catch (e) {
+      // flushAllPendingDrafts_ shouldn't throw, but if it does we
+      // don't want to block the email — proceed with whatever is
+      // on the sheet.
+      console.warn('[flushDrafts] unexpected throw, proceeding:', e);
     }
     try {
       const result = await api('emailRecap', { userEmail: email });
