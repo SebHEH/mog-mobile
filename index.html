@@ -588,6 +588,21 @@
       try { localStorage.setItem('mog_hub_last_slug', store.slug); }
       catch (e) { /* non-fatal */ }
     }
+    // Stash concept + location so the per-store PWA can show
+    // "Roll Play — Rosslyn BOH" on its PIN/stale screens. Without
+    // this, every store's PIN screen is generic and KMs can't tell
+    // which location they're signing into.
+    //
+    // Always set (managers too) — the PIN screen renders before any
+    // auth gate, so the manager-vs-KM distinction doesn't matter
+    // here. Key is per-slug so concurrent multi-store sessions on
+    // the same device don't clobber each other.
+    try {
+      localStorage.setItem(
+        'mog_store_label_' + store.slug,
+        JSON.stringify({ concept: store.concept, location: store.location })
+      );
+    } catch (e) { /* non-fatal */ }
     window.location.href = './' + store.slug + '/';
   }
 

@@ -786,6 +786,20 @@
     .pin-input:focus { border-color: var(--teal); background: var(--bg); }
     .pin-input.error { border-color: var(--red); background: var(--red-light); animation: shake 0.3s; }
 
+    /* Pre-auth store label — small line above the title showing
+       which location the KM is signing into. Populated at boot from
+       a localStorage key written by the hub on store-tap. Falls back
+       to invisible (no label) for single-store / direct-URL access. */
+    .pre-auth-store-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--teal);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      margin: 0 0 12px;
+      text-align: center;
+    }
+
     /* Pre-auth language toggle — pinned top-right of the PIN and stale
        screens so KMs can flip EN/ES before they're past the gate.
        Uses the same .lang-btn visual language as the in-app topbar
@@ -3599,8 +3613,17 @@
         if (state.cache.dashboard && state.cache.dashboard.vendors) {
           const cached = state.cache.dashboard.vendors.find(x => x.name === ctx.vendor);
           if (cached && cached.status !== 'sent') {
+            // Compute enteredCount from the merged view of ctx.items
+            // overlaid with ctx.dirty. ctx.items holds the LAST FETCHED
+            // values from the server; ctx.dirty holds what the user
+            // just typed and hasn't been merged back yet. Without this
+            // overlay, the very save the user just initiated wouldn't
+            // be reflected in the dashboard pill — it would keep saying
+            // "not started" until the next loadToday() refetch.
             const enteredCount = ctx.items.reduce((n, it) => {
-              const v = it.onHand;
+              const v = Object.prototype.hasOwnProperty.call(ctx.dirty, it.id)
+                ? ctx.dirty[it.id]
+                : it.onHand;
               return n + ((v !== null && v !== undefined && v !== '') ? 1 : 0);
             }, 0);
             cached.enteredCount = enteredCount;
@@ -5064,7 +5087,21 @@
   // EVENT WIRING
   // ============================================================
   document.querySelectorAll('.tab').forEach(b => {
-    b.addEventListener('click', () => requestSwitchTab(b.getAttribute('data-tab')));
+    b.addEventListener('click', () => {
+      const tab = b.getAttribute('data-tab');
+      // Re-tapping the currently-active Today tab acts as a refresh —
+      // bust the dashboard cache so the next render fetches fresh data
+      // from the server. Useful when external sources (GM edits, second
+      // device, etc.) have changed on-hand state since the cached load.
+      // Other tabs don't need this: History and Settings are either
+      // server-fresh on open or pure-local respectively.
+      if (tab === 'today' && state.currentTab === 'today' && state.cache.dashboard) {
+        state.cache.dashboard = null;
+        try { localStorage.removeItem(nsKey_(OFFLINE_SLOTS.DASHBOARD)); }
+        catch (e) { /* non-fatal */ }
+      }
+      requestSwitchTab(tab);
+    });
   });
   $('back-btn').addEventListener('click', goBack);
   $('lang-btn').addEventListener('click', () => {
@@ -5143,6 +5180,53 @@
   // BOOT
   // ============================================================
   setLang(state.lang);
+
+  // If the hub passed us a store label, render it on the PIN and stale
+  // screens so the KM knows which location they're signing into. The
+  // hub writes this just before navigating; we look it up by the slug
+  // baked into the URL path (last non-empty path segment).
+  //
+  // Falls back silently when:
+  //  - Single-store direct URL (no hub→store hop), or
+  //  - localStorage was cleared, or
+  //  - The slug doesn't match (rare; only if URL was hand-edited)
+  // In any fallback case, the PIN screen renders as it did before
+  // (generic "Master Ordering Guide" title).
+  (function applyStoreLabel_(){
+    try {
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      const slug = pathParts[pathParts.length - 1];
+      if (!slug) return;
+      const raw = localStorage.getItem('mog_store_label_' + slug);
+      if (!raw) return;
+      const label = JSON.parse(raw);
+      if (!label || !label.location) return;
+      // Compose "Concept — Location" (em-dash separator). The dash
+      // disappears cleanly if concept is missing.
+      const full = label.concept
+        ? (label.concept + ' — ' + label.location)
+        : label.location;
+      // Inject into both pre-auth screens. We add a small subheading
+      // above the existing "Master Ordering Guide" title, since the
+      // title itself is the product name and shouldn't change.
+      ['screen-pin', 'screen-stale'].forEach(function(screenId){
+        const screen = document.getElementById(screenId);
+        if (!screen) return;
+        if (screen.querySelector('.pre-auth-store-label')) return; // already applied
+        const labelEl = document.createElement('div');
+        labelEl.className = 'pre-auth-store-label';
+        labelEl.textContent = full;
+        // Insert just below the logo (first child by visual order;
+        // the lang button sits absolute-positioned so doesn't matter).
+        const logo = screen.querySelector('.pin-logo, .stale-icon');
+        if (logo && logo.parentNode === screen) {
+          screen.insertBefore(labelEl, logo.nextSibling);
+        } else {
+          screen.insertBefore(labelEl, screen.firstChild);
+        }
+      });
+    } catch (e) { /* non-fatal */ }
+  })();
 
   // Migrate any legacy unprefixed per-cycle keys to the namespaced
   // form. Runs once per browser; no-op on subsequent boots. Must
