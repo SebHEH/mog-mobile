@@ -535,7 +535,7 @@
       // mysterious blank screen.
       const msg = document.createElement('div');
       msg.style.cssText = 'color:var(--text-2); text-align:center; padding:24px 12px;';
-      msg.textContent = (lang === 'en')
+      msg.textContent = (currentLang === 'en')
         ? 'No locations configured. Contact your administrator.'
         : 'Ninguna ubicaci\u00f3n configurada. Contacta al administrador.';
       container.appendChild(msg);
@@ -547,7 +547,7 @@
       card.className = 'card';
       card.type = 'button';
       const locCount = group.stores.length;
-      const meta = (lang === 'en')
+      const meta = (currentLang === 'en')
         ? (locCount === 1 ? '1 location' : locCount + ' locations')
         : (locCount === 1 ? '1 ubicaci\u00f3n' : locCount + ' ubicaciones');
       card.innerHTML =
@@ -646,7 +646,7 @@
     input.classList.remove('error');
     if (!/^\d{4,8}$/.test(code)) {
       input.classList.add('error');
-      errEl.textContent = (lang === 'en')
+      errEl.textContent = (currentLang === 'en')
         ? 'Code must be 4–8 digits.'
         : 'El c\u00f3digo debe tener 4 a 8 d\u00edgitos.';
       return;
@@ -655,7 +655,7 @@
       sessionStorage.setItem('mog_master_pin',    code);
       sessionStorage.setItem('mog_master_active', '1');
     } catch (e) {
-      errEl.textContent = (lang === 'en')
+      errEl.textContent = (currentLang === 'en')
         ? 'Browser blocked session storage. Try again.'
         : 'El navegador bloque\u00f3 sessionStorage. Intenta de nuevo.';
       return;
@@ -691,7 +691,7 @@
   // ============================================================
   if (masterFailed) {
     const banner = document.getElementById('error-banner');
-    banner.textContent = (lang === 'en')
+    banner.textContent = (currentLang === 'en')
       ? 'Master code not accepted. Please try again.'
       : 'C\u00f3digo maestro rechazado. Intenta de nuevo.';
     banner.classList.add('show');
