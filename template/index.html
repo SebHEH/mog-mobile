@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="__MOG_THEME__">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -8,6 +8,14 @@
   <meta name="apple-mobile-web-app-title" content="Ordering">
   <meta name="theme-color" content="#0F6E56">
   <title>Master Ordering Guide</title>
+
+  <!-- Shared concept-agnostic typography. Archivo Black (display) +
+       Inter (body) work across every concept theme. Loaded once;
+       theme switches don't reload fonts. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; }
@@ -44,6 +52,78 @@
       --border-2: rgba(0,0,0,0.20);
       --r-md: 10px;
       --r-lg: 14px;
+      /* Typography stack — shared across all concept themes. Display
+         font is used for headers, titles, big numbers; body for
+         everything else. System fallbacks if the web fonts fail. */
+      --font-display: 'Archivo Black', 'Helvetica Neue', 'Arial Black', sans-serif;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    body {
+      font-family: var(--font-body);
+    }
+    .pin-title, .stale-title, .topbar-title,
+    .vendor-card .vendor-name, .alldone-title,
+    h1, h2, h3 {
+      font-family: var(--font-display);
+      letter-spacing: -0.01em;
+    }
+
+    /* ===================================================================
+       CONCEPT THEMES
+       Each theme reassigns the global teal/red/amber variables to colors
+       that match its brand. Because the rest of the CSS reads from these
+       vars, themes propagate without touching individual components.
+       The PIN-screen clipboard icon also gets a tint via a CSS rule
+       targeting the themed-icon class.
+       =================================================================== */
+
+    /* Roll Play — basil green primary, lipstick accent for warnings. */
+    [data-theme="roll-play"] {
+      --teal:       #53D3A5;
+      --teal-light: #dcf5ea;
+      --teal-dark:  #2d8c6b;
+      --red:        #F0532F;
+      --red-light:  #fce4dc;
+      --red-dark:   #a83a20;
+    }
+
+    /* Lei'd — hot pink primary on white, soft mint accents. */
+    [data-theme="leid"] {
+      --teal:       #E91E9E;
+      --teal-light: #fbe3f1;
+      --teal-dark:  #b51579;
+      --bg-soft:    #C7E8DD;
+      --bg-mute:    #aed9c9;
+    }
+
+    /* Teas'n You — charcoal primary, Kintsugi gold as accent.
+       Using gold instead of charcoal for CTAs keeps the UI from
+       feeling heavy with black-on-white buttons. */
+    [data-theme="teasnyou"] {
+      --teal:       #D4A574;
+      --teal-light: #f5ead8;
+      --teal-dark:  #a17a4d;
+      --text:       #1a1a1a;
+      --text-2:     #4a4a4a;
+      --bg-soft:    #f5f3ef;
+      --bg-mute:    #e8e5dd;
+    }
+
+    /* ĂN — placeholder. Reuses the default HEH teal until ĂN's
+       design pack is provided. No overrides means inherited :root
+       values apply as-is. */
+    [data-theme="an"] {
+      /* intentionally empty for now */
+    }
+
+    /* The PIN-screen clipboard icon and other icons that should
+       reflect the concept primary color get this class. The icon
+       currently sits inside .pin-logo / .stale-icon containers which
+       have their own teal background; we keep the bg-fills working
+       since they read from --teal too. */
+    .themed-icon {
+      color: var(--teal);
     }
 
     .app {
@@ -1669,7 +1749,15 @@
   // instead of triggering a fetch.
   function hydrateOfflineCache_() {
     const dash = readOfflineCache_(OFFLINE_SLOTS.DASHBOARD, isFreshDashboard_);
-    if (dash) state.cache.dashboard = dash;
+    if (dash) {
+      state.cache.dashboard = dash;
+      // Don't set fetchedAt — hydrating from localStorage means we
+      // don't actually know when the data was fetched. Leaving it
+      // null means dashboardCacheIsStale_ returns true on the first
+      // post-boot loadToday, so a background refresh fires
+      // immediately. Best of both worlds: instant render of cached
+      // data, fresh data swapped in within a couple seconds.
+    }
     const hist = readOfflineCache_(OFFLINE_SLOTS.HISTORY, isFreshHistory_);
     if (hist) state.cache.history = hist;
     const recap = readOfflineCache_(OFFLINE_SLOTS.RECAP, isFreshRecap_);
@@ -1868,6 +1956,7 @@
         // open reads fresh — same invalidation pattern as a normal
         // successful save.
         state.cache.dashboard = null;
+        setDashboardFetchedAt_(null);
         state.cache.recap = null;
         // Don't touch state.cache.vendorItems[vendor] here — the
         // localStorage vendor cache has already been patched at
@@ -2437,6 +2526,7 @@
     try {
       await api('commitReset');
       state.cache.dashboard = null;
+      setDashboardFetchedAt_(null);
       state.cache.history = null;
       state.cache.recap = null;
       state.cache.vendorItems = {};
@@ -2535,6 +2625,7 @@
     localStorage.removeItem('mog_location');
     localStorage.removeItem('mog_loc_abbr');
     state.cache.dashboard = null;
+    setDashboardFetchedAt_(null);
     state.cache.history = null;
     state.cache.recap = null;
     state.cache.vendorItems = {};
@@ -3145,6 +3236,158 @@
     );
   }
 
+  // ============================================================
+  // BACKGROUND DASHBOARD REFRESH
+  //
+  // Renders are served from cache for snappiness. To keep the cache
+  // honest without forcing a spinner-blocked refetch every time the
+  // user lands on Today, we fire a fetch in the background and quietly
+  // swap in fresh data if it differs. Triggers:
+  //
+  //   1. Cached render where last fetch was >5 minutes ago
+  //      (handled in loadToday's cache-hit branch)
+  //
+  //   2. App returns to foreground via visibilitychange
+  //      (handled in the boot-time event listener at the bottom of
+  //      this file)
+  //
+  // Safety gates prevent jarring the user mid-interaction:
+  //   - Skip if a confirm modal or busy overlay is open
+  //   - Skip if the user has scrolled noticeably down the list
+  //   - Skip if the user is no longer on the Today tab
+  //   - Skip if the new date doesn't match cache date (cycle changed)
+  //
+  // When any gate fails, the fresh response is dropped silently. The
+  // next legitimate dashboard interaction (Today-tab re-tap, save,
+  // navigation back from a vendor, etc.) will trigger the cache to
+  // refresh through its normal invalidation paths.
+  //
+  // Failure is silent: offline, server error, anything — we log and
+  // move on. The user keeps the cached view.
+  // ============================================================
+
+  const BG_REFRESH_STALE_MS = 5 * 60 * 1000; // 5 minutes
+
+  // Lifecycle: bumped to a fresh timestamp whenever state.cache.dashboard
+  // is populated from a successful fetch. Null'd alongside the cache
+  // wherever the cache itself is null'd. Used by the staleness check
+  // in maybeBackgroundRefreshDashboard_.
+  function setDashboardFetchedAt_(ts) {
+    state.dashboardFetchedAt = (ts == null) ? null : ts;
+  }
+
+  // Returns true if the dashboard cache exists and was fetched more
+  // than BG_REFRESH_STALE_MS ago. Null timestamp (e.g. cache hydrated
+  // from localStorage without a known fetch time) counts as stale.
+  function dashboardCacheIsStale_() {
+    if (!state.cache.dashboard) return false; // no cache to refresh
+    const t = state.dashboardFetchedAt;
+    if (t == null) return true;
+    return (Date.now() - t) > BG_REFRESH_STALE_MS;
+  }
+
+  // Returns true if any visual-relevant field on any vendor differs
+  // between two dashboard payloads. Order-insensitive: we match by
+  // vendor name. Vendor additions/removals also count as "different."
+  function dashboardsDiffer_(a, b) {
+    if (!a || !b) return true;
+    if (a.date !== b.date) return true;
+    if (a.vendors.length !== b.vendors.length) return true;
+    const byName = new Map(a.vendors.map(v => [v.name, v]));
+    for (const nv of b.vendors) {
+      const ov = byName.get(nv.name);
+      if (!ov) return true;
+      if (ov.status        !== nv.status)        return true;
+      if (ov.enteredCount  !== nv.enteredCount)  return true;
+      if (ov.toOrderCount  !== nv.toOrderCount)  return true;
+      if (ov.sentAt        !== nv.sentAt)        return true;
+      if (ov.reference     !== nv.reference)     return true;
+      if (ov.cutoffTime    !== nv.cutoffTime)    return true;
+    }
+    return false;
+  }
+
+  // Returns true if there's an interactive overlay currently visible
+  // that would be jarring to render under. We don't have a single
+  // "modal-is-open" flag; check the actual DOM nodes since several
+  // independent surfaces can be visible (the confirm modal, the
+  // busy/loading overlay, the email prompt sharing the same modal
+  // shell).
+  function uiIsInteractive_() {
+    // Confirm/email modal — toggled via inline display style.
+    const modal = document.getElementById('modal');
+    if (modal && modal.style.display === 'block') return true;
+    // Full-screen busy overlay — toggled via the 'open' class.
+    const busy = document.getElementById('busy-overlay');
+    if (busy && busy.classList.contains('open')) return true;
+    return false;
+  }
+
+  // Returns true if the user has scrolled noticeably down the Today
+  // view. We don't want to re-render the list under them mid-scroll;
+  // the next interaction will pick up fresh data.
+  function userScrolledAway_() {
+    const scrollArea = document.getElementById('scroll-area');
+    if (!scrollArea) return false;
+    return scrollArea.scrollTop > 100;
+  }
+
+  // The fire-and-forget refresh itself. Returns nothing useful; all
+  // side effects are silent UI updates or noop's.
+  async function maybeBackgroundRefreshDashboard_(reason) {
+    // Single-flight: don't pile up concurrent refreshes if the user
+    // is e.g. backgrounding/foregrounding rapidly.
+    if (state._bgRefreshInFlight) return;
+    if (!state.cache.dashboard) return;
+    if (state.currentTab !== 'today') return;
+    state._bgRefreshInFlight = true;
+    try {
+      const data = await api('getDashboard');
+      // Re-check gates AFTER the await — the user may have scrolled,
+      // opened a modal, or switched tabs during the round-trip.
+      if (state.currentTab !== 'today') return;
+      if (uiIsInteractive_()) return;
+      if (userScrolledAway_()) return;
+      if (!state.cache.dashboard) return; // got invalidated mid-fetch
+      // Different cycle date means a reset happened (e.g. via another
+      // device); we shouldn't paint yesterday's data over today's.
+      // The next loadToday triggered by reset detection elsewhere
+      // will sort this out. For now, drop.
+      if (data.date !== state.cache.dashboard.date) return;
+      if (!dashboardsDiffer_(state.cache.dashboard, data)) {
+        // No visual changes; just bump the timestamp so we don't
+        // immediately re-check on the next interaction.
+        setDashboardFetchedAt_(Date.now());
+        return;
+      }
+      // Real change. Apply it and re-render. Preserve the offline
+      // cache write so a subsequent cold open sees the fresh data.
+      state.cache.dashboard = data;
+      writeOfflineCache_(OFFLINE_SLOTS.DASHBOARD, data);
+      setDashboardFetchedAt_(Date.now());
+      // Same self-heal pass that loadToday does on a fresh fetch.
+      const reviewed = getReviewedSet(data.date);
+      let mutated = false;
+      for (const v of data.vendors) {
+        if (reviewed[v.name] && (v.status === 'not_started' || v.status === 'sent')) {
+          delete reviewed[v.name];
+          mutated = true;
+        }
+      }
+      if (mutated) localStorage.setItem(reviewedKey(data.date), JSON.stringify(reviewed));
+      // Only re-render if Today is still showing (gates above checked
+      // this, but the renderToday call itself is no-op-safe if not).
+      if (state.currentView === 'today' || state.currentView === undefined) {
+        renderToday(data);
+      }
+    } catch (err) {
+      // Offline, server error, anything — silent.
+      console.warn('[bgRefresh ' + reason + '] non-fatal:', err);
+    } finally {
+      state._bgRefreshInFlight = false;
+    }
+  }
+
   async function loadToday() {
     const view = $('view-today');
     // Fast path: if we have a dashboard cache, render it immediately and
@@ -3164,12 +3407,19 @@
       // mid-prefetch). Idempotent — vendors already in the cache are
       // skipped by prefetchTodaysVendors_.
       prefetchTodaysVendors_();
+      // Quietly refresh in the background if the cache has aged out.
+      // Doesn't block render; failures are silent; UI gets a silent
+      // swap-in iff the gates pass and data actually differs.
+      if (dashboardCacheIsStale_()) {
+        maybeBackgroundRefreshDashboard_('stale-cache');
+      }
       return;
     }
     renderLoading(view);
     try {
       const data = await api('getDashboard');
       state.cache.dashboard = data;
+      setDashboardFetchedAt_(Date.now());
       writeOfflineCache_(OFFLINE_SLOTS.DASHBOARD, data);
       // GC stale localStorage on first today-load of a new day
       gcReviewedFlags(data.date);
@@ -4814,6 +5064,7 @@
       // Wipe caches and per-cycle localStorage BEFORE the reload so the
       // self-heal in loadToday has the cleanest possible starting state.
       state.cache.dashboard = null;
+      setDashboardFetchedAt_(null);
       state.cache.history   = null;
       state.cache.recap     = null;
       state.cache.vendorItems = {};
@@ -5097,6 +5348,7 @@
       // server-fresh on open or pure-local respectively.
       if (tab === 'today' && state.currentTab === 'today' && state.cache.dashboard) {
         state.cache.dashboard = null;
+        setDashboardFetchedAt_(null);
         try { localStorage.removeItem(nsKey_(OFFLINE_SLOTS.DASHBOARD)); }
         catch (e) { /* non-fatal */ }
       }
@@ -5136,6 +5388,25 @@
   }
   if ($('pin-lang-btn'))   $('pin-lang-btn').addEventListener('click', onPreAuthLangToggle_);
   if ($('stale-lang-btn')) $('stale-lang-btn').addEventListener('click', onPreAuthLangToggle_);
+
+  // Visibility-change refresh: when the user backgrounds the app and
+  // comes back, we don't know what happened in between. Could have
+  // been seconds (notification check), could have been an hour
+  // (commute, lunch, switched to laptop and back). Other devices may
+  // have changed state during the gap. Fire a background refresh on
+  // every return-to-foreground; the gates inside the helper handle
+  // skipping when it's not safe to swap in fresh data.
+  //
+  // We don't check elapsed time here — the cost of a no-op refresh is
+  // one API call, the cost of missing a state change is wrong-looking
+  // pills until the next interaction. Always-refresh is the right
+  // tradeoff for this trigger; the 5-minute gate stays on the
+  // cache-hit-during-render path.
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      maybeBackgroundRefreshDashboard_('visibility');
+    }
+  });
 
   // Topbar shadow when content is scrolled — visually separates the
   // sticky topbar from the content beneath it. Uses a class toggle so

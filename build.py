@@ -44,7 +44,20 @@ SLUG_RE       = re.compile(r'^[a-z0-9-]+$')
 DEPLOY_URL_RE = re.compile(r'^https://script\.google\.com/macros/s/[^/]+/exec$')
 
 API_URL_PLACEHOLDER = '__MOG_API_URL__'
+THEME_PLACEHOLDER   = '__MOG_THEME__'
 REGISTRY_MARKER     = '// __STORE_REGISTRY__ build-injected'
+
+# Maps the human-readable concept name (from stores.json) to a CSS theme
+# slug. The template has a [data-theme="..."] selector block for each.
+# Unknown concepts fall back to 'default' which leaves the :root vars
+# in place (current HEH teal look).
+CONCEPT_TO_THEME = {
+    "Roll Play":  "roll-play",
+    "Lei'd":      "leid",
+    "Teas'n You": "teasnyou",
+    "ĂN":    "an",   # ĂN (with combining breve) — escaped for clarity
+    "AN":         "an",   # alternate ASCII spelling
+}
 
 
 def fail(msg):
@@ -110,6 +123,15 @@ def generate_store(entry, template_html, template_sw, dry_run):
         fail(f"template/index.html: expected exactly 1 {API_URL_PLACEHOLDER!r}, "
              f"found {count}. Template may be corrupted.")
     rendered_html = template_html.replace(API_URL_PLACEHOLDER, entry['deployment'])
+
+    # Theme substitution. Concept-derived; unknown concepts fall back
+    # to 'default' which is a no-op in the template's theme CSS.
+    theme = CONCEPT_TO_THEME.get(entry['concept'], 'default')
+    theme_count = rendered_html.count(THEME_PLACEHOLDER)
+    if theme_count != 1:
+        fail(f"template/index.html: expected exactly 1 {THEME_PLACEHOLDER!r}, "
+             f"found {theme_count}. Template may be corrupted.")
+    rendered_html = rendered_html.replace(THEME_PLACEHOLDER, theme)
 
     actions = []
     if not os.path.isdir(target_dir):
