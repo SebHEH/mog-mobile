@@ -5815,7 +5815,20 @@
       // device, etc.) have changed on-hand state since the cached load.
       // Other tabs don't need this: History and Settings are either
       // server-fresh on open or pure-local respectively.
-      if (tab === 'today' && state.currentTab === 'today' && state.cache.dashboard) {
+      //
+      // Predicate gotcha: state.currentTab stays 'today' across all
+      // Today-rooted sub-views (count, review, recap) because the Today
+      // pill in the bottom nav stays highlighted in those views. If we
+      // only checked currentTab, tapping Today from a vendor count
+      // screen would fire the cache bust and force a slow network
+      // refetch — feeling laggier than the back button (which just
+      // re-renders from the populated cache via switchTab→loadToday).
+      // currentView is the authoritative "what's actually on screen"
+      // signal: it's 'today' only when the dashboard is visible.
+      if (tab === 'today'
+          && state.currentTab === 'today'
+          && state.currentView === 'today'
+          && state.cache.dashboard) {
         state.cache.dashboard = null;
         setDashboardFetchedAt_(null);
         try { localStorage.removeItem(nsKey_(OFFLINE_SLOTS.DASHBOARD)); }
