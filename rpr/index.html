@@ -2461,10 +2461,18 @@
       sessionStorage.removeItem('mog_master_active');
     } catch (e) { /* non-fatal */ }
     state.isManagerMode = false;
-    // Send the manager back to the hub. Returning to the per-store PIN
-    // gate would be wrong — they don't necessarily know this store's
-    // PIN; the master PIN was their access.
-    window.location.href = '../';
+    // Send the manager back to the hub picker. Two safeguards against
+    // the hub's auto-redirect kicking the user right back into this
+    // same store (mog_hub_last_slug may be set from a prior KM visit):
+    //   1. Clear mog_hub_last_slug so the hub can't recall it.
+    //   2. Append ?force_picker=1 so the hub skips auto-redirect for
+    //      this load even if anything else slips past.
+    // Belt-and-suspenders — exit-manager-mode is a deliberate intent
+    // to leave; the user should land on the picker, not in another
+    // auth context.
+    try { localStorage.removeItem('mog_hub_last_slug'); }
+    catch (e) { /* non-fatal */ }
+    window.location.href = '../?force_picker=1';
   }
 
   // Bounce back to the hub picker. Wired to the 'Switch' link on both the
