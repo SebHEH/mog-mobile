@@ -206,12 +206,14 @@
     }
     .card .content { flex: 1; min-width: 0; }
     .card .title {
+      display: block;
       font-size: 16px;
       font-weight: 600;
       color: var(--text);
       line-height: 1.25;
     }
     .card .meta {
+      display: block;
       font-size: 13px;
       color: var(--text-2);
       margin-top: 2px;
@@ -368,6 +370,46 @@
      ============================================================ -->
 <script>
   const STORE_REGISTRY = [{"slug": "rpr", "concept": "Roll Play", "location": "Rosslyn BOH"}, {"slug": "rprfo", "concept": "Roll Play", "location": "Rosslyn FOH"}, {"slug": "rpt", "concept": "Roll Play", "location": "Tysons BOH"}, {"slug": "rpfr", "concept": "Roll Play", "location": "Founders BOH"}, {"slug": "tnyt", "concept": "Teas'n You", "location": "Tysons BOH"}];  // __STORE_REGISTRY__ build-injected
+
+  // ============================================================
+  // CONCEPT VISUAL REGISTRY
+  // ============================================================
+  //
+  // Per-concept identity for the .ti-icon slot on concept cards. Each
+  // entry supports one of two forms:
+  //
+  //   svg:  '<svg ...>...</svg>'      — inline SVG (preferred when a
+  //                                     real brand mark is available)
+  //   icon: 'soup'                    — Tabler icon name without the
+  //                                     'ti-' prefix (placeholder)
+  //
+  // Fallback when a concept isn't listed here: the generic
+  // ti-building-store icon previously used everywhere.
+  //
+  // To swap a placeholder for a real brand SVG later:
+  //   1. Drop the brand mark as inline SVG into the `svg` field for
+  //      that concept (use viewBox sized to render cleanly at 22px;
+  //      the icon container is 40×40 with 10px radius, see .ti-icon).
+  //   2. SVG color: either bake in the brand color, or use
+  //      `fill="currentColor"` and inherit from --heh-red-dark via
+  //      the .ti-icon class.
+  //   3. No other changes needed — conceptIconHtml_ picks svg over
+  //      icon automatically.
+  const CONCEPT_VISUALS = {
+    'Roll Play':       { icon: 'soup' },        // pho / bowls
+    'Teas\'n You':     { icon: 'cup' },         // bubble tea
+    'Lei\'d Poke':     { icon: 'fish' },        // poke bowls
+    '\u0102N':         { icon: 'leaf' },        // wellness-forward; Ă = U+0102
+    'Chasin\' Tails':  { icon: 'flame' },       // cajun heat
+    'NUE':             { icon: 'grape' }        // upscale dining
+  };
+
+  function conceptIconHtml_(concept) {
+    const v = CONCEPT_VISUALS[concept];
+    if (v && v.svg) return v.svg;
+    const iconName = (v && v.icon) ? v.icon : 'building-store';
+    return '<i class="ti ti-' + iconName + '" aria-hidden="true"></i>';
+  }
 </script>
 
 <div class="app" id="app">
@@ -612,7 +654,7 @@
         ? (locCount === 1 ? '1 location' : locCount + ' locations')
         : (locCount === 1 ? '1 ubicaci\u00f3n' : locCount + ' ubicaciones');
       card.innerHTML =
-        '<span class="ti-icon"><i class="ti ti-building-store" aria-hidden="true"></i></span>' +
+        '<span class="ti-icon">' + conceptIconHtml_(group.concept) + '</span>' +
         '<span class="content">' +
           '<span class="title"></span>' +
           '<span class="meta"></span>' +
