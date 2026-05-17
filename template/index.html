@@ -373,28 +373,6 @@
     .bulk-mark-link:active { background: var(--teal-light); }
     .bulk-mark-link i { font-size: 14px; vertical-align: middle; margin-right: 4px; }
 
-    /* Empty-email reminder pill — shown above the vendor list when
-       state.userEmail is empty. Subtle teal styling so it nudges
-       without competing with vendor cards. Tap target opens Settings. */
-    .email-nudge-pill {
-      background: var(--teal-light);
-      border: 0.5px solid #b8dccd;
-      border-radius: var(--r-md);
-      padding: 10px 12px;
-      margin-bottom: 14px;
-      display: flex; align-items: center; gap: 10px;
-      font-size: 13px; color: var(--teal-dark);
-      cursor: pointer;
-    }
-    .email-nudge-pill:active { filter: brightness(0.97); }
-    .email-nudge-pill i.lead { font-size: 18px; flex-shrink: 0; }
-    .email-nudge-pill .nudge-text { flex: 1; line-height: 1.35; }
-    .email-nudge-pill .nudge-cta {
-      font-weight: 600; color: var(--teal-dark);
-      white-space: nowrap;
-    }
-    .email-nudge-pill i.chev { font-size: 16px; flex-shrink: 0; opacity: 0.7; }
-
     /* Stale-summary banner — shown when recap_stale_<cycleDate> is set
        (un-review after the email was sent). Warning amber, sits above
        the all-done panel + vendor list. Inline Resend CTA. */
@@ -420,6 +398,149 @@
     .recap-stale-banner .stale-resend:active { background: #9c6e10; }
     .recap-stale-banner .stale-resend:disabled { opacity: 0.6; }
     .recap-stale-banner .stale-resend i { font-size: 14px; }
+
+    /* Recipients view ── list of email recipients with active toggle.
+       GM rows render locked: greyed, no toggle, no remove button. */
+    .recipient-card {
+      background: var(--bg);
+      border: 0.5px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 14px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .recipient-card.locked {
+      background: var(--bg-soft);
+      border-color: var(--border-2);
+    }
+    .recipient-card .recipient-info { flex: 1; min-width: 0; }
+    .recipient-card .recipient-name {
+      font-size: 15px; font-weight: 600;
+      color: var(--text-1);
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .recipient-card .recipient-name .lock-icon {
+      font-size: 14px;
+      color: var(--text-3);
+      flex-shrink: 0;
+    }
+    .recipient-card .recipient-email {
+      font-size: 13px; color: var(--text-3);
+      margin-top: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .recipient-card .recipient-actions {
+      display: flex; align-items: center; gap: 8px;
+      flex-shrink: 0;
+    }
+    /* Active toggle pill — tap to flip between active and inactive states. */
+    .recipient-toggle {
+      padding: 6px 12px;
+      border: 0.5px solid var(--border-2);
+      border-radius: 999px;
+      background: var(--bg);
+      font-size: 12px; font-weight: 600;
+      color: var(--text-2);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .recipient-toggle:active { filter: brightness(0.97); }
+    .recipient-toggle.on {
+      background: #d8efe1;
+      border-color: #b8dccd;
+      color: #1a6b2e;
+    }
+    .recipient-toggle.off {
+      background: var(--bg-soft);
+      color: var(--text-3);
+    }
+    .recipient-toggle.locked {
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+    .recipient-remove {
+      border: none; background: transparent;
+      color: var(--text-3);
+      padding: 6px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 6px;
+    }
+    .recipient-remove:active { background: var(--bg-soft); }
+    .recipient-remove i { font-size: 18px; }
+
+    /* Inline "Add recipient" form. Hidden by default; flips into view
+       when the user taps the Add button. */
+    .recipient-add-form {
+      background: var(--teal-light);
+      border: 0.5px solid #b8dccd;
+      border-radius: var(--r-lg);
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .recipient-add-form .form-row {
+      margin-bottom: 10px;
+    }
+    .recipient-add-form .form-row:last-child { margin-bottom: 0; }
+    .recipient-add-form label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-2);
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    .recipient-add-form input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      font-size: 15px;
+      background: var(--bg);
+      box-sizing: border-box;
+      outline: none;
+    }
+    .recipient-add-form input:focus {
+      border-color: var(--teal);
+    }
+    .recipient-add-form input.invalid {
+      border-color: var(--red, #d0463f);
+      background: var(--red-light, #fde9e7);
+    }
+    .recipient-add-form .form-actions {
+      display: flex; gap: 8px; margin-top: 4px;
+    }
+    .recipient-add-form .form-actions button { flex: 1; }
+    .recipient-add-error {
+      font-size: 13px; color: var(--red, #d0463f);
+      margin-top: 4px;
+      min-height: 18px;
+    }
+    .recipients-empty {
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--text-3);
+    }
+    .recipients-empty .empty-title {
+      font-size: 16px; font-weight: 600;
+      color: var(--text-2);
+      margin-bottom: 6px;
+    }
+    .recipients-empty .empty-sub {
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .recipients-save-bar {
+      position: sticky; bottom: 0;
+      background: var(--bg);
+      padding: 12px 0 16px;
+      margin-top: 16px;
+      border-top: 0.5px solid var(--border);
+      display: flex; gap: 8px;
+    }
+    .recipients-save-bar button { flex: 1; }
 
     .vendor-card {
       background: var(--bg);
@@ -1446,6 +1567,7 @@
       <div class="screen" id="view-history" style="display:none"></div>
       <div class="screen" id="view-history-detail" style="display:none"></div>
       <div class="screen" id="view-settings" style="display:none"></div>
+      <div class="screen" id="view-recipients" style="display:none"></div>
     </div>
 
     <div class="tabbar">
@@ -1536,7 +1658,8 @@
     lang:       localStorage.getItem('mog_lang') || 'en',
     location:   localStorage.getItem('mog_location') || '',
     locAbbr:    localStorage.getItem('mog_loc_abbr') || '',
-    userEmail:  localStorage.getItem('mog_user_email') || '',
+    // Recipients are server-side (SETUP AB-AE) — no per-device email state.
+    // Loaded lazily into state.cache.recipients when the Recipients view opens.
     currentTab: 'today',
     currentView: 'today',
     historyDetailContext: null, // { vendor, date }
@@ -1550,7 +1673,12 @@
       // itself. Read on every openCount before falling back to the
       // network. Dropped on sign-out and reset; otherwise persists for
       // the session.
-      vendorItems: {}
+      vendorItems: {},
+      // Recipients list (last server snapshot). Used to seed the
+      // Recipients view on re-open without a network round-trip; the
+      // view also refetches in the background to pick up changes made
+      // via the spreadsheet or by another KM.
+      recipients: null
     },
     // In-flight vendor fetches, keyed by vendor name. Prevents a double
     // fetch when the user taps a vendor that's still being prefetched —
@@ -2034,7 +2162,8 @@
     titles: {
       today:           { en: "Today's orders",  es: 'Pedidos de hoy' },
       'history-detail':{ en: 'Order details',   es: 'Detalles' },
-      settings:        { en: 'Settings',        es: 'Ajustes' }
+      settings:        { en: 'Settings',        es: 'Ajustes' },
+      recipients:      { en: 'Email recipients', es: 'Destinatarios' }
     },
     msg: {
       noVendors:        { en: 'No vendors today', es: 'No hay proveedores hoy' },
@@ -2131,25 +2260,59 @@
       wrongStore:       { en: 'Wrong store?', es: '\u00bfTienda equivocada?' },
       switchStore:      { en: 'Switch', es: 'Cambiar' },
       summarySent:      { en: 'Daily summary emailed', es: 'Resumen enviado' },
+      summaryAlreadySent: { en: 'Daily summary already sent today', es: 'El resumen ya se envió hoy' },
+      summarySentPartial: {
+        en: 'Sent to {sent} · {failed} failed',
+        es: 'Enviado a {sent} · {failed} fallaron'
+      },
+      summaryNoRecipients: {
+        en: 'No recipients configured. Add at least one in Settings → Recipients.',
+        es: 'Sin destinatarios. Agrega al menos uno en Ajustes → Destinatarios.'
+      },
+      recipientsShort:  { en: 'recipient(s)', es: 'destinatario(s)' },
       summaryEmpty:     { en: 'Nothing to send yet', es: 'No hay nada que enviar' },
       dailySummary:     { en: 'Daily summary', es: 'Resumen diario' },
-      dailySummaryHelp: { en: 'Email yourself a copy of all suggested orders', es: 'Recibe por correo todos los pedidos sugeridos' },
+      dailySummaryHelp: { en: 'Email all configured recipients', es: 'Enviar a los destinatarios configurados' },
       sendingSummary:   { en: 'Sending…', es: 'Enviando…' },
-      enterEmail:       { en: 'Your email', es: 'Tu correo' },
-      enterEmailMsg: {
-        en: "We'll send the daily summary here. We'll remember it on this device.",
-        es: 'Enviaremos el resumen aquí. Lo guardaremos en este dispositivo.'
+      // Recipients management
+      recipientsTitle:  { en: 'Recipients', es: 'Destinatarios' },
+      recipientsHelp:   { en: 'Who gets the daily order email', es: 'Quién recibe el correo diario' },
+      recipientsEmpty:  { en: "No recipients yet", es: 'Sin destinatarios' },
+      recipientsEmptySub: {
+        en: "Add someone below — they'll get the daily order email automatically.",
+        es: 'Agrega a alguien abajo — recibirá el correo diario automáticamente.'
       },
-      enterEmailPlaceholder: { en: 'name@example.com', es: 'tu@correo.com' },
-      // Email auto-send feature
-      firstRunEmailTitle: { en: 'Want a copy of your daily order?', es: '¿Quieres una copia de tu pedido diario?' },
-      firstRunEmailMsg: {
-        en: "Add your email and we'll send you a summary when you finish reviewing or reset on hand. You can change this anytime in Settings.",
-        es: 'Agrega tu correo y te enviaremos un resumen al terminar de revisar o al reiniciar inventario. Puedes cambiarlo en Ajustes.'
+      recipientsAdd:    { en: 'Add recipient', es: 'Agregar destinatario' },
+      recipientsName:   { en: 'Name', es: 'Nombre' },
+      recipientsEmail:  { en: 'Email', es: 'Correo' },
+      recipientsActive: { en: 'Active', es: 'Activo' },
+      recipientsInactive: { en: 'Inactive', es: 'Inactivo' },
+      recipientsGmLock: { en: 'Managed by GM — edit in the spreadsheet', es: 'Gestionado por el GM — editar en la hoja' },
+      recipientsRemove: { en: 'Remove', es: 'Quitar' },
+      recipientsRemoveConfirmTitle: { en: 'Remove recipient?', es: '¿Quitar destinatario?' },
+      recipientsRemoveConfirmMsg: {
+        en: '{name} will no longer receive the daily order email.',
+        es: '{name} ya no recibirá el correo diario.'
       },
-      firstRunEmailSkip: { en: 'Skip for now', es: 'Saltar por ahora' },
-      noEmailPillText: { en: 'Set your email to auto-send daily summaries', es: 'Configura tu correo para resúmenes automáticos' },
-      noEmailPillCta: { en: 'Set email', es: 'Configurar' },
+      recipientsRemoveCta: { en: 'Remove', es: 'Quitar' },
+      recipientsSave:   { en: 'Save changes', es: 'Guardar cambios' },
+      recipientsSaving: { en: 'Saving…', es: 'Guardando…' },
+      recipientsSaved:  { en: 'Recipients saved', es: 'Destinatarios guardados' },
+      recipientsLoadFail: { en: "Couldn't load recipients", es: 'No se pudo cargar' },
+      recipientsSaveFail: { en: "Couldn't save recipients", es: 'No se pudo guardar' },
+      recipientsInvalidEmail: { en: 'Invalid email', es: 'Correo no válido' },
+      recipientsNeedName: { en: 'Name is required', es: 'Falta el nombre' },
+      recipientsNeedEmail: { en: 'Email is required', es: 'Falta el correo' },
+      recipientsDuplicate: { en: 'Email already on the list', es: 'Ese correo ya está en la lista' },
+      recipientsDiscardTitle: { en: 'Discard changes?', es: '¿Descartar cambios?' },
+      recipientsDiscardMsg: {
+        en: 'You have unsaved changes. Leave anyway?',
+        es: 'Tienes cambios sin guardar. ¿Salir de todos modos?'
+      },
+      recipientsDiscardConfirm: { en: 'Discard', es: 'Descartar' },
+      recipientsCancel: { en: 'Cancel', es: 'Cancelar' },
+      recipientsSaveAndStay: { en: 'Save', es: 'Guardar' },
+      // Recap UI
       recapStaleText: { en: 'Daily summary is out of date', es: 'El resumen diario está desactualizado' },
       recapStaleCta: { en: 'Resend', es: 'Reenviar' },
       autoSendingSummary: { en: 'Sending order summary…', es: 'Enviando resumen…' },
@@ -2176,8 +2339,6 @@
       language:         { en: 'Language', es: 'Idioma' },
       version:          { en: 'Version', es: 'Versión' },
       signOut:          { en: 'Sign out', es: 'Cerrar sesión' },
-      yourEmail:        { en: 'Your email', es: 'Tu correo' },
-      notSet:           { en: 'Not set', es: 'No configurado' },
       offlineBanner:    { en: 'Offline — using last loaded data', es: 'Sin conexión — usando los últimos datos cargados' },
       offlineBannerStale: { en: ' unsynced changes from earlier', es: ' cambios sin sincronizar de antes' },
       offlineRetry:     { en: 'Offline. Try again when connected.', es: 'Sin conexión. Intenta cuando vuelva.' },
@@ -2269,67 +2430,6 @@
       $('modal-cancel').onclick    = () => cleanup(hasTertiary ? 'cancel'  : false);
       if (hasTertiary) $('modal-tertiary').onclick = () => cleanup('tertiary');
       $('modal-backdrop').onclick  = () => cleanup(hasTertiary ? 'cancel'  : false);
-    });
-  }
-
-  // Email prompt modal — stripped-down version that takes an input
-  // Optional opts:
-  //   titleKey: translation key to override the default 'enterEmail' title
-  //   msgKey:   translation key to override the default 'enterEmailMsg' body
-  //   skipKey:  translation key for the cancel button label (e.g. 'Skip for now'
-  //             instead of 'Cancel') — used by the first-run prompt
-  function showEmailPrompt(opts) {
-    opts = opts || {};
-    return new Promise((resolve) => {
-      $('modal-icon').className = 'modal-icon success';
-      $('modal-icon').innerHTML = '<i class="ti ti-mail" aria-hidden="true"></i>';
-      $('modal-title').textContent = t(opts.titleKey || 'enterEmail');
-      $('modal-msg').textContent = t(opts.msgKey || 'enterEmailMsg');
-
-      // Replace actions with input + send/cancel
-      const actionsEl = document.querySelector('.modal-actions');
-      const placeholder = t('enterEmailPlaceholder');
-      const cancelLabel = opts.skipKey ? t(opts.skipKey) : t('cancel');
-      actionsEl.innerHTML =
-        '<input type="email" id="email-input" autocomplete="email" inputmode="email" ' +
-        'placeholder="' + escapeHtml(placeholder) + '" ' +
-        'style="width:100%;padding:12px;border:0.5px solid var(--border-2);border-radius:var(--r-md);' +
-        'font-size:15px;margin-bottom:8px;outline:none">' +
-        '<button class="modal-cta" id="modal-send">' + escapeHtml(t('send')) + '</button>' +
-        '<button class="modal-cancel" id="modal-cancel-2">' + escapeHtml(cancelLabel) + '</button>';
-
-      const input = $('email-input');
-      input.value = state.userEmail || '';
-      $('modal-backdrop').classList.add('open');
-      $('modal').style.display = 'block';
-      setTimeout(() => input.focus(), 80);
-
-      const cleanup = (val) => {
-        $('modal').style.display = 'none';
-        $('modal-backdrop').classList.remove('open');
-        // Restore default action buttons for next confirm modal
-        actionsEl.innerHTML =
-          '<button class="modal-cta" id="modal-confirm"></button>' +
-          '<button class="modal-cancel" id="modal-cancel"></button>';
-        resolve(val);
-      };
-
-      const submit = () => {
-        const v = (input.value || '').trim();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
-          input.style.borderColor = 'var(--red)';
-          input.style.background = 'var(--red-light)';
-          return;
-        }
-        cleanup(v);
-      };
-      $('modal-send').onclick = submit;
-      $('modal-cancel-2').onclick = () => cleanup(null);
-      $('modal-backdrop').onclick = () => cleanup(null);
-      input.onkeydown = (e) => {
-        if (e.key === 'Enter') submit();
-        else { input.style.borderColor = ''; input.style.background = ''; }
-      };
     });
   }
 
@@ -2499,45 +2599,16 @@
     return months[+parts[1] - 1] + ' ' + (+parts[2]) + ', ' + parts[0];
   }
 
-  // First-run email prompt — shown once per device after the first
-  // successful PIN entry where no email is saved. Skippable; the
-  // empty-email pill on the home dashboard handles persistent
-  // reminders thereafter.
-  async function maybePromptFirstRunEmail_() {
-    try {
-      if (state.userEmail) return;
-      if (localStorage.getItem('mog_first_run_email_prompted') === '1') return;
-      localStorage.setItem('mog_first_run_email_prompted', '1');
-      // Small delay so the dashboard render lands first — a modal
-      // popping up mid-transition feels jarring.
-      await new Promise(r => setTimeout(r, 600));
-      const email = await showEmailPrompt({
-        titleKey: 'firstRunEmailTitle',
-        msgKey:   'firstRunEmailMsg',
-        skipKey:  'firstRunEmailSkip'
-      });
-      if (email) {
-        state.userEmail = email;
-        localStorage.setItem('mog_user_email', email);
-        if (state.cache.dashboard) renderToday(state.cache.dashboard);
-      }
-    } catch (e) {
-      console.warn('[firstRunEmail] non-fatal:', e);
-    }
-  }
-
   async function proceedAfterAuth() {
     try {
       const status = await api('getResetStatus');
       if (status.isStale) showStaleScreen(status);
       else {
         await showMainApp();
-        maybePromptFirstRunEmail_();
       }
     } catch (err) {
       console.error('proceedAfterAuth error:', err);
       await showMainApp();
-      maybePromptFirstRunEmail_();
     }
   }
 
@@ -2655,6 +2726,10 @@
     state.cache.history = null;
     state.cache.recap = null;
     state.cache.vendorItems = {};
+    state.cache.recipients = null;
+    state.recipients = null;
+    state.recipientsDirty = false;
+    state.recipientsAddOpen = false;
     // Drop offline caches + save queue under the current namespace.
     // Drafts and reviewed flags are handled by their own GC paths.
     clearAllOfflineState_();
@@ -2912,17 +2987,6 @@
       '</div>';
     }
 
-    // Empty-email reminder pill — shown whenever no email is configured.
-    // Subtle tap target opens Settings. Disappears once email is set.
-    if (!state.userEmail) {
-      html += '<div class="email-nudge-pill" id="email-nudge-pill">' +
-        '<i class="ti ti-mail lead" aria-hidden="true"></i>' +
-        '<span class="nudge-text">' + escapeHtml(t('noEmailPillText')) + '</span>' +
-        '<span class="nudge-cta">' + escapeHtml(t('noEmailPillCta')) + '</span>' +
-        '<i class="ti ti-chevron-right chev" aria-hidden="true"></i>' +
-      '</div>';
-    }
-
     // "View full order list" appears at the top whenever at least one
     // vendor is reviewed. As more vendors get reviewed and sort to the
     // bottom, this button stays put as a stable anchor — the master
@@ -3025,7 +3089,6 @@
     if ($('view-full-btn'))      $('view-full-btn').addEventListener('click', openRecap);
     if ($('home-reset-btn'))     $('home-reset-btn').addEventListener('click', onHomeResetClick);
     if ($('stale-resend-btn'))   $('stale-resend-btn').addEventListener('click', onStaleResendClick);
-    if ($('email-nudge-pill'))   $('email-nudge-pill').addEventListener('click', onEmailNudgeClick);
   }
 
   // Stale-banner Resend handler. Same code path as the all-done panel's
@@ -3037,21 +3100,27 @@
       btn.disabled = true;
       btn.querySelector('span').textContent = t('emailing');
     }
-    const result = await sendDailyRecap();
-    if (result.cancelled) {
-      if (btn) {
-        btn.disabled = false;
-        btn.querySelector('span').textContent = t('recapStaleCta');
-      }
-      return;
-    }
+    // Manual resend → force send. Stale banner exists because the user
+    // explicitly un-reviewed after a prior send; they want the recap
+    // refreshed and re-delivered.
+    const result = await sendDailyRecap({ force: true });
     if (result.ok) {
-      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+      if (result.alreadySent) {
+        showToast(t('summaryAlreadySent'), 'success');
+      } else if (result.failedCount > 0) {
+        const msg = t('summarySentPartial')
+          .replace('{sent}', result.sentCount)
+          .replace('{failed}', result.failedCount);
+        showToast(msg, 'error');
+      } else {
+        showToast(t('summarySent') + ' · ' + result.sentCount + ' ' + t('recipientsShort'), 'success');
+      }
       if (state.cache.dashboard) renderToday(state.cache.dashboard);
     } else {
       const m = String((result.error && result.error.message) || '');
       if (result.offline) showToast(t('offlineRetry'), 'error');
       else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      else if (m.indexOf('No recipients') >= 0) showToast(t('summaryNoRecipients'), 'error');
       else showToast(m || 'Error', 'error');
       if (btn) {
         btn.disabled = false;
@@ -3125,18 +3194,6 @@
     // Now fire the consolidated auto-send — single email reflecting
     // all the marks at once.
     maybeAutoSendOnAllReviewed_();
-  }
-
-  // Empty-email pill handler — opens the email prompt directly rather
-  // than navigating to Settings. One tap → email set. Mirrors the same
-  // flow Settings uses.
-  async function onEmailNudgeClick() {
-    const email = await showEmailPrompt();
-    if (!email) return;
-    state.userEmail = email;
-    localStorage.setItem('mog_user_email', email);
-    if (state.cache.dashboard) renderToday(state.cache.dashboard);
-    renderSettings();
   }
 
   function renderVendorCard(v, status, dashboardDateStr) {
@@ -4715,33 +4772,351 @@
       btn.disabled = true;
       btn.querySelector('span').textContent = t('emailing');
     }
-    const result = await sendDailyRecap();
-    if (result.cancelled) {
-      if (btn) {
-        btn.disabled = false;
-        btn.querySelector('span').textContent = t('emailMyCopy');
-      }
-      return;
-    }
+    // Manual button → force send, bypassing server dedupe.
+    const result = await sendDailyRecap({ force: true });
     if (result.ok) {
-      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
-      // Re-render so the "already sent today" badge appears, and also
-      // re-render the dashboard cache (if any) so the home panel stays
-      // in sync if the user navigates back.
-      if (state.cache.recap) renderRecap(state.cache.recap);
-      if (state.cache.dashboard) {
-        // Don't actually re-paint the dashboard since user isn't on it —
-        // just leave the cache; next render will read the updated
-        // localStorage flag and show the correct state.
+      if (result.alreadySent) {
+        showToast(t('summaryAlreadySent'), 'success');
+      } else if (result.failedCount > 0) {
+        const msg = t('summarySentPartial')
+          .replace('{sent}', result.sentCount)
+          .replace('{failed}', result.failedCount);
+        showToast(msg, 'error');
+      } else {
+        showToast(t('summarySent') + ' · ' + result.sentCount + ' ' + t('recipientsShort'), 'success');
       }
+      // Re-render so the "already sent today" badge appears, and also
+      // leave the dashboard cache so the home panel stays in sync if
+      // the user navigates back — next render will read the updated
+      // localStorage flag and show the correct state.
+      if (state.cache.recap) renderRecap(state.cache.recap);
     } else {
       const m = String((result.error && result.error.message) || '');
       if (result.offline) showToast(t('offlineRetry'), 'error');
       else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      else if (m.indexOf('No recipients') >= 0) showToast(t('summaryNoRecipients'), 'error');
       else showToast(m || 'Error', 'error');
       if (btn) {
         btn.disabled = false;
         btn.querySelector('span').textContent = t('emailMyCopy');
+      }
+    }
+  }
+
+  // ============================================================
+  // RECIPIENTS — server-side email list (SETUP AB-AE)
+  // ============================================================
+  //
+  // The Recipients view is the only KM-facing surface for managing
+  // who gets the daily order email. State model:
+  //
+  //   state.recipients      — local working copy (array of {name, email, active, gm})
+  //   state.recipientsDirty — true while there are unsaved local edits
+  //   state.cache.recipients — last-loaded server snapshot, used as the
+  //                            seed when re-opening the view in the same
+  //                            session
+  //
+  // GM rows are visible-read-only: the server enforces this on save by
+  // rejecting any mutation of a GM row. The UI also renders them locked
+  // (no toggle handler, no remove button, lock icon) so KMs can't even
+  // try.
+  //
+  // Saves always send the FULL list (clear-and-write semantics on the
+  // server). Adds, toggles, and removes mutate state.recipients in place
+  // and flip recipientsDirty; the Save button writes it all back in one
+  // call.
+
+  async function openRecipients() {
+    showView('recipients');
+    state.recipientsDirty = false;
+    state.recipientsAddOpen = false;
+
+    const view = $('view-recipients');
+    // Seed from cache for snappier re-open within a session. Always
+    // refetch in the background so changes made via the spreadsheet or
+    // by another KM land within a couple seconds.
+    if (state.cache.recipients) {
+      state.recipients = JSON.parse(JSON.stringify(state.cache.recipients));
+      renderRecipients_();
+      // Background revalidate — silent on success, silent on offline.
+      try {
+        const data = await api('getRecipients');
+        state.cache.recipients = data.recipients || [];
+        if (!state.recipientsDirty) {
+          state.recipients = JSON.parse(JSON.stringify(state.cache.recipients));
+          renderRecipients_();
+        }
+      } catch (e) {
+        // Non-fatal — user keeps the cached view.
+      }
+      return;
+    }
+
+    renderLoading(view);
+    try {
+      const data = await api('getRecipients');
+      state.cache.recipients = data.recipients || [];
+      state.recipients = JSON.parse(JSON.stringify(state.cache.recipients));
+      renderRecipients_();
+    } catch (err) {
+      console.error('getRecipients error:', err);
+      renderError(view, openRecipients);
+    }
+  }
+
+  function renderRecipients_() {
+    const view = $('view-recipients');
+    const recipients = state.recipients || [];
+
+    let html = '<p class="hero-day" style="margin-bottom:18px">' +
+               escapeHtml(t('recipientsTitle')) + '</p>';
+
+    // Inline add form — appears when state.recipientsAddOpen is true.
+    if (state.recipientsAddOpen) {
+      html += '<div class="recipient-add-form" id="recipient-add-form">' +
+        '<div class="form-row">' +
+          '<label for="add-name">' + escapeHtml(t('recipientsName')) + '</label>' +
+          '<input type="text" id="add-name" autocomplete="name" maxlength="100">' +
+        '</div>' +
+        '<div class="form-row">' +
+          '<label for="add-email">' + escapeHtml(t('recipientsEmail')) + '</label>' +
+          '<input type="email" id="add-email" autocomplete="email" inputmode="email" maxlength="200">' +
+        '</div>' +
+        '<div class="recipient-add-error" id="add-error"></div>' +
+        '<div class="form-actions">' +
+          '<button class="cta-secondary" id="add-cancel">' + escapeHtml(t('recipientsCancel')) + '</button>' +
+          '<button class="cta-primary" id="add-confirm">' + escapeHtml(t('recipientsAdd')) + '</button>' +
+        '</div>' +
+      '</div>';
+    } else {
+      // Add button — opens the form.
+      html += '<button class="cta-secondary" id="recipients-add-btn" style="width:100%;margin-bottom:14px">' +
+        '<i class="ti ti-plus" aria-hidden="true"></i> ' +
+        '<span>' + escapeHtml(t('recipientsAdd')) + '</span>' +
+      '</button>';
+    }
+
+    // Empty state when the list is truly empty.
+    if (!recipients.length) {
+      html += '<div class="recipients-empty">' +
+        '<div class="empty-title">' + escapeHtml(t('recipientsEmpty')) + '</div>' +
+        '<div class="empty-sub">' + escapeHtml(t('recipientsEmptySub')) + '</div>' +
+      '</div>';
+    } else {
+      // Render every recipient. GM rows get the locked treatment.
+      for (let i = 0; i < recipients.length; i++) {
+        const r = recipients[i];
+        const isGm = !!r.gm;
+        html += '<div class="recipient-card' + (isGm ? ' locked' : '') + '">' +
+          '<div class="recipient-info">' +
+            '<div class="recipient-name">' +
+              escapeHtml(r.name) +
+              (isGm ? '<i class="ti ti-lock lock-icon" aria-hidden="true" title="' + escapeHtml(t('recipientsGmLock')) + '"></i>' : '') +
+            '</div>' +
+            '<div class="recipient-email">' + escapeHtml(r.email) + '</div>' +
+          '</div>' +
+          '<div class="recipient-actions">' +
+            '<button class="recipient-toggle ' + (r.active ? 'on' : 'off') + (isGm ? ' locked' : '') + '" ' +
+              'data-idx="' + i + '"' + (isGm ? ' disabled' : '') + '>' +
+              (r.active ? escapeHtml(t('recipientsActive')) : escapeHtml(t('recipientsInactive'))) +
+            '</button>' +
+            (isGm
+              ? ''
+              : '<button class="recipient-remove" data-idx="' + i + '" aria-label="' + escapeHtml(t('recipientsRemove')) + '">' +
+                  '<i class="ti ti-trash" aria-hidden="true"></i>' +
+                '</button>'
+            ) +
+          '</div>' +
+        '</div>';
+      }
+    }
+
+    // Save bar — only when there are unsaved changes.
+    if (state.recipientsDirty) {
+      html += '<div class="recipients-save-bar">' +
+        '<button class="cta-secondary" id="recipients-discard-btn">' +
+          escapeHtml(t('recipientsCancel')) +
+        '</button>' +
+        '<button class="cta-primary" id="recipients-save-btn">' +
+          '<i class="ti ti-device-floppy" aria-hidden="true"></i> ' +
+          '<span>' + escapeHtml(t('recipientsSaveAndStay')) + '</span>' +
+        '</button>' +
+      '</div>';
+    }
+
+    view.innerHTML = html;
+
+    // Wire handlers.
+    if ($('recipients-add-btn')) {
+      $('recipients-add-btn').addEventListener('click', () => {
+        state.recipientsAddOpen = true;
+        renderRecipients_();
+        // Focus the name input once the form is in the DOM.
+        setTimeout(() => { if ($('add-name')) $('add-name').focus(); }, 50);
+      });
+    }
+    if ($('add-cancel')) {
+      $('add-cancel').addEventListener('click', () => {
+        state.recipientsAddOpen = false;
+        renderRecipients_();
+      });
+    }
+    if ($('add-confirm')) {
+      $('add-confirm').addEventListener('click', onRecipientAddConfirm_);
+    }
+    if ($('add-email')) {
+      $('add-email').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') onRecipientAddConfirm_();
+      });
+    }
+    if ($('add-name')) {
+      $('add-name').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') $('add-email').focus();
+      });
+    }
+
+    // Toggle and remove buttons — delegated per-card by data-idx.
+    view.querySelectorAll('.recipient-toggle:not(.locked)').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        onRecipientToggleClick_(idx);
+      });
+    });
+    view.querySelectorAll('.recipient-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        onRecipientRemoveClick_(idx);
+      });
+    });
+    if ($('recipients-save-btn')) {
+      $('recipients-save-btn').addEventListener('click', onRecipientsSaveClick_);
+    }
+    if ($('recipients-discard-btn')) {
+      $('recipients-discard-btn').addEventListener('click', async () => {
+        const ok = await showConfirm({
+          kind: 'danger',
+          icon: 'alert-triangle',
+          title: t('recipientsDiscardTitle'),
+          msg:   t('recipientsDiscardMsg'),
+          confirmLabel: t('recipientsDiscardConfirm'),
+          cancelLabel:  t('cancel')
+        });
+        if (!ok) return;
+        // Revert to cached server state.
+        state.recipients = JSON.parse(JSON.stringify(state.cache.recipients || []));
+        state.recipientsDirty = false;
+        renderRecipients_();
+      });
+    }
+  }
+
+  function onRecipientAddConfirm_() {
+    const nameEl  = $('add-name');
+    const emailEl = $('add-email');
+    const errEl   = $('add-error');
+    if (!nameEl || !emailEl || !errEl) return;
+
+    const name  = (nameEl.value  || '').trim();
+    const email = (emailEl.value || '').trim();
+    errEl.textContent = '';
+    nameEl.classList.remove('invalid');
+    emailEl.classList.remove('invalid');
+
+    if (!name) {
+      nameEl.classList.add('invalid');
+      errEl.textContent = t('recipientsNeedName');
+      nameEl.focus();
+      return;
+    }
+    if (!email) {
+      emailEl.classList.add('invalid');
+      errEl.textContent = t('recipientsNeedEmail');
+      emailEl.focus();
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      emailEl.classList.add('invalid');
+      errEl.textContent = t('recipientsInvalidEmail');
+      emailEl.focus();
+      return;
+    }
+    const lc = email.toLowerCase();
+    if ((state.recipients || []).some(r => r.email.toLowerCase() === lc)) {
+      emailEl.classList.add('invalid');
+      errEl.textContent = t('recipientsDuplicate');
+      emailEl.focus();
+      return;
+    }
+
+    // Append locally. gm=false is correct — promotion happens only by
+    // editing the sheet directly, and the server enforces this on save.
+    state.recipients = (state.recipients || []).concat([{
+      name:   name,
+      email:  email,
+      active: true,
+      gm:     false
+    }]);
+    state.recipientsDirty = true;
+    state.recipientsAddOpen = false;
+    renderRecipients_();
+  }
+
+  function onRecipientToggleClick_(idx) {
+    if (!state.recipients || !state.recipients[idx]) return;
+    if (state.recipients[idx].gm) return; // belt-and-suspenders with disabled attribute
+    state.recipients[idx].active = !state.recipients[idx].active;
+    state.recipientsDirty = true;
+    renderRecipients_();
+  }
+
+  async function onRecipientRemoveClick_(idx) {
+    if (!state.recipients || !state.recipients[idx]) return;
+    if (state.recipients[idx].gm) return; // GMs can't be removed from the PWA
+    const r = state.recipients[idx];
+    const ok = await showConfirm({
+      kind: 'danger',
+      icon: 'trash',
+      title: t('recipientsRemoveConfirmTitle'),
+      msg:   t('recipientsRemoveConfirmMsg').replace('{name}', r.name),
+      confirmLabel: t('recipientsRemoveCta'),
+      cancelLabel:  t('cancel')
+    });
+    if (!ok) return;
+    state.recipients.splice(idx, 1);
+    state.recipientsDirty = true;
+    renderRecipients_();
+  }
+
+  async function onRecipientsSaveClick_() {
+    const btn = $('recipients-save-btn');
+    if (btn) {
+      btn.disabled = true;
+      const span = btn.querySelector('span');
+      if (span) span.textContent = t('recipientsSaving');
+    }
+    try {
+      const result = await api('saveRecipients', { recipients: state.recipients });
+      // Server returns the canonical sanitized list — adopt it as the
+      // new source of truth in case sanitization changed anything
+      // (e.g. trimmed whitespace, coerced gm flags).
+      state.cache.recipients = result.recipients || [];
+      state.recipients = JSON.parse(JSON.stringify(state.cache.recipients));
+      state.recipientsDirty = false;
+      renderRecipients_();
+      showToast(t('recipientsSaved'), 'success');
+    } catch (err) {
+      console.error('saveRecipients error:', err);
+      if (isNetworkError_(err)) {
+        showToast(t('offlineRetry'), 'error');
+      } else {
+        // Server may return GM-lock-violation errors — surface them.
+        const m = String(err.message || err);
+        showToast(m || t('recipientsSaveFail'), 'error');
+      }
+      if (btn) {
+        btn.disabled = false;
+        const span = btn.querySelector('span');
+        if (span) span.textContent = t('recipientsSaveAndStay');
       }
     }
   }
@@ -4752,11 +5127,8 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.16.0';
+    const versionStr = '0.17.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
-    const emailDisplay = state.userEmail
-      ? state.userEmail
-      : '<span style="font-style:italic;color:var(--text-3)">' + escapeHtml(t('notSet')) + '</span>';
 
     view.innerHTML =
       '<p class="hero-day" style="margin-bottom:18px">' + escapeHtml(t('settings') || 'Settings') + '</p>' +
@@ -4778,6 +5150,13 @@
           '</div>' +
           '<div class="settings-value"><i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
         '</div>' +
+        '<div class="settings-row tappable" id="settings-recipients">' +
+          '<div>' +
+            '<div class="settings-label"><i class="ti ti-users" aria-hidden="true"></i>' + escapeHtml(t('recipientsTitle')) + '</div>' +
+            '<div style="font-size:12px;color:var(--text-3);margin-top:4px;margin-left:28px">' + escapeHtml(t('recipientsHelp')) + '</div>' +
+          '</div>' +
+          '<div class="settings-value"><i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
+        '</div>' +
       '</div>' +
 
       '<div class="settings-section-label"><span class="lang-en">Preferences</span><span class="lang-es">Preferencias</span></div>' +
@@ -4785,10 +5164,6 @@
         '<div class="settings-row tappable" id="settings-lang">' +
           '<div class="settings-label"><i class="ti ti-language" aria-hidden="true"></i>' + escapeHtml(t('language')) + '</div>' +
           '<div class="settings-value">' + langLabel + '<i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
-        '</div>' +
-        '<div class="settings-row tappable" id="settings-email">' +
-          '<div class="settings-label"><i class="ti ti-mail" aria-hidden="true"></i>' + escapeHtml(t('yourEmail')) + '</div>' +
-          '<div class="settings-value" style="max-width:60%;overflow:hidden;text-overflow:ellipsis">' + emailDisplay + '<i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
         '</div>' +
       '</div>' +
 
@@ -4808,17 +5183,9 @@
       if (state.cache.dashboard) renderToday(state.cache.dashboard);
       if (state.cache.history) renderHistory(state.cache.history);
     });
-    $('settings-email').addEventListener('click', onChangeEmailClick);
+    $('settings-recipients').addEventListener('click', openRecipients);
     $('settings-summary').addEventListener('click', onDailySummaryClick);
     $('signout-btn').addEventListener('click', signOut);
-  }
-
-  async function onChangeEmailClick() {
-    const email = await showEmailPrompt();
-    if (!email) return;
-    state.userEmail = email;
-    localStorage.setItem('mog_user_email', email);
-    renderSettings();
   }
 
   // ============================================================
@@ -4848,22 +5215,42 @@
   // Best-effort auto-send used by triggers (2) and (3). Silent on
   // success beyond a toast + dashboard re-render. Silent on failure
   // beyond an error toast. Never throws; never blocks the caller.
+  //
+  // Server-side dedupe: api_emailRecap_ with force=false short-circuits
+  // when PROP_LAST_RECAP_SENT_DATE matches the current cycle, returning
+  // alreadySent=true. Combined with the local recap_sent_<cycleDate>
+  // check below, this prevents same-cycle double-sends regardless of
+  // which path fires (PWA, sheet reset, multiple devices).
+  //
+  // No userEmail gate anymore — recipients live in SETUP. If there are
+  // none, the server throws "No recipients configured" and the toast
+  // surfaces it. KMs add themselves via Settings → Recipients.
   async function autoSendDailyRecap_(reason) {
-    if (!state.userEmail) return { ok: false, skipped: 'no-email' };
     const cycleDate = state.cache.dashboard && state.cache.dashboard.date;
     if (cycleDate && localStorage.getItem(nsKey_('recap_sent_' + cycleDate))) {
       return { ok: false, skipped: 'already-sent' };
     }
     try {
-      const result = await sendDailyRecap();
+      // Auto-paths omit force so the server can dedupe across devices.
+      const result = await sendDailyRecap({ force: false });
       if (result && result.ok) {
-        showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+        // alreadySent means the server short-circuited the send because
+        // another path got there first. Treat as success silently — the
+        // local sent flag is set inside sendDailyRecap so UI flips
+        // correctly.
+        if (!result.alreadySent) {
+          showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+        }
         if (state.cache.dashboard) renderToday(state.cache.dashboard);
       } else if (result && !result.cancelled) {
         const m = String((result.error && result.error.message) || '');
         if (result.offline) showToast(t('offlineRetry'), 'error');
         else if (m.indexOf('Nothing to recap') >= 0) {
           // Empty recap on auto-send isn't a user-visible error.
+        } else if (m.indexOf('No recipients') >= 0) {
+          // No recipients configured isn't an auto-send failure — it's a
+          // configuration state. Don't toast on auto paths; the user
+          // will see the error if they manually tap send.
         } else {
           showToast(t('autoSendFailed'), 'error');
         }
@@ -4972,17 +5359,22 @@
     return result;
   }
 
-  // Shared core: ensures we have an email, sends the recap, returns
-  // { ok, vendorCount, error }. Used by both the Settings row and the
-  // end-of-day panel on the home dashboard.
-  async function sendDailyRecap() {
-    let email = state.userEmail;
-    if (!email) {
-      email = await showEmailPrompt();
-      if (!email) return { ok: false, cancelled: true };
-      state.userEmail = email;
-      localStorage.setItem('mog_user_email', email);
-    }
+  // Shared core: flushes any pending drafts, then calls api('emailRecap').
+  // Used by every send path (manual, bulk-mark auto, reset auto, stale
+  // resend). Recipients live in SETUP — no per-device email state.
+  //
+  // Options:
+  //   opts.force  (bool) — bypass server-side dedupe. Manual sends pass
+  //                        true so they always fire. Auto sends omit so
+  //                        the server can dedupe across paths.
+  //
+  // Returns:
+  //   { ok: true,  vendorCount, itemCount, sentCount, failedCount,
+  //     failed, alreadySent }
+  //   { ok: false, offline: true, error }
+  //   { ok: false, error }
+  async function sendDailyRecap(opts) {
+    opts = opts || {};
     // Flush any pending drafts before the server reads on-hand. This
     // guarantees the email reflects the device's most recent counts.
     // See flushAllPendingDrafts_ docstring for failure handling.
@@ -5000,21 +5392,35 @@
       console.warn('[flushDrafts] unexpected throw, proceeding:', e);
     }
     try {
-      const result = await api('emailRecap', { userEmail: email });
-      // Mark this cycle's recap as sent so the home panel can show a
-      // confirmation state and discourage spam-resends.
+      // force defaults to true for manual sends (callers from buttons),
+      // false for auto-paths. autoSendDailyRecap_ explicitly passes false.
+      const force = opts.force !== false;
+      const result = await api('emailRecap', { force: force });
+
+      // Server returns alreadySent=true when the cycle was already
+      // emailed by another path. UI still flips to "sent" state, but
+      // we don't double-toast.
       const cycleDate = (state.cache.dashboard && state.cache.dashboard.date) || result.cycleDate;
       if (cycleDate) {
         localStorage.setItem(nsKey_('recap_sent_' + cycleDate), '1');
-        // Successful send clears any stale flag — the newly-sent email
-        // reflects current state, so the out-of-date banner should go.
+        // Successful send (or already-sent) clears any stale flag — the
+        // newly-sent email reflects current state, so the out-of-date
+        // banner should go.
         localStorage.removeItem(nsKey_('recap_stale_' + cycleDate));
       }
       // Recap may have committed today's orders to LOG_ORDERS — drop the
       // history cache so the next History open shows the new entry
       // instead of stale data.
       state.cache.history = null;
-      return { ok: true, vendorCount: result.vendorCount, itemCount: result.itemCount };
+      return {
+        ok:           true,
+        vendorCount:  result.vendorCount,
+        itemCount:    result.itemCount,
+        sentCount:    result.sentCount,
+        failedCount:  result.failedCount,
+        failed:       result.failed || [],
+        alreadySent:  !!result.alreadySent
+      };
     } catch (err) {
       console.error('emailRecap error:', err);
       if (isNetworkError_(err)) {
@@ -5030,22 +5436,29 @@
       btn.disabled = true;
       btn.querySelector('span').textContent = t('emailing');
     }
-    const result = await sendDailyRecap();
-    if (result.cancelled) {
-      if (btn) {
-        btn.disabled = false;
-        btn.querySelector('span').textContent = t('emailMyCopy');
-      }
-      return;
-    }
+    // Manual button → force send, bypassing server dedupe.
+    const result = await sendDailyRecap({ force: true });
     if (result.ok) {
-      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+      // Surface partial failures so the user knows some recipients
+      // didn't get the email. sentCount may be 0 on alreadySent path —
+      // skip the toast in that case.
+      if (result.alreadySent) {
+        showToast(t('summaryAlreadySent'), 'success');
+      } else if (result.failedCount > 0) {
+        const msg = t('summarySentPartial')
+          .replace('{sent}', result.sentCount)
+          .replace('{failed}', result.failedCount);
+        showToast(msg, 'error');
+      } else {
+        showToast(t('summarySent') + ' · ' + result.sentCount + ' ' + t('recipientsShort'), 'success');
+      }
       // Re-render Today so the panel flips to "already sent" state
       if (state.cache.dashboard) renderToday(state.cache.dashboard);
     } else {
       const m = String((result.error && result.error.message) || '');
       if (result.offline) showToast(t('offlineRetry'), 'error');
       else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
+      else if (m.indexOf('No recipients') >= 0) showToast(t('summaryNoRecipients'), 'error');
       else showToast(m || 'Error', 'error');
       if (btn) {
         btn.disabled = false;
@@ -5071,13 +5484,17 @@
     // Best-effort — a failure does NOT block reset, since stranding the
     // KM on a flaky network is worse than missing an email they can
     // resend manually.
+    //
+    // No userEmail gate anymore — recipients live in SETUP. Server's
+    // PROP_LAST_RECAP_SENT_DATE dedupe and the local recap_sent_ flag
+    // (checked inside autoSendDailyRecap_) handle the "already sent
+    // this cycle" case. If no recipients exist, the server returns a
+    // "No recipients configured" error which autoSendDailyRecap_
+    // swallows silently — auto paths shouldn't blow up just because
+    // someone forgot to set up the recipient list.
     try {
-      const cycleDate = state.cache.dashboard && state.cache.dashboard.date;
-      const alreadySent = cycleDate && localStorage.getItem(nsKey_('recap_sent_' + cycleDate));
-      if (state.userEmail && !alreadySent) {
-        showBusy(t('autoSendingSummary'));
-        await autoSendDailyRecap_('pre-reset');
-      }
+      showBusy(t('autoSendingSummary'));
+      await autoSendDailyRecap_('pre-reset');
     } catch (e) {
       console.warn('[reset] pre-reset auto-send error (continuing):', e);
     }
@@ -5174,7 +5591,7 @@
   }
 
   function showView(viewName) {
-    ['today','count','review','recap','history','history-detail','settings'].forEach(v => {
+    ['today','count','review','recap','history','history-detail','settings','recipients'].forEach(v => {
       $('view-' + v).style.display = v === viewName ? 'block' : 'none';
     });
     state.currentView = viewName;
@@ -5302,6 +5719,25 @@
     // History detail → history list (no save needed)
     if (v === 'history-detail') {
       showView('history');
+      return;
+    }
+
+    // Recipients → settings list. If there are unsaved changes, confirm.
+    if (v === 'recipients') {
+      if (state.recipientsDirty) {
+        const ok = await showConfirm({
+          kind: 'danger',
+          icon: 'alert-triangle',
+          title: t('recipientsDiscardTitle'),
+          msg:   t('recipientsDiscardMsg'),
+          confirmLabel: t('recipientsDiscardConfirm'),
+          cancelLabel:  t('cancel')
+        });
+        if (!ok) return;
+        state.recipientsDirty = false;
+      }
+      showView('settings');
+      renderSettings();
       return;
     }
 
@@ -5529,6 +5965,15 @@
   // happen before hydrateOfflineCache_() so the cache layer sees a
   // consistent key namespace.
   migratePerCycleKeys_();
+
+  // One-time cleanup of legacy per-device email keys (v0.16.0 and
+  // earlier). Recipients are now server-side (SETUP AB-AE) and the
+  // PWA no longer stores a personal email locally. Idempotent — the
+  // removeItem calls are no-ops on browsers that never had these set.
+  try {
+    localStorage.removeItem('mog_user_email');
+    localStorage.removeItem('mog_first_run_email_prompted');
+  } catch (e) { /* non-fatal */ }
 
   // Hydrate offline caches BEFORE any auth/dashboard call so a cold
   // boot offline still paints last-known data. Safe to run before
