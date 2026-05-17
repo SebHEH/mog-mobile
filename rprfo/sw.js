@@ -1,14 +1,26 @@
-// MOG Service Worker — Phase 4 of offline support (Option A).
+// MOG Service Worker — offline support for the PWA shell.
 //
 // Sole responsibility: let the PWA *page itself* load when offline.
 // Application data is handled separately by the localStorage caches
 // inside index.html — this file does not proxy or cache API calls.
 //
 // Strategy:
-//   - HTML shell: stale-while-revalidate. Cached version paints
-//     instantly; a fresh fetch runs in the background and updates
-//     the cache so the next load (or next reload) picks up
-//     deployments without manual cache-clearing.
+//   - HTML shell: NETWORK-FIRST with cache fallback. When online,
+//     always fetch fresh HTML so deployments take effect on the very
+//     next navigation (not the one after). When offline (or fetch
+//     fails), fall back to the cached shell so the app still launches
+//     from the home screen.
+//
+//     Historical note: this used to be stale-while-revalidate, which
+//     paints instantly from cache and updates in the background. That
+//     was great for first-paint speed but bad for an app shell that
+//     changes meaningfully between deploys — boot-time auth flags,
+//     new sessionStorage handlers, etc. were silently invisible for
+//     one full load cycle after each deploy, which broke flows like
+//     master-PIN auto-login from the hub. Network-first eats a small
+//     latency hit (sub-second when online) in exchange for never
+//     serving stale code to a working network.
+//
 //   - Tabler Icons CDN (CSS + woff2 font): cache-first runtime
 //     caching. These are immutable enough that the first cached
 //     copy is the only one we'll ever need.
@@ -21,7 +33,7 @@
 // or service-worker behavior that needs old caches evicted. Old
 // caches are deleted in the `activate` handler.
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const SHELL_CACHE   = 'mog-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'mog-runtime-' + CACHE_VERSION;
 
@@ -106,34 +118,33 @@ self.addEventListener('fetch', (event) => {
 
 async function handleNavigation_(req) {
   const cache = await caches.open(SHELL_CACHE);
-  // Try cached shell first. If we have it, return it immediately
-  // and refresh in the background; otherwise fall through to a
-  // network fetch.
-  const cached = await cache.match('./index.html') || await cache.match('./');
-  const networkPromise = fetch(req)
-    .then(resp => {
-      // Only cache 200s and basic/cors responses. Opaque responses
-      // (no-cors fetches) can fill the cache with unusable entries.
-      if (resp && resp.ok && (resp.type === 'basic' || resp.type === 'cors')) {
-        cache.put('./index.html', resp.clone()).catch(() => {});
-      }
-      return resp;
-    })
-    .catch(() => null);
-
-  if (cached) {
-    // Fire and forget — the refresh updates the cache for next load.
-    networkPromise.then(() => {});
-    return cached;
+  // Network-first: try the network and update the cache on success.
+  // Falls back to cache only when the network actually fails (offline,
+  // DNS error, server down, etc.). This guarantees that when online
+  // the user always sees the latest deployed HTML — no "next load
+  // picks up the change" lag.
+  try {
+    const resp = await fetch(req);
+    // Only cache 200s and basic/cors responses. Opaque responses
+    // (no-cors fetches) can fill the cache with unusable entries.
+    if (resp && resp.ok && (resp.type === 'basic' || resp.type === 'cors')) {
+      cache.put('./index.html', resp.clone()).catch(() => {});
+    }
+    return resp;
+  } catch (err) {
+    // Network failed — fall back to cached shell. This is the offline
+    // path: home-screen launches and reloads still work because the
+    // install handler precached the shell, and every successful
+    // network nav since has refreshed it.
+    const cached = await cache.match('./index.html') || await cache.match('./');
+    if (cached) return cached;
+    // True first-load offline: nothing cached, network down. Return
+    // a minimal error response so the browser doesn't hang.
+    return new Response('Offline and no cached shell available.', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain' }
+    });
   }
-  // No cache yet: must wait for network. If that fails too (true
-  // first-load offline), there's nothing we can do — return a
-  // minimal error response so the browser doesn't hang.
-  const fresh = await networkPromise;
-  return fresh || new Response('Offline and no cached shell available.', {
-    status: 503,
-    headers: { 'Content-Type': 'text/plain' }
-  });
 }
 
 async function handleCdnAsset_(req) {
