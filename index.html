@@ -30,9 +30,25 @@
     button { -webkit-tap-highlight-color: transparent; cursor: pointer; }
 
     :root {
+      /* HEH brand palette — pulled from the wordmark on screen-concept.
+         The hub is the HEH master-brand entry point, distinct from the
+         per-concept store PWAs which use teal as a cross-concept neutral
+         app shell. Brand surfaces (cards, navigation chrome) use red/
+         black so the hub immediately reads as HEH. */
+      --heh-red:        #fc0404;  /* exact logo mark color */
+      --heh-red-dark:   #a30202;  /* hover, icon-on-light, link-style text */
+      --heh-red-light:  #fde6e6;  /* warm pale wash for card icon bg */
+      --heh-black:      #040404;  /* exact logo wordmark color */
+
+      /* Teal stays in the palette — but only for the MANAGER subsystem
+         (mgr-code screen + sticky mgr-banner). The same teal also paints
+         the in-store manager banner; keeping it consistent here means a
+         manager sees the same color from "code entry" through "active in
+         a store" — visual continuity across the hub/store boundary. */
       --teal: #0f6e56;
       --teal-light: #e1f5ee;
       --teal-dark: #04342c;
+
       --amber-light: #faeeda;
       --amber-mid: #BA7517;
       --amber-dark: #412402;
@@ -98,8 +114,8 @@
       height: auto;
       margin: 0 auto 14px;
     }
-    .heh-logo .heh-mark     { fill: #fc0404; }
-    .heh-logo .heh-wordmark { fill: var(--text); }
+    .heh-logo .heh-mark     { fill: var(--heh-red); }
+    .heh-logo .heh-wordmark { fill: var(--heh-black); }
     .header h1 {
       font-size: 22px;
       font-weight: 700;
@@ -124,7 +140,7 @@
     .back-btn {
       background: transparent;
       border: none;
-      color: var(--teal);
+      color: var(--heh-red-dark);
       font-size: 15px;
       font-weight: 500;
       padding: 6px 10px 6px 0;
@@ -181,8 +197,8 @@
       width: 40px;
       height: 40px;
       border-radius: 10px;
-      background: var(--teal-light);
-      color: var(--teal-dark);
+      background: var(--heh-red-light);
+      color: var(--heh-red-dark);
       display: flex;
       align-items: center;
       justify-content: center;
