@@ -3648,12 +3648,22 @@
   async function openCount(vendor) {
     state.countContext = { vendor: vendor, items: [], dirty: {} };
     showView('count');
-    renderLoadingBar($('view-count'), vendor);
+    // Only show the loading bar if we don't already have vendor items
+    // cached. The post-dashboard prefetch (prefetchTodaysVendors_) warms
+    // this cache for every today vendor, so by the time the KM taps a
+    // card the cache is usually populated. Painting a loading bar before
+    // the cache check would flash for one frame even though
+    // fetchVendorItems_ resolves the same tick — defeats the whole
+    // point of the prefetch. Skip it on cache hit; show it only when we
+    // genuinely have to wait (prefetch still in flight, or cold session
+    // with no in-memory cache).
+    if (!state.cache.vendorItems[vendor]) {
+      renderLoadingBar($('view-count'), vendor);
+    }
     try {
       // Goes through the shared fetcher so we hit the prefetch cache
       // when available. On a cache hit this resolves on the same tick
-      // — the loading bar barely flashes before the count screen
-      // renders, which is exactly what we want.
+      // and we render the count screen directly with no loading flash.
       const data = await fetchVendorItems_(vendor);
       state.countContext.items = data.items;
       const dateStr = (state.cache.dashboard && state.cache.dashboard.date) || new Date().toISOString().slice(0,10);
