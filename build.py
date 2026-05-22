@@ -45,6 +45,7 @@ DEPLOY_URL_RE = re.compile(r'^https://script\.google\.com/macros/s/[^/]+/exec$')
 
 API_URL_PLACEHOLDER = '__MOG_API_URL__'
 THEME_PLACEHOLDER   = '__MOG_THEME__'
+ICON_PLACEHOLDER    = '__MOG_APPLE_TOUCH_ICON__'
 REGISTRY_MARKER     = '// __STORE_REGISTRY__ build-injected'
 
 # Maps the human-readable concept name (from stores.json) to a CSS theme
@@ -57,6 +58,16 @@ CONCEPT_TO_THEME = {
     "Teas'n You": "teasnyou",
     "ĂN":    "an",   # ĂN (with combining breve) — escaped for clarity
     "AN":         "an",   # alternate ASCII spelling
+}
+
+# Maps concept name to the apple-touch-icon <link> tag substituted into
+# the template's head. Concepts without a vectorized logo get '' (empty
+# string), which leaves no apple-touch-icon link in the rendered HTML —
+# iOS then falls back to its default home-screen icon (page screenshot).
+# To add an icon for a new concept later, drop the PNGs into icons/ and
+# add an entry here. No template change needed.
+CONCEPT_TO_APPLE_TOUCH_ICON = {
+    "Roll Play": '<link rel="apple-touch-icon" href="../icons/rp-180.png">',
 }
 
 
@@ -132,6 +143,18 @@ def generate_store(entry, template_html, template_sw, dry_run):
         fail(f"template/index.html: expected exactly 1 {THEME_PLACEHOLDER!r}, "
              f"found {theme_count}. Template may be corrupted.")
     rendered_html = rendered_html.replace(THEME_PLACEHOLDER, theme)
+
+    # Apple-touch-icon substitution. Concepts with a logo get the full
+    # <link> tag; concepts without get an empty string (no icon link in
+    # the rendered HTML, iOS uses its screenshot fallback). Strict count
+    # check defends against template corruption the same way the theme
+    # substitution does.
+    icon_link = CONCEPT_TO_APPLE_TOUCH_ICON.get(entry['concept'], '')
+    icon_count = rendered_html.count(ICON_PLACEHOLDER)
+    if icon_count != 1:
+        fail(f"template/index.html: expected exactly 1 {ICON_PLACEHOLDER!r}, "
+             f"found {icon_count}. Template may be corrupted.")
+    rendered_html = rendered_html.replace(ICON_PLACEHOLDER, icon_link)
 
     actions = []
     if not os.path.isdir(target_dir):

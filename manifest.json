@@ -1,0 +1,25 @@
+{
+  "name": "HEH Order Guide",
+  "short_name": "MOG",
+  "description": "Master Ordering Guide for Happy Endings Hospitality stores.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#fc0404",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "icons/heh-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/heh-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
