@@ -1,0 +1,139 @@
+# MOG (Master Ordering Guide) — Multi-store PWA + Apps Script backend
+
+A Progressive Web App hosted at `sebheh.github.io/mog-mobile/` plus the Google Apps Script backend that runs inside each store's Google Sheet. KMs at each Happy Endings Hospitality location use the PWA on their phones to manage inventory orders; the Apps Script reads and writes the Sheet that holds the data.
+
+This file is loaded into context at every Claude Code session start. Its @-imports are binding — read them before proposing any change.
+
+## Canonical reference docs (read on session start)
+
+If sources conflict, items higher in this list win for "what's currently in flight." `CLAUDE.md` itself wins for project structure and invariants.
+
+@docs/MOG_CurrentState.md
+
+## Latest session handoff
+
+Replace the path here with the newest handoff at the end of each session that ships material changes. (The `mog-session-handoff` skill rewrites this line.)
+
+@docs/MOG_SessionHandoff_2026_05_24.md
+
+## Quick orientation
+
+- **Runtime / stack**: Vanilla JS PWA (no bundler, no framework) + Google Apps Script (V8 server-side, **Rhino ES5** in HTML modals) + Python templating (`build.py`)
+- **Deploy**:
+  - PWA: GitHub Pages auto-deploys from `main`. Edit `template/` → run `python build.py` → commit + push.
+  - Apps Script: `clasp` via `apps-script/deploy.ps1`. Edit `apps-script/<file>` → run `.\deploy.ps1` → pushes to all 9 targets (8 stores + master template) in ~30s.
+- **Build / test**: No CI yet. `python build.py --dry-run` previews PWA build. `.\deploy.ps1 -DryRun` previews Apps Script deploy. There are no automated tests — verification is manual (open the live URL, run an order).
+
+## Layer routing
+
+Every change anchors to one of these layers. Pick the layer before drafting any edits.
+
+| Layer | Primary files | What lives here |
+|---|---|---|
+| **Hub** | `index.html`, `sw.js`, `manifest.json`, `stores.json` | Concept picker, manager mode, store registry. First thing a KM sees. |
+| **Per-store PWA** | `template/index.html`, `template/sw.js` | The store-facing app. `build.py` copies this to every `<slug>/` dir with deployment URLs injected. |
+| **Apps Script backend** | `apps-script/*.gs`, `apps-script/*.html`, `apps-script/appsscript.json` | Bound script that runs in each Sheet. Identical across all 9 deploy targets — per-store config lives in spreadsheet data, not code. |
+| **Deploy infrastructure** | `build.py`, `apps-script/deploy.ps1`, `apps-script/.clasp-targets.json` | How code reaches production. |
+| **Generated (do NOT edit)** | `rpr/`, `rprfo/`, `rpt/`, `rptfo/`, `rpfr/`, `rpfrf/`, `tnyt/`, `tnytf/` | Output of `build.py`. Overwritten on every build. |
+
+**Anti-patterns:**
+- Editing `rpr/index.html` directly instead of `template/index.html` → lost on next build.
+- Editing code in the Apps Script editor for one store → overwritten on next `deploy.ps1` run; the other 8 targets stay stale until you also edit the local file.
+- Adding a store to `stores.json` without running `build.py` → hub shows the tile but `/<slug>/` 404s.
+- Putting per-store data (PINs, location names, vendor lists) into `.gs` files → breaks the "identical across all stores" invariant; spreadsheet data is the per-store layer.
+
+## Standing invariants
+
+Carry these across every session:
+
+1. **Never edit generated `<slug>/` dirs.** They're overwritten by `build.py` on every build. Edit `template/` instead.
+2. **Never edit code in the Apps Script editor.** `apps-script/deploy.ps1` overwrites it. Edit `apps-script/<file>` locally, then deploy.
+3. **`.gs` files are identical across all 9 deploy targets.** Per-store config (PIN, location name, vendor data) lives in the spreadsheet itself via PropertiesService or sheet contents — never hardcode in `.gs` files.
+4. **Apps Script HTML modals run in Rhino (ES5).** No arrow functions, no `let`/`const` in `<script>` blocks of `apps-script/*.html`, no template literals, no destructuring in function params. The `.gs` files themselves run on V8 — modern syntax is fine there. The `rhino-safe-html` skill triggers on modal edits.
+5. **Three placeholders in `template/index.html` must each appear exactly once:** `__MOG_API_URL__`, `__MOG_THEME__`, `__MOG_APPLE_TOUCH_ICON__`. `build.py` fails loud if not — never replace them by hand.
+6. **The `STORE_REGISTRY` marker line in root `index.html` is build-injected.** Don't hand-edit the array; edit `stores.json` and run `build.py`.
+7. **Bump `CACHE_VERSION`** in `template/sw.js` (and `sw.js` for hub changes) when shipping shell changes so old caches evict from KMs' phones.
+8. **Slugs in `stores.json` are immutable once published.** KMs have bookmarks and home-screen icons at `/<slug>/`. Renaming breaks them.
+
+## Skills
+
+Skills auto-load and trigger via the descriptions in their frontmatter.
+
+**Repo-specific** (`.claude/skills/<name>/SKILL.md` — only load in this repo):
+
+| Skill | When it triggers |
+|---|---|
+| `mog-session-handoff` | End-of-session capture. Writes `docs/MOG_SessionHandoff_YYYY_MM_DD.md` and updates this file's @-import line. |
+| `mog-deploy-workflow` | Any code change — routes the change to the right layer (`deploy.ps1` for backend, `build.py` + git push for PWA/config) and enforces canary-first deploys. |
+| `mog-add-store` | New-store onboarding — the full end-to-end procedure (Drive copy → Script ID → `.clasp-targets.json` → `setupMobileApi()` → web-app deploy → `stores.json` → `build.py` → push). |
+
+**User-global** (`~/.claude/skills/<name>/SKILL.md` — load in every Claude Code session):
+
+| Skill | When it triggers |
+|---|---|
+| `architectural-walkthrough` | Any non-trivial change. Runs FIRST. |
+| `surgical-patch` | Generic anchor-and-assert edit discipline. |
+| `source-of-truth-verification` | When an Edit fails (anchor not found) and drift is suspected. |
+| `rhino-safe-html` | Editing any `apps-script/*.html` script block — enforces ES5 syntax. |
+| `claude-code-project-setup` | First-time scaffold for a new repo. Not relevant here anymore. |
+
+## Working conventions
+
+1. Architectural walkthrough before any non-trivial implementation. Sebastian explicitly prefers being walked through changes step-by-step (see [feedback_explicit_safe_steps](#) in memory).
+2. **Canary first, fan out second.** For multi-target deploys (clasp to 9 stores, build.py to 8 store dirs), push to one canary, wait for Sebastian to smoke-test, then push to the rest.
+3. **Verification is opening the live URL or running the function** — not "no errors in tooling output." Sebastian validates by using the thing.
+4. Read the actual file before editing — assume it may have drifted since the last session.
+5. No "🤖 Generated with Claude Code" footers on commit messages.
+6. Suggest commits, don't auto-commit. Sebastian owns the commit decision.
+7. PowerShell PATH may be stale after a fresh tooling install on Windows. If `node`, `npm`, `clasp`, or `python` returns "not found" right after `winget install`, prefix the next command with `$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User");`.
+
+## Common pitfalls
+
+1. **Editing `<slug>/index.html` (generated dir) instead of `template/index.html`** — lost on next build.
+2. **Editing in the Apps Script editor** — overwritten by next `deploy.ps1`. There's no "this one store has a custom hotfix" pattern; the discipline is local edit + deploy to all.
+3. **Forgetting `python build.py` after editing `stores.json` or `template/`** — generated dirs go stale; hub picker may show a store with no working URL.
+4. **Forgetting `.\deploy.ps1` after editing `apps-script/<file>`** — local repo is ahead of all 9 deployed Sheets; KMs run stale code until you remember.
+5. **Adding ES6+ syntax (arrow functions, `let`/`const`, template literals) to `apps-script/*.html` `<script>` blocks** — runtime error in Rhino. The `.gs` files themselves are V8 and accept modern syntax; the HTML modals are NOT.
+6. **Slug rename in `stores.json`** — breaks bookmarks and home-screen icons. If you really need to rename, leave a redirect.
+7. **Not bumping `CACHE_VERSION`** — KMs' phones serve the old shell from disk forever. Bump on any HTML-shell change in `template/sw.js` (or root `sw.js` for hub changes).
+8. **Hand-editing the `STORE_REGISTRY` line in root `index.html`** — `build.py` will overwrite it from `stores.json` on the next build.
+9. **Pushing to a different account's clasp session** — `clasp` is logged in as one Google account at a time. Run `clasp login` again if you accidentally pushed nothing or got a permission error.
+10. **Forgetting the master template `_template` in `.clasp-targets.json`** — new stores copied from it would start with stale code. The template is one of the 9 deploy targets for a reason.
+
+## File inventory
+
+```
+mog-mobile/
+├── CLAUDE.md                    This file. Load-on-start anchor.
+├── README.md                    Human-facing docs (architecture, add-a-store walkthrough).
+├── index.html                   Hub picker landing page.
+├── sw.js                        Hub service worker.
+├── manifest.json                PWA manifest for the hub.
+├── stores.json                  Store registry: slug, concept, location, deployment URL.
+├── build.py                     Python templating: stores.json + template/ → <slug>/ dirs + STORE_REGISTRY injection.
+├── icons/                       Branding (heh-180.png, rp-180.png, etc.).
+├── template/                    PER-STORE PWA SOURCE.
+│   ├── index.html               (311 KB — the store app UI).
+│   └── sw.js                    (6.9 KB — store SW).
+├── apps-script/                 APPS SCRIPT SOURCE.
+│   ├── README.md                Apps Script workflow docs (setup + day-to-day).
+│   ├── MOGApi.gs                Core API surface for PWA ↔ Sheet.
+│   ├── OrderGuideScript.gs      Main bound script (menus, triggers, sheet logic).
+│   ├── AdminReset.html          Admin reset modal.
+│   ├── ManageItems.html         Item editor modal.
+│   ├── ManageVendors.html       Vendor editor modal.
+│   ├── OrderHistory.html        Past orders modal.
+│   ├── ReorderPickPath.html     Reorder pick-path modal.
+│   ├── StorageAreas.html        Storage area config modal.
+│   ├── HowToUse.html            In-app help modal.
+│   ├── appsscript.json          Manifest (timezone, OAuth scopes, webapp config).
+│   ├── .clasp-targets.json      Slug → Script ID map for deploy.ps1.
+│   └── deploy.ps1               One-command push to all 9 targets.
+├── docs/
+│   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.
+│   └── MOG_SessionHandoff_*.md  Per-session handoffs (newest @-imported above).
+├── .claude/
+│   └── skills/                  Repo-specific skills.
+└── rpr/ rprfo/ rpt/ rptfo/      GENERATED — do not edit.
+    rpfr/ rpfrf/ tnyt/ tnytf/    (per-store dirs from build.py)
+```
