@@ -3242,6 +3242,86 @@ function showOrderHistoryModal() {
 
 
 
+// Single-RPC modal-open path. Returns { vendors, rows } in one pass so the
+// client doesn't need a separate getOrderHistoryVendorList() round-trip and
+// the server doesn't read LOG_ORDERS twice. Vendor list is derived from the
+// unfiltered log (the dropdown must show every vendor regardless of filter);
+// rows are the filtered set, same shape getOrderHistory returns.
+function getOrderHistoryBootstrap(filters) {
+  const logSheet = ensureLogSheet_();
+  const lastRow  = logSheet.getLastRow();
+  if (lastRow < 2) return { vendors: getVendorList(), rows: [] };
+
+  const tz   = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const data = logSheet.getRange(2, 1, lastRow - 1, 7).getValues();
+
+  // itemId -> current pack from MASTER_ITEMS, batched once.
+  const master     = getSheet_(SHEET_MASTER);
+  const masterLast = master.getLastRow();
+  const packMap    = new Map();
+  if (masterLast >= 2) {
+    master
+      .getRange(2, COL.ID, masterLast - 1, COL.PACK - COL.ID + 1)
+      .getValues()
+      .forEach(r => {
+        const id = String(r[0] || "").trim();
+        const pk = String(r[COL.PACK - COL.ID] || "").trim();
+        if (id) packMap.set(id, pk);
+      });
+  }
+
+  const fmtDate = (v) => {
+    if (!v) return "";
+    const d = (v instanceof Date) ? v : new Date(v);
+    return isNaN(d.getTime()) ? String(v).trim() : Utilities.formatDate(d, tz, "yyyy-MM-dd");
+  };
+  const fmtTimestamp = (v) => {
+    if (!v) return "";
+    const d = (v instanceof Date) ? v : new Date(v);
+    return isNaN(d.getTime()) ? String(v).trim() : Utilities.formatDate(d, tz, "yyyy-MM-dd HH:mm");
+  };
+
+  const vendorFilter = String(filters && filters.vendorFilter || "ALL").trim();
+  const dateFrom     = String(filters && filters.dateFrom     || "").trim();
+  const dateTo       = String(filters && filters.dateTo       || "").trim();
+
+  const vendorSet = new Set();
+  const enriched  = data.map(r => {
+    const itemId = String(r[LOG_COL.ITEM_ID - 1] || "").trim();
+    const vendor = String(r[LOG_COL.VENDOR  - 1] || "").trim();
+    if (vendor) vendorSet.add(vendor);
+    return {
+      timestamp:  fmtTimestamp(r[LOG_COL.TIMESTAMP   - 1]),
+      orderDate:  fmtDate(r[LOG_COL.ORDER_DATE   - 1]),
+      vendor:     vendor,
+      itemId:     itemId,
+      itemName:   String(r[LOG_COL.ITEM_NAME   - 1] || "").trim(),
+      itemPack:   packMap.get(itemId) || "",
+      onHandPrev: Number(r[LOG_COL.ON_HAND_PRV - 1]) || 0,
+      qtyOrdered: Number(r[LOG_COL.QTY_ORDERED - 1]) || 0
+    };
+  });
+
+  const rows = enriched
+    .filter(row => {
+      if (!row.vendor && !row.itemName) return false;
+      if (vendorFilter !== "ALL" && row.vendor.toLowerCase() !== vendorFilter.toLowerCase()) return false;
+      if (dateFrom && row.orderDate < dateFrom) return false;
+      if (dateTo   && row.orderDate > dateTo)   return false;
+      return true;
+    })
+    .sort((a, b) => b.orderDate.localeCompare(a.orderDate));
+
+  const vendors = Array.from(vendorSet).sort();
+  return {
+    vendors: vendors.length ? vendors : getVendorList(),
+    rows:    rows
+  };
+}
+
+
+
+
 // Serves Tab 1 (Recent Orders) and Tab 2 (Item History) in the modal.
 // filters: { vendorFilter, dateFrom, dateTo }
 function getOrderHistory(filters) {

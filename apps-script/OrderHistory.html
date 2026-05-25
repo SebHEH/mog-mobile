@@ -535,10 +535,33 @@
     from.setDate(from.getDate() - 7);
     document.getElementById('date-to').value   = fmtD(today);
     document.getElementById('date-from').value = fmtD(from);
-    loadVendors();
     setLang('en');     // sets language + translates option labels
-    loadCurrentTab();  // auto-fetch last 7 days into the Recent tab
+    loadBootstrap();   // single RPC: populates vendor dropdown + seeds Recent tab
   };
+
+  // Single-RPC modal-open path: fetches vendor dropdown + initial Recent rows
+  // in one server call. Tab switches and filter re-applies go through the
+  // per-tab loaders below, which share rawHistory via cachedFilterSig.
+  function loadBootstrap() {
+    showLoading('recent');
+    var f   = getFilters();
+    var sig = filterSig(f);
+    google.script.run
+      .withSuccessHandler(function(res) {
+        var vendors = (res && res.vendors) || [];
+        var rows    = (res && res.rows)    || [];
+        var sel = document.getElementById('vendor-filter');
+        vendors.forEach(function(v) {
+          var o = document.createElement('option');
+          o.value = v; o.textContent = v; sel.appendChild(o);
+        });
+        rawHistory      = rows;
+        cachedFilterSig = sig;
+        renderRecent(rawHistory);
+      })
+      .withFailureHandler(function(e) { showError('recent', e); })
+      .getOrderHistoryBootstrap(f);
+  }
 
   function fmtD(d) {
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -561,18 +584,6 @@
     var mEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     var mEs = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
     return (LANG==='es' ? mEs : mEn)[parseInt(p[1])-1] + ' ' + parseInt(p[2]) + ', ' + p[0];
-  }
-
-  function loadVendors() {
-    google.script.run
-      .withSuccessHandler(function(vs) {
-        var sel = document.getElementById('vendor-filter');
-        vs.forEach(function(v) {
-          var o = document.createElement('option');
-          o.value = v; o.textContent = v; sel.appendChild(o);
-        });
-      }).withFailureHandler(function(){})
-      .getOrderHistoryVendorList();
   }
 
   function switchTab(tab) {
