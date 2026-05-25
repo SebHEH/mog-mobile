@@ -1,0 +1,48 @@
+[
+  {
+    "slug": "_template",
+    "label": "Master template (copied for new stores)",
+    "scriptId": "1uW7k2MLb6-dg-Ovx5wYPQee9y5noBPtBRq5UZksuVG9ghcv5r8Uv-kUO",
+    "isTemplate": true
+  },
+  {
+    "slug": "rpr",
+    "label": "Roll Play - Rosslyn BOH",
+    "scriptId": "1FGadbpeTGGsIf2hQEWnjaIZe1wI8_P4RMY8vmWnHFkbjDofIY-cQ538F"
+  },
+  {
+    "slug": "rprfo",
+    "label": "Roll Play - Rosslyn FOH",
+    "scriptId": "1iHm2I3-NFkEoPcqN4kCnN-mXeMdZfZGlx2xemh1ta1_hCoXBKDM7-otM"
+  },
+  {
+    "slug": "rpt",
+    "label": "Roll Play - Tysons BOH",
+    "scriptId": "1VMZFvyfnUm2vUW2mWHssLrHhMS0xG5IUkxPpliBE9EX2yg95sDfWlzkW"
+  },
+  {
+    "slug": "rptfo",
+    "label": "Roll Play - Tysons FOH",
+    "scriptId": "1LieGgJhLxoOlp0bEbbFqfjcMwpCGkRptBX1em8-dfavmTclB02pmmmTE"
+  },
+  {
+    "slug": "rpfr",
+    "label": "Roll Play - Founders BOH",
+    "scriptId": "1qZIWafAt3x1qfg9uG9XlZZjU-nGEwIdoNeg4yRfKVZ9FJzDIOWJqwVv1"
+  },
+  {
+    "slug": "rpfrf",
+    "label": "Roll Play - Founders FOH",
+    "scriptId": "1_CjSGM_AHTKG1BcjJ70sckRVu7QODSNvFLr0bRTc8SoDN6Iz-npDRA04"
+  },
+  {
+    "slug": "tnyt",
+    "label": "Teas'n You - Tysons BOH",
+    "scriptId": "1bqgHCSMUDUfPSgzgTQg-4yZYU04b51_khWU4ZPP1rD9bvMURmecc81Hb"
+  },
+  {
+    "slug": "tnytf",
+    "label": "Teas'n You - Tysons FOH",
+    "scriptId": "1yLsE1YaC7UUwYf3MLJi2YMyOn1LJUW7UuTyX01JUpM5nRQQms_Li3nXk"
+  }
+]

@@ -1,0 +1,13 @@
+# clasp - rewritten per-target by apps-script/deploy.ps1, not useful to commit
+apps-script/.clasp.json
+
+# clasp login credentials - NEVER commit
+.clasprc.json
+apps-script/.clasprc.json
+
+# Node (in case clasp is ever installed locally)
+node_modules/
+
+# OS junk
+.DS_Store
+Thumbs.db

@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 13px;
+        background: #f9f9f9;
+        color: #222;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Header ── */
+      .header {
+        background: #1a3a2e;
+        color: #fff;
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+      }
+      .header-title { flex: 1; }
+      .header h2 { font-size: 14px; font-weight: bold; letter-spacing: 0.03em; }
+      .header p  { font-size: 10px; color: #a8c8b8; margin-top: 2px; }
+
+      /* ── Language toggle ── */
+      .lang-toggle {
+        display: flex;
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 6px;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+      .lang-btn {
+        padding: 5px 14px;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        color: rgba(255,255,255,0.55);
+        background: transparent;
+        border: none;
+        transition: background 0.15s, color 0.15s;
+      }
+      .lang-btn.active { background: rgba(255,255,255,0.2); color: #fff; }
+      .lang-btn:hover:not(.active) { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.85); }
+
+      /* ── Body ── */
+      .body-wrap { display: flex; flex: 1; overflow: hidden; }
+
+      /* ── Left nav ── */
+      .nav {
+        width: 155px;
+        flex-shrink: 0;
+        background: #fff;
+        border-right: 1px solid #e0e0e0;
+        overflow-y: auto;
+        padding: 8px 0;
+      }
+      .nav-item {
+        padding: 9px 12px;
+        font-size: 11px;
+        font-weight: bold;
+        color: #666;
+        cursor: pointer;
+        border-left: 3px solid transparent;
+        line-height: 1.3;
+        transition: color 0.15s, background 0.15s;
+      }
+      .nav-item:hover { background: #f5f5f5; color: #1a3a2e; }
+      .nav-item.active { color: #1a3a2e; border-left-color: #1a3a2e; background: #f0f5f2; }
+      .nav-divider { height: 1px; background: #eee; margin: 5px 10px; }
+
+      /* ── Content ── */
+      .content { flex: 1; overflow-y: auto; padding: 16px 20px 20px; }
+      .section { display: none; }
+      .section.active { display: block; }
+
+      .section-title {
+        font-size: 15px;
+        font-weight: bold;
+        color: #1a3a2e;
+        border-bottom: 2px solid #1a3a2e;
+        padding-bottom: 6px;
+        margin-bottom: 14px;
+      }
+
+      /* ── Cards ── */
+      .card { background:#fff; border:1px solid #ddd; border-radius:6px; margin-bottom:10px; overflow:hidden; }
+      .card-header {
+        background: #f5f5f5;
+        border-bottom: 1px solid #eee;
+        padding: 9px 14px;
+        font-size: 12px;
+        font-weight: bold;
+        color: #333;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .card-header:hover { background: #ececec; }
+      .card-icon { font-size: 15px; flex-shrink: 0; }
+      .card-arrow { margin-left: auto; font-size: 10px; color: #aaa; transition: transform 0.2s; }
+      .card.open .card-arrow { transform: rotate(180deg); }
+      .card-body { display:none; padding:12px 14px; font-size:12px; color:#444; line-height:1.75; }
+      .card.open .card-body { display: block; }
+
+      /* ── Steps ── */
+      .steps { counter-reset: step; margin-top: 8px; }
+      .step {
+        counter-increment: step;
+        display: flex;
+        gap: 10px;
+        margin-bottom: 9px;
+        align-items: flex-start;
+        font-size: 12px;
+      }
+      .step::before {
+        content: counter(step);
+        background: #1a3a2e;
+        color: #fff;
+        font-size: 10px;
+        font-weight: bold;
+        min-width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      /* ── Callouts ── */
+      .tip  { background:#f0f7f4; border-left:3px solid #1a3a2e; border-radius:0 4px 4px 0; padding:8px 12px; font-size:11px; color:#1a3a2e; margin-top:10px; line-height:1.65; }
+      .warn { background:#fff8e6; border-left:3px solid #f0a500; border-radius:0 4px 4px 0; padding:8px 12px; font-size:11px; color:#7a5000; margin-top:10px; line-height:1.65; }
+      .new-tag { display:inline-block; background:#1a3a2e; color:#fff; border-radius:4px; padding:1px 6px; font-size:9px; font-weight:bold; letter-spacing:0.05em; vertical-align:middle; margin-left:6px; }
+
+      /* ── Badges ── */
+      .badge-green  { display:inline-block; background:#d4edda; color:#1f6d2a; border-radius:10px; padding:1px 7px; font-size:10px; font-weight:bold; }
+      .badge-red    { display:inline-block; background:#fde8e8; color:#8b1a1a; border-radius:10px; padding:1px 7px; font-size:10px; font-weight:bold; }
+      .badge-orange { display:inline-block; background:#fff3cd; color:#856404; border-radius:10px; padding:1px 7px; font-size:10px; font-weight:bold; }
+      .badge-yellow { display:inline-block; background:#fff3cd; color:#856404; border-radius:10px; padding:1px 7px; font-size:10px; font-weight:bold; }
+
+      /* ── Flow ── */
+      .flow { display:flex; flex-direction:column; gap:4px; margin:12px 0; }
+      .flow-box { background:#1a3a2e; color:#fff; border-radius:6px; padding:9px 14px; font-size:12px; font-weight:bold; text-align:center; }
+      .flow-box.light { background:#e8f2ec; color:#1a3a2e; }
+      .flow-arrow { text-align:center; color:#aaa; font-size:16px; line-height:1; }
+
+      /* ── Rule rows ── */
+      .rule-row { display:grid; grid-template-columns:105px 1fr; gap:6px 12px; align-items:baseline; margin-bottom:8px; font-size:12px; }
+      .rule-row + .rule-row { margin-top:6px; }
+      .rule-label { font-weight:bold; color:#555; font-size:10px; text-transform:uppercase; letter-spacing:0.04em; }
+
+      /* ── Two-column card grid ── */
+      .two-col { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+      /* ── Footer ── */
+      .footer { border-top:1px solid #ddd; background:#f9f9f9; padding:8px 16px; display:flex; justify-content:flex-end; flex-shrink:0; }
+      .btn-close { padding:7px 22px; background:#1a3a2e; color:#fff; border:none; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer; }
+      .btn-close:hover { opacity: 0.85; }
+
+      /* ── Language visibility ── */
+      body.lang-en .es { display: none; }
+      body.lang-es .en { display: none; }
+    </style>
+  </head>
+  <body class="lang-en">
+
+    <div class="header">
+      <div class="header-title">
+        <h2>
+          <span class="en">📋 How To Use This Ordering Guide</span>
+          <span class="es">📋 Cómo Usar Esta Guía de Pedidos</span>
+        </h2>
+        <p>
+          <span class="en">Reference guide for the Master Ordering System · Happy Endings Hospitality</span>
+          <span class="es">Guía de referencia para el Sistema de Pedidos · Happy Endings Hospitality</span>
+        </p>
+      </div>
+      <div class="lang-toggle">
+        <button class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button class="lang-btn" onclick="setLang('es')">ES</button>
+      </div>
+    </div>
+
+    <div class="body-wrap">
+
+      <!-- Left nav -->
+      <div class="nav">
+        <div class="nav-item active" onclick="showSection('overview')">
+          <span class="en">🏗 Overview</span><span class="es">🏗 Resumen</span>
+        </div>
+        <div class="nav-item" onclick="showSection('setup')">
+          <span class="en">🚀 First Time Setup</span><span class="es">🚀 Configuración Inicial</span>
+        </div>
+        <div class="nav-divider"></div>
+        <div class="nav-item" onclick="showSection('areas')">
+          <span class="en">1 · Storage Areas</span><span class="es">1 · Áreas de Almacén</span>
+        </div>
+        <div class="nav-item" onclick="showSection('vendors')">
+          <span class="en">2 · Vendors</span><span class="es">2 · Proveedores</span>
+        </div>
+        <div class="nav-item" onclick="showSection('items')">
+          <span class="en">3 · Items</span><span class="es">3 · Artículos</span>
+        </div>
+        <div class="nav-item" onclick="showSection('pickpath')">
+          <span class="en">4 · Pick Path</span><span class="es">4 · Ruta de Picking</span>
+        </div>
+        <div class="nav-divider"></div>
+        <div class="nav-item" onclick="showSection('daily')">
+          <span class="en">📝 Daily Ordering</span><span class="es">📝 Pedido Diario</span>
+        </div>
+        <div class="nav-item" onclick="showSection('orderlog')">
+          <span class="en">📋 Order History</span><span class="es">📋 Historial de Pedidos</span>
+        </div>
+        <div class="nav-item" onclick="showSection('parreview')">
+          <span class="en">⚠ Par Review</span><span class="es">⚠ Revisión de Par</span>
+        </div>
+        <div class="nav-divider"></div>
+        <div class="nav-item" onclick="showSection('admin')">
+          <span class="en">⚙️ Admin Tools</span><span class="es">⚙️ Herramientas Admin</span>
+        </div>
+        <div class="nav-item" onclick="showSection('trouble')">
+          <span class="en">🆘 Troubleshoot</span><span class="es">🆘 Problemas Comunes</span>
+        </div>
+      </div>
+
+      <div class="content">
+
+        <!-- ════════ OVERVIEW ════════ -->
+        <div id="section-overview" class="section active">
+          <div class="section-title">
+            <span class="en">How the System Works</span><span class="es">Cómo Funciona el Sistema</span>
+          </div>
+
+          <div class="tip" style="margin-bottom:12px;">
+            <span class="en">🚀 <strong>Setting this up for the first time?</strong> Go to <strong>First Time Setup</strong> in the left nav — it walks you through the 4 required steps in order before you can place your first order.</span>
+            <span class="es">🚀 <strong>¿Configurando esto por primera vez?</strong> Ve a <strong>Configuración Inicial</strong> en el menú izquierdo — te guía por los 4 pasos requeridos en orden antes de poder hacer tu primer pedido.</span>
+          </div>
+
+          <div class="flow">
+            <div class="flow-box"><span class="en">① Storage Areas — define where things live</span><span class="es">① Áreas de Almacén — define dónde viven los artículos</span></div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-box light"><span class="en">② Vendors — who you order from + day multipliers</span><span class="es">② Proveedores — a quién pides + multiplicadores por día</span></div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-box"><span class="en">③ Items — what you order, par levels, which vendor</span><span class="es">③ Artículos — qué pides, niveles de par, qué proveedor</span></div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-box light"><span class="en">④ Pick Path — assign items to areas, set shelf order</span><span class="es">④ Ruta de Picking — asigna artículos a áreas, ordena por estante</span></div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-box"><span class="en">📝 Daily Ordering — enter On Hand, reset logs the order automatically</span><span class="es">📝 Pedido Diario — ingresa En Stock, el restablecimiento registra el pedido automáticamente</span></div>
+          </div>
+
+          <div class="two-col">
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">🏗</span>
+                <span class="en">The Three Layers</span><span class="es">Las Tres Capas</span>
+                <span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <div class="rule-row">
+                  <div class="rule-label"><span class="en">Setup</span><span class="es">Configuración</span></div>
+                  <div><span class="en">Done once (or when things change): Storage Areas, Vendors, Items, and Pick Path. All managed through the <strong>Ordering Guide</strong> menu.</span><span class="es">Se hace una vez (o cuando cambian las cosas): Áreas, Proveedores, Artículos y Ruta. Todo se administra desde el menú <strong>Ordering Guide</strong>.</span></div>
+                </div>
+                <div class="rule-row">
+                  <div class="rule-label"><span class="en">Daily Use</span><span class="es">Uso Diario</span></div>
+                  <div><span class="en">Open the vendor tab, enter <strong>On Hand</strong> counts, read suggested quantities, submit the order, then hit <strong>Reset On Hand</strong>.</span><span class="es">Abre la pestaña del proveedor, ingresa cantidades <strong>En Stock</strong>, lee las sugeridas, envía el pedido y presiona <strong>Restablecer En Stock</strong>.</span></div>
+                </div>
+                <div class="rule-row">
+                  <div class="rule-label"><span class="en">Vendor Tabs</span><span class="es">Pestañas</span></div>
+                  <div><span class="en">One per vendor. Only the <strong>On Hand</strong> column is editable — everything else is locked.</span><span class="es">Una por proveedor. Solo la columna <strong>En Stock</strong> es editable — todo lo demás está bloqueado.</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">⚡</span>
+                <span class="en">The Golden Rule</span><span class="es">La Regla de Oro</span>
+                <span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en">Always use the <strong>Ordering Guide menu</strong> to make changes — never edit SETUP or MASTER_ITEMS directly. The menu panels keep everything in sync. Direct edits can cause data drift that's hard to diagnose.</span>
+                <span class="es">Siempre usa el menú <strong>Ordering Guide</strong> para hacer cambios — nunca edites SETUP ni MASTER_ITEMS directamente. Los paneles del menú mantienen todo sincronizado.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">🔢</span>
+              <span class="en">How Order Quantities Are Calculated</span><span class="es">Cómo Se Calculan las Cantidades de Pedido</span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <div class="rule-row">
+                <div class="rule-label"><span class="en">Base Par</span><span class="es">Par Base</span></div>
+                <div><span class="en">Standard amount needed for one day's coverage.</span><span class="es">Cantidad estándar necesaria para la cobertura de un día.</span></div>
+              </div>
+              <div class="rule-row">
+                <div class="rule-label"><span class="en">Target Par</span><span class="es">Par Objetivo</span></div>
+                <div><span class="en">Base Par × today's day multiplier (set per vendor). Adjusts for busy or slow days.</span><span class="es">Par Base × el multiplicador del día de hoy (por proveedor). Se ajusta para días ocupados o tranquilos.</span></div>
+              </div>
+              <div class="rule-row">
+                <div class="rule-label"><span class="en">Suggested Order</span><span class="es">Pedido Sugerido</span></div>
+                <div><span class="en">Target Par − On Hand. If On Hand ≥ Target Par, suggested order is 0.</span><span class="es">Par Objetivo − En Stock. Si En Stock ≥ Par Objetivo, el pedido sugerido es 0.</span></div>
+              </div>
+              <div class="rule-row">
+                <div class="rule-label"><span class="en">No Multiplier</span><span class="es">Sin Multiplicador</span></div>
+                <div><span class="en">Item always uses Base Par regardless of the day — good for fixed batch orders.</span><span class="es">El artículo siempre usa Par Base sin importar el día — ideal para pedidos en lote fijos.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════ FIRST TIME SETUP ════════ -->
+        <div id="section-setup" class="section">
+          <div class="section-title">
+            <span class="en">First Time Setup</span><span class="es">Configuración Inicial</span>
+          </div>
+
+          <div class="tip" style="margin-bottom:14px;">
+            <span class="en">⚡ <strong>New to this system?</strong> Complete these 4 steps in order before you place your first order. Each step depends on the one before it — skipping ahead will cause items to be invisible on the order sheet.</span>
+            <span class="es">⚡ <strong>¿Nuevo en este sistema?</strong> Completa estos 4 pasos en orden antes de hacer tu primer pedido. Cada paso depende del anterior — saltarte pasos hará que los artículos no aparezcan en la hoja de pedidos.</span>
+          </div>
+
+          <!-- Step 1 -->
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">①</span>
+              <span class="en">Set Up Storage Areas &nbsp;<em style="font-weight:normal;color:#888;">— do this first</em></span>
+              <span class="es">Configura Áreas de Almacén &nbsp;<em style="font-weight:normal;color:#888;">— haz esto primero</em></span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <div class="rule-row" style="margin-bottom:10px;">
+                <div class="rule-label"><span class="en">What it is</span><span class="es">Qué es</span></div>
+                <div><span class="en">The physical locations in your kitchen where you store product — Walk-In, Dry Storage, Freezer, Bar, etc.</span><span class="es">Los lugares físicos en tu cocina donde guardas los productos — Cámara fría, Almacén seco, Congelador, Bar, etc.</span></div>
+              </div>
+              <div class="rule-row" style="margin-bottom:10px;">
+                <div class="rule-label"><span class="en">Why first</span><span class="es">Por qué primero</span></div>
+                <div><span class="en">Items must be assigned to a storage area to appear on the order sheet. If you skip this step and add items first, those items will be invisible when it's time to order.</span><span class="es">Los artículos deben tener un área asignada para aparecer en la hoja de pedidos. Si saltas este paso y agregas artículos primero, esos artículos serán invisibles al ordenar.</span></div>
+              </div>
+              <div class="steps">
+                <div class="step">
+                  <span class="en">Open <strong>Ordering Guide → Manage Storage Areas</strong>.</span>
+                  <span class="es">Abre <strong>Ordering Guide → Administrar Áreas de Almacén</strong>.</span>
+                </div>
+                <div class="step">
+                  <span class="en">Expand <strong>➕ Add Area</strong> at the bottom. Type the name of each location (e.g. Walk-In, Dry Storage, Freezer, Bar). Add one at a time.</span>
+                  <span class="es">Expande <strong>➕ Agregar Área</strong> en la parte inferior. Escribe el nombre de cada ubicación (ej. Cámara fría, Almacén seco, Congelador, Bar). Agrega una a la vez.</span>
+                </div>
+                <div class="step">
+                  <span class="en">Drag the ⠿ handles to arrange areas in the order you physically walk through your kitchen. The order sheet will list items in this same sequence.</span>
+                  <span class="es">Arrastra los controles ⠿ para ordenar las áreas en el orden en que recorres físicamente tu cocina. La hoja de pedidos listará artículos en esta misma secuencia.</span>
+                </div>
+              </div>
+              <div class="tip"><span class="en">💡 You can always add, rename, or reorder areas later — but create all the areas you need before moving to Step 2.</span><span class="es">💡 Siempre puedes agregar, renombrar o reordenar áreas después — pero crea todas las que necesitas antes de pasar al Paso 2.</span></div>
+            </div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">②</span>
+              <span class="en">Add Your Vendors &nbsp;<em style="font-weight:normal;color:#888;">— before adding any items</em></span>
+              <span class="es">Agrega tus Proveedores &nbsp;<em style="font-weight:normal;color:#888;">— antes de agregar artículos</em></span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <div class="rule-row" style="margin-bottom:10px;">
+                <div class="rule-label"><span class="en">What it is</span><span class="es">Qué es</span></div>
+                <div><span class="en">The companies you order from — Sysco, US Foods, your produce rep, etc. Each vendor gets its own order tab and its own delivery day multipliers.</span><span class="es">Las empresas a las que pides — Sysco, US Foods, tu rep de productos frescos, etc. Cada proveedor tiene su propia pestaña de pedidos y multiplicadores de día de entrega.</span></div>
+              </div>
+              <div class="rule-row" style="margin-bottom:10px;">
+                <div class="rule-label"><span class="en">Why before items</span><span class="es">Por qué antes de artículos</span></div>
+                <div><span class="en">Every item must be assigned to a vendor. You cannot add an item without a vendor to attach it to.</span><span class="es">Cada artículo debe estar asignado a un proveedor. No puedes agregar un artículo sin un proveedor al que adjuntarlo.</span></div>
+              </div>
+              <div class="steps">
+                <div class="step">
+                  <span class="en">Open <strong>Ordering Guide → Manage Vendors</strong>.</span>
+                  <span class="es">Abre <strong>Ordering Guide → Administrar Proveedores</strong>.</span>
+                </div>
+                <div class="step">
+                  <span class="en">Expand <strong>➕ Add Vendor</strong>. Enter the vendor name and set the day multipliers (Mon–Sun). A multiplier of <strong>1.0</strong> = standard par. Use <strong>2.0</strong> for a day that covers two days of usage, <strong>0</strong> for a day you don't order.</span>
+                  <span class="es">Expande <strong>➕ Agregar Proveedor</strong>. Ingresa el nombre y establece los multiplicadores por día (Lun–Dom). Un multiplicador de <strong>1.0</strong> = par estándar. Usa <strong>2.0</strong> para un día que cubre dos días de uso, <strong>0</strong> para un día en que no pides.</span>
+                </div>
+                <div class="step">
+                  <span class="en">Click <strong>Add Vendor + Create Tab</strong>. A new order tab is created automatically. Repeat for every vendor.</span>
+                  <span class="es">Haz clic en <strong>Agregar Proveedor + Crear Pestaña</strong>. Se crea automáticamente una nueva pestaña. Repite para cada proveedor.</span>
+                </div>
+              </div>
+              <div class="tip"><span class="en">💡 Not sure about multipliers yet? Set everything to 1.0 and adjust later once you see ordering patterns.</span><span class="es">💡 ¿No estás seguro de los multiplicadores aún? Establece todo en 1.0 y ajusta después de ver los patrones de pedido.</span></div>
+            </div>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">③</span>
+              <span class="en">Add All Your Items &nbsp;<em style="font-weight:normal;color:#888;">— with pars and vendor assignments</em></span>
+              <span class="es">Agrega Todos tus Artículos &nbsp;<em style="font-weight:normal;color:#888;">— con pares y asignaciones de proveedor</em></span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <div class="rule-row" style="margin-bottom:10px;">
+                <div class="rule-label"><span class="en">What it is</span><span class="es">Qué es</span></div>
+                <div><span class="en">Everything you order — proteins, produce, dry goods, beverages, packaging. Each item has a name, vendor, par level, and unit of measure.</span><span class="es">Todo lo que pides — proteínas, productos frescos, secos, bebidas, empaques. Cada artículo tiene nombre, proveedor, nivel de par y unidad de medida.</span></div>
+              </div>
+              <div class="steps">
+                <div class="step">
+                  <span class="en">Open <strong>Ordering Guide → Manage Items</strong>.</span>
+                  <span class="es">Abre <strong>Ordering Guide → Administrar Artículos</strong>.</span>
+                </div>
+                <div class="step">
+                  <span class="en">Click <strong>➕ Add Item</strong>. Fill in: Item Name, Vendor (select from dropdown), Pack/Unit (e.g. "1 case", "each"), Category, Base Par Qty, and Base Par Unit.</span>
+                  <span class="es">Haz clic en <strong>➕ Agregar Artículo</strong>. Completa: Nombre del artículo, Proveedor (selecciona del menú), Empaque/Unidad (ej. "1 caja", "cada uno"), Categoría, Cantidad de Par Base y Unidad de Par Base.</span>
+                </div>
+                <div class="step">
+                  <span class="en">Set <strong>Use Multiplier</strong>: YES for most items (par scales with delivery days). NO for fixed batch items where you always order the same amount regardless of day.</span>
+                  <span class="es">Establece <strong>Usar Multiplicador</strong>: SÍ para la mayoría de artículos (el par escala según el día de entrega). NO para artículos de lote fijo donde siempre pides la misma cantidad sin importar el día.</span>
+                </div>
+                <div class="step">
+                  <span class="en">Click <strong>Add Item</strong>. The item gets a permanent ID (e.g. ITEM-0042) and is saved. Repeat for every item you order.</span>
+                  <span class="es">Haz clic en <strong>Agregar Artículo</strong>. El artículo recibe un ID permanente (ej. ITEM-0042) y se guarda. Repite para cada artículo que pides.</span>
+                </div>
+              </div>
+              <div class="warn"><span class="en">⚠ Items added here will <strong>not appear on the order sheet yet</strong>. They need to be assigned to a Storage Area in Step 4 before they become visible.</span><span class="es">⚠ Los artículos agregados aquí <strong>aún no aparecerán en la hoja de pedidos</strong>. Deben ser asignados a un Área de Almacén en el Paso 4 antes de volverse visibles.</span></div>
+            </div>
+          </div>
+
+          <!-- Step 4 -->
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">④</span>
+              <span class="en">Organize the Pick Path &nbsp;<em style="font-weight:normal;color:#888;">— shelf-to-sheet order</em></span>
+              <span class="es">Organiza la Ruta de Picking &nbsp;<em style="font-weight:normal;color:#888;">— orden de estante a hoja</em></span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <div class="rule-row" style="margin-bottom:10px;">
+                <div class="rule-label"><span class="en">What it is</span><span class="es">Qué es</span></div>
+                <div><span class="en">The pick path controls the order items appear on the vendor order sheet. The goal is <strong>shelf-to-sheet</strong> — when you walk your kitchen to count, the sheet should list items in the same physical sequence you encounter them.</span><span class="es">La ruta de picking controla el orden en que los artículos aparecen en la hoja de pedidos. El objetivo es <strong>de estante a hoja</strong> — cuando recorres tu cocina para contar, la hoja debe listar los artículos en la misma secuencia física.</span></div>
+              </div>
+              <div class="rule-row" style="margin-bottom:10px;">
+                <div class="rule-label"><span class="en">Why it matters</span><span class="es">Por qué importa</span></div>
+                <div><span class="en">Without this step, <strong>items are invisible</strong> on the vendor order tab. Every item must be dragged into a storage area group here before it will appear for ordering.</span><span class="es">Sin este paso, <strong>los artículos son invisibles</strong> en la pestaña del proveedor. Cada artículo debe arrastrarse a un grupo de área de almacén aquí antes de aparecer para ordenar.</span></div>
+              </div>
+              <div class="steps">
+                <div class="step">
+                  <span class="en">Open <strong>Ordering Guide → Manage Pick Path</strong>.</span>
+                  <span class="es">Abre <strong>Ordering Guide → Administrar Ruta de Picking</strong>.</span>
+                </div>
+                <div class="step">
+                  <span class="en">Select a vendor at the top. All unassigned items for that vendor appear in the <strong>Unassigned</strong> group at the top of the list.</span>
+                  <span class="es">Selecciona un proveedor en la parte superior. Todos los artículos sin asignar de ese proveedor aparecen en el grupo <strong>Sin Asignar</strong> al inicio de la lista.</span>
+                </div>
+                <div class="step">
+                  <span class="en">Drag each item from the Unassigned group into the correct Storage Area group (Walk-In, Dry Storage, Freezer, etc.).</span>
+                  <span class="es">Arrastra cada artículo del grupo Sin Asignar al grupo de Área de Almacén correcto (Cámara fría, Almacén seco, Congelador, etc.).</span>
+                </div>
+                <div class="step">
+                  <span class="en">Within each area, drag items into the order you physically walk the shelf — left to right, top to bottom. This becomes the order on the order sheet.</span>
+                  <span class="es">Dentro de cada área, arrastra los artículos en el orden en que físicamente recorres el estante — de izquierda a derecha, de arriba a abajo. Este será el orden en la hoja de pedidos.</span>
+                </div>
+                <div class="step">
+                  <span class="en">Click <strong>Save Pick Path</strong>. The vendor tab updates immediately. Repeat for each vendor.</span>
+                  <span class="es">Haz clic en <strong>Guardar Ruta</strong>. La pestaña del proveedor se actualiza inmediatamente. Repite para cada proveedor.</span>
+                </div>
+              </div>
+              <div class="tip"><span class="en">💡 When the Unassigned group is empty for a vendor, every item for that vendor is active and visible on the order sheet. That's your finish line for each vendor.</span><span class="es">💡 Cuando el grupo Sin Asignar está vacío para un proveedor, todos los artículos de ese proveedor están activos y visibles en la hoja de pedidos. Esa es tu meta para cada proveedor.</span></div>
+            </div>
+          </div>
+
+          <!-- Done -->
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">✅</span>
+              <span class="en">You're Ready to Order</span>
+              <span class="es">Estás Listo para Pedir</span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <span class="en">Once all 4 steps are complete, your system is live. For daily ordering:<br><br>
+              Go to the <strong>ORDER_ENTRY</strong> tab → select today's order day from the dropdown → click your vendor link → walk your kitchen and enter On Hand counts in column E → review the Suggested Order Qty column → place your order with the vendor → repeat for each vendor → when all orders are placed, click <strong>Reset On Hand</strong>.<br><br>
+              See <strong>📝 Daily Ordering</strong> in the left nav for the full step-by-step.</span>
+              <span class="es">Una vez completados los 4 pasos, tu sistema está activo. Para el pedido diario:<br><br>
+              Ve a la pestaña <strong>ORDER_ENTRY</strong> → selecciona el día de pedido de hoy en el menú desplegable → haz clic en el enlace de tu proveedor → recorre tu cocina e ingresa las cantidades En Stock en la columna E → revisa la columna de Cantidad de Pedido Sugerida → realiza tu pedido con el proveedor → repite para cada proveedor → cuando todos los pedidos estén realizados, haz clic en <strong>Restablecer En Stock</strong>.<br><br>
+              Consulta <strong>📝 Pedido Diario</strong> en el menú izquierdo para el paso a paso completo.</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ════════ DAILY ORDERING ════════ -->
+        <div id="section-daily" class="section">
+          <div class="section-title"><span class="en">Daily Ordering</span><span class="es">Pedido Diario</span></div>
+
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">📝</span>
+              <span class="en">Step-by-Step: Placing an Order</span><span class="es">Paso a Paso: Cómo Hacer un Pedido</span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <div class="steps">
+                <div class="step"><span class="en">Go to the <strong>ORDER_ENTRY</strong> tab. Select today's order day from the dropdown.</span><span class="es">Ve a la pestaña <strong>ORDER_ENTRY</strong>. Selecciona el día de pedido de hoy en el menú desplegable.</span></div>
+                <div class="step"><span class="en">Click the vendor link you're ordering from. This opens that vendor's tab.</span><span class="es">Haz clic en el enlace del proveedor al que vas a pedir. Esto abre la pestaña de ese proveedor.</span></div>
+                <div class="step"><span class="en">Walk through items in pick path order. Enter the <strong>On Hand</strong> count (column E) for each item — how much you currently have in stock.</span><span class="es">Recorre los artículos en orden de ruta. Ingresa la cantidad <strong>En Stock</strong> (columna E) para cada artículo — cuánto tienes actualmente en inventario.</span></div>
+                <div class="step"><span class="en">The <strong>Suggested Order Qty</strong> column calculates automatically. Review it before ordering.</span><span class="es">La columna <strong>Cantidad de Pedido Sugerida</strong> se calcula automáticamente. Revísala antes de pedir.</span></div>
+                <div class="step"><span class="en">Submit your order to the vendor using those quantities.</span><span class="es">Envía tu pedido al proveedor usando esas cantidades.</span></div>
+                <div class="step"><span class="en">Repeat for each vendor. When all orders are placed, click <strong>Reset On Hand</strong> in ORDER_ENTRY. This logs today's order and clears all On Hand columns.</span><span class="es">Repite para cada proveedor. Cuando todos los pedidos estén realizados, haz clic en <strong>Restablecer En Stock</strong> en ORDER_ENTRY. Esto registra el pedido de hoy y limpia todas las columnas En Stock.</span></div>
+              </div>
+              <div class="tip"><span class="en">💡 Items appear in <strong>pick path order</strong> — the same sequence you walk the storage areas — so you can count and order without backtracking.</span><span class="es">💡 Los artículos aparecen en el <strong>orden de ruta</strong> — la misma secuencia en que recorres las áreas de almacén.</span></div>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="card">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">🔄</span>
+                <span class="en">Reset On Hand</span><span class="es">Restablecer En Stock</span>
+                <span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en">The <strong>Reset On Hand</strong> button in ORDER_ENTRY does two things in sequence:<br><br>
+                <strong>1. Logs the order</strong> — captures each item's On Hand and Suggested Qty into the Order History log (LOG_ORDERS). Only logs if today's date hasn't been logged yet — so pressing it multiple times in the same day is safe.<br><br>
+                <strong>2. Clears On Hand</strong> — wipes column E on all vendor tabs so they're clean for tomorrow.</span>
+                <span class="es">El botón <strong>Restablecer En Stock</strong> en ORDER_ENTRY hace dos cosas en secuencia:<br><br>
+                <strong>1. Registra el pedido</strong> — captura el En Stock y la Cantidad Sugerida de cada artículo en el historial (LOG_ORDERS). Solo registra si la fecha de hoy no ha sido registrada aún, por lo que presionarlo varias veces en el mismo día es seguro.<br><br>
+                <strong>2. Limpia En Stock</strong> — borra la columna E en todas las pestañas de proveedor para que estén limpias para mañana.</span>
+                <div class="tip"><span class="en">💡 Always submit your orders to the vendor <strong>before</strong> hitting Reset On Hand — the log captures the quantities at that moment.</span><span class="es">💡 Siempre envía tus pedidos al proveedor <strong>antes</strong> de presionar Restablecer En Stock — el registro captura las cantidades en ese momento.</span></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">⚠️</span>
+                <span class="en">Emergency Override</span><span class="es">Anulación de Emergencia</span>
+                <span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en">The <strong>Emergency Override</strong> checkbox in ORDER_ENTRY (cell B4) temporarily unlocks par-based restrictions. It resets automatically the next time the spreadsheet is opened.</span>
+                <span class="es">La casilla de <strong>Anulación de Emergencia</strong> en ORDER_ENTRY (celda B4) desbloquea temporalmente las restricciones de par. Se reinicia automáticamente la próxima vez que se abra la hoja.</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">🔒</span>
+                <span class="en">What's Locked and Why</span><span class="es">Qué Está Bloqueado y Por Qué</span>
+                <span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en">Only the <strong>On Hand column (E)</strong> is editable on vendor tabs. Everything else is protected to prevent accidental changes. If something needs to change, use the <strong>Ordering Guide menu</strong>.</span>
+                <span class="es">Solo la <strong>columna En Stock (E)</strong> es editable en las pestañas de proveedor. Todo lo demás está protegido. Si algo necesita cambiar, usa el menú <strong>Ordering Guide</strong>.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════ ORDER LOG ════════ -->
+        <div id="section-orderlog" class="section">
+          <div class="section-title">
+            <span class="en">Order History <span class="new-tag">NEW</span></span>
+            <span class="es">Historial de Pedidos <span class="new-tag">NUEVO</span></span>
+          </div>
+
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">📋</span>
+              <span class="en">What Is the Order Log?</span><span class="es">¿Qué Es el Historial de Pedidos?</span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <span class="en">Every time someone presses <strong>Reset On Hand</strong>, the system automatically saves a snapshot of that day's order — every item's On Hand count and Suggested Order Qty — into a hidden sheet called <strong>LOG_ORDERS</strong>. This builds a permanent order history over time without any extra steps.<br><br>
+              The log only writes <strong>once per day</strong>. If Reset On Hand is pressed again on the same day, it skips the log and just clears On Hand.</span>
+              <span class="es">Cada vez que alguien presiona <strong>Restablecer En Stock</strong>, el sistema guarda automáticamente una instantánea del pedido de ese día — el En Stock y la Cantidad Sugerida de cada artículo — en una hoja oculta llamada <strong>LOG_ORDERS</strong>. Esto construye un historial permanente sin pasos adicionales.<br><br>
+              El registro solo escribe <strong>una vez por día</strong>. Si se presiona Restablecer En Stock nuevamente el mismo día, omite el registro y solo limpia En Stock.</span>
+            </div>
+          </div>
+
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">🔍</span>
+              <span class="en">Viewing Order History</span><span class="es">Ver el Historial de Pedidos</span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <span class="en">Open via <strong>Ordering Guide → View Order History</strong>. The modal has three tabs:<br><br>
+              <strong>Recent Orders</strong> — shows the last 7 days by default, grouped by vendor then by date. Collapse/expand each vendor group. Filter by vendor or date range.<br><br>
+              <strong>Item History</strong> — search for any item by name or Item ID and see every order entry for it across all vendors and dates. Sort by any column. Useful for spotting trends.<br><br>
+              <strong>Vendor Summary</strong> — aggregated view: how many times each item was ordered, total quantity, average per order, and average On Hand. Use the 📋 Copy button to export a tab-separated summary pasteable into Sheets or an email.</span>
+              <span class="es">Ábrelo desde <strong>Ordering Guide → Ver Historial de Pedidos</strong>. El modal tiene tres pestañas:<br><br>
+              <strong>Pedidos Recientes</strong> — muestra los últimos 7 días por defecto, agrupados por proveedor y por fecha. Filtra por proveedor o rango de fechas.<br><br>
+              <strong>Historial por Artículo</strong> — busca cualquier artículo por nombre o ID y ve cada entrada de pedido. Ordena por cualquier columna.<br><br>
+              <strong>Resumen por Proveedor</strong> — vista agregada: veces pedido, cantidad total, promedio por pedido y promedio En Stock. Usa el botón 📋 Copiar para exportar.</span>
+              <div class="tip"><span class="en">💡 The <span class="badge-orange">⚠</span> flag appears when On Hand was consistently high — this feeds directly into the Par Review system.</span><span class="es">💡 La bandera <span class="badge-orange">⚠</span> aparece cuando En Stock fue consistentemente alto — esto alimenta directamente al sistema de Revisión de Par.</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">📅</span>
+              <span class="en">Date Range Filters</span><span class="es">Filtros de Rango de Fechas</span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <div class="rule-row">
+                <div class="rule-label"><span class="en">Last 7 Days</span><span class="es">Últimos 7 Días</span></div>
+                <div><span class="en">Default — good for checking recent orders.</span><span class="es">Predeterminado — ideal para revisar pedidos recientes.</span></div>
+              </div>
+              <div class="rule-row">
+                <div class="rule-label"><span class="en">Last 30 / 90</span><span class="es">Últimos 30 / 90</span></div>
+                <div><span class="en">Broader trends. 30 days is good for vendor review conversations.</span><span class="es">Tendencias más amplias. 30 días es ideal para conversaciones de revisión con proveedores.</span></div>
+              </div>
+              <div class="rule-row">
+                <div class="rule-label"><span class="en">All Time</span><span class="es">Todo el Tiempo</span></div>
+                <div><span class="en">Full history from when logging started.</span><span class="es">Historial completo desde que comenzó el registro.</span></div>
+              </div>
+              <div class="rule-row">
+                <div class="rule-label"><span class="en">Custom</span><span class="es">Personalizado</span></div>
+                <div><span class="en">Pick any From / To date range.</span><span class="es">Elige cualquier rango de fechas De / A.</span></div>
+              </div>
+              <div class="warn"><span class="en">⚠ Order history only starts from the day logging was enabled. There is no data for orders placed before that date.</span><span class="es">⚠ El historial de pedidos solo comienza desde el día en que se activó el registro. No hay datos de pedidos realizados antes de esa fecha.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════ PAR REVIEW ════════ -->
+        <div id="section-parreview" class="section">
+          <div class="section-title">
+            <span class="en">Par Review Flags <span class="new-tag">NEW</span></span>
+            <span class="es">Revisión de Par <span class="new-tag">NUEVO</span></span>
+          </div>
+
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">⚠</span>
+              <span class="en">What Are Par Review Flags?</span><span class="es">¿Qué Son las Banderas de Revisión de Par?</span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <span class="en">Par Review flags appear automatically in <strong>Manage Items</strong> as a column in the item table. They analyze each item's order history and flag items whose On Hand patterns suggest the par level may need adjustment.<br><br>
+              Flags use a rolling <strong>14-day window</strong> — only orders from the last two weeks count. This way, a recent par adjustment isn't dragged down by old behavior. Flags appear after <strong>at least 2 logged orders</strong> within that window; below that, the column shows "No data yet."</span>
+              <span class="es">Las banderas de Revisión de Par aparecen automáticamente en <strong>Administrar Artículos</strong> como una columna en la tabla. Analizan el historial de pedidos de cada artículo y marcan aquellos cuyo patrón de En Stock sugiere que el par puede necesitar ajuste.<br><br>
+              Las banderas usan una ventana móvil de <strong>14 días</strong> — solo cuentan los pedidos de las últimas dos semanas. Así, un ajuste reciente no queda afectado por comportamiento viejo. Aparecen después de <strong>al menos 2 pedidos registrados</strong> dentro de esa ventana.</span>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">🟡</span>
+                <span class="en">Always Empty</span><span class="es">Siempre Vacío</span>
+                <span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en"><strong>Condition:</strong> On Hand was at or near zero (≤ 10% of par) in 75% or more of recent orders, AND the par is at least 3.<br><br>
+                <strong>Why par 3+:</strong> Items with a par of 1 or 2 will almost always show On Hand = 0 just because of how small their par is — flagging them would be noise, not signal. We only check items where running out is actually meaningful.<br><br>
+                <strong>What it means:</strong> This item is consistently depleted before the next order arrives. Either the par is too low and you're frequently running out, or it's a high-velocity item that empties every day.<br><br>
+                <strong>What to do:</strong> Review whether running out is causing problems (out-of-stock for guests, ordering urgency, etc.). If yes, raise the par. If you intentionally want to end empty (perishables, high-cost items), no action needed.</span>
+                <span class="es"><strong>Condición:</strong> En Stock estuvo en o cerca de cero (≤ 10% del par) en el 75% o más de los pedidos recientes, Y el par es al menos 3.<br><br>
+                <strong>Por qué par 3+:</strong> Los artículos con un par de 1 o 2 casi siempre mostrarán En Stock = 0 simplemente por el tamaño del par — marcarlos sería ruido, no señal. Solo revisamos artículos donde quedarse sin stock es realmente significativo.<br><br>
+                <strong>Qué significa:</strong> Este artículo se agota consistentemente antes de que llegue el siguiente pedido. O el par es demasiado bajo, o es un artículo de alto consumo.<br><br>
+                <strong>Qué hacer:</strong> Revisa si quedarse sin stock está causando problemas. Si es así, sube el par. Si quieres terminar vacío a propósito (perecederos, artículos costosos), no hace falta acción.</span>
+              </div>
+            </div>
+
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">🔴</span>
+                <span class="en">Over-Ordered</span><span class="es">Sobre-Pedido</span>
+                <span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en"><strong>Condition:</strong> On Hand was ≥ 50% of par in 50% or more of recent orders.<br><br>
+                <strong>What it means:</strong> Half the time or more, this item still has half its par sitting on the shelf when the next order goes in. You're holding more inventory than you're using.<br><br>
+                <strong>Why it matters:</strong> The goal is to end each week with as little inventory as possible — that means faster Sunday counts, less cash tied up in stock, and less waste on perishables. A consistently half-full shelf signals room to drop the par.<br><br>
+                <strong>What to do:</strong> Consider lowering the Base Par. Use Order History → Item History to review the trend over time before making a change.</span>
+                <span class="es"><strong>Condición:</strong> En Stock fue ≥ 50% del par en el 50% o más de los pedidos recientes.<br><br>
+                <strong>Qué significa:</strong> La mitad del tiempo o más, este artículo todavía tiene la mitad de su par en el estante cuando entra el siguiente pedido. Estás manteniendo más inventario del que usas.<br><br>
+                <strong>Por qué importa:</strong> La meta es terminar cada semana con la menor cantidad de inventario posible — eso significa conteos de domingo más rápidos, menos efectivo atado en stock, y menos desperdicio en perecederos. Un estante consistentemente medio-lleno indica espacio para bajar el par.<br><br>
+                <strong>Qué hacer:</strong> Considera bajar el Par Base. Usa Historial de Pedidos → Historial por Artículo para revisar la tendencia antes de hacer un cambio.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">📍</span>
+              <span class="en">Where Flags Appear</span><span class="es">Dónde Aparecen las Banderas</span>
+              <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <div class="rule-row">
+                <div class="rule-label"><span class="en">Item Table</span><span class="es">Tabla de Artículos</span></div>
+                <div><span class="en">The rightmost column in Manage Items shows the flag pill for each item — <span class="badge-yellow">🟡 Always Empty</span> or <span class="badge-red">🔴 Over-Ordered</span>. Items with no data yet show in grey italic.</span><span class="es">La columna más a la derecha en Administrar Artículos muestra la bandera para cada artículo.</span></div>
+              </div>
+              <div class="rule-row">
+                <div class="rule-label"><span class="en">Item Detail</span><span class="es">Detalle del Artículo</span></div>
+                <div><span class="en">Click any item row to open its detail panel. The Par Review section shows the flag, number of orders logged, average On Hand, times empty, and times over — the full picture for that item.</span><span class="es">Haz clic en cualquier fila de artículo para abrir su panel de detalles. La sección de Revisión de Par muestra la bandera, pedidos registrados, promedio En Stock, veces vacío y veces sobre.</span></div>
+              </div>
+              <div class="rule-row">
+                <div class="rule-label"><span class="en">Order History</span><span class="es">Historial</span></div>
+                <div><span class="en">The ⚠ indicator also appears in Order History tabs when On Hand is high relative to the order quantity.</span><span class="es">El indicador ⚠ también aparece en las pestañas de Historial de Pedidos cuando En Stock es alto relativo a la cantidad pedida.</span></div>
+              </div>
+              <div class="tip"><span class="en">💡 Flags are suggestions, not automatic changes. A GM should review flagged items before adjusting pars.</span><span class="es">💡 Las banderas son sugerencias, no cambios automáticos. Un GM debe revisar los artículos marcados antes de ajustar los pares.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════ STORAGE AREAS ════════ -->
+        <div id="section-areas" class="section">
+          <div class="section-title"><span class="en">Managing Storage Areas</span><span class="es">Administrar Áreas de Almacén</span></div>
+          <p style="font-size:11px;color:#777;margin-bottom:12px;"><span class="en">Access via <strong>Ordering Guide → Manage Storage Areas</strong></span><span class="es">Accede desde <strong>Ordering Guide → Administrar Áreas de Almacén</strong></span></p>
+
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">📋</span><span class="en">The Storage Areas Panel</span><span class="es">El Panel de Áreas de Almacén</span><span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <span class="en">Opens as a single scrollable view showing all current areas in order. Each row has a <strong>✎ Rename</strong> button and a <strong>🗑 Delete</strong> button inline. <strong>Add Area</strong> is a collapsible section at the bottom. Drag the ⠿ handle to reorder — saves automatically on drop.</span>
+              <span class="es">Se abre como una vista única con todas las áreas actuales en orden. Cada fila tiene un botón <strong>✎ Renombrar</strong> y un botón <strong>🗑 Eliminar</strong> en línea. <strong>Agregar Área</strong> es una sección desplegable en la parte inferior. Arrastra el ⠿ para reordenar — guarda automáticamente al soltar.</span>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">➕</span><span class="en">Add an Area</span><span class="es">Agregar un Área</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <div class="steps">
+                  <div class="step"><span class="en">Expand <strong>➕ Add Area</strong> at the bottom.</span><span class="es">Expande <strong>➕ Agregar Área</strong> en la parte inferior.</span></div>
+                  <div class="step"><span class="en">Type the name (e.g. "Walk-In", "Dry Storage") and click <strong>Add Area</strong>. It appears in the list immediately.</span><span class="es">Escribe el nombre (ej. "Cámara fría", "Almacén seco") y haz clic en <strong>Agregar Área</strong>. Aparece en la lista inmediatamente.</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">✏️</span><span class="en">Rename an Area</span><span class="es">Renombrar un Área</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <div class="steps">
+                  <div class="step"><span class="en">Find the area in the list and tap <strong>✎</strong>.</span><span class="es">Encuentra el área en la lista y toca <strong>✎</strong>.</span></div>
+                  <div class="step"><span class="en">A text field appears inline. Type the new name and click <strong>Save</strong> or press Enter.</span><span class="es">Aparece un campo de texto. Escribe el nuevo nombre y haz clic en <strong>Guardar</strong> o presiona Enter.</span></div>
+                </div>
+                <div class="tip"><span class="en">💡 All item assignments carry over automatically — renaming is completely safe.</span><span class="es">💡 Todas las asignaciones de artículos se transfieren automáticamente — renombrar es completamente seguro.</span></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">↕️</span><span class="en">Reorder Areas</span><span class="es">Reordenar Áreas</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en">Drag the <strong>⠿</strong> handle on any area row and drop it in the new position. The order saves automatically — no Save button needed.</span>
+                <span class="es">Arrastra el ícono <strong>⠿</strong> de cualquier fila de área y suéltalo en la nueva posición. El orden se guarda automáticamente — no se necesita botón Guardar.</span>
+                <div class="tip"><span class="en">💡 The same area sequence applies to all vendor tabs.</span><span class="es">💡 La misma secuencia de áreas aplica a todas las pestañas de proveedor.</span></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">🗑</span><span class="en">Delete an Area</span><span class="es">Eliminar un Área</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en">Tap <strong>🗑</strong> on any area row and confirm. Items assigned to a deleted area become <strong>unassigned</strong> and disappear from vendor tabs until reassigned in Manage Pick Path.</span>
+                <span class="es">Toca <strong>🗑</strong> en cualquier fila de área y confirma. Los artículos asignados quedan <strong>sin asignar</strong> y desaparecen de las pestañas hasta ser reasignados en Administrar Ruta.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════ VENDORS ════════ -->
+        <div id="section-vendors" class="section">
+          <div class="section-title"><span class="en">Managing Vendors</span><span class="es">Administrar Proveedores</span></div>
+          <p style="font-size:11px;color:#777;margin-bottom:12px;"><span class="en">Access via <strong>Ordering Guide → Manage Vendors</strong></span><span class="es">Accede desde <strong>Ordering Guide → Administrar Proveedores</strong></span></p>
+
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">📋</span><span class="en">The Vendor Panel</span><span class="es">El Panel de Proveedores</span><span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <span class="en">Opens to a single view. All current vendors are listed at the top with their Mon–Sun multipliers. <strong>Add Vendor</strong> and <strong>Remove Vendor</strong> are collapsible sections at the bottom.</span>
+              <span class="es">Se abre en una sola vista. Todos los proveedores actuales aparecen en la parte superior con sus multiplicadores Lun–Dom. <strong>Agregar Proveedor</strong> y <strong>Eliminar Proveedor</strong> son secciones desplegables en la parte inferior.</span>
+            </div>
+          </div>
+
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">✏️</span><span class="en">Edit Multipliers</span><span class="es">Editar Multiplicadores</span><span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <div class="steps">
+                <div class="step"><span class="en">Find the vendor in the list and tap <strong>Edit</strong> on the right.</span><span class="es">Encuentra el proveedor en la lista y toca <strong>Editar</strong> a la derecha.</span></div>
+                <div class="step"><span class="en">The multiplier inputs expand inline. Adjust any day values and click <strong>Save Multipliers</strong>.</span><span class="es">Los campos de multiplicador se expanden en línea. Ajusta los valores y haz clic en <strong>Guardar Multiplicadores</strong>.</span></div>
+                <div class="step"><span class="en">The list updates instantly and collapses back to read-only view.</span><span class="es">La lista se actualiza al instante y vuelve a la vista de solo lectura.</span></div>
+              </div>
+              <div class="tip"><span class="en">💡 <span class="badge-green">1</span> = standard day &nbsp; <span class="badge-orange">2+</span> = order covers multiple days &nbsp; 0 = no order that day.</span><span class="es">💡 <span class="badge-green">1</span> = día estándar &nbsp; <span class="badge-orange">2+</span> = pedido cubre múltiples días &nbsp; 0 = sin pedido ese día.</span></div>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="card">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">➕</span><span class="en">Add a Vendor</span><span class="es">Agregar un Proveedor</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <div class="steps">
+                  <div class="step"><span class="en">Expand <strong>＋ Add Vendor</strong> at the bottom.</span><span class="es">Expande <strong>＋ Agregar Proveedor</strong> en la parte inferior.</span></div>
+                  <div class="step"><span class="en">Enter the vendor name, check the delivery days, and adjust multipliers if needed.</span><span class="es">Ingresa el nombre, marca los días de entrega y ajusta los multiplicadores si es necesario.</span></div>
+                  <div class="step"><span class="en">Click <strong>Add Vendor + Create Tab</strong>. The vendor appears in the list above immediately.</span><span class="es">Haz clic en <strong>Agregar Proveedor + Crear Pestaña</strong>. El proveedor aparece en la lista inmediatamente.</span></div>
+                </div>
+                <div class="tip"><span class="en">💡 Multipliers auto-calculate from delivery days — edit manually to fine-tune.</span><span class="es">💡 Los multiplicadores se calculan automáticamente a partir de los días de entrega.</span></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">✕</span><span class="en">Remove a Vendor</span><span class="es">Eliminar un Proveedor</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <div class="steps">
+                  <div class="step"><span class="en">Expand <strong>✕ Remove Vendor</strong> at the bottom.</span><span class="es">Expande <strong>✕ Eliminar Proveedor</strong> en la parte inferior.</span></div>
+                  <div class="step"><span class="en">Select the vendor from the dropdown and click <strong>Remove Vendor</strong>.</span><span class="es">Selecciona el proveedor del menú desplegable y haz clic en <strong>Eliminar Proveedor</strong>.</span></div>
+                </div>
+                <div class="warn"><span class="en">⚠ This only removes the vendor from the table and dropdown. Their tab, items, and pick path data are <strong>preserved</strong>.</span><span class="es">⚠ Esto solo elimina al proveedor de la tabla y el menú. Su pestaña, artículos y datos de ruta se <strong>conservan</strong>.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════ ITEMS ════════ -->
+        <div id="section-items" class="section">
+          <div class="section-title"><span class="en">Managing Items</span><span class="es">Administrar Artículos</span></div>
+          <p style="font-size:11px;color:#777;margin-bottom:12px;"><span class="en">Access via <strong>Ordering Guide → Manage Items</strong></span><span class="es">Accede desde <strong>Ordering Guide → Administrar Artículos</strong></span></p>
+
+          <div class="two-col">
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">➕</span><span class="en">Add an Item</span><span class="es">Agregar un Artículo</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <div class="steps">
+                  <div class="step"><span class="en">Go to the <strong>Add</strong> tab. Fill in Name, Vendor, Pack/Unit, and Base Par.</span><span class="es">Ve a la pestaña <strong>Agregar</strong>. Completa Nombre, Proveedor, Empaque/Unidad y Par Base.</span></div>
+                  <div class="step"><span class="en">Set <strong>Use Day Multiplier</strong>: YES for most items, NO for fixed batch orders.</span><span class="es">Establece <strong>Usar Multiplicador</strong>: SÍ para la mayoría, NO para pedidos en lote fijos.</span></div>
+                  <div class="step"><span class="en">Click <strong>Add Item</strong>. It gets an ID (e.g. ITEM-0042) and is added to MASTER_ITEMS.</span><span class="es">Haz clic en <strong>Agregar Artículo</strong>. Recibe un ID (ej. ITEM-0042) y se agrega a MASTER_ITEMS.</span></div>
+                  <div class="step"><span class="en">⚠️ Assign a Storage Area via <strong>Manage Pick Path</strong> — item won't show on vendor tabs until then.</span><span class="es">⚠️ Asigna un Área de Almacén en <strong>Administrar Ruta</strong> — el artículo no aparecerá en pestañas hasta entonces.</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">✏️</span><span class="en">Edit an Item</span><span class="es">Editar un Artículo</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <div class="steps">
+                  <div class="step"><span class="en">Go to the <strong>Edit</strong> tab. Select the vendor, then select the item.</span><span class="es">Ve a la pestaña <strong>Editar</strong>. Selecciona el proveedor, luego el artículo.</span></div>
+                  <div class="step"><span class="en">The item's current data loads automatically into the form fields.</span><span class="es">Los datos actuales del artículo se cargan automáticamente en los campos del formulario.</span></div>
+                  <div class="step"><span class="en">Update any fields and click <strong>Save Changes</strong>.</span><span class="es">Actualiza los campos necesarios y haz clic en <strong>Guardar Cambios</strong>.</span></div>
+                </div>
+                <div class="tip"><span class="en">💡 Clicking any row in the item table opens its detail and adds an <strong>Edit This Item →</strong> button to jump directly to edit.</span><span class="es">💡 Hacer clic en cualquier fila abre sus detalles y agrega un botón <strong>Editar Este Artículo →</strong> para saltar directamente a editar.</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">🔕</span><span class="en">Deactivate vs Delete</span><span class="es">Desactivar vs Eliminar</span><span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <div class="rule-row">
+                <div class="rule-label"><span class="badge-orange"><span class="en">Deactivate</span><span class="es">Desactivar</span></span></div>
+                <div><span class="en">In the <strong>Edit</strong> tab, set <strong>Active → Inactive</strong> and save. The item stays in MASTER_ITEMS but disappears from all vendor tabs. Fully reversible.</span><span class="es">En la pestaña <strong>Editar</strong>, cambia <strong>Activo → Inactivo</strong> y guarda. El artículo permanece en MASTER_ITEMS pero desaparece de todas las pestañas. Totalmente reversible.</span></div>
+              </div>
+              <div class="rule-row">
+                <div class="rule-label"><span class="badge-red"><span class="en">Delete</span><span class="es">Eliminar</span></span></div>
+                <div><span class="en">In the <strong>Edit</strong> tab, scroll to the <strong>Danger Zone</strong> after loading an item. Permanently removes it from MASTER_ITEMS and the pick path. Use only if added by mistake.</span><span class="es">En la pestaña <strong>Editar</strong>, desplázate hasta la <strong>Zona de Peligro</strong> después de cargar un artículo. Lo elimina permanentemente. Solo si fue agregado por error.</span></div>
+              </div>
+              <div class="warn"><span class="en">⚠ Prefer Deactivate over Delete. Deleted items cannot be recovered.</span><span class="es">⚠ Prefiere Desactivar en lugar de Eliminar. Los artículos eliminados no se pueden recuperar.</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">🚨</span><span class="en">⚠ Unassigned Tab</span><span class="es">⚠ Pestaña Sin Asignar</span><span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <span class="en">Shows all active items with no Storage Area assigned in the pick path. These items <strong>will not appear on any vendor order tab</strong> until fixed. To fix: open <strong>Manage Pick Path</strong>, select the vendor, and drag the item into a Storage Area group.</span>
+              <span class="es">Muestra todos los artículos activos sin Área de Almacén asignada. Estos artículos <strong>no aparecerán en ninguna pestaña de pedido</strong> hasta ser corregidos. Para corregir: abre <strong>Administrar Ruta</strong>, selecciona el proveedor y arrastra el artículo a un grupo de Área de Almacén.</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">⚠</span><span class="en">Par Review Column</span><span class="es">Columna de Revisión de Par</span><span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <span class="en">The rightmost column in the item table shows a Par Review flag for each active item based on its order history. See <strong>Par Review</strong> in the left nav for a full explanation of what each flag means and what to do about it.</span>
+              <span class="es">La columna más a la derecha de la tabla muestra una bandera de Revisión de Par para cada artículo activo basada en su historial de pedidos. Consulta <strong>Revisión de Par</strong> en el menú izquierdo para una explicación completa de cada bandera.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════ PICK PATH ════════ -->
+        <div id="section-pickpath" class="section">
+          <div class="section-title"><span class="en">Managing the Pick Path</span><span class="es">Administrar la Ruta de Picking</span></div>
+          <p style="font-size:11px;color:#777;margin-bottom:12px;"><span class="en">Access via <strong>Ordering Guide → Manage Pick Path</strong></span><span class="es">Accede desde <strong>Ordering Guide → Administrar Ruta de Picking</strong></span></p>
+
+          <div class="card open">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">🗺</span><span class="en">What Is a Pick Path?</span><span class="es">¿Qué Es una Ruta de Picking?</span><span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <span class="en">The pick path organizes items by <strong>Storage Area</strong> (Walk-in, Dry Storage, Freezer, etc.) and within each area by <strong>shelf order</strong>. This lets you walk through the kitchen in one pass, counting items in the same order they appear on the order sheet.</span>
+              <span class="es">La ruta de picking organiza los artículos por <strong>Área de Almacén</strong> (Cámara fría, Almacén seco, Congelador, etc.) y dentro de cada área por <strong>orden de estante</strong>. Esto te permite recorrer la cocina de una sola vez.</span>
+              <div class="tip"><span class="en">💡 An item with no Storage Area is invisible on the vendor tab. Always assign one after adding a new item.</span><span class="es">💡 Un artículo sin Área de Almacén es invisible en la pestaña del proveedor. Siempre asigna una después de agregar un nuevo artículo.</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header" onclick="toggleCard(this)">
+              <span class="card-icon">↕️</span><span class="en">How to Reorder Items</span><span class="es">Cómo Reordenar Artículos</span><span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+              <div class="steps">
+                <div class="step"><span class="en">Open <strong>Manage Pick Path</strong> and select the vendor at the top.</span><span class="es">Abre <strong>Administrar Ruta</strong> y selecciona el proveedor en la parte superior.</span></div>
+                <div class="step"><span class="en">Drag items within an area to change shelf order. Drag to a different area group to reassign.</span><span class="es">Arrastra artículos dentro de un área para cambiar el orden. Arrastra a otro grupo de área para reasignar.</span></div>
+                <div class="step"><span class="en">Items in the <strong>Unassigned</strong> group at the top have no Storage Area — drag them into an area group to assign.</span><span class="es">Los artículos en el grupo <strong>Sin Asignar</strong> arriba no tienen Área de Almacén — arrástralos a un grupo de área para asignarlos.</span></div>
+                <div class="step"><span class="en">Click <strong>Save Pick Path</strong>. The vendor tab updates immediately.</span><span class="es">Haz clic en <strong>Guardar Ruta</strong>. La pestaña del proveedor se actualiza inmediatamente.</span></div>
+              </div>
+              <div class="warn"><span class="en">⚠ Switching vendors without saving will prompt you — unsaved changes will be lost if you discard.</span><span class="es">⚠ Cambiar de proveedor sin guardar te avisará — los cambios no guardados se perderán si los descartas.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════ ADMIN ════════ -->
+        <div id="section-admin" class="section">
+          <div class="section-title"><span class="en">Admin Tools</span><span class="es">Herramientas de Administrador</span></div>
+
+          <div class="two-col">
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">👁</span><span class="en">Toggle Tab Visibility</span><span class="es">Alternar Visibilidad de Pestañas</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <div class="rule-row">
+                  <div class="rule-label">SETUP</div>
+                  <div><span class="en">Hidden by default. Reveal temporarily when troubleshooting.</span><span class="es">Oculto por defecto. Muéstralo temporalmente al solucionar problemas.</span></div>
+                </div>
+                <div class="rule-row">
+                  <div class="rule-label">MASTER_ITEMS</div>
+                  <div><span class="en">Hidden by default. Use Manage Items instead. Reveal for auditing only.</span><span class="es">Oculto por defecto. Usa Administrar Artículos en su lugar. Muéstralo solo para auditoría.</span></div>
+                </div>
+                <div class="rule-row">
+                  <div class="rule-label">LOG_ORDERS</div>
+                  <div><span class="en">Hidden by default. Contains all order history. Reveal to inspect or export raw data.</span><span class="es">Oculto por defecto. Contiene todo el historial de pedidos. Muéstralo para inspeccionar o exportar datos.</span></div>
+                </div>
+                <div class="warn"><span class="en">⚠ Never manually edit these tabs while visible. Always use the menu panels.</span><span class="es">⚠ Nunca edites manualmente estas pestañas mientras estén visibles. Siempre usa los paneles del menú.</span></div>
+              </div>
+            </div>
+
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">🔄</span><span class="en">Reset Database (Selective)</span><span class="es">Restablecer Base de Datos (Selectivo)</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <div class="rule-row">
+                  <div class="rule-label"><span class="badge-green"><span class="en">Safe</span><span class="es">Seguro</span></span></div>
+                  <div><span class="en"><strong>Pick Path DB</strong> — removes stale hidden records. Vendors and items untouched.</span><span class="es"><strong>BD de Ruta</strong> — elimina registros ocultos obsoletos. Proveedores y artículos intactos.</span></div>
+                </div>
+                <div class="rule-row">
+                  <div class="rule-label"><span class="badge-orange"><span class="en">Caution</span><span class="es">Precaución</span></span></div>
+                  <div><span class="en"><strong>Pick Path List</strong> — clears working list. Reload by switching vendor in B2.</span><span class="es"><strong>Lista de Ruta</strong> — borra la lista de trabajo. Recarga cambiando el proveedor en B2.</span></div>
+                </div>
+                <div class="rule-row">
+                  <div class="rule-label"><span class="badge-orange"><span class="en">Caution</span><span class="es">Precaución</span></span></div>
+                  <div><span class="en"><strong>Order Log</strong> — clears all order history from LOG_ORDERS. Header row preserved.</span><span class="es"><strong>Registro de Pedidos</strong> — borra todo el historial de LOG_ORDERS. La fila de encabezado se conserva.</span></div>
+                </div>
+                <div class="rule-row">
+                  <div class="rule-label"><span class="badge-red"><span class="en">Danger</span><span class="es">Peligro</span></span></div>
+                  <div><span class="en"><strong>Vendors / Areas</strong> — destructive. Must re-enter all data manually.</span><span class="es"><strong>Proveedores / Áreas</strong> — destructivo. Deberás reingresar todos los datos manualmente.</span></div>
+                </div>
+                <div class="warn"><span class="en">⚠ All resets require typing RESET to confirm. Cannot be undone.</span><span class="es">⚠ Todos los restablecimientos requieren escribir RESET para confirmar. No se pueden deshacer.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════ TROUBLESHOOT ════════ -->
+        <div id="section-trouble" class="section">
+          <div class="section-title"><span class="en">Troubleshooting</span><span class="es">Solución de Problemas</span></div>
+
+          <div class="two-col">
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">❓</span><span class="en">Items Missing from Vendor Tab</span><span class="es">Artículos Faltantes en Pestaña</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <div class="steps">
+                  <div class="step"><span class="en">Check if the item is <strong>Active</strong> in Manage Items → Edit.</span><span class="es">Verifica si el artículo está <strong>Activo</strong> en Administrar Artículos → Editar.</span></div>
+                  <div class="step"><span class="en">Check the <strong>⚠ Unassigned</strong> tab in Manage Items — if it appears there, it has no Storage Area.</span><span class="es">Revisa la pestaña <strong>⚠ Sin Área</strong> en Administrar Artículos — si aparece ahí, no tiene Área de Almacén.</span></div>
+                  <div class="step"><span class="en">Open <strong>Manage Pick Path</strong>, drag the item into a Storage Area group, and Save.</span><span class="es">Abre <strong>Administrar Ruta</strong>, arrastra el artículo a un grupo de Área de Almacén y guarda.</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card open">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">❓</span><span class="en">Order Quantities Seem Off</span><span class="es">Cantidades de Pedido Incorrectas</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <div class="steps">
+                  <div class="step"><span class="en">Find the vendor in <strong>Manage Vendors</strong> and check the multipliers are correct for each day.</span><span class="es">Encuentra el proveedor en <strong>Administrar Proveedores</strong> y verifica que los multiplicadores sean correctos para cada día.</span></div>
+                  <div class="step"><span class="en">Confirm today's order day is correctly selected in <strong>ORDER_ENTRY</strong>.</span><span class="es">Confirma que el día de pedido de hoy esté correctamente seleccionado en <strong>ORDER_ENTRY</strong>.</span></div>
+                  <div class="step"><span class="en">Check the item's <strong>Base Par</strong> and <strong>Use Multiplier</strong> in Manage Items → Edit.</span><span class="es">Revisa el <strong>Par Base</strong> del artículo y <strong>Usar Multiplicador</strong> en Administrar Artículos → Editar.</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">❓</span><span class="en">Pick Path Order Is Wrong</span><span class="es">El Orden de Ruta Es Incorrecto</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en">Open <strong>Manage Pick Path</strong>, select the vendor, drag items to the correct positions, and click <strong>Save Pick Path</strong>.</span>
+                <span class="es">Abre <strong>Administrar Ruta</strong>, selecciona el proveedor, arrastra los artículos a las posiciones correctas y haz clic en <strong>Guardar Ruta</strong>.</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">❓</span><span class="en">Can't Find an Item</span><span class="es">No Encuentro un Artículo</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en">In <strong>Manage Items → Edit</strong>, search by ITEM-#### or exact name. The item may be deactivated — switch it back to Active in the Active dropdown and save.</span>
+                <span class="es">En <strong>Administrar Artículos → Editar</strong>, busca por ITEM-#### o nombre exacto. El artículo puede estar desactivado — cámbialo de vuelta a Activo en el menú desplegable y guarda.</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">❓</span><span class="en">Order History Is Empty</span><span class="es">El Historial de Pedidos Está Vacío</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en">Order history only populates after <strong>Reset On Hand</strong> has been pressed at least once. If the log is empty, no orders have been reset yet since the system was set up. Once the first reset runs, history will start accumulating.</span>
+                <span class="es">El historial de pedidos solo se llena después de que se presiona <strong>Restablecer En Stock</strong> al menos una vez. Si el registro está vacío, aún no se ha restablecido ningún pedido desde que se configuró el sistema.</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header" onclick="toggleCard(this)">
+                <span class="card-icon">❓</span><span class="en">Par Review Shows "No data yet"</span><span class="es">Revisión de Par Muestra "Sin datos"</span><span class="card-arrow">▼</span>
+              </div>
+              <div class="card-body">
+                <span class="en">Par Review flags require at least <strong>2 logged orders within the last 14 days</strong>. Items with fewer than 2 recent orders show "No data yet" in grey italic. This is expected for items you only order occasionally — once you've ordered them at least twice in two weeks, the flag will compute.</span>
+                <span class="es">Las banderas de Revisión de Par requieren al menos <strong>2 pedidos registrados en los últimos 14 días</strong>. Los artículos con menos de 2 pedidos recientes mostrarán "Sin datos" en gris itálico. Esto es normal para artículos que pides ocasionalmente — una vez que los hayas pedido al menos dos veces en dos semanas, la bandera se calculará.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /content -->
+    </div><!-- /body-wrap -->
+
+    <div class="footer">
+      <button class="btn-close" onclick="google.script.host.close()">
+        <span class="en">Close</span><span class="es">Cerrar</span>
+      </button>
+    </div>
+
+    <script>
+  function setLang(lang) {
+    document.body.classList.remove("lang-en", "lang-es");
+    document.body.classList.add("lang-" + lang);
+    document.querySelectorAll(".lang-btn").forEach(function(btn, i) {
+      btn.classList.toggle("active", (i === 0 && lang === "en") || (i === 1 && lang === "es"));
+    });
+  }
+
+  function showSection(key) {
+    document.querySelectorAll(".section").forEach(function(s) { s.classList.remove("active"); });
+    document.querySelectorAll(".nav-item").forEach(function(n) { n.classList.remove("active"); });
+    document.getElementById("section-" + key).classList.add("active");
+    document.querySelectorAll(".nav-item").forEach(function(n) {
+      if (n.getAttribute("onclick") === "showSection('" + key + "')") n.classList.add("active");
+    });
+  }
+
+  function toggleCard(header) {
+    header.parentElement.classList.toggle("open");
+  }
+</script>
+  </body>
+</html>

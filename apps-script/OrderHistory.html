@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: Arial, sans-serif;
+      font-size: 13px;
+      background: #f4f5f7;
+      color: #222;
+      overflow: hidden;
+    }
+
+    .shell { display: flex; flex-direction: column; height: 100vh; }
+
+    /* ── Header ── */
+    .top-bar {
+      background: #1a1a2e;
+      color: #fff;
+      display: flex;
+      align-items: stretch;
+      flex-shrink: 0;
+      height: 44px;
+    }
+    .top-bar-title {
+      font-size: 14px;
+      font-weight: bold;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-right: 1px solid rgba(255,255,255,0.12);
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+    .top-bar-title span { font-size: 16px; }
+    .top-tabs { display: flex; flex: 1; }
+    .top-tab {
+      padding: 0 18px;
+      display: flex;
+      align-items: center;
+      font-size: 12px;
+      font-weight: bold;
+      color: rgba(255,255,255,0.45);
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+      letter-spacing: 0.02em;
+    }
+    .top-tab:hover { color: rgba(255,255,255,0.85); }
+    .top-tab.active { color: #fff; border-bottom-color: #7eb8a4; }
+
+    .lang-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 12px;
+      border-left: 1px solid rgba(255,255,255,0.12);
+    }
+    .lang-btn {
+      padding: 3px 9px;
+      font-size: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      color: rgba(255,255,255,0.45);
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 3px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
+    .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
+
+    .top-close {
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      font-size: 20px;
+      color: rgba(255,255,255,0.35);
+      cursor: pointer;
+      border-left: 1px solid rgba(255,255,255,0.12);
+      transition: color 0.15s;
+      line-height: 1;
+    }
+    .top-close:hover { color: #fff; }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      background: #fff;
+      border-bottom: 1px solid #e0e3e8;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .filter-label {
+      font-size: 11px;
+      font-weight: bold;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+    .result-desc { color: #888; }
+    .filter-bar select,
+    .filter-bar input[type="date"],
+    .filter-bar input[type="text"] {
+      padding: 5px 9px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 12px;
+      background: #fff;
+      color: #222;
+      height: 30px;
+    }
+    #item-search { width: 160px; }
+    .filter-bar select:focus,
+    .filter-bar input[type="date"]:focus { outline: none; border-color: #7eb8a4; }
+    .filter-divider { width: 1px; height: 20px; background: #e0e3e8; }
+    .filter-group { display: flex; align-items: center; gap: 6px; }
+    .filter-range-sep { font-size: 11px; color: #999; }
+    .btn-apply {
+      padding: 5px 14px;
+      background: #1a3a2e;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      height: 30px;
+      white-space: nowrap;
+    }
+    .btn-apply:hover { background: #245040; }
+    .btn-export {
+      padding: 5px 14px;
+      background: #f0f2f5;
+      color: #333;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      height: 30px;
+      white-space: nowrap;
+      margin-left: auto;
+    }
+    .btn-export:hover { background: #e4e7eb; }
+
+    /* ── Content ── */
+    .content-area { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .tab-panel { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+    .tab-panel.active { display: flex; }
+
+    .state-box {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #aaa;
+      gap: 8px;
+    }
+    .state-box .state-icon { font-size: 28px; }
+    .state-box .state-msg  { font-size: 12px; font-style: italic; }
+    .state-box .state-sub  { font-size: 11px; color: #bbb; }
+
+    .table-wrap { flex: 1; overflow-y: auto; overflow-x: auto; }
+
+    .result-bar {
+      background: #fafbfc;
+      border-bottom: 1px solid #e8eaed;
+      padding: 6px 16px;
+      font-size: 11px;
+      color: #666;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .result-count { font-weight: bold; color: #1a3a2e; }
+    .log-start-note { margin-left: auto; font-size: 10px; color: #bbb; font-style: italic; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th {
+      position: sticky;
+      top: 0;
+      background: #f0f2f5;
+      padding: 8px 12px;
+      text-align: left;
+      font-size: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #555;
+      border-bottom: 2px solid #dde1e7;
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+    }
+    thead th:hover { background: #e8eaed; color: #222; }
+    thead th.sort-asc::after  { content: " ▲"; font-size: 9px; color: #7eb8a4; }
+    thead th.sort-desc::after { content: " ▼"; font-size: 9px; color: #7eb8a4; }
+    tbody tr { border-bottom: 1px solid #eff1f4; }
+    tbody tr:hover { background: #f7f9fb; }
+    tbody td { padding: 7px 12px; vertical-align: middle; }
+    .col-num    { text-align: right; font-variant-numeric: tabular-nums; }
+    .qty-num    { font-weight: 700; color: #1a3a2e; }
+    .qty-x      { margin: 0 4px 0 5px; color: #aaa; font-weight: 400; }
+    .qty-unit   { color: #555; font-size: 12px; font-weight: 500; }
+    .item-pack-sub { color: #888; font-size: 11px; font-weight: 400; margin-left: 6px; }
+    .col-date   { white-space: nowrap; color: #555; font-size: 11px; }
+    .col-id     { font-size: 10px; color: #999; font-family: monospace; }
+    .col-vendor { font-weight: bold; color: #1a3a2e; }
+    .col-qty    { font-weight: bold; color: #1a3a2e; }
+    .col-onhand { color: #888; }
+
+    .vendor-group-header {
+      position: sticky;
+      top: 0;
+      background: #e8f0ec;
+      padding: 7px 16px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #1a3a2e;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #d0ddd6;
+      border-top: 1px solid #d0ddd6;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .vendor-group:first-child .vendor-group-header { border-top: none; }
+    .vg-badge {
+      background: #1a3a2e;
+      color: #fff;
+      font-size: 9px;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-weight: bold;
+    }
+    .vg-toggle { margin-left: auto; font-size: 10px; color: #7eb8a4; }
+    .vendor-group-body.collapsed { display: none; }
+
+    .date-subheader {
+      background: #fafbfc;
+      padding: 5px 16px;
+      font-size: 10px;
+      font-weight: bold;
+      color: #888;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #eff1f4;
+    }
+
+    .summary-vendor-header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.03em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    .sv-badge {
+      background: #7eb8a4;
+      color: #1a1a2e;
+      font-size: 9px;
+      font-weight: bold;
+      padding: 1px 7px;
+      border-radius: 10px;
+    }
+    .summary-totals-row td {
+      background: #f0f4f2;
+      font-weight: bold;
+      color: #1a3a2e;
+      border-top: 2px solid #d0ddd6;
+      font-size: 11px;
+    }
+
+    .flag-high-onhand { font-size: 10px; color: #b07000; margin-left: 4px; }
+
+    .copy-flash {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #1a3a2e;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: bold;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      z-index: 999;
+    }
+    .copy-flash.show { opacity: 1; }
+
+    .table-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+    .table-wrap::-webkit-scrollbar-track { background: transparent; }
+    .table-wrap::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+    .table-wrap::-webkit-scrollbar-thumb:hover { background: #aaa; }
+
+    .es { display: none; }
+    .en { display: inline; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="top-bar">
+    <div class="top-bar-title">
+      <span>📋</span>
+      <span class="en">Order History</span>
+      <span class="es">Historial de Pedidos</span>
+    </div>
+    <div class="top-tabs">
+      <div class="top-tab active" onclick="switchTab('recent')">
+        <span class="en">Recent Orders</span><span class="es">Pedidos Recientes</span>
+      </div>
+      <div class="top-tab" onclick="switchTab('item')">
+        <span class="en">Item History</span><span class="es">Historial por Artículo</span>
+      </div>
+      <div class="top-tab" onclick="switchTab('summary')">
+        <span class="en">Vendor Summary</span><span class="es">Resumen por Proveedor</span>
+      </div>
+    </div>
+    <div class="lang-group">
+      <button class="lang-btn active" onclick="setLang('en')">EN</button>
+      <button class="lang-btn"        onclick="setLang('es')">ES</button>
+    </div>
+    <div class="top-close" onclick="google.script.host.close()">×</div>
+  </div>
+
+  <div class="filter-bar">
+    <span class="filter-label">
+      <span class="en">Vendor</span><span class="es">Proveedor</span>
+    </span>
+    <select id="vendor-filter">
+      <option value="ALL" id="opt-all-vendors"></option>
+    </select>
+
+    <div class="filter-divider"></div>
+
+    <span class="filter-label">
+      <span class="en">Date Range</span><span class="es">Rango de Fechas</span>
+    </span>
+    <select id="date-preset" onchange="applyDatePreset()">
+      <option value="7"      id="opt-7d"></option>
+      <option value="30"     id="opt-30d"></option>
+      <option value="90"     id="opt-90d"></option>
+      <option value="0"      id="opt-all"></option>
+      <option value="custom" id="opt-custom"></option>
+    </select>
+
+    <div class="filter-group" id="custom-dates" style="display:none">
+      <input type="date" id="date-from">
+      <span class="filter-range-sep">–</span>
+      <input type="date" id="date-to">
+    </div>
+
+    <div class="filter-group" id="item-search-group" style="display:none">
+      <div class="filter-divider"></div>
+      <span class="filter-label">
+        <span class="en">Item</span><span class="es">Artículo</span>
+      </span>
+      <input type="text" id="item-search"
+        oninput="filterItemHistory()">
+    </div>
+
+    <button class="btn-apply" onclick="loadCurrentTab()">
+      <span class="en">Apply</span><span class="es">Aplicar</span>
+    </button>
+    <button class="btn-export" id="export-btn" onclick="exportCurrentTab()" style="display:none">
+      📋 <span class="en">Copy</span><span class="es">Copiar</span>
+    </button>
+  </div>
+
+  <div class="content-area">
+
+    <div class="tab-panel active" id="panel-recent">
+      <div class="result-bar" id="recent-result-bar" style="display:none">
+        <span id="recent-count" class="result-count"></span>
+        <span id="recent-desc" class="result-desc"></span>
+        <span class="log-start-note" id="log-note"></span>
+      </div>
+      <div class="table-wrap">
+        <div class="state-box" id="recent-loading" style="display:none">
+          <div class="state-icon">⏳</div>
+          <div class="state-msg" id="lmsg-recent"></div>
+        </div>
+        <div id="recent-content"></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-item">
+      <div class="result-bar" id="item-result-bar" style="display:none">
+        <span id="item-count" class="result-count"></span>
+        <span id="item-desc" class="result-desc"></span>
+      </div>
+      <div class="table-wrap">
+        <div class="state-box" id="item-loading" style="display:none">
+          <div class="state-icon">⏳</div>
+          <div class="state-msg" id="lmsg-item"></div>
+        </div>
+        <div id="item-content"></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-summary">
+      <div class="result-bar" id="summary-result-bar" style="display:none">
+        <span id="summary-count" class="result-count"></span>
+        <span id="summary-desc" class="result-desc"></span>
+      </div>
+      <div class="table-wrap">
+        <div class="state-box" id="summary-loading" style="display:none">
+          <div class="state-icon">⏳</div>
+          <div class="state-msg" id="lmsg-summary"></div>
+        </div>
+        <div id="summary-content"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="copy-flash" id="copy-flash"></div>
+
+<script>
+  /* ══ i18n ══════════════════════════════════════════════════════════════════ */
+  var LANG = 'en';
+
+  var T = {
+    en: {
+      allVendors:'All Vendors', last7:'Last 7 Days', last30:'Last 30 Days',
+      last90:'Last 90 Days', allTime:'All Time', custom:'Custom…',
+      loading:'Loading…',
+      noOrders:'No orders found', noOrdersSub:'Try a wider date range or different vendor filter.',
+      noItems:'No items found', noItemsSub:'Try clearing the search or adjusting your filters.',
+      noData:'No data found', noDataSub:'Try adjusting your date range or vendor filter.',
+      errorLoading:'Error loading data',
+      itemPh:'Name or Item ID…',
+      logNote:'Logging captures orders at time of On Hand reset.',
+      rows:' rows', across:'across ', vendor:' vendor', vendors:' vendors',
+      entries:' entries', sortHint:'— click column headers to sort',
+      colDate:'Date', colVendor:'Vendor', colItem:'Item', colItemId:'Item ID',
+      colOnHand:'On Hand (Prev)', colQty:'Qty Ordered',
+      colTimes:'Times Ordered', colTotal:'Total Qty',
+      colAvgQty:'Avg Qty / Order', colAvgOnHand:'Avg On Hand',
+      total:'TOTAL — ', item:' item', items:' items',
+      copied:'Copied to clipboard ✓',
+      highTip:'On Hand was high — par may be over-set',
+      highAvgTip:'Avg On Hand ≥ Avg Qty — consider lowering par',
+      exportHeader:'ORDER SUMMARY — ', dateRange:'Date range: ',
+      to:' to ', allDates:'All'
+    },
+    es: {
+      allVendors:'Todos los Proveedores', last7:'Últimos 7 Días', last30:'Últimos 30 Días',
+      last90:'Últimos 90 Días', allTime:'Todo el Tiempo', custom:'Personalizado…',
+      loading:'Cargando…',
+      noOrders:'No se encontraron pedidos', noOrdersSub:'Prueba un rango más amplio o diferente proveedor.',
+      noItems:'No se encontraron artículos', noItemsSub:'Intenta borrar la búsqueda o ajustar los filtros.',
+      noData:'No se encontraron datos', noDataSub:'Prueba ajustando el rango de fechas o proveedor.',
+      errorLoading:'Error al cargar los datos',
+      itemPh:'Nombre o ID de artículo…',
+      logNote:'El registro captura pedidos al momento de reiniciar En Stock.',
+      rows:' filas', across:'de ', vendor:' proveedor', vendors:' proveedores',
+      entries:' entradas', sortHint:'— haz clic en los encabezados para ordenar',
+      colDate:'Fecha', colVendor:'Proveedor', colItem:'Artículo', colItemId:'ID de Artículo',
+      colOnHand:'En Stock (Prev)', colQty:'Cant. Pedida',
+      colTimes:'Veces Pedido', colTotal:'Cant. Total',
+      colAvgQty:'Prom. Cant. / Pedido', colAvgOnHand:'Prom. En Stock',
+      total:'TOTAL — ', item:' artículo', items:' artículos',
+      copied:'Copiado al portapapeles ✓',
+      highTip:'En Stock fue alto — el par puede estar demasiado alto',
+      highAvgTip:'Prom. En Stock ≥ Prom. Cant. — considera bajar el par',
+      exportHeader:'RESUMEN DE PEDIDOS — ', dateRange:'Rango de fechas: ',
+      to:' a ', allDates:'Todo'
+    }
+  };
+
+  function t(k) { return T[LANG][k] || T.en[k] || k; }
+
+  function setLang(lang) {
+    LANG = lang;
+    document.querySelectorAll('.lang-btn').forEach(function(b,i){
+      b.classList.toggle('active', ['en','es'][i]===lang);
+    });
+    document.querySelectorAll('.en,.es').forEach(function(el){
+      el.style.display = el.classList.contains(lang) ? 'inline' : 'none';
+    });
+    // Update option text
+    document.getElementById('opt-all-vendors').textContent = t('allVendors');
+    document.getElementById('opt-7d').textContent  = t('last7');
+    document.getElementById('opt-30d').textContent = t('last30');
+    document.getElementById('opt-90d').textContent = t('last90');
+    document.getElementById('opt-all').textContent = t('allTime');
+    document.getElementById('opt-custom').textContent = t('custom');
+    var iSearch = document.getElementById('item-search');
+    if (iSearch) iSearch.placeholder = t('itemPh');
+    // Re-render from cached data — no server call needed for a language switch
+    rerenderCurrentTab();
+  }
+
+  /* ══ STATE ══ */
+  var currentTab  = 'recent';
+  var rawHistory  = [];
+  var summaryData = [];
+  var itemSortCol = 'orderDate';
+  var itemSortDir = 'desc';
+  // Filter signature of the cached data — if filters haven't changed since
+  // last fetch, Recent and Item tabs can both render from rawHistory without
+  // hitting the server again. Summary is derived from rawHistory client-side.
+  var cachedFilterSig = null;
+  function filterSig(f) { return (f.vendorFilter||'') + '|' + (f.dateFrom||'') + '|' + (f.dateTo||''); }
+
+  /* ══ INIT ══ */
+  window.onload = function() {
+    var today = new Date(), from = new Date(today);
+    from.setDate(from.getDate() - 7);
+    document.getElementById('date-to').value   = fmtD(today);
+    document.getElementById('date-from').value = fmtD(from);
+    loadVendors();
+    setLang('en');     // sets language + translates option labels
+    loadCurrentTab();  // auto-fetch last 7 days into the Recent tab
+  };
+
+  function fmtD(d) {
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+
+  function fmtQtyWithPack(qty, pack) {
+    // Mirrors the mobile PWA's qty-num / qty-x / qty-unit convention so
+    // the KM sees the same display ("5 x case of 12") across both surfaces.
+    // Falls back to a bare number when no pack is set on the item.
+    if (!pack) return String(qty);
+    return '<span class="qty-num">' + qty + '</span>' +
+           '<span class="qty-x">&times;</span>' +
+           '<span class="qty-unit">' + esc(pack) + '</span>';
+  }
+
+  function fmtDateDisplay(s) {
+    if (!s) return '—';
+    var p = s.split('-');
+    if (p.length < 3) return s;
+    var mEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var mEs = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    return (LANG==='es' ? mEs : mEn)[parseInt(p[1])-1] + ' ' + parseInt(p[2]) + ', ' + p[0];
+  }
+
+  function loadVendors() {
+    google.script.run
+      .withSuccessHandler(function(vs) {
+        var sel = document.getElementById('vendor-filter');
+        vs.forEach(function(v) {
+          var o = document.createElement('option');
+          o.value = v; o.textContent = v; sel.appendChild(o);
+        });
+      }).withFailureHandler(function(){})
+      .getOrderHistoryVendorList();
+  }
+
+  function switchTab(tab) {
+    currentTab = tab;
+    ['recent','item','summary'].forEach(function(t,i){
+      document.querySelectorAll('.top-tab')[i].classList.toggle('active', t===tab);
+      document.getElementById('panel-'+t).classList.toggle('active', t===tab);
+    });
+    document.getElementById('item-search-group').style.display = tab==='item' ? 'flex' : 'none';
+    document.getElementById('export-btn').style.display = tab==='summary' ? '' : 'none';
+    loadCurrentTab();
+  }
+
+  function applyDatePreset() {
+    var val = document.getElementById('date-preset').value;
+    var cd  = document.getElementById('custom-dates');
+    if (val==='custom') { cd.style.display='flex'; return; }
+    cd.style.display='none';
+    var today = new Date();
+    document.getElementById('date-to').value = fmtD(today);
+    if (!parseInt(val)) { document.getElementById('date-from').value=''; return; }
+    var from = new Date(today); from.setDate(from.getDate()-parseInt(val));
+    document.getElementById('date-from').value = fmtD(from);
+  }
+
+  function getFilters() {
+    return {
+      vendorFilter: document.getElementById('vendor-filter').value,
+      dateFrom:     document.getElementById('date-from').value||'',
+      dateTo:       document.getElementById('date-to').value||''
+    };
+  }
+
+  function loadCurrentTab() {
+    if (currentTab==='recent')  loadRecent();
+    if (currentTab==='item')    loadItemHistory();
+    if (currentTab==='summary') loadSummary();
+  }
+
+  // Re-renders the current tab from cached data — used by setLang to avoid a server call.
+  function rerenderCurrentTab() {
+    if (currentTab==='recent')  { if (document.getElementById('recent-content').innerHTML)  loadRecent();        }
+    if (currentTab==='item')    { if (rawHistory.length)   filterItemHistory(); else loadItemHistory();          }
+    if (currentTab==='summary') { if (summaryData.length)  renderSummary(summaryData); else loadSummary();       }
+  }
+
+  /* ══ TAB 1 ══ */
+  function loadRecent() {
+    const f = getFilters();
+    const sig = filterSig(f);
+    // If the cache is already populated for these filters, render straight from it.
+    if (cachedFilterSig === sig && rawHistory.length) {
+      renderRecent(rawHistory);
+      return;
+    }
+    showLoading('recent');
+    google.script.run
+      .withSuccessHandler(function(rows) {
+        rawHistory      = rows || [];
+        cachedFilterSig = sig;
+        renderRecent(rawHistory);
+      })
+      .withFailureHandler(function(e){showError('recent',e);})
+      .getOrderHistory(f);
+  }
+
+  function renderRecent(rows) {
+    hideLoading('recent');
+    var content = document.getElementById('recent-content');
+    var rbar    = document.getElementById('recent-result-bar');
+    if (!rows||!rows.length) { showEmpty('recent',t('noOrders'),t('noOrdersSub')); return; }
+
+    var order={}, grouped={};
+    rows.forEach(function(r){
+      if(!grouped[r.vendor]){grouped[r.vendor]={};order[r.vendor]=1;}
+      if(!grouped[r.vendor][r.orderDate]) grouped[r.vendor][r.orderDate]=[];
+      grouped[r.vendor][r.orderDate].push(r);
+    });
+    var vendorOrder = Object.keys(order);
+
+    var html='';
+    vendorOrder.forEach(function(vendor){
+      var dm=grouped[vendor], dates=Object.keys(dm).sort().reverse();
+      var total=dates.reduce(function(s,d){return s+dm[d].length;},0);
+      var badge=total+(total===1?t('item'):t('items'));
+      html+='<div class="vendor-group">';
+      html+='<div class="vendor-group-header" onclick="toggleVG(this)">';
+      html+=esc(vendor)+' <span class="vg-badge">'+badge+'</span>';
+      html+='<span class="vg-toggle">▲</span></div>';
+      html+='<div class="vendor-group-body">';
+      dates.forEach(function(date){
+        html+='<div class="date-subheader">'+fmtDateDisplay(date)+'</div>';
+        html+='<table><tbody>';
+        dm[date].forEach(function(r){
+          var flag=r.onHandPrev>0&&r.onHandPrev>=r.qtyOrdered
+            ?'<span class="flag-high-onhand" title="'+t('highTip')+'">⚠</span>':'';
+          html+='<tr><td>'+esc(r.itemName)+flag+'</td>';
+          html+='<td class="col-id">'+esc(r.itemId)+'</td>';
+          html+='<td class="col-onhand col-num">'+r.onHandPrev+'</td>';
+          html+='<td class="col-qty col-num">'+fmtQtyWithPack(r.qtyOrdered, r.itemPack)+'</td></tr>';
+        });
+        html+='</tbody></table>';
+      });
+      html+='</div></div>';
+    });
+    content.innerHTML=html;
+    rbar.style.display='flex';
+    document.getElementById('recent-count').textContent=rows.length+t('rows');
+    document.getElementById('recent-desc').textContent=
+      t('across')+vendorOrder.length+(vendorOrder.length===1?t('vendor'):t('vendors'));
+    document.getElementById('log-note').textContent=t('logNote');
+  }
+
+  function toggleVG(header) {
+    var body=header.nextElementSibling, tog=header.querySelector('.vg-toggle');
+    tog.textContent=body.classList.toggle('collapsed')?'▼':'▲';
+  }
+
+  /* ══ TAB 2 ══ */
+  function loadItemHistory() {
+    const f = getFilters();
+    const sig = filterSig(f);
+    if (cachedFilterSig === sig && rawHistory.length) {
+      itemSortCol='orderDate'; itemSortDir='desc';
+      filterItemHistory();
+      return;
+    }
+    showLoading('item');
+    google.script.run
+      .withSuccessHandler(function(rows){
+        rawHistory      = rows || [];
+        cachedFilterSig = sig;
+        itemSortCol     = 'orderDate'; itemSortDir = 'desc';
+        filterItemHistory();
+      })
+      .withFailureHandler(function(e){showError('item',e);})
+      .getOrderHistory(f);
+  }
+
+  function filterItemHistory() {
+    hideLoading('item');
+    var q=(document.getElementById('item-search').value||'').trim().toLowerCase();
+    var rows=rawHistory.filter(function(r){
+      if(!q) return true;
+      return r.itemName.toLowerCase().indexOf(q)!==-1||r.itemId.toLowerCase().indexOf(q)!==-1;
+    });
+    renderItemHistory(rows);
+  }
+
+  function renderItemHistory(rows) {
+    var content=document.getElementById('item-content');
+    var rbar=document.getElementById('item-result-bar');
+    if(!rows||!rows.length){showEmpty('item',t('noItems'),t('noItemsSub'));rbar.style.display='none';return;}
+
+    rows=rows.slice().sort(function(a,b){
+      var av=a[itemSortCol],bv=b[itemSortCol];
+      if(typeof av==='string'){av=av.toLowerCase();bv=bv.toLowerCase();}
+      var c=av<bv?-1:av>bv?1:0;
+      return itemSortDir==='asc'?c:-c;
+    });
+
+    var cols=[
+      {key:'orderDate',label:t('colDate')},{key:'vendor',label:t('colVendor')},
+      {key:'itemName',label:t('colItem')},{key:'itemId',label:t('colItemId')},
+      {key:'onHandPrev',label:t('colOnHand')},{key:'qtyOrdered',label:t('colQty')}
+    ];
+    var html='<table><thead><tr>';
+    cols.forEach(function(c){
+      var cls=itemSortCol===c.key?' class="'+(itemSortDir==='asc'?'sort-asc':'sort-desc')+'"':'';
+      html+='<th'+cls+' onclick="sortItem(\''+c.key+'\')">'+esc(c.label)+'</th>';
+    });
+    html+='</tr></thead><tbody>';
+    rows.forEach(function(r){
+      var flag=r.onHandPrev>0&&r.onHandPrev>=r.qtyOrdered
+        ?' <span class="flag-high-onhand" title="'+t('highTip')+'">⚠</span>':'';
+      html+='<tr>';
+      html+='<td class="col-date">'+fmtDateDisplay(r.orderDate)+'</td>';
+      html+='<td class="col-vendor">'+esc(r.vendor)+'</td>';
+      html+='<td>'+esc(r.itemName)+'</td>';
+      html+='<td class="col-id">'+esc(r.itemId)+'</td>';
+      html+='<td class="col-onhand col-num">'+r.onHandPrev+flag+'</td>';
+      html+='<td class="col-qty col-num">'+fmtQtyWithPack(r.qtyOrdered, r.itemPack)+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table>';
+    content.innerHTML=html;
+    rbar.style.display='flex';
+    document.getElementById('item-count').textContent=rows.length+t('entries');
+    document.getElementById('item-desc').textContent=t('sortHint');
+  }
+
+  function sortItem(col){
+    itemSortDir=itemSortCol===col?(itemSortDir==='asc'?'desc':'asc'):(col==='orderDate'?'desc':'asc');
+    itemSortCol=col; filterItemHistory();
+  }
+
+  /* ══ TAB 3 ══ */
+  function loadSummary() {
+    const f = getFilters();
+    const sig = filterSig(f);
+    if (cachedFilterSig === sig && rawHistory.length) {
+      renderSummary(aggregateSummary(rawHistory));
+      return;
+    }
+    // Cache miss — fetch raw history once and aggregate client-side. Avoids
+    // the server-side getOrderSummary which re-reads LOG_ORDERS on top of
+    // what Recent/Item already loaded.
+    showLoading('summary');
+    google.script.run
+      .withSuccessHandler(function(rows){
+        rawHistory      = rows || [];
+        cachedFilterSig = sig;
+        renderSummary(aggregateSummary(rawHistory));
+      })
+      .withFailureHandler(function(e){showError('summary',e);})
+      .getOrderHistory(f);
+  }
+
+  // Mirrors server-side getOrderSummary aggregation. Keeps Summary in sync
+  // with whatever rawHistory currently holds.
+  function aggregateSummary(rows) {
+    if (!rows || !rows.length) return [];
+    var vendorMap = {};
+    rows.forEach(function(row) {
+      if (!vendorMap[row.vendor]) vendorMap[row.vendor] = {};
+      var itemMap = vendorMap[row.vendor];
+      if (!itemMap[row.itemId]) {
+        itemMap[row.itemId] = {
+          itemId:       row.itemId,
+          itemName:     row.itemName,
+          itemPack:     row.itemPack || '',
+          timesOrdered: 0,
+          totalQty:     0,
+          totalOnHand:  0
+        };
+      }
+      var agg = itemMap[row.itemId];
+      agg.timesOrdered += 1;
+      agg.totalQty     += row.qtyOrdered;
+      agg.totalOnHand  += row.onHandPrev;
+    });
+    var out = [];
+    Object.keys(vendorMap).sort().forEach(function(vendor) {
+      var itemMap = vendorMap[vendor];
+      var items = Object.keys(itemMap).map(function(k) {
+        var a = itemMap[k];
+        return {
+          itemId:       a.itemId,
+          itemName:     a.itemName,
+          itemPack:     a.itemPack || '',
+          timesOrdered: a.timesOrdered,
+          totalQty:     a.totalQty,
+          avgQty:       Math.round((a.totalQty    / a.timesOrdered) * 10) / 10,
+          avgOnHand:    Math.round((a.totalOnHand / a.timesOrdered) * 10) / 10
+        };
+      }).sort(function(a,b) { return b.timesOrdered - a.timesOrdered; });
+      out.push({ vendor: vendor, items: items });
+    });
+    return out;
+  }
+
+  function renderSummary(data) {
+    hideLoading('summary');
+    var content=document.getElementById('summary-content');
+    var rbar=document.getElementById('summary-result-bar');
+    summaryData=data||[];
+    if(!data||!data.length){showEmpty('summary',t('noData'),t('noDataSub'));rbar.style.display='none';return;}
+
+    var html='',gTotal=0,gOrders=0;
+    data.forEach(function(vb){
+      var vT=0,vO=0;
+      var badge=vb.items.length+(vb.items.length===1?t('item'):t('items'));
+      html+='<div class="summary-vendor-block">';
+      html+='<div class="summary-vendor-header">'+esc(vb.vendor);
+      html+=' <span class="sv-badge">'+badge+'</span></div>';
+      html+='<table><thead><tr>';
+      [t('colItem'),t('colItemId'),t('colTimes'),t('colTotal'),t('colAvgQty'),t('colAvgOnHand')]
+        .forEach(function(h,i){html+='<th'+(i>1?' class="col-num"':'')+'>'+h+'</th>';});
+      html+='</tr></thead><tbody>';
+      vb.items.forEach(function(item){
+        var hf=item.avgOnHand>0&&item.avgOnHand>=item.avgQty
+          ?' <span class="flag-high-onhand" title="'+t('highAvgTip')+'">⚠</span>':'';
+        html+='<tr>';
+        html+='<td>'+esc(item.itemName)+(item.itemPack?'<span class="item-pack-sub">'+esc(item.itemPack)+'</span>':'')+hf+'</td>';
+        html+='<td class="col-id">'+esc(item.itemId)+'</td>';
+        html+='<td class="col-num">'+item.timesOrdered+'</td>';
+        html+='<td class="col-num col-qty">'+item.totalQty+'</td>';
+        html+='<td class="col-num">'+item.avgQty+'</td>';
+        html+='<td class="col-num col-onhand">'+item.avgOnHand+'</td>';
+        html+='</tr>';
+        vT+=item.totalQty; vO+=item.timesOrdered;
+      });
+      html+='<tr class="summary-totals-row">';
+      html+='<td colspan="2">'+t('total')+esc(vb.vendor)+'</td>';
+      html+='<td class="col-num">'+vO+'</td><td class="col-num">'+vT+'</td>';
+      html+='<td class="col-num">—</td><td class="col-num">—</td></tr>';
+      html+='</tbody></table></div>';
+      gTotal+=vT; gOrders+=vO;
+    });
+    content.innerHTML=html;
+    rbar.style.display='flex';
+    document.getElementById('summary-count').textContent=
+      data.length+(data.length===1?t('vendor'):t('vendors'));
+    document.getElementById('summary-desc').textContent=
+      '· '+gOrders+' '+t('colTimes').toLowerCase()+' · '+gTotal+' '+t('colTotal').toLowerCase();
+  }
+
+  /* ══ EXPORT ══ */
+  function exportCurrentTab() {
+    if(!summaryData||!summaryData.length) return;
+    var f=getFilters(), lines=[];
+    lines.push(t('exportHeader')+(f.vendorFilter==='ALL'?t('allVendors'):f.vendorFilter));
+    lines.push(t('dateRange')+(f.dateFrom||t('allDates'))+t('to')+(f.dateTo||t('allDates')));
+    lines.push('');
+    lines.push([t('colItem'),t('colItemId'),t('colTimes'),t('colTotal'),t('colAvgQty'),t('colAvgOnHand')].join('\t'));
+    summaryData.forEach(function(vb){
+      lines.push('');
+      lines.push('=== '+vb.vendor.toUpperCase()+' ===');
+      vb.items.forEach(function(item){
+        lines.push([item.itemName,item.itemId,item.timesOrdered,item.totalQty,item.avgQty,item.avgOnHand].join('\t'));
+      });
+      var vT=vb.items.reduce(function(s,i){return s+i.totalQty;},0);
+      var vO=vb.items.reduce(function(s,i){return s+i.timesOrdered;},0);
+      lines.push([t('total')+vb.vendor,'',vO,vT,'',''].join('\t'));
+    });
+    var text=lines.join('\n');
+    try {
+      navigator.clipboard.writeText(text).then(function(){flashCopy();});
+    } catch(e) {
+      var ta=document.createElement('textarea');
+      ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta); flashCopy();
+    }
+  }
+
+  function flashCopy(){
+    var el=document.getElementById('copy-flash');
+    el.textContent=t('copied'); el.classList.add('show');
+    setTimeout(function(){el.classList.remove('show');},2000);
+  }
+
+  /* ══ UI HELPERS ══ */
+  function showLoading(panel){
+    var el=document.getElementById(panel+'-loading');
+    var c=document.getElementById(panel+'-content');
+    var rb=document.getElementById(panel+'-result-bar');
+    if(el){el.style.display='flex'; var m=document.getElementById('lmsg-'+panel); if(m) m.textContent=t('loading');}
+    if(c) c.innerHTML='';
+    if(rb) rb.style.display='none';
+  }
+  function hideLoading(panel){
+    var el=document.getElementById(panel+'-loading'); if(el) el.style.display='none';
+  }
+  function showEmpty(panel,msg,sub){
+    var el=document.getElementById(panel+'-loading');
+    var c=document.getElementById(panel+'-content');
+    if(el){el.style.display='flex'; el.innerHTML='<div class="state-icon">📭</div><div class="state-msg">'+esc(msg)+'</div>'+(sub?'<div class="state-sub">'+esc(sub)+'</div>':'');}
+    if(c) c.innerHTML='';
+  }
+  function showError(panel,e){
+    var el=document.getElementById(panel+'-loading');
+    if(el){el.style.display='flex'; el.innerHTML='<div class="state-icon">⚠️</div><div class="state-msg">'+t('errorLoading')+'</div><div class="state-sub">'+esc(String(e.message||e))+'</div>';}
+  }
+  function esc(s){
+    if(s==null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+</script>
+</body>
+</html>

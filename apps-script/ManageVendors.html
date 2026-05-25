@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <script>
+      var VENDOR_LIST  = <?!= vendorListJson ?>;
+      var VENDOR_TABLE = <?!= vendorTableJson ?>;
+    </script>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 13px;
+        background: #f9f9f9;
+        color: #222;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Header ── */
+      .top-bar {
+        background: #1a1a2e;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 14px;
+        height: 44px;
+        flex-shrink: 0;
+      }
+      .top-bar-title { font-size: 13px; font-weight: bold; letter-spacing: 0.03em; }
+      .lang-group { display: flex; gap: 4px; }
+      .lang-btn {
+        padding: 3px 9px; font-size: 10px; font-weight: bold; cursor: pointer;
+        color: rgba(255,255,255,0.45); background: transparent;
+        border: 1px solid rgba(255,255,255,0.2); border-radius: 3px;
+      }
+      .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
+      .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
+
+      /* ── Scrollable body ── */
+      .scroll-body { flex: 1; overflow-y: auto; }
+      .vendor-list-wrap { background: #fff; }
+      .scroll-body::-webkit-scrollbar { width: 5px; }
+      .scroll-body::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+      /* ── Vendor cards ── */
+      .section-header {
+        background: #1a3a2e; color: #fff;
+        font-size: 10px; font-weight: bold; letter-spacing: 0.08em; text-transform: uppercase;
+        padding: 6px 12px; position: sticky; top: 0; z-index: 10;
+      }
+      .view-hint { font-size: 10px; color: #888; padding: 7px 12px; border-bottom: 1px solid #eee; background: #fff; }
+      #view-loading { padding: 20px; text-align: center; font-size: 12px; color: #888; font-style: italic; }
+      .vendor-card { border-bottom: 1px solid #e8e8e8; padding: 10px 12px; background: #fff; }
+      .vendor-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+      .vendor-card-name { font-size: 12px; font-weight: bold; color: #1a3a2e; }
+      .edit-mult-btn {
+        font-size: 10px; padding: 3px 8px; background: #f0f0f0;
+        border: 1px solid #ccc; border-radius: 3px; cursor: pointer; color: #555; font-weight: bold;
+      }
+      .edit-mult-btn:hover   { background: #e0e0e0; }
+      .edit-mult-btn.editing { background: #1a3a2e; color: #fff; border-color: #1a3a2e; }
+      .day-pills { display: flex; gap: 4px; flex-wrap: wrap; }
+      .day-pill { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 28px; }
+      .day-pill-label { font-size: 8px; color: #aaa; font-weight: bold; text-transform: uppercase; }
+      .day-pill-val {
+        font-size: 11px; font-weight: bold; padding: 2px 5px;
+        border-radius: 4px; min-width: 24px; text-align: center;
+      }
+      .day-pill-val.zero { background: #f5f5f5; color: #ccc; }
+      .day-pill-val.one  { background: #f0f7f4; color: #1a3a2e; }
+      .day-pill-val.high { background: #fff8e6; color: #b36b00; }
+      .inline-edit-area { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0f0f0; }
+      .inline-edit-area.visible { display: block; }
+      .inline-mult-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 8px; }
+      .inline-save-row { display: flex; gap: 6px; }
+      .btn-inline-save {
+        flex: 2; padding: 6px 10px; background: #1a6b2e; color: #fff;
+        border: none; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;
+      }
+      .btn-inline-cancel {
+        flex: 1; padding: 6px 10px; background: #e0e0e0; color: #333;
+        border: none; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;
+      }
+      .btn-inline-save:hover, .btn-inline-cancel:hover { opacity: 0.85; }
+      .btn-inline-save:disabled { opacity: 0.4; cursor: not-allowed; }
+      .inline-status { font-size: 10px; margin-top: 5px; min-height: 14px; text-align: center; }
+      .inline-status.ok   { color: #1f6d2a; font-weight: bold; }
+      .inline-status.warn { color: #9a2c2c; font-weight: bold; }
+
+      /* Cutoff badge in vendor card header (View All tab). Shows the
+         current cutoff time next to the vendor name, or a neutral "no
+         cutoff" placeholder when none is set. Clicking inline-edit
+         opens an input for it alongside the multiplier inputs. */
+      .vendor-card-meta {
+        display: flex; align-items: center; gap: 6px;
+        margin-top: 2px;
+      }
+      .cutoff-badge {
+        font-size: 9px; font-weight: bold;
+        padding: 1px 6px; border-radius: 3px;
+        background: #f0f7f4; color: #1a3a2e;
+        letter-spacing: 0.3px; text-transform: uppercase;
+      }
+      .cutoff-badge.empty {
+        background: #f5f5f5; color: #aaa; font-style: italic; text-transform: none;
+        font-weight: normal;
+      }
+      .cutoff-edit-row {
+        display: flex; align-items: center; gap: 6px;
+        margin-bottom: 8px;
+      }
+      .cutoff-edit-row label { font-size: 10px; color: #555; font-weight: bold; min-width: 50px; }
+      .cutoff-edit-row input[type="time"],
+      .cutoff-edit-row input[type="text"] {
+        flex: 1; min-width: 0; padding: 5px 7px;
+        border: 1px solid #ccc; border-radius: 3px;
+        font-size: 11px; background: #fff;
+      }
+      .cutoff-edit-row .cutoff-clear {
+        font-size: 9px; padding: 3px 6px;
+        background: #f5f5f5; color: #888;
+        border: 1px solid #ddd; border-radius: 3px; cursor: pointer; font-weight: bold;
+      }
+      .cutoff-edit-row .cutoff-clear:hover { background: #e8e8e8; color: #333; }
+
+      /* ── Multiplier inputs ── */
+      .mult-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+      .mult-label { font-size: 9px; color: #888; font-weight: bold; }
+      .mult-input {
+        width: 100%; min-width: 0; padding: 5px 0;
+        border: 1px solid #ccc; border-radius: 3px;
+        font-size: 12px; font-weight: bold; text-align: center;
+        background: #fff; -moz-appearance: textfield;
+      }
+      .mult-input::-webkit-outer-spin-button,
+      .mult-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+      .mult-input:focus { outline: none; border-color: #1a3a2e; }
+      .mult-input.is-zero { background: #f5f5f5; color: #ccc; font-weight: normal; border-color: #e8e8e8; }
+      .mult-input.is-one  { background: #f0f7f4; color: #1a3a2e; border-color: #c8ddd5; }
+      .mult-input.is-high { background: #fff8e6; color: #b36b00; border-color: #f0d080; }
+
+      /* ── Action panels ── */
+      .action-panels { padding: 12px; }
+      .collapsible-header {
+        display: flex; align-items: center; justify-content: space-between;
+        cursor: pointer; padding: 8px 0; border-top: 1px solid #e0e0e0; user-select: none;
+      }
+      .collapsible-header:first-child { border-top: none; }
+      .collapsible-title { font-size: 11px; font-weight: bold; color: #1a3a2e; }
+      .collapsible-title.danger { color: #c0392b; }
+      .collapsible-arrow { font-size: 10px; color: #aaa; transition: transform 0.15s; }
+      .collapsible-arrow.open { transform: rotate(180deg); }
+      .collapsible-body { display: none; padding: 10px 0 6px 0; }
+      .collapsible-body.open { display: block; }
+      .section-label { font-size: 10px; font-weight: bold; letter-spacing: 0.06em; color: #888; text-transform: uppercase; margin: 12px 0 6px 0; }
+      .hint { font-size: 10px; color: #888; line-height: 1.5; margin-bottom: 10px; }
+      .row { margin-bottom: 10px; }
+      label { display: block; font-size: 11px; font-weight: bold; color: #444; margin-bottom: 3px; }
+      input[type="text"], select {
+        width: 100%; padding: 7px 8px; border: 1px solid #ccc;
+        border-radius: 4px; font-size: 12px; background: #fff;
+      }
+      input:focus, select:focus { outline: none; border-color: #1a3a2e; }
+      .day-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 10px; }
+      .day-cell { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+      .day-label { font-size: 10px; font-weight: bold; color: #555; }
+      .day-check { width: 18px; height: 18px; cursor: pointer; accent-color: #1a3a2e; }
+      .mult-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 6px; }
+      .delivery-summary {
+        font-size: 10px; color: #444; background: #f0f7f4; border: 1px solid #c8ddd5;
+        border-radius: 4px; padding: 6px 8px; margin-bottom: 10px; line-height: 1.6;
+      }
+      .delivery-summary.empty { background: #f9f9f9; border-color: #ddd; color: #aaa; font-style: italic; }
+      .warning-banner {
+        background: #fff3f3; border: 1px solid #e8a0a0; border-radius: 4px;
+        padding: 8px 10px; font-size: 11px; color: #7a1a1a; margin-bottom: 10px; line-height: 1.5;
+      }
+      .btn-row { display: flex; gap: 8px; margin-top: 4px; }
+      button { padding: 9px 12px; cursor: pointer; border: none; border-radius: 4px; font-size: 12px; font-weight: bold; }
+      .btn-primary   { background: #1a6b2e; color: #fff; flex: 2; }
+      .btn-secondary { background: #e0e0e0; color: #333; flex: 1; }
+      .btn-danger    { background: #c0392b; color: #fff; flex: 2; }
+      button:hover    { opacity: 0.85; }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+      .status { font-size: 11px; margin-top: 8px; min-height: 16px; }
+      .status.ok   { color: #1f6d2a; font-weight: bold; }
+      .status.warn { color: #9a2c2c; font-weight: bold; }
+      .status.info { color: #555; }
+      hr { border: none; border-top: 1px solid #eee; margin: 10px 0; }
+
+      /* ── Loading state (centered spinner — replaces text-only "Loading…"
+         indicator while the initial vendor list is being fetched). ── */
+      .loading-state {
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 48px 20px; gap: 14px; min-height: 180px;
+      }
+      .spinner {
+        width: 36px; height: 36px;
+        border: 3px solid #e1e4e8; border-top-color: #1a6b2e;
+        border-radius: 50%;
+        animation: spinner-rotate 0.8s linear infinite;
+      }
+      @keyframes spinner-rotate { to { transform: rotate(360deg); } }
+      .loading-label { color: #6a7280; font-size: 13px; }
+
+      /* ── Saving overlay — applied to whichever element initiated the
+         action: the specific .vendor-card during inline-edit save, or the
+         relevant .collapsible-body during ADD / REMOVE. pointer-events:none
+         on children also prevents triggering a second commit while one is
+         in flight. Pair every setSavingCard_(id, true) with a (id, false)
+         on BOTH success and failure paths. ── */
+      .vendor-card.saving,
+      .collapsible-body.saving { position: relative; }
+      .vendor-card.saving > *,
+      .collapsible-body.saving > * { opacity: 0.4; pointer-events: none; }
+      .vendor-card.saving::after,
+      .collapsible-body.saving::after {
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 18px; font-weight: bold; letter-spacing: 1px;
+        color: #1a6b2e;
+        z-index: 5; pointer-events: none;
+      }
+      body.lang-en .vendor-card.saving::after,
+      body.lang-en .collapsible-body.saving::after { content: 'SAVING\2026'; }
+      body.lang-es .vendor-card.saving::after,
+      body.lang-es .collapsible-body.saving::after { content: 'GUARDANDO\2026'; }
+
+      /* Parallel deleting overlay — red label so the user can tell a
+         destructive action is in flight. Pair every setDeletingCard_(id, true)
+         with a (id, false) on BOTH success and failure paths. */
+      .vendor-card.deleting,
+      .collapsible-body.deleting { position: relative; }
+      .vendor-card.deleting > *,
+      .collapsible-body.deleting > * { opacity: 0.4; pointer-events: none; }
+      .vendor-card.deleting::after,
+      .collapsible-body.deleting::after {
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 18px; font-weight: bold; letter-spacing: 1px;
+        color: #c0392b;
+        z-index: 5; pointer-events: none;
+      }
+      body.lang-en .vendor-card.deleting::after,
+      body.lang-en .collapsible-body.deleting::after { content: 'DELETING\2026'; }
+      body.lang-es .vendor-card.deleting::after,
+      body.lang-es .collapsible-body.deleting::after { content: 'ELIMINANDO\2026'; }
+
+      /* ── i18n ── */
+      .es { display: none; }
+      .en { display: inline; }
+    </style>
+  </head>
+  <body class="lang-en">
+
+    <div class="top-bar">
+      <div class="top-bar-title">
+        <span class="en">Manage Vendors</span>
+        <span class="es">Administrar Proveedores</span>
+      </div>
+      <div class="lang-group">
+        <button class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button class="lang-btn"        onclick="setLang('es')">ES</button>
+      </div>
+    </div>
+
+    <div class="scroll-body">
+
+      <!-- Vendor list -->
+      <div class="section-header">
+        <span class="en">Vendors</span>
+        <span class="es">Proveedores</span>
+      </div>
+      <div class="vendor-list-wrap">
+        <div class="view-hint">
+          <span class="en">Tap <b>Edit</b> on any vendor to update their order day multipliers.</span>
+          <span class="es">Toca <b>Editar</b> en cualquier proveedor para actualizar los multiplicadores.</span>
+        </div>
+        <div id="view-loading"></div>
+        <div id="vendor-cards"></div>
+        <div id="view-status" class="status" style="padding:0 12px 8px;"></div>
+      </div>
+
+      <!-- Action panels -->
+      <div class="action-panels">
+
+        <!-- ADD -->
+        <div class="collapsible-header" onclick="toggleSection('add')">
+          <span class="collapsible-title">
+            <span class="en">＋ Add Vendor</span>
+            <span class="es">＋ Agregar Proveedor</span>
+          </span>
+          <span class="collapsible-arrow" id="arrow-add">▼</span>
+        </div>
+        <div class="collapsible-body" id="body-add">
+
+          <div class="row">
+            <label>
+              <span class="en">Vendor Name</span>
+              <span class="es">Nombre del Proveedor</span>
+            </label>
+            <input type="text" id="vendor-name" />
+          </div>
+
+          <div class="section-label">
+            <span class="en">Delivery Days</span>
+            <span class="es">Días de Entrega</span>
+          </div>
+          <div class="hint">
+            <span class="en">Check the days this vendor delivers. Multipliers are auto-calculated — adjust if needed.</span>
+            <span class="es">Marca los días en que entrega este proveedor. Los multiplicadores se calculan automáticamente.</span>
+          </div>
+
+          <div class="day-grid" id="day-check-grid"></div>
+          <div id="delivery-summary" class="delivery-summary empty"></div>
+
+          <div class="section-label">
+            <span class="en">Order Day Multipliers</span>
+            <span class="es">Multiplicadores por Día</span>
+          </div>
+          <div class="hint">
+            <span class="en">0 = no order. 1 = standard par. Higher = covers multiple days.</span>
+            <span class="es">0 = sin pedido. 1 = par estándar. Mayor = cubre más días.</span>
+          </div>
+
+          <div class="mult-grid" id="mult-input-grid"></div>
+
+          <div class="section-label">
+            <span class="en">Cutoff Time</span>
+            <span class="es">Hora de Corte</span>
+          </div>
+          <div class="hint">
+            <span class="en">Time of day this vendor stops accepting orders. Leave blank for vendors with no cutoff (pickup, walk-in).</span>
+            <span class="es">Hora en que el proveedor deja de aceptar pedidos. Deja vacío si no hay corte.</span>
+          </div>
+          <div class="row">
+            <input type="time" id="vendor-cutoff" />
+          </div>
+
+          <div class="btn-row">
+            <button class="btn-secondary" onclick="resetAddForm()">
+              <span class="en">Reset</span>
+              <span class="es">Restablecer</span>
+            </button>
+            <button class="btn-primary" id="add-btn" onclick="doAddVendor()">
+              <span class="en">Add Vendor + Create Tab</span>
+              <span class="es">Agregar Proveedor + Crear Pestaña</span>
+            </button>
+          </div>
+          <div id="add-status" class="status"></div>
+        </div>
+
+        <!-- REMOVE -->
+        <div class="collapsible-header" onclick="toggleSection('remove')">
+          <span class="collapsible-title danger">
+            <span class="en">✕ Remove Vendor</span>
+            <span class="es">✕ Eliminar Proveedor</span>
+          </span>
+          <span class="collapsible-arrow" id="arrow-remove">▼</span>
+        </div>
+        <div class="collapsible-body" id="body-remove">
+
+          <div class="warning-banner">
+            <span class="en">This removes the vendor from the table and dropdown only.<br>
+              Their tab, items in MASTER_ITEMS, and pick path data are <b>left untouched</b>.</span>
+            <span class="es">Esto elimina al proveedor de la tabla y el menú desplegable solamente.<br>
+              Su pestaña, artículos en MASTER_ITEMS y datos de ruta quedan <b>intactos</b>.</span>
+          </div>
+
+          <div class="row">
+            <label>
+              <span class="en">Select Vendor to Remove</span>
+              <span class="es">Selecciona el Proveedor a Eliminar</span>
+            </label>
+            <select id="remove-select"></select>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn-secondary" onclick="byId('remove-select').value=''; setStatus('remove','')">
+              <span class="en">Cancel</span>
+              <span class="es">Cancelar</span>
+            </button>
+            <button class="btn-danger" id="remove-btn" onclick="doRemoveVendor()">
+              <span class="en">Remove Vendor</span>
+              <span class="es">Eliminar Proveedor</span>
+            </button>
+          </div>
+          <div id="remove-status" class="status"></div>
+        </div>
+
+      </div><!-- /action-panels -->
+    </div><!-- /scroll-body -->
+
+    <script>
+      const DAYS      = ["mon","tue","wed","thu","fri","sat","sun"];
+      const DAY_NAMES_EN = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+      const DAY_NAMES_ES = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+      const DAY_SHORT_EN = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+      const DAY_SHORT_ES = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+
+      var LANG = 'en';
+
+      var T = {
+        en: {
+          vendorRequired:   'Vendor name is required.',
+          alreadyExists:    '" already exists.',
+          selectDelivery:   'Select at least one delivery day.',
+          creating:         'Creating vendor and tab… this may take a moment.',
+          added:            'Added "', addedEnd: '" and created tab successfully.',
+          noVendors:        'No vendors found.',
+          saving:           'Saving…', saved: 'Saved!',
+          removing:         'Removing…',
+          removed:          '" removed from vendor table.',
+          selectToRemove:   'Select a vendor to remove.',
+          selectVendor:     '-- Select a vendor --',
+          vendorPh:         'e.g., Sysco',
+          noDelivery:       'No delivery days selected yet.',
+          delivers:         'Delivers: ',
+          edit:             'Edit', cancel: 'Cancel',
+          saveMults:        'Save Multipliers',
+          loading:          'Loading…',
+          cutoffLabel:      'Cutoff',
+          noCutoff:         'No cutoff',
+          cutoffPlaceholder:'HH:MM'
+        },
+        es: {
+          vendorRequired:   'El nombre del proveedor es obligatorio.',
+          alreadyExists:    '" ya existe.',
+          selectDelivery:   'Selecciona al menos un día de entrega.',
+          creating:         'Creando proveedor y pestaña… puede tomar un momento.',
+          added:            'Agregado "', addedEnd: '" y pestaña creada correctamente.',
+          noVendors:        'No se encontraron proveedores.',
+          saving:           'Guardando…', saved: '¡Guardado!',
+          removing:         'Eliminando…',
+          removed:          '" eliminado de la tabla de proveedores.',
+          selectToRemove:   'Selecciona un proveedor para eliminar.',
+          selectVendor:     '-- Selecciona un proveedor --',
+          vendorPh:         'ej. Sysco',
+          noDelivery:       'Ningún día de entrega seleccionado.',
+          delivers:         'Entrega: ',
+          edit:             'Editar', cancel: 'Cancelar',
+          saveMults:        'Guardar Multiplicadores',
+          loading:          'Cargando…',
+          cutoffLabel:      'Corte',
+          noCutoff:         'Sin corte',
+          cutoffPlaceholder:'HH:MM'
+        }
+      };
+
+      function t(k) { return T[LANG][k] || T.en[k] || k; }
+
+      function setLang(lang) {
+        LANG = lang;
+        document.body.className = 'lang-' + lang;  // drives card.saving::after content
+        document.querySelectorAll('.lang-btn').forEach(function(b, i) {
+          b.classList.toggle('active', ['en','es'][i] === lang);
+        });
+        document.querySelectorAll('.en,.es').forEach(function(el) {
+          el.style.display = el.classList.contains(lang) ? 'inline' : 'none';
+        });
+        byId('vendor-name').placeholder = t('vendorPh');
+        recalcMultipliers();
+        populateRemoveSelect();
+        rebuildDayGrids();
+      }
+
+      function byId(id) { return document.getElementById(id); }
+
+      function bumpMutationTs_() {
+        // Signals to other modals' caches that data has changed and they
+        // should invalidate on next open. Stored under a shared localStorage
+        // key that must match the literal used by every reader/writer across
+        // modals — currently only ManageItems' View All cache reads it.
+        try { localStorage.setItem('mog_lastMutationTs', String(Date.now())); } catch (e) {}
+      }
+
+      function setStatus(key, msg, type) {
+        const el = byId(key + '-status');
+        if (!el) return;
+        el.textContent = msg;
+        el.className   = 'status ' + (type || '');
+      }
+
+      // Centered spinner card — replaces the inline "Loading…" text in the
+      // vendor list area while the initial getVendorTableData fetch is in flight.
+      function loadingHtml_(label) {
+        var lbl = label || t('loading');
+        return '<div class="loading-state">' +
+                 '<div class="spinner"></div>' +
+                 '<div class="loading-label">' + lbl + '</div>' +
+               '</div>';
+      }
+
+      // Saving overlay control. Adds .saving to an element by id, which
+      // dims its contents + locks pointer events + shows a centered
+      // SAVING/GUARDANDO label via CSS. Targets here are dynamic per-vendor
+      // card ids ('vcard-' + vIdx) and static panel body ids (body-add,
+      // body-remove). Pair every (id, true) call with a (id, false) on
+      // BOTH success and failure paths.
+      function setSavingCard_(elementId, on) {
+        var c = byId(elementId);
+        if (!c) return;
+        if (on) c.classList.add('saving');
+        else    c.classList.remove('saving');
+      }
+
+      // Same pattern as setSavingCard_ but uses the .deleting overlay (red
+      // DELETING/ELIMINANDO label). Pair every (id, true) with a (id, false)
+      // on BOTH success and failure.
+      function setDeletingCard_(elementId, on) {
+        var c = byId(elementId);
+        if (!c) return;
+        if (on) c.classList.add('deleting');
+        else    c.classList.remove('deleting');
+      }
+
+      // ── Build day grids dynamically so labels can be lang-aware ──────────────
+      function rebuildDayGrids() {
+        const shorts = LANG === 'es' ? DAY_SHORT_ES : DAY_SHORT_EN;
+
+        // Check grid
+        const checkGrid = byId('day-check-grid');
+        checkGrid.innerHTML = '';
+        DAYS.forEach(function(d, i) {
+          const wasChecked = byId('del-' + d) ? byId('del-' + d).checked : false;
+          const cell = document.createElement('div');
+          cell.className = 'day-cell';
+          cell.innerHTML =
+            '<div class="day-label">' + shorts[i] + '</div>' +
+            '<input type="checkbox" class="day-check" id="del-' + d + '"' +
+            (wasChecked ? ' checked' : '') + ' onchange="recalcMultipliers()">';
+          checkGrid.appendChild(cell);
+        });
+
+        // Multiplier grid
+        const multGrid = byId('mult-input-grid');
+        const oldVals  = DAYS.map(function(d) {
+          const el = byId('mult-' + d);
+          return el ? el.value : '0';
+        });
+        multGrid.innerHTML = '';
+        DAYS.forEach(function(d, i) {
+          const cell = document.createElement('div');
+          cell.className = 'mult-cell';
+          cell.innerHTML =
+            '<div class="mult-label">' + shorts[i] + '</div>' +
+            '<input type="number" class="mult-input is-zero" id="mult-' + d +
+            '" step="0.1" min="0" value="' + oldVals[i] + '" oninput="styleMultInput(this)">';
+          multGrid.appendChild(cell);
+          styleMultInput(cell.querySelector('input'));
+        });
+
+        recalcMultipliers();
+      }
+
+      // ── Collapsible sections ─────────────────────────────────────────────────
+      function toggleSection(key) {
+        const body  = byId('body-' + key);
+        const arrow = byId('arrow-' + key);
+        const isOpen = body.classList.contains('open');
+        body.classList.toggle('open', !isOpen);
+        arrow.classList.toggle('open', !isOpen);
+        if (key === 'remove' && !isOpen) populateRemoveSelect();
+      }
+
+      // ── Multiplier styling ───────────────────────────────────────────────────
+      function styleMultInput(inp) {
+        const v = parseFloat(inp.value) || 0;
+        inp.classList.remove('is-zero','is-one','is-high');
+        if (v === 0)      inp.classList.add('is-zero');
+        else if (v === 1) inp.classList.add('is-one');
+        else              inp.classList.add('is-high');
+      }
+
+      function multClass(v) { return v === 0 ? 'zero' : v === 1 ? 'one' : 'high'; }
+      function fmtMult(v)   { return v % 1 === 0 ? String(v) : v.toFixed(1); }
+
+      // Formats a "HH:MM" 24h string as "h:MM AM/PM" for display.
+      // Returns empty string for null/empty input.
+      function fmtCutoff12h(hhmm) {
+        if (!hhmm) return '';
+        const parts = String(hhmm).split(':');
+        if (parts.length !== 2) return '';
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (isNaN(h) || isNaN(m)) return '';
+        const period = h >= 12 ? 'PM' : 'AM';
+        const h12 = h % 12 === 0 ? 12 : h % 12;
+        const mm = m < 10 ? '0' + m : '' + m;
+        return h12 + ':' + mm + ' ' + period;
+      }
+
+      // Paints the cutoff badge inside the vendor card header. Pass the
+      // raw "HH:MM" string from server (or null/empty). Sets either a
+      // populated badge ("CUTOFF 2:00 PM") or a muted "no cutoff" pill.
+      function applyCutoffBadge_(el, cutoffTime) {
+        if (cutoffTime) {
+          el.className = 'cutoff-badge';
+          el.textContent = t('cutoffLabel') + ' ' + fmtCutoff12h(cutoffTime);
+        } else {
+          el.className = 'cutoff-badge empty';
+          el.textContent = t('noCutoff');
+        }
+      }
+
+      function recalcMultipliers() {
+        const shorts       = LANG === 'es' ? DAY_SHORT_ES : DAY_SHORT_EN;
+        const names        = LANG === 'es' ? DAY_NAMES_ES : DAY_NAMES_EN;
+        const deliveryDays = DAYS.map(d => byId('del-' + d) ? byId('del-' + d).checked : false);
+        const count        = deliveryDays.filter(Boolean).length;
+        const summaryEl    = byId('delivery-summary');
+
+        if (!count) {
+          summaryEl.textContent = t('noDelivery');
+          summaryEl.className   = 'delivery-summary empty';
+          DAYS.forEach(d => { const i = byId('mult-' + d); if(i){i.value='0'; styleMultInput(i);} });
+          return;
+        }
+
+        summaryEl.innerHTML = '<b>' + t('delivers') + '</b>' + names.filter((_,i) => deliveryDays[i]).join(', ');
+        summaryEl.className = 'delivery-summary';
+
+        const mults = new Array(7).fill(0);
+        for (let i = 0; i < 7; i++) {
+          const tomorrow = (i + 1) % 7;
+          if (!deliveryDays[tomorrow]) continue;
+          let gap = 1;
+          for (let j = 1; j <= 7; j++) {
+            if (deliveryDays[(tomorrow + j) % 7]) { gap = j; break; }
+          }
+          mults[i] = gap;
+        }
+        DAYS.forEach((d, i) => {
+          const inp = byId('mult-' + d);
+          if (!inp) return;
+          inp.value = mults[i] % 1 === 0 ? String(mults[i]) : mults[i].toFixed(1);
+          styleMultInput(inp);
+        });
+      }
+
+      // ── Vendor cards ─────────────────────────────────────────────────────────
+      let vendorData = [];
+
+      function renderVendorCards(useCache) {
+        // First call uses the prebaked VENDOR_TABLE from the template (no
+        // server roundtrip). Subsequent calls (after Add/Remove) re-fetch.
+        if (useCache && VENDOR_TABLE && VENDOR_TABLE.length >= 0) {
+          vendorData = VENDOR_TABLE;
+          const container = byId('vendor-cards');
+          container.innerHTML = '';
+          byId('view-loading').style.display = 'none';
+          if (!vendorData.length) {
+            container.innerHTML = "<div style='padding:20px;text-align:center;color:#aaa;font-size:11px;font-style:italic'>" + t('noVendors') + "</div>";
+            return;
+          }
+          vendorData.forEach(function(v, vIdx) { container.appendChild(buildVendorCard(v, vIdx)); });
+          return;
+        }
+
+        const loadEl = byId('view-loading');
+        loadEl.innerHTML       = loadingHtml_();
+        loadEl.style.padding   = '0';   // override #view-loading 20px (spinner has its own)
+        loadEl.style.display   = 'block';
+        byId('vendor-cards').innerHTML = '';
+
+        google.script.run
+          .withSuccessHandler(function(vendors) {
+            loadEl.style.display = 'none';
+            vendorData = vendors;
+            const container = byId('vendor-cards');
+            container.innerHTML = '';
+            if (!vendors.length) {
+              container.innerHTML = "<div style='padding:20px;text-align:center;color:#aaa;font-size:11px;font-style:italic'>" + t('noVendors') + "</div>";
+              return;
+            }
+            vendors.forEach(function(v, vIdx) { container.appendChild(buildVendorCard(v, vIdx)); });
+          })
+          .withFailureHandler(function(err) {
+            loadEl.style.padding = '';   // restore default for plain-text error
+            loadEl.textContent   = 'Error: ' + (err.message || String(err));
+          })
+          .getVendorTableData();
+      }
+
+      function buildVendorCard(v, vIdx) {
+        const shorts = LANG === 'es' ? DAY_SHORT_ES : DAY_SHORT_EN;
+        const card = document.createElement('div');
+        card.className = 'vendor-card';
+        card.id        = 'vcard-' + vIdx;
+
+        const header = document.createElement('div');
+        header.className = 'vendor-card-header';
+
+        // Left side: name + cutoff badge underneath
+        const nameBlock = document.createElement('div');
+        const nameEl = document.createElement('div');
+        nameEl.className   = 'vendor-card-name';
+        nameEl.textContent = v.name;
+        nameBlock.appendChild(nameEl);
+
+        const metaRow = document.createElement('div');
+        metaRow.className = 'vendor-card-meta';
+        const cutoffBadge = document.createElement('span');
+        cutoffBadge.id = 'cutoff-badge-' + vIdx;
+        applyCutoffBadge_(cutoffBadge, v.cutoffTime);
+        metaRow.appendChild(cutoffBadge);
+        nameBlock.appendChild(metaRow);
+
+        const editBtn = document.createElement('button');
+        editBtn.className   = 'edit-mult-btn';
+        editBtn.textContent = t('edit');
+        editBtn.onclick     = function() { toggleInlineEdit(vIdx, editBtn); };
+
+        header.appendChild(nameBlock);
+        header.appendChild(editBtn);
+        card.appendChild(header);
+
+        const pillRow = document.createElement('div');
+        pillRow.className = 'day-pills';
+        pillRow.id        = 'pills-' + vIdx;
+        v.mults.forEach(function(m, i) {
+          const pill = document.createElement('div');
+          pill.className = 'day-pill';
+          pill.innerHTML =
+            "<div class='day-pill-label'>" + shorts[i] + "</div>" +
+            "<div class='day-pill-val " + multClass(m) + "'>" + fmtMult(m) + "</div>";
+          pillRow.appendChild(pill);
+        });
+        card.appendChild(pillRow);
+
+        const editArea = document.createElement('div');
+        editArea.className = 'inline-edit-area';
+        editArea.id        = 'iedit-' + vIdx;
+
+        // Cutoff edit input — sits above the multiplier grid so the KM
+        // sees the more "logical" piece of vendor info (when do I have
+        // to order by?) before the per-day multiplier math.
+        const cutoffRow = document.createElement('div');
+        cutoffRow.className = 'cutoff-edit-row';
+        const cutoffLbl = document.createElement('label');
+        cutoffLbl.textContent = t('cutoffLabel');
+        const cutoffInp = document.createElement('input');
+        cutoffInp.type  = 'time';
+        cutoffInp.id    = 'iecutoff-' + vIdx;
+        cutoffInp.value = v.cutoffTime || '';
+        const cutoffClearBtn = document.createElement('button');
+        cutoffClearBtn.type      = 'button';
+        cutoffClearBtn.className = 'cutoff-clear';
+        cutoffClearBtn.textContent = '✕';
+        cutoffClearBtn.title       = t('noCutoff');
+        cutoffClearBtn.onclick    = function() { cutoffInp.value = ''; };
+        cutoffRow.appendChild(cutoffLbl);
+        cutoffRow.appendChild(cutoffInp);
+        cutoffRow.appendChild(cutoffClearBtn);
+        editArea.appendChild(cutoffRow);
+
+        const grid = document.createElement('div');
+        grid.className = 'inline-mult-grid';
+        shorts.forEach(function(day, i) {
+          const cell = document.createElement('div');
+          cell.className = 'mult-cell';
+          const lbl = document.createElement('div');
+          lbl.className   = 'mult-label';
+          lbl.textContent = day;
+          const inp = document.createElement('input');
+          inp.type      = 'number'; inp.step = '0.1'; inp.min = '0';
+          inp.className = 'mult-input'; inp.id = 'ie-' + vIdx + '-' + i;
+          inp.value     = fmtMult(v.mults[i]);
+          styleMultInput(inp);
+          inp.oninput = function() { styleMultInput(inp); };
+          cell.appendChild(lbl); cell.appendChild(inp);
+          grid.appendChild(cell);
+        });
+
+        const saveRow = document.createElement('div');
+        saveRow.className = 'inline-save-row';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className   = 'btn-inline-save';
+        saveBtn.id          = 'isave-' + vIdx;
+        saveBtn.textContent = t('saveMults');
+        saveBtn.onclick     = function() { saveInlineMults(vIdx, v.name, editBtn); };
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className   = 'btn-inline-cancel';
+        cancelBtn.textContent = t('cancel');
+        cancelBtn.onclick     = function() { closeInlineEdit(vIdx, editBtn); };
+
+        saveRow.appendChild(cancelBtn);
+        saveRow.appendChild(saveBtn);
+
+        const statusEl = document.createElement('div');
+        statusEl.className = 'inline-status';
+        statusEl.id        = 'istatus-' + vIdx;
+
+        editArea.appendChild(grid);
+        editArea.appendChild(saveRow);
+        editArea.appendChild(statusEl);
+        card.appendChild(editArea);
+        return card;
+      }
+
+      function toggleInlineEdit(vIdx, editBtn) {
+        const editArea = byId('iedit-' + vIdx);
+        const pillRow  = byId('pills-' + vIdx);
+        if (editArea.classList.contains('visible')) {
+          closeInlineEdit(vIdx, editBtn);
+        } else {
+          editArea.classList.add('visible');
+          pillRow.style.display = 'none';
+          editBtn.textContent   = t('cancel');
+          editBtn.classList.add('editing');
+        }
+      }
+
+      function closeInlineEdit(vIdx, editBtn) {
+        const editArea = byId('iedit-' + vIdx);
+        const pillRow  = byId('pills-' + vIdx);
+        editArea.classList.remove('visible');
+        pillRow.style.display = '';
+        editBtn.textContent   = t('edit');
+        editBtn.classList.remove('editing');
+        const statusEl = byId('istatus-' + vIdx);
+        if (statusEl) statusEl.textContent = '';
+      }
+
+      function saveInlineMults(vIdx, vendorName, editBtn) {
+        const mults   = DAYS.map(function(_, i) {
+          const val = parseFloat(byId('ie-' + vIdx + '-' + i).value);
+          return isNaN(val) ? 0 : val;
+        });
+        // <input type="time"> returns "HH:MM" 24h or empty string.
+        const cutoffInp = byId('iecutoff-' + vIdx);
+        const cutoffVal = (cutoffInp && cutoffInp.value) || '';
+        const saveBtn  = byId('isave-' + vIdx);
+        const statusEl = byId('istatus-' + vIdx);
+        saveBtn.disabled     = true;
+        statusEl.textContent = t('saving');
+        statusEl.className   = 'inline-status';
+        setSavingCard_('vcard-' + vIdx, true);
+        bumpMutationTs_();
+
+        // Two-step save: multipliers first, then cutoff. Both have to
+        // succeed for the card to show "saved". If multipliers fail we
+        // never attempt the cutoff write — the operator can fix and
+        // retry. If multipliers succeed but cutoff fails, we still
+        // surface the error (cutoff is the more recently-added field
+        // and more likely to have format issues if someone types it
+        // directly into the cell).
+        google.script.run
+          .withSuccessHandler(function() {
+            // Multipliers committed; now save cutoff.
+            google.script.run
+              .withSuccessHandler(function() {
+                setSavingCard_('vcard-' + vIdx, false);
+                statusEl.textContent = t('saved');
+                statusEl.className   = 'inline-status ok';
+                saveBtn.disabled     = false;
+                if (vendorData[vIdx]) {
+                  vendorData[vIdx].mults = mults;
+                  vendorData[vIdx].cutoffTime = cutoffVal || null;
+                }
+                const shorts  = LANG === 'es' ? DAY_SHORT_ES : DAY_SHORT_EN;
+                const pillRow = byId('pills-' + vIdx);
+                pillRow.innerHTML = '';
+                mults.forEach(function(m, i) {
+                  const pill = document.createElement('div');
+                  pill.className = 'day-pill';
+                  pill.innerHTML =
+                    "<div class='day-pill-label'>" + shorts[i] + "</div>" +
+                    "<div class='day-pill-val " + multClass(m) + "'>" + fmtMult(m) + "</div>";
+                  pillRow.appendChild(pill);
+                });
+                // Refresh the cutoff badge in place — no full re-render
+                // needed, just updates the badge text/style.
+                const badge = byId('cutoff-badge-' + vIdx);
+                if (badge) applyCutoffBadge_(badge, cutoffVal || null);
+                setTimeout(function() { closeInlineEdit(vIdx, editBtn); }, 900);
+              })
+              .withFailureHandler(function(err) {
+                setSavingCard_('vcard-' + vIdx, false);
+                statusEl.textContent = err.message || String(err);
+                statusEl.className   = 'inline-status warn';
+                saveBtn.disabled     = false;
+              })
+              .commitUpdateVendorCutoff(vendorName, cutoffVal);
+          })
+          .withFailureHandler(function(err) {
+            setSavingCard_('vcard-' + vIdx, false);
+            statusEl.textContent = err.message || String(err);
+            statusEl.className   = 'inline-status warn';
+            saveBtn.disabled     = false;
+          })
+          .commitUpdateVendorMults(vendorName, mults);
+      }
+
+      // ── ADD ──────────────────────────────────────────────────────────────────
+      function doAddVendor() {
+        const name = byId('vendor-name').value.trim();
+        if (!name) return setStatus('add', t('vendorRequired'), 'warn');
+        if (VENDOR_LIST.some(v => v.toLowerCase() === name.toLowerCase()))
+          return setStatus('add', '"' + name + t('alreadyExists'), 'warn');
+        if (!DAYS.some(d => byId('del-' + d) && byId('del-' + d).checked))
+          return setStatus('add', t('selectDelivery'), 'warn');
+
+        const mults = DAYS.map(d => parseFloat(byId('mult-' + d).value) || 0);
+        // Cutoff is optional. <input type="time"> returns "HH:MM" 24h or
+        // empty string — exactly the format the server normalizer accepts.
+        const cutoff = (byId('vendor-cutoff') && byId('vendor-cutoff').value) || '';
+        byId('add-btn').disabled = true;
+        setStatus('add', t('creating'), 'info');
+        setSavingCard_('body-add', true);
+
+        bumpMutationTs_();
+        google.script.run
+          .withSuccessHandler(function() {
+            setSavingCard_('body-add', false);
+            setStatus('add', t('added') + name + t('addedEnd'), 'ok');
+            VENDOR_LIST.push(name);
+            byId('add-btn').disabled = false;
+            resetAddForm();
+            renderVendorCards();
+          })
+          .withFailureHandler(function(err) {
+            setSavingCard_('body-add', false);
+            setStatus('add', err.message || String(err), 'warn');
+            byId('add-btn').disabled = false;
+          })
+          .commitAddVendor(name, mults, cutoff);
+      }
+
+      function resetAddForm() {
+        byId('vendor-name').value = '';
+        DAYS.forEach(function(d) {
+          const chk = byId('del-' + d); if (chk) chk.checked = false;
+          const inp = byId('mult-' + d); if (inp) { inp.value = '0'; styleMultInput(inp); }
+        });
+        if (byId('vendor-cutoff')) byId('vendor-cutoff').value = '';
+        byId('delivery-summary').textContent = t('noDelivery');
+        byId('delivery-summary').className   = 'delivery-summary empty';
+        setStatus('add', '');
+      }
+
+      // ── REMOVE ───────────────────────────────────────────────────────────────
+      function populateRemoveSelect() {
+        const sel     = byId('remove-select');
+        const current = sel.value;
+        sel.innerHTML = '<option value="">' + t('selectVendor') + '</option>';
+        VENDOR_LIST.slice().sort((a,b) => a.localeCompare(b)).forEach(function(v) {
+          const opt = document.createElement('option');
+          opt.value = v; opt.textContent = v;
+          if (v === current) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        setStatus('remove', '');
+      }
+
+      function doRemoveVendor() {
+        const name = byId('remove-select').value;
+        if (!name) return setStatus('remove', t('selectToRemove'), 'warn');
+        byId('remove-btn').disabled = true;
+        setStatus('remove', t('removing'), 'info');
+        setDeletingCard_('body-remove', true);
+        bumpMutationTs_();
+        google.script.run
+          .withSuccessHandler(function() {
+            setDeletingCard_('body-remove', false);
+            setStatus('remove', '"' + name + t('removed'), 'ok');
+            const idx = VENDOR_LIST.findIndex(v => v.toLowerCase() === name.toLowerCase());
+            if (idx !== -1) VENDOR_LIST.splice(idx, 1);
+            byId('remove-btn').disabled = false;
+            populateRemoveSelect();
+            renderVendorCards();
+          })
+          .withFailureHandler(function(err) {
+            setDeletingCard_('body-remove', false);
+            setStatus('remove', err.message || String(err), 'warn');
+            byId('remove-btn').disabled = false;
+          })
+          .commitRemoveVendor(name);
+      }
+
+      // ── Init ──────────────────────────────────────────────────────────────────
+      setLang('en');
+      renderVendorCards(true);  // use prebaked VENDOR_TABLE from template — no server call
+    </script>
+  </body>
+</html>

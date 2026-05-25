@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <script>
+      var PICK_DATA   = <?!= pickDataJson ?>;
+      var VENDOR_LIST = <?!= vendorListJson ?>;
+    </script>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 13px;
+        background: #f9f9f9;
+        color: #222;
+      }
+
+      /* ── Language toggle ── */
+      .lang-bar {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        background: #1a1a2e;
+        padding: 4px 10px;
+        gap: 4px;
+      }
+      .lang-btn {
+        padding: 3px 10px;
+        font-size: 10px;
+        font-weight: bold;
+        cursor: pointer;
+        color: rgba(255,255,255,0.45);
+        background: transparent;
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 3px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
+      .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
+
+      /* ── Sticky header ── */
+      .header {
+        background: #fff;
+        border-bottom: 2px solid #1a3a2e;
+        padding: 10px 12px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+      .header h3 {
+        font-size: 13px;
+        color: #1a3a2e;
+        margin-bottom: 6px;
+      }
+      .vendor-select {
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        background: #fff;
+        color: #1a3a2e;
+      }
+      .vendor-select:focus { outline: none; border-color: #1a3a2e; }
+      .vendor-select:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        background: #f0f0f0;
+      }
+
+      /* ── Hints ── */
+      .hint-drag {
+        font-size: 10px;
+        color: #888;
+        padding: 4px 12px 0;
+      }
+
+      /* ── Loading ── */
+      .loading {
+        padding: 24px 12px;
+        text-align: center;
+        font-size: 12px;
+        color: #888;
+        font-style: italic;
+      }
+
+      /* Centered spinner — replaces the .loading text indicator while
+         a vendor's pick path is being fetched. */
+      .loading-state {
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 48px 20px; gap: 14px; min-height: 180px;
+      }
+      .spinner {
+        width: 36px; height: 36px;
+        border: 3px solid #e1e4e8; border-top-color: #1a6b2e;
+        border-radius: 50%;
+        animation: spinner-rotate 0.8s linear infinite;
+      }
+      @keyframes spinner-rotate { to { transform: rotate(360deg); } }
+      .loading-label { color: #6a7280; font-size: 13px; }
+
+      /* Saving overlay — engages on #groupsContainer during commitReorderPickPath
+         so the user can't drag items that wouldn't be saved. Pair every
+         setSavingPickPath_(true) with a (false) on BOTH success and failure. */
+      #groupsContainer.saving { position: relative; }
+      #groupsContainer.saving > * { opacity: 0.4; pointer-events: none; }
+      #groupsContainer.saving::after {
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 18px; font-weight: bold; letter-spacing: 1px;
+        color: #1a6b2e;
+        z-index: 5; pointer-events: none;
+      }
+      body.lang-en #groupsContainer.saving::after { content: 'SAVING\2026'; }
+      body.lang-es #groupsContainer.saving::after { content: 'GUARDANDO\2026'; }
+
+      /* ── Groups ── */
+      #groupsContainer { padding-bottom: 8px; }
+      .area-group { margin: 10px 12px 0; }
+
+      .area-header {
+        font-size: 10px;
+        font-weight: bold;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #fff;
+        background: #1a3a2e;
+        border-radius: 3px 3px 0 0;
+        padding: 5px 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .area-header.unassigned { background: #b36b00; }
+
+      .area-order-badge {
+        font-size: 9px;
+        background: rgba(255,255,255,0.25);
+        border-radius: 3px;
+        padding: 1px 5px;
+        flex-shrink: 0;
+      }
+
+      /* Header label takes remaining space so the + button can sit at the
+         right edge. The unassigned header has no + button so its label
+         spans the full row. */
+      .area-header-label { flex: 1; }
+
+      /* + button on assigned-section headers — opens the picker showing
+         currently-unassigned items, click one to drop it into this section. */
+      .btn-add-to-section {
+        background: rgba(255,255,255,0.18);
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.35);
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: bold;
+        line-height: 1;
+        padding: 1px 8px;
+        flex-shrink: 0;
+      }
+      .btn-add-to-section:hover  { background: rgba(255,255,255,0.30); }
+      .btn-add-to-section:active { background: rgba(255,255,255,0.40); }
+      .btn-add-to-section:disabled {
+        opacity: 0.35; cursor: not-allowed;
+        background: rgba(255,255,255,0.10);
+      }
+
+      .area-body {
+        border: 1px solid #c8ddd5;
+        border-top: none;
+        border-radius: 0 0 3px 3px;
+        background: #fff;
+        min-height: 40px;
+      }
+      .area-body.unassigned-body { border-color: #f0d080; }
+
+      /* ── Item rows (click-to-move only — no drag/drop) ── */
+      .item-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 8px;
+        border-bottom: 1px solid #eee;
+        user-select: none;
+        font-size: 12px;
+        background: #fff;
+      }
+      .item-row:last-child { border-bottom: none; }
+
+      .shelf-badge {
+        min-width: 26px;
+        text-align: center;
+        font-size: 10px;
+        font-weight: bold;
+        color: #bbb;
+        background: #f5f5f5;
+        border-radius: 3px;
+        padding: 2px 4px;
+        flex-shrink: 0;
+      }
+      .unassigned-badge {
+        min-width: 26px;
+        text-align: center;
+        font-size: 11px;
+        color: #f0a500;
+        flex-shrink: 0;
+      }
+      .item-name {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Stacked button column. Two of these per row:
+         - .btn-col-section holds ← above → (move to prev/next section)
+         - .btn-col-shelf   holds ▲ above ▼ (reorder within section)
+         Each button is half the row's vertical space, mimicking the
+         visual "stacked = sign" the user requested. */
+      .btn-col {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex-shrink: 0;
+      }
+      .btn-move {
+        background: #fff;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 10px;
+        line-height: 1;
+        padding: 2px 6px;
+        color: #555;
+        min-width: 24px;
+      }
+      .btn-move:hover    { background: #e8e8e8; }
+      .btn-move:active   { background: #d0d0d0; }
+      .btn-move:disabled {
+        opacity: 0.3; cursor: not-allowed;
+        background: #f5f5f5;
+      }
+
+      /* The standalone ⇆ button next to each assigned row. Sized to match
+         the visual height of the stacked ▲▼ pair so the row stays balanced.
+         Tinted slightly so it reads as a section-action (different from the
+         shelf-order ▲▼). */
+      .btn-swap {
+        font-size: 14px;
+        padding: 6px 10px;
+        color: #1a3a2e;
+        background: #f0f7f4;
+        border-color: #c8ddd5;
+        line-height: 1;
+      }
+      .btn-swap:hover  { background: #d8ecdf; }
+      .btn-swap:active { background: #b8dccb; }
+
+      /* Unassigned rows get a single "place into section" button (a stub
+         picker that opens the same area-picker the section ← → use). */
+      .btn-assign {
+        background: #1a6b2e;
+        color: #fff;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: bold;
+        padding: 5px 10px;
+        flex-shrink: 0;
+      }
+      .btn-assign:hover { opacity: 0.85; }
+
+      .all-assigned {
+        font-size: 11px;
+        color: #1f6d2a;
+        padding: 10px 8px;
+        text-align: center;
+        font-style: italic;
+      }
+      .empty-hint {
+        font-size: 11px;
+        color: #bbb;
+        padding: 10px 8px;
+        text-align: center;
+        font-style: italic;
+      }
+
+      /* ── Picker modal — shown when + or "place into section" is clicked.
+         Renders an absolutely-positioned overlay listing either:
+         - all unassigned items (when adding to a section), or
+         - all sections (when assigning a single unassigned item).
+         Click an entry to commit; click outside / × to cancel. */
+      .picker-backdrop {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.45);
+        z-index: 100;
+        display: flex; align-items: flex-start; justify-content: center;
+        padding: 40px 16px;
+        overflow-y: auto;
+      }
+      .picker {
+        background: #fff;
+        border-radius: 6px;
+        width: 100%;
+        max-width: 360px;
+        max-height: calc(100vh - 80px);
+        display: flex; flex-direction: column;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        overflow: hidden;
+      }
+      .picker-header {
+        background: #1a3a2e;
+        color: #fff;
+        padding: 10px 14px;
+        font-size: 12px;
+        font-weight: bold;
+        display: flex; align-items: center; gap: 8px;
+      }
+      .picker-title { flex: 1; }
+      .picker-close {
+        background: rgba(255,255,255,0.18);
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.35);
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        padding: 1px 8px;
+      }
+      .picker-close:hover { background: rgba(255,255,255,0.30); }
+      .picker-list {
+        list-style: none;
+        margin: 0; padding: 0;
+        overflow-y: auto;
+        max-height: 400px;
+      }
+      .picker-item {
+        padding: 10px 14px;
+        font-size: 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #eee;
+        display: flex; align-items: center; gap: 8px;
+      }
+      .picker-item:last-child { border-bottom: none; }
+      .picker-item:hover  { background: #f0f7f4; }
+      .picker-item:active { background: #d8ecdf; }
+      .picker-item-badge {
+        font-size: 10px;
+        background: #f5f5f5;
+        color: #666;
+        border-radius: 3px;
+        padding: 1px 5px;
+        font-weight: bold;
+        flex-shrink: 0;
+      }
+      .picker-item-name { flex: 1; }
+      .picker-empty {
+        padding: 24px 14px;
+        font-size: 12px;
+        font-style: italic;
+        color: #888;
+        text-align: center;
+      }
+
+      /* ── Footer ── */
+      .footer {
+        position: sticky;
+        bottom: 0;
+        background: #f9f9f9;
+        border-top: 1px solid #ddd;
+        padding: 10px 12px 12px;
+        margin-top: 12px;
+      }
+      .btn-row { display: flex; gap: 8px; }
+      button.btn-save {
+        flex: 2;
+        padding: 9px 12px;
+        background: #1a6b2e;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      button.btn-close {
+        flex: 1;
+        padding: 9px 12px;
+        background: #e0e0e0;
+        color: #333;
+        border: none;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      button:hover    { opacity: 0.85; }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      .status {
+        font-size: 11px;
+        margin-top: 8px;
+        min-height: 16px;
+        text-align: center;
+      }
+      .status.ok   { color: #1f6d2a; font-weight: bold; }
+      .status.warn { color: #9a2c2c; font-weight: bold; }
+      .status.info { color: #555; }
+
+      /* ── i18n ── */
+      .es { display: none; }
+      .en { display: inline; }
+    </style>
+  </head>
+  <body class="lang-en">
+
+    <!-- Language toggle -->
+    <div class="lang-bar">
+      <button class="lang-btn active" onclick="setLang('en')">EN</button>
+      <button class="lang-btn"        onclick="setLang('es')">ES</button>
+    </div>
+
+    <!-- Sticky header -->
+    <div class="header">
+      <h3>
+        <span class="en">Pick Path</span>
+        <span class="es">Ruta de Picking</span>
+      </h3>
+      <select class="vendor-select" id="vendorSelect" onchange="onVendorChange()"></select>
+    </div>
+
+    <div class="hint-drag">
+      <span class="en">Use ▲▼ to reorder within a section, ⇆ to move an item to a different section, or + on a section header to add an unassigned item.</span>
+      <span class="es">Usa ▲▼ para reordenar dentro de una sección, ⇆ para mover un artículo a otra sección, o + en el encabezado de una sección para agregar un artículo sin asignar.</span>
+    </div>
+
+    <div id="groupsContainer"></div>
+
+    <div class="footer">
+      <div class="btn-row">
+        <button class="btn-close" onclick="doClose()">
+          <span class="en">Close</span>
+          <span class="es">Cerrar</span>
+        </button>
+        <button class="btn-save" id="saveBtn" onclick="doSave()">
+          <span class="en">Save Pick Path</span>
+          <span class="es">Guardar Ruta</span>
+        </button>
+      </div>
+      <div id="status" class="status"></div>
+    </div>
+
+    <script>
+      // ── i18n ─────────────────────────────────────────────────────────────────
+      var LANG = 'en';
+
+      var T = {
+        en: {
+          loading:          'Loading ',
+          allAssigned:      '✓ All items assigned',
+          noItemsHint:      'No items yet — use + on a section to add unassigned items here.',
+          unassignedHeader: '⚠ Unassigned — use the buttons to assign each item to a section',
+          noAreaTitle:      'No storage area assigned',
+          unsavedSwitch:    ' You have unsaved changes for ',
+          unsavedSwitchEnd: '.\n\nClick OK to save before switching, or Cancel to discard changes.',
+          unsavedClose:     'You have unsaved changes. Close anyway?',
+          unsavedChanges:   'Unsaved changes.',
+          saving:           'Saving…',
+          saved:            'Saved! ',
+          itemsUpdated:     ' items updated.',
+          // Section move buttons
+          moveUpTitle:      'Move up within section',
+          moveDownTitle:    'Move down within section',
+          moveSectionTitle: 'Move to a different section',
+          // Header + button
+          addToSectionTitle:'Add an unassigned item to this section',
+          // Pickers
+          pickerAddTitle:   'Add to ',
+          pickerAddEmpty:   'No unassigned items — everything is placed.',
+          pickerSectTitle:  'Place item in…',
+          pickerMoveTitle:  'Move to…',
+          pickerSectEmpty:  'No sections defined. Add storage areas in the Storage Areas sidebar first.',
+          pickerMoveEmpty:  'No other sections to move to.',
+          unassignedLabel:  'Unassigned',
+          assignBtn:        'Place'
+        },
+        es: {
+          loading:          'Cargando ',
+          allAssigned:      '✓ Todos los artículos asignados',
+          noItemsHint:      'Sin artículos — usa + en una sección para agregar artículos sin asignar aquí.',
+          unassignedHeader: '⚠ Sin asignar — usa los botones para asignar cada artículo a una sección',
+          noAreaTitle:      'Sin área de almacén asignada',
+          unsavedSwitch:    ' Tienes cambios sin guardar para ',
+          unsavedSwitchEnd: '.\n\nHaz clic en Aceptar para guardar antes de cambiar, o en Cancelar para descartar.',
+          unsavedClose:     '¿Tienes cambios sin guardar. ¿Cerrar de todos modos?',
+          unsavedChanges:   'Cambios sin guardar.',
+          saving:           'Guardando…',
+          saved:            '¡Guardado! ',
+          itemsUpdated:     ' artículos actualizados.',
+          // Botones de movimiento
+          moveUpTitle:      'Mover arriba dentro de la sección',
+          moveDownTitle:    'Mover abajo dentro de la sección',
+          moveSectionTitle: 'Mover a otra sección',
+          // Botón + del encabezado
+          addToSectionTitle:'Agregar un artículo sin asignar a esta sección',
+          // Selectores
+          pickerAddTitle:   'Agregar a ',
+          pickerAddEmpty:   'No hay artículos sin asignar — todo está colocado.',
+          pickerSectTitle:  'Colocar artículo en…',
+          pickerMoveTitle:  'Mover a…',
+          pickerSectEmpty:  'No hay secciones definidas. Agrega áreas de almacén en el panel Áreas de Almacén primero.',
+          pickerMoveEmpty:  'No hay otras secciones a las cuales mover.',
+          unassignedLabel:  'Sin Asignar',
+          assignBtn:        'Colocar'
+        }
+      };
+
+      function t(key) { return T[LANG][key] || T['en'][key] || key; }
+
+      function setLang(lang) {
+        LANG = lang;
+        document.body.className = 'lang-' + lang;  // drives #groupsContainer.saving::after content
+        document.querySelectorAll('.lang-btn').forEach(function(btn, i) {
+          btn.classList.toggle('active', ['en','es'][i] === lang);
+        });
+        document.querySelectorAll('.en, .es').forEach(function(el) {
+          el.style.display = el.classList.contains(lang) ? 'inline' : 'none';
+        });
+        // Re-render so dynamic text (group headers, empty states) updates
+        render();
+      }
+
+      // ── State ─────────────────────────────────────────────────────────────────
+      const UNASSIGNED  = '__UNASSIGNED__';
+      let currentVendor = PICK_DATA.vendor;
+      let groups        = buildGroups(PICK_DATA);
+      let isDirty       = false;
+
+      function byId(id) { return document.getElementById(id); }
+
+      function bumpMutationTs_() {
+        // Signals to other modals' caches that data has changed and they
+        // should invalidate on next open. Stored under a shared localStorage
+        // key that must match the literal used by every reader/writer across
+        // modals — currently only ManageItems' View All cache reads it.
+        try { localStorage.setItem('mog_lastMutationTs', String(Date.now())); } catch (e) {}
+      }
+
+      function setStatus(msg, type) {
+        const el   = byId('status');
+        el.textContent = msg;
+        el.className   = 'status ' + (type || '');
+      }
+
+      // HTML-escape for safe interpolation in spinner labels (vendor names
+      // come from the SETUP sheet — usually safe, but defensive is cheap).
+      function esc_(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      // Centered spinner card — replaces the inline "Loading…" text in
+      // #groupsContainer while a vendor's pick path is being fetched.
+      function loadingHtml_(labelText) {
+        var label = labelText || (t('loading') + '\u2026');
+        return '<div class="loading-state">' +
+                 '<div class="spinner"></div>' +
+                 '<div class="loading-label">' + esc_(label) + '</div>' +
+               '</div>';
+      }
+
+      // Saving overlay control. Adds .saving to #groupsContainer, dimming
+      // the items + showing a centered SAVING/GUARDANDO label via CSS.
+      // Pair every (true) with a (false) on BOTH success and failure paths.
+      function setSavingPickPath_(on) {
+        const c = byId('groupsContainer');
+        if (!c) return;
+        if (on) c.classList.add('saving');
+        else    c.classList.remove('saving');
+      }
+
+      // Vendor-select lockout — disables the dropdown during any in-flight
+      // async work (load OR save) so the user can't trigger a second
+      // loadVendor while the first is mid-flight. Without this, stale
+      // responses can arrive in the wrong order and render Vendor A's
+      // items under Vendor B's label until the second response lands.
+      // Pair every (true) with a (false) on BOTH success and failure paths.
+      function setVendorSelectLocked_(on) {
+        const sel = byId('vendorSelect');
+        if (sel) sel.disabled = on;
+      }
+
+      function markDirty() {
+        isDirty = true;
+        setStatus(t('unsavedChanges'), 'info');
+      }
+
+      // ── Build group state ──────────────────────────────────────────────────────
+      function buildGroups(data) {
+        const unassignedGroup = {
+          area:      UNASSIGNED,
+          areaOrder: -1,
+          items:     (data.unassigned || []).map(function(x) { return { id: x.id, name: x.name }; })
+        };
+        const areaGroups = data.groups.map(function(g) {
+          return { area: g.area, areaOrder: g.areaOrder, items: g.items.slice() };
+        });
+        return [unassignedGroup].concat(areaGroups);
+      }
+
+      // ── Vendor dropdown ────────────────────────────────────────────────────────
+      (function populateVendors() {
+        const sel = byId('vendorSelect');
+        VENDOR_LIST.forEach(function(v) {
+          const opt       = document.createElement('option');
+          opt.value       = v;
+          opt.textContent = v;
+          if (v === currentVendor) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      })();
+
+      // ── Vendor switching ───────────────────────────────────────────────────────
+      function onVendorChange() {
+        const newVendor = byId('vendorSelect').value;
+        if (newVendor === currentVendor) return;
+
+        if (isDirty) {
+          const choice = window.confirm(
+            t('unsavedSwitch') + currentVendor + t('unsavedSwitchEnd')
+          );
+          if (choice) {
+            doSave(function() { loadVendor(newVendor); });
+          } else {
+            loadVendor(newVendor);
+          }
+        } else {
+          loadVendor(newVendor);
+        }
+      }
+
+      function loadVendor(vendor) {
+        currentVendor = vendor;
+        isDirty       = false;
+        byId('vendorSelect').value    = vendor;
+        byId('groupsContainer').innerHTML = loadingHtml_(t('loading') + vendor + '\u2026');
+        setStatus('');
+        setVendorSelectLocked_(true);
+
+        google.script.run
+          .withSuccessHandler(function(data) {
+            groups = buildGroups(data);
+            render();
+            setVendorSelectLocked_(false);
+          })
+          .withFailureHandler(function(err) {
+            setVendorSelectLocked_(false);
+            setStatus(err.message || String(err), 'warn');
+            byId('groupsContainer').innerHTML = '';
+          })
+          .getPickPathForSidebar(vendor);
+      }
+
+      // ── Render ────────────────────────────────────────────────────────────────
+      function render() {
+        const container = byId('groupsContainer');
+        container.innerHTML = '';
+
+        groups.forEach(function(group, gIdx) {
+          const isUnassigned = group.area === UNASSIGNED;
+          const groupEl      = document.createElement('div');
+          groupEl.className    = 'area-group';
+          groupEl.dataset.gidx = gIdx;
+
+          // Header
+          const header    = document.createElement('div');
+          header.className = 'area-header' + (isUnassigned ? ' unassigned' : '');
+
+          const label = document.createElement('span');
+          label.className = 'area-header-label';
+
+          if (!isUnassigned) {
+            const badge       = document.createElement('span');
+            badge.className   = 'area-order-badge';
+            badge.textContent = group.areaOrder;
+            header.appendChild(badge);
+            label.textContent = group.area;
+            header.appendChild(label);
+
+            // + button — opens the unassigned-items picker for this section.
+            // Disabled when there are no unassigned items left.
+            const addBtn       = document.createElement('button');
+            addBtn.className   = 'btn-add-to-section';
+            addBtn.textContent = '+';
+            addBtn.title       = t('addToSectionTitle');
+            addBtn.disabled    = (groups[0].items.length === 0);
+            addBtn.onclick     = function() { openAddPicker(gIdx); };
+            header.appendChild(addBtn);
+          } else {
+            label.textContent = t('unassignedHeader');
+            header.appendChild(label);
+          }
+
+          groupEl.appendChild(header);
+
+          // Body — pure list, no drop zones
+          const body      = document.createElement('div');
+          body.className  = 'area-body' + (isUnassigned ? ' unassigned-body' : '');
+          body.dataset.gidx = gIdx;
+
+          if (isUnassigned && group.items.length === 0) {
+            const allDone       = document.createElement('div');
+            allDone.className   = 'all-assigned';
+            allDone.textContent = t('allAssigned');
+            body.appendChild(allDone);
+          } else if (!isUnassigned && group.items.length === 0) {
+            const hint       = document.createElement('div');
+            hint.className   = 'empty-hint';
+            hint.textContent = t('noItemsHint');
+            body.appendChild(hint);
+          } else {
+            group.items.forEach(function(item, iIdx) {
+              const row = buildItemRow(item, gIdx, iIdx, group.items.length, isUnassigned);
+              body.appendChild(row);
+            });
+          }
+
+          groupEl.appendChild(body);
+          container.appendChild(groupEl);
+        });
+      }
+
+      function buildItemRow(item, gIdx, iIdx, groupLen, isUnassigned) {
+        const row        = document.createElement('div');
+        row.className    = 'item-row';
+        row.dataset.gidx = gIdx;
+        row.dataset.iidx = iIdx;
+
+        const badge = document.createElement('span');
+        if (isUnassigned) {
+          badge.className   = 'unassigned-badge';
+          badge.textContent = '!';
+          badge.title       = t('noAreaTitle');
+        } else {
+          badge.className   = 'shelf-badge';
+          badge.textContent = (iIdx + 1) * 10;
+        }
+
+        const name       = document.createElement('span');
+        name.className   = 'item-name';
+        name.textContent = item.name;
+        name.title       = item.name;
+
+        row.appendChild(badge);
+        row.appendChild(name);
+
+        if (isUnassigned) {
+          // Unassigned rows: one button that opens the section picker.
+          const btnPlace       = document.createElement('button');
+          btnPlace.className   = 'btn-assign';
+          btnPlace.textContent = t('assignBtn');
+          btnPlace.onclick     = function() {
+            openSectionPicker(+row.dataset.gidx, +row.dataset.iidx);
+          };
+          row.appendChild(btnPlace);
+        } else {
+          // Assigned rows have two controls:
+          //   ⇆ — opens the move-to-section picker (lists all OTHER sections
+          //       plus Unassigned, since "section" includes the unassigned bucket
+          //       from the user's POV)
+          //   ▲▼ stacked — reorder within the current section
+          const btnSwap       = document.createElement('button');
+          btnSwap.className   = 'btn-move btn-swap';
+          btnSwap.textContent = '⇆';
+          btnSwap.title       = t('moveSectionTitle');
+          btnSwap.onclick     = function() {
+            openMoveSectionPicker(+row.dataset.gidx, +row.dataset.iidx);
+          };
+
+          const shelfCol = document.createElement('div');
+          shelfCol.className = 'btn-col';
+
+          const btnUp       = document.createElement('button');
+          btnUp.className   = 'btn-move';
+          btnUp.textContent = '▲';
+          btnUp.title       = t('moveUpTitle');
+          btnUp.disabled    = (iIdx === 0);
+          btnUp.onclick     = function() {
+            moveItem(+row.dataset.gidx, +row.dataset.iidx, -1);
+          };
+
+          const btnDown       = document.createElement('button');
+          btnDown.className   = 'btn-move';
+          btnDown.textContent = '▼';
+          btnDown.title       = t('moveDownTitle');
+          btnDown.disabled    = (iIdx === groupLen - 1);
+          btnDown.onclick     = function() {
+            moveItem(+row.dataset.gidx, +row.dataset.iidx, +1);
+          };
+
+          shelfCol.appendChild(btnUp);
+          shelfCol.appendChild(btnDown);
+
+          row.appendChild(btnSwap);
+          row.appendChild(shelfCol);
+        }
+
+        return row;
+      }
+
+      // ── Partial DOM updates (replace full render() for in-section moves) ──────
+      // Refresh data-iidx, shelf badge, and ▲▼ disabled states for every row
+      // in a single group's body. Used after moveItem() (within-section ▲▼ swap).
+      // Cross-section moves (← → and pickers) call render() instead because
+      // they affect multiple groups' badges and ←→ disabled states.
+      function refreshGroupDom_(gIdx) {
+        const groupEl = document.querySelector('.area-group[data-gidx="' + gIdx + '"]');
+        if (!groupEl) return;
+        const isUnassigned = groups[gIdx].area === UNASSIGNED;
+        const body = groupEl.querySelector('.area-body');
+        if (!body) return;
+        const rows = body.querySelectorAll('.item-row');
+
+        // Empty-state hint handling (for non-unassigned groups that are now empty).
+        if (rows.length === 0) {
+          if (isUnassigned && groups[gIdx].items.length === 0) {
+            if (!body.querySelector('.all-assigned')) {
+              body.innerHTML = '';
+              const allDone = document.createElement('div');
+              allDone.className = 'all-assigned';
+              allDone.textContent = t('allAssigned');
+              body.appendChild(allDone);
+            }
+          } else if (!isUnassigned && groups[gIdx].items.length === 0) {
+            if (!body.querySelector('.empty-hint')) {
+              body.innerHTML = '';
+              const hint = document.createElement('div');
+              hint.className = 'empty-hint';
+              hint.textContent = t('noItemsHint');
+              body.appendChild(hint);
+            }
+          }
+          return;
+        }
+
+        // Strip any leftover empty-state placeholders from a now-populated group.
+        const placeholder = body.querySelector('.all-assigned, .empty-hint');
+        if (placeholder) placeholder.remove();
+
+        // Update each row's stored index, shelf badge, and ▲▼ disabled states.
+        // Each assigned row has ONE .btn-col (shelf ▲▼) plus a standalone ⇆
+        // button. We only need to refresh the shelf column here — ⇆ doesn't
+        // care about index position.
+        rows.forEach(function(rowEl, idx) {
+          rowEl.dataset.gidx = gIdx;
+          rowEl.dataset.iidx = idx;
+          if (!isUnassigned) {
+            const shelfBadge = rowEl.querySelector('.shelf-badge');
+            if (shelfBadge) shelfBadge.textContent = (idx + 1) * 10;
+            const shelfCol = rowEl.querySelector('.btn-col');
+            if (shelfCol) {
+              const shelfBtns = shelfCol.querySelectorAll('.btn-move');
+              if (shelfBtns.length === 2) {
+                shelfBtns[0].disabled = (idx === 0);
+                shelfBtns[1].disabled = (idx === rows.length - 1);
+              }
+            }
+          }
+        });
+      }
+
+      // ── Move within group ──────────────────────────────────────────────────────
+      function moveItem(gIdx, iIdx, dir) {
+        const items  = groups[gIdx].items;
+        const target = iIdx + dir;
+        if (target < 0 || target >= items.length) return;
+        // Mutate state
+        const tmp     = items[iIdx];
+        items[iIdx]   = items[target];
+        items[target] = tmp;
+        // Partial DOM swap — find both rows and swap them in place.
+        const groupEl = document.querySelector('.area-group[data-gidx="' + gIdx + '"]');
+        const body    = groupEl ? groupEl.querySelector('.area-body') : null;
+        const rows    = body ? body.querySelectorAll('.item-row') : null;
+        if (rows && rows[iIdx] && rows[target]) {
+          if (dir > 0) {
+            // Move row at iIdx to AFTER row at target
+            body.insertBefore(rows[iIdx], rows[target].nextSibling);
+          } else {
+            // Move row at iIdx to BEFORE row at target
+            body.insertBefore(rows[iIdx], rows[target]);
+          }
+          refreshGroupDom_(gIdx);
+        } else {
+          render();  // safety fallback
+        }
+        markDirty();
+      }
+
+      // ── Move an assigned item to a different section (⇆ picker) ───────────────
+      // Lists all sections except the item's current one, plus an "Unassigned"
+      // option at the top so the same control can be used to unassign. Click
+      // an entry to commit the move.
+      function openMoveSectionPicker(srcGIdx, srcIIdx) {
+        // Build the list: Unassigned first (special label), then all assigned
+        // sections except the source. Each entry's idx is the target gIdx.
+        const sections = [];
+        if (srcGIdx !== 0) {
+          sections.push({
+            label: t('unassignedLabel'),
+            badge: '!',
+            idx:   0
+          });
+        }
+        for (let i = 1; i < groups.length; i++) {
+          if (i === srcGIdx) continue;
+          sections.push({
+            label: groups[i].area,
+            badge: groups[i].areaOrder,
+            idx:   i
+          });
+        }
+
+        renderPicker_(t('pickerMoveTitle'), sections, t('pickerMoveEmpty'), function(targetGIdx) {
+          const item = groups[srcGIdx].items.splice(srcIIdx, 1)[0];
+          groups[targetGIdx].items.push(item);
+          markDirty();
+          render();
+        });
+      }
+
+      // ── Section-add picker (opened by + on a section header) ───────────────────
+      // Lists currently-unassigned items. Click one to drop it into this section
+      // and close the picker.
+      function openAddPicker(targetGIdx) {
+        const unassignedItems = groups[0].items;
+        const targetGroup     = groups[targetGIdx];
+        const titleText       = t('pickerAddTitle') + targetGroup.area;
+
+        const items = unassignedItems.map(function(item, idx) {
+          return { label: item.name, idx: idx };
+        });
+
+        renderPicker_(titleText, items, t('pickerAddEmpty'), function(chosenIdx) {
+          // Splice from unassigned (group 0), push onto target.
+          const item = groups[0].items.splice(chosenIdx, 1)[0];
+          groups[targetGIdx].items.push(item);
+          markDirty();
+          render();
+        });
+      }
+
+      // ── Section picker (opened by "Place" on an unassigned row) ────────────────
+      // Lists all assigned sections. Click one to assign the item.
+      function openSectionPicker(srcGIdx, srcIIdx) {
+        // groups[0] is unassigned; assigned sections are 1..N
+        const sections = [];
+        for (let i = 1; i < groups.length; i++) {
+          sections.push({
+            label: groups[i].area,
+            badge: groups[i].areaOrder,
+            idx:   i
+          });
+        }
+
+        renderPicker_(t('pickerSectTitle'), sections, t('pickerSectEmpty'), function(targetGIdx) {
+          const item = groups[srcGIdx].items.splice(srcIIdx, 1)[0];
+          groups[targetGIdx].items.push(item);
+          markDirty();
+          render();
+        });
+      }
+
+      // Shared picker renderer. Builds an absolutely-positioned modal
+      // overlay with a list. `items` is [{label, badge?, idx}, ...].
+      // onPick(idx) fires when the user clicks an entry. Backdrop clicks
+      // and × button just close.
+      function renderPicker_(title, items, emptyMsg, onPick) {
+        // Tear down any existing picker first (defensive — should never
+        // happen since each open path calls close before re-opening).
+        closePicker_();
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'picker-backdrop';
+        backdrop.id        = 'pickerBackdrop';
+        backdrop.onclick   = function(e) {
+          if (e.target === backdrop) closePicker_();
+        };
+
+        const card       = document.createElement('div');
+        card.className   = 'picker';
+
+        const header     = document.createElement('div');
+        header.className = 'picker-header';
+
+        const titleEl    = document.createElement('span');
+        titleEl.className   = 'picker-title';
+        titleEl.textContent = title;
+
+        const closeBtn   = document.createElement('button');
+        closeBtn.className   = 'picker-close';
+        closeBtn.textContent = '×';
+        closeBtn.onclick     = closePicker_;
+
+        header.appendChild(titleEl);
+        header.appendChild(closeBtn);
+        card.appendChild(header);
+
+        if (items.length === 0) {
+          const empty       = document.createElement('div');
+          empty.className   = 'picker-empty';
+          empty.textContent = emptyMsg;
+          card.appendChild(empty);
+        } else {
+          const list       = document.createElement('ul');
+          list.className   = 'picker-list';
+
+          items.forEach(function(it) {
+            const li         = document.createElement('li');
+            li.className     = 'picker-item';
+
+            if (it.badge != null) {
+              const badge       = document.createElement('span');
+              badge.className   = 'picker-item-badge';
+              badge.textContent = it.badge;
+              li.appendChild(badge);
+            }
+
+            const nameEl       = document.createElement('span');
+            nameEl.className   = 'picker-item-name';
+            nameEl.textContent = it.label;
+            li.appendChild(nameEl);
+
+            li.onclick = function() {
+              closePicker_();
+              onPick(it.idx);
+            };
+            list.appendChild(li);
+          });
+          card.appendChild(list);
+        }
+
+        backdrop.appendChild(card);
+        document.body.appendChild(backdrop);
+
+        // Esc key closes the picker.
+        document.addEventListener('keydown', escClosePicker_);
+      }
+
+      function closePicker_() {
+        const existing = byId('pickerBackdrop');
+        if (existing) existing.remove();
+        document.removeEventListener('keydown', escClosePicker_);
+      }
+      function escClosePicker_(e) {
+        if (e.key === 'Escape') closePicker_();
+      }
+
+      // ── Save ──────────────────────────────────────────────────────────────────
+      function doSave(callback) {
+        byId('saveBtn').disabled = true;
+        setStatus(t('saving'), 'info');
+        setSavingPickPath_(true);
+        setVendorSelectLocked_(true);
+
+        const payload = [];
+        groups.forEach(function(g) {
+          if (g.area === UNASSIGNED) return;
+          g.items.forEach(function(item) {
+            payload.push({ id: item.id, name: item.name, area: g.area });
+          });
+        });
+
+        bumpMutationTs_();
+        google.script.run
+          .withSuccessHandler(function(res) {
+            setStatus(t('saved') + res.count + t('itemsUpdated'), 'ok');
+            byId('saveBtn').disabled = false;
+            setSavingPickPath_(false);
+            setVendorSelectLocked_(false);  // unlock before callback; callback may re-lock via loadVendor
+            isDirty = false;
+            if (typeof callback === 'function') callback();
+          })
+          .withFailureHandler(function(err) {
+            setSavingPickPath_(false);
+            setVendorSelectLocked_(false);
+            setStatus(err.message || String(err), 'warn');
+            byId('saveBtn').disabled = false;
+          })
+          .commitReorderPickPath(currentVendor, payload);
+      }
+
+      // ── Close ─────────────────────────────────────────────────────────────────
+      function doClose() {
+        if (isDirty) {
+          if (!window.confirm(t('unsavedClose'))) return;
+        }
+        google.script.host.close();
+      }
+
+      // ── Init ──────────────────────────────────────────────────────────────────
+      setLang('en');
+    </script>
+  </body>
+</html>

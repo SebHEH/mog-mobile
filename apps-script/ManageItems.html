@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <script>
+      var VENDOR_LIST = <?!= vendorListJson ?>;
+    </script>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
+        height: 100%;
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+        background: #f4f5f7;
+        color: #222;
+        overflow: hidden;
+      }
+
+      .shell { display: flex; flex-direction: column; height: 100vh; }
+
+      /* ── Top bar ── */
+      .top-bar {
+        background: #1a1a2e; color: #fff;
+        display: flex; align-items: stretch;
+        flex-shrink: 0; height: 50px;
+      }
+      .top-bar-title {
+        font-size: 15px; font-weight: bold; padding: 0 18px;
+        display: flex; align-items: center;
+        border-right: 1px solid rgba(255,255,255,0.15);
+        letter-spacing: 0.02em; white-space: nowrap;
+      }
+      .top-tabs { display: flex; flex: 1; }
+      .top-tab {
+        padding: 0 18px; display: flex; align-items: center;
+        font-size: 13px; font-weight: bold;
+        color: rgba(255,255,255,0.5); cursor: pointer;
+        border-bottom: 3px solid transparent; transition: color 0.15s; white-space: nowrap;
+      }
+      .top-tab:hover           { color: rgba(255,255,255,0.85); }
+      .top-tab.active          { color: #fff; border-bottom-color: #7eb8a4; }
+      .top-tab.danger.active   { border-bottom-color: #e87878; color: #ffb3b3; }
+      .top-tab.danger:hover    { color: #ffb3b3; }
+      .top-tab.warn-tab:hover  { color: #ffd080; }
+      .top-tab.warn-tab.active { color: #ffd080; border-bottom-color: #ffd080; }
+
+      /* Lang toggle in top bar */
+      .lang-group {
+        display: flex; align-items: center; gap: 4px;
+        padding: 0 10px; border-left: 1px solid rgba(255,255,255,0.15);
+      }
+      .lang-btn {
+        padding: 4px 9px; font-size: 11px; font-weight: bold; cursor: pointer;
+        color: rgba(255,255,255,0.45); background: transparent;
+        border: 1px solid rgba(255,255,255,0.2); border-radius: 3px;
+      }
+      .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
+      .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
+
+      .top-close {
+        padding: 0 14px; display: flex; align-items: center;
+        font-size: 18px; color: rgba(255,255,255,0.4); cursor: pointer;
+        border-left: 1px solid rgba(255,255,255,0.15); transition: color 0.15s;
+      }
+      .top-close:hover { color: #fff; }
+
+      /* ── Two-column body ── */
+      .body-split { display: flex; flex: 1; overflow: hidden; }
+
+      /* ── LEFT: item table ── */
+      .left-pane {
+        flex: 1; display: flex; flex-direction: column;
+        border-right: 1px solid #dde1e7; min-width: 0; background: #fff;
+      }
+      .left-toolbar {
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 14px; border-bottom: 1px solid #e8eaed;
+        background: #fafbfc; flex-shrink: 0;
+      }
+      .left-toolbar select {
+        padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px;
+        font-size: 13px; background: #fff; flex: 1;
+      }
+      .left-toolbar select:focus { outline: none; border-color: #1a1a2e; }
+      .sort-toggle {
+        display: flex; background: #f0f0f0; border: 1px solid #ddd;
+        border-radius: 4px; overflow: hidden; flex-shrink: 0;
+      }
+      .sort-toggle button {
+        padding: 6px 12px; font-size: 12px; font-weight: bold;
+        background: none; border: none; border-right: 1px solid #ddd;
+        cursor: pointer; color: #888;
+      }
+      .sort-toggle button:last-child { border-right: none; }
+      .sort-toggle button.active { background: #1a1a2e; color: #fff; }
+      .sort-toggle button:hover:not(.active) { background: #e4e4e4; }
+      .item-count-badge { font-size: 12px; color: #aaa; white-space: nowrap; flex-shrink: 0; }
+      .table-scroll { flex: 1; overflow-y: auto; overflow-x: auto; }
+      .item-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 13px; }
+      .item-table thead th {
+        position: sticky; top: 0; background: #f5f6f8; border-bottom: 2px solid #dde1e7;
+        padding: 9px 12px; text-align: left; font-size: 11px; font-weight: bold;
+        color: #777; text-transform: uppercase; letter-spacing: 0.05em;
+        white-space: nowrap; cursor: pointer; user-select: none; z-index: 2;
+      }
+      .item-table thead th:hover { background: #edeef1; }
+      .si { margin-left: 3px; font-size: 9px; color: #bbb; }
+      .si.on { color: #1a1a2e; }
+      .item-table tbody tr { border-bottom: 1px solid #f0f2f5; cursor: pointer; transition: background 0.08s; }
+      .item-table tbody tr:hover    { background: #f0f4ff; }
+      .item-table tbody tr.selected { background: #dce6ff; }
+      .item-table tbody tr.inactive-row { opacity: 0.42; }
+      .item-table tbody tr.no-area-row  { border-left: 3px solid #e05050; background: #fff8f8; }
+      .item-table tbody tr.no-area-row:hover    { background: #ffeaea; }
+      .item-table tbody tr.no-area-row.selected { background: #ffdada; }
+      .item-table td { padding: 9px 12px; vertical-align: middle; white-space: nowrap; }
+      .td-name   { font-weight: 600; color: #1a1a2e; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+      .td-id     { font-size: 11px; color: #bbb; font-family: monospace; display: block; margin-top: 2px; }
+      .td-vendor { color: #555; max-width: 155px; overflow: hidden; text-overflow: ellipsis; }
+      .td-pack   { color: #777; font-size: 12px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+      .td-par    { text-align: center; font-weight: bold; color: #333; width: 54px; }
+      .td-center { text-align: center; width: 70px; }
+      .pill { display: inline-block; padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+      .pill-active   { background: #d4edda; color: #1a6b2e; }
+      .pill-inactive { background: #f8d7da; color: #7a1a1a; }
+      .pill-yes      { background: #d4edda; color: #1a6b2e; }
+      .pill-no       { background: #f0f0f0; color: #999; }
+      .pill-noarea   { background: #fde8e8; color: #c0392b; font-weight: bold; }
+      .pill-empty    { background: #fff3cd; color: #856404; font-weight: bold; }
+      .pill-over     { background: #fde8e8; color: #7a1a1a; font-weight: bold; }
+      .pill-both     { background: #f8d7da; color: #7a1a1a; font-weight: bold; }
+      .table-empty, .table-loading { padding: 36px; text-align: center; color: #bbb; font-size: 13px; font-style: italic; }
+      .table-legend {
+        display: flex; gap: 16px; padding: 6px 14px 7px;
+        background: #fafbfc; border-top: 1px solid #e8eaed;
+        flex-shrink: 0; flex-wrap: wrap;
+      }
+      .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #888; }
+      .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+      .swatch-noarea   { background: #fff8f8; border-left: 3px solid #e05050; }
+      .swatch-inactive { background: #eee; border: 1px solid #ddd; opacity: 0.6; }
+
+      /* ── RIGHT: forms ── */
+      .right-pane {
+        width: 390px; flex-shrink: 0; display: flex; flex-direction: column;
+        overflow: hidden; background: #fafbfc;
+      }
+      .panel { display: none; flex-direction: column; height: 100%; overflow-y: auto; padding: 22px; }
+      .panel.active { display: flex; }
+      .panel-heading {
+        font-size: 14px; font-weight: bold; color: #1a1a2e;
+        margin-bottom: 14px; padding-bottom: 9px; border-bottom: 1px solid #e8eaed;
+        flex-shrink: 0; display: flex; align-items: center; gap: 8px;
+      }
+      .section-label { font-size: 11px; font-weight: bold; letter-spacing: 0.08em; color: #aaa; text-transform: uppercase; margin: 16px 0 7px; }
+      .row { margin-bottom: 12px; }
+      label { display: block; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 5px; }
+      .hint { font-size: 11px; color: #aaa; margin-top: 4px; line-height: 1.4; }
+      input[type="text"], input[type="number"], input:not([type]), select, textarea {
+        width: 100%; padding: 8px 10px; border: 1px solid #d0d3d9; border-radius: 5px;
+        font-size: 13px; background: #fff; color: #222; transition: border-color 0.15s;
+      }
+      input:focus, select:focus, textarea:focus {
+        outline: none; border-color: #1a1a2e; box-shadow: 0 0 0 2px rgba(26,26,46,0.08);
+      }
+      /* Disabled / read-only fields (e.g. Current Area in the Edit panel).
+         Visually subordinate to active inputs but still legible — avoids
+         the gray-on-gray washout of inline color:#888 + bg:#f5f5f5. Apply
+         via the `disabled` attribute; do not pair with inline styles. */
+      input:disabled, select:disabled, textarea:disabled {
+        background: #f0f2f5; color: #555;
+        border-color: #d8dbe0; cursor: default;
+      }
+      textarea { min-height: 52px; resize: vertical; }
+      .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .form-actions { display: flex; gap: 10px; margin-top: 16px; flex-shrink: 0; }
+      button { padding: 10px 15px; cursor: pointer; border: none; border-radius: 5px; font-size: 13px; font-weight: bold; transition: opacity 0.15s; }
+      button:hover    { opacity: 0.85; }
+      button:disabled { opacity: 0.35; cursor: not-allowed; }
+      .btn-primary   { flex: 2; background: #1a1a2e; color: #fff; }
+      .btn-secondary { flex: 1; background: #e4e6ea; color: #444; }
+      .btn-warn      { flex: 2; background: #c87800; color: #fff; }
+      .btn-danger    { flex: 2; background: #c0392b; color: #fff; }
+      .btn-load      { width: 100%; background: #3a7bd5; color: #fff; margin-top: 6px; }
+      .status { font-size: 12px; margin-top: 8px; min-height: 18px; line-height: 1.4; }
+      .status.ok   { color: #1a6b2e; font-weight: bold; }
+      .status.warn { color: #9a2c2c; font-weight: bold; }
+      .status.info { color: #555; }
+      hr { border: none; border-top: 1px solid #e8eaed; margin: 14px 0; }
+      .detail-card { display: none; border: 1px solid #e0e3e8; border-radius: 6px; padding: 10px 12px; background: #fff; margin: 10px 0; }
+      .detail-card.visible { display: block; }
+      .detail-grid { display: grid; grid-template-columns: 70px 1fr; gap: 5px 10px; font-size: 12px; }
+      .dk { color: #aaa; font-weight: bold; }
+      .dv { color: #222; overflow: hidden; text-overflow: ellipsis; }
+      .badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:11px; font-weight:bold; }
+      .badge-active   { background:#d4edda; color:#1a6b2e; }
+      .badge-inactive { background:#f8d7da; color:#7a1a1a; }
+      .badge-noarea   { background:#fde8e8; color:#c0392b; }
+      .warning-banner {
+        background: #fff3f3; border: 1px solid #e8a0a0; border-radius: 5px;
+        padding: 10px 13px; font-size: 12px; color: #7a1a1a; margin-bottom: 14px; line-height: 1.5;
+      }
+      .info-banner {
+        background: #fffbf0; border: 1px solid #f0d060; border-radius: 5px;
+        padding: 9px 13px; font-size: 12px; color: #7a5000; margin-top: 10px; line-height: 1.5;
+      }
+      .confirm-section { display: none; }
+      .confirm-section.visible { display: block; }
+      .confirm-text {
+        font-size: 12px; color: #7a1a1a; background: #fff3f3; border: 1px solid #e8a0a0;
+        border-radius: 5px; padding: 9px 13px; margin-bottom: 12px; line-height: 1.5;
+      }
+      .select-hint { padding: 48px 20px; text-align: center; color: #bbb; font-size: 13px; font-style: italic; line-height: 2; }
+      .unassigned-banner {
+        background: #fff3f3; border: 1px solid #e8a0a0; border-radius: 5px;
+        padding: 10px 13px; font-size: 12px; color: #7a1a1a; margin-bottom: 14px; line-height: 1.6;
+      }
+      .count-badge {
+        display: inline-flex; align-items: center; justify-content: center;
+        background: #c0392b; color: #fff; border-radius: 12px;
+        padding: 0 9px; height: 22px; font-size: 12px; font-weight: bold; min-width: 26px;
+      }
+      .count-badge.zero { background: #4caf50; }
+      .unassigned-list { border: 1px solid #e8eaed; border-radius: 5px; overflow: hidden; }
+      .unassigned-row {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 12px; border-bottom: 1px solid #f5f5f5;
+        background: #fff8f8; border-left: 3px solid #e05050; font-size: 12px;
+      }
+      .unassigned-row:last-child { border-bottom: none; }
+      .unassigned-name { font-weight: bold; color: #222; }
+      .unassigned-meta { font-size: 11px; color: #aaa; margin-top: 3px; }
+      .unassigned-empty { padding: 32px; text-align: center; color: #aaa; font-style: italic; font-size: 12px; }
+      .inactive-list { border: 1px solid #e8eaed; border-radius: 5px; overflow: hidden; }
+      .inact-row {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 9px 12px; border-bottom: 1px solid #f0f0f0;
+        background: #fafafa; border-left: 3px solid #aaa; font-size: 12px; gap: 10px;
+      }
+      .inact-row:last-child { border-bottom: none; }
+      .inactive-name { font-weight: bold; color: #555; }
+      .inactive-meta { font-size: 11px; color: #aaa; margin-top: 2px; }
+      .btn-inline-edit {
+        font-size: 11px; padding: 4px 9px; background: #1a1a2e; color: #fff;
+        border: none; border-radius: 3px; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      }
+      .btn-inline-edit:hover { opacity: 0.85; }
+
+      /* ── Loading state (centered spinner; replaces inline "Loading…" text
+         on initial fetches) ── */
+      .loading-state {
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 48px 20px; gap: 14px; min-height: 180px;
+      }
+      .spinner {
+        width: 36px; height: 36px;
+        border: 3px solid #e1e4e8; border-top-color: #1a1a2e;
+        border-radius: 50%;
+        animation: spinner-rotate 0.8s linear infinite;
+      }
+      @keyframes spinner-rotate { to { transform: rotate(360deg); } }
+      .loading-label { color: #6a7280; font-size: 13px; }
+
+      /* Compact variant — for inline use (e.g. inside a form row) where
+         the default 48px padding + 180px min-height is too tall. */
+      .loading-state.compact { padding: 14px 12px; min-height: 0; gap: 8px; }
+      .loading-state.compact .spinner { width: 22px; height: 22px; border-width: 2px; }
+      .loading-state.compact .loading-label { font-size: 12px; }
+
+      /* Empty placeholder shown in the Edit panel when no item is selected.
+         Sits in the same area as the form body / loading spinner; only one
+         of the three is ever visible at a time (see setEditFormState_). */
+      .form-empty {
+        padding: 48px 20px; text-align: center;
+        color: #bbb; font-size: 13px; font-style: italic; line-height: 1.6;
+      }
+
+      /* Save-button color modifier — layers on top of .btn-primary so
+         the flex layout is preserved; only the background changes.
+         Color is the same forest green used in .status.ok / .pill-active
+         for palette consistency. Restricted to actual commit buttons
+         (add-btn, edit-btn) so navigational primaries stay navy. */
+      .btn-primary.btn-save { background: #1a6b2e; }
+
+      /* ── Saving overlay (panel-level feedback during in-flight writes).
+         Pair every setSavingPanel_(id, true) with a (id, false) on BOTH
+         success and failure paths in commit handlers — otherwise the
+         panel stays locked behind the overlay. ── */
+      .panel.saving { position: relative; }
+      .panel.saving > * { opacity: 0.4; pointer-events: none; }
+      .panel.saving::after {
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 18px; font-weight: bold; letter-spacing: 1px;
+        color: #1a1a2e;
+        z-index: 5; pointer-events: none;
+      }
+      body.lang-en .panel.saving::after { content: 'SAVING\2026'; }
+      body.lang-es .panel.saving::after { content: 'GUARDANDO\2026'; }
+
+      /* Parallel deleting overlay — same dim + lockout, red label so the
+         user can tell a destructive action is in flight. Pair every
+         setDeletingPanel_(id, true) with a (id, false) on BOTH success and
+         failure paths. Never combine with .saving on the same element. */
+      .panel.deleting { position: relative; }
+      .panel.deleting > * { opacity: 0.4; pointer-events: none; }
+      .panel.deleting::after {
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 18px; font-weight: bold; letter-spacing: 1px;
+        color: #c0392b;
+        z-index: 5; pointer-events: none;
+      }
+      body.lang-en .panel.deleting::after { content: 'DELETING\2026'; }
+      body.lang-es .panel.deleting::after { content: 'ELIMINANDO\2026'; }
+
+      /* ── i18n ── */
+      .es { display: none; }
+      .en { display: inline; }
+    </style>
+  </head>
+  <body class="lang-en">
+  <div class="shell">
+
+    <div class="top-bar">
+      <div class="top-bar-title">
+        <span class="en">Manage Items</span>
+        <span class="es">Administrar Artículos</span>
+      </div>
+      <div class="top-tabs">
+        <div class="top-tab active"   onclick="switchTab('view')">
+          <span class="en">View All</span><span class="es">Ver Todo</span>
+        </div>
+        <div class="top-tab"          onclick="switchTab('add')">
+          <span class="en">Add</span><span class="es">Agregar</span>
+        </div>
+        <div class="top-tab"          onclick="switchTab('edit')">
+          <span class="en">Edit</span><span class="es">Editar</span>
+        </div>
+        <div class="top-tab"          onclick="switchTab('inactive')">
+          <span class="en">Inactive</span><span class="es">Inactivos</span>
+        </div>
+        <div class="top-tab warn-tab" onclick="switchTab('unassigned')">
+          ⚠ <span class="en">Unassigned</span><span class="es">Sin Área</span>
+        </div>
+      </div>
+      <div class="lang-group">
+        <button class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button class="lang-btn"        onclick="setLang('es')">ES</button>
+      </div>
+      <div class="top-close" onclick="google.script.host.close()">✕</div>
+    </div>
+
+    <div class="body-split">
+
+      <!-- LEFT: item table -->
+      <div class="left-pane">
+        <div class="left-toolbar">
+          <select id="view-vendor-filter" onchange="applyFilters()">
+            <option value="" id="opt-all-vendors-items"></option>
+          </select>
+          <div class="sort-toggle">
+            <button id="sort-by-vendor" class="active" onclick="setSort('vendor')" id="btn-sort-vendor"></button>
+            <button id="sort-by-name"                  onclick="setSort('name')"   id="btn-sort-name"></button>
+          </div>
+          <span class="item-count-badge" id="view-count"></span>
+        </div>
+
+        <div class="table-scroll">
+          <div id="table-loading" class="table-loading"></div>
+          <table class="item-table" id="item-table" style="display:none">
+            <thead>
+              <tr>
+                <th onclick="setSort('name')"    id="th-item"></th>
+                <th onclick="setSort('vendor')"  id="th-vendor"></th>
+                <th onclick="setSort('pack')"    id="th-pack"></th>
+                <th onclick="setSort('par')"     id="th-par"></th>
+                <th onclick="setSort('active')"  id="th-active"></th>
+                <th onclick="setSort('useMult')" id="th-mult"></th>
+                <th id="th-sheet"></th>
+                <th id="th-flag" style="cursor:default;"></th>
+              </tr>
+            </thead>
+            <tbody id="item-tbody"></tbody>
+          </table>
+          <div id="table-empty" class="table-empty" style="display:none"></div>
+        </div>
+
+        <div class="table-legend">
+          <div class="legend-item"><div class="legend-swatch swatch-noarea"></div> <span id="legend-noarea"></span></div>
+          <div class="legend-item"><div class="legend-swatch swatch-inactive"></div> <span id="legend-inactive"></span></div>
+          <div class="legend-item"><span style="font-size:11px;">🟡</span> <span id="legend-empty"></span></div>
+          <div class="legend-item"><span style="font-size:11px;">🔴</span> <span id="legend-over"></span></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: panels -->
+      <div class="right-pane">
+
+        <!-- VIEW ALL -->
+        <div id="panel-view" class="panel active">
+          <div class="panel-heading" id="ph-view"></div>
+          <div id="view-select-hint" class="select-hint" id="hint-view"></div>
+          <div id="view-detail" style="display:none">
+            <div class="detail-grid" id="view-detail-grid"></div>
+            <div id="view-noarea-banner" class="info-banner" style="display:none;"></div>
+            <div class="form-actions" style="margin-top:12px">
+              <button class="btn-secondary" onclick="clearViewDetail()" id="btn-clear-view"></button>
+              <button class="btn-primary"   onclick="loadClickedItemToEdit()" id="btn-edit-this"></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ADD -->
+        <div id="panel-add" class="panel">
+          <div class="panel-heading" id="ph-add"></div>
+          <div class="row"><label id="lbl-add-name"></label><input id="add-name" /></div>
+          <div class="row"><label id="lbl-add-vendor"></label><select id="add-vendor"></select></div>
+          <div class="row"><label id="lbl-add-pack"></label><input id="add-pack" /></div>
+          <div class="two-col">
+            <div class="row"><label id="lbl-add-par"></label><input id="add-par" type="number" step="1" min="0" /></div>
+            <div class="row">
+              <label id="lbl-add-mult"></label>
+              <select id="add-useMult">
+                <option value="true"  id="opt-yes-add"></option>
+                <option value="false" id="opt-no-add"></option>
+              </select>
+            </div>
+          </div>
+          <hr>
+          <div class="section-label" id="sl-pickpath"></div>
+          <div class="row">
+            <label id="lbl-add-area"></label>
+            <select id="add-area">
+              <option value="" id="opt-area-later"></option>
+            </select>
+            <div class="hint" id="hint-add-area"></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-primary btn-save" id="add-btn" onclick="doAdd()"><span id="btn-add-lbl"></span></button>
+          </div>
+          <div id="add-status" class="status"></div>
+        </div>
+
+        <!-- EDIT -->
+        <div id="panel-edit" class="panel">
+          <div class="panel-heading" id="ph-edit"></div>
+          <div class="row">
+            <label id="lbl-edit-vendor-sel"></label>
+            <select id="edit-vendor-select" onchange="loadEditItems()">
+              <option value="" id="opt-sel-vendor-edit"></option>
+            </select>
+          </div>
+          <div class="row">
+            <label id="lbl-edit-item-sel"></label>
+            <select id="edit-item-select" onchange="onEditItemChange()" disabled>
+              <option value="" id="opt-sel-item-edit"></option>
+            </select>
+            <div id="edit-item-loading" class="loading-state compact" style="display:none;">
+              <div class="spinner"></div>
+              <div class="loading-label">
+                <span class="en">Loading…</span>
+                <span class="es">Cargando…</span>
+              </div>
+            </div>
+            <div id="edit-load-status" class="status"></div>
+          </div>
+
+          <!-- Form-body states: only one of the three children is visible at a
+               time, controlled by setEditFormState_(). 'empty' = no item picked
+               yet (default); 'loading' = fetching the item's data; 'loaded' =
+               form is populated and editable. Default is 'empty'. -->
+          <div id="edit-form-empty" class="form-empty">
+            <span class="en">Select an item above to edit.</span>
+            <span class="es">Selecciona un artículo arriba para editar.</span>
+          </div>
+
+          <div id="edit-form-loading" class="loading-state" style="display:none;">
+            <div class="spinner"></div>
+            <div class="loading-label">
+              <span class="en">Loading item details…</span>
+              <span class="es">Cargando detalles…</span>
+            </div>
+          </div>
+
+          <div id="edit-form-body" style="display:none;">
+          <hr>
+          <div class="row">
+            <label id="lbl-edit-name"></label>
+            <input id="edit-name" />
+            <div class="hint" id="hint-edit-name"></div>
+          </div>
+          <div class="row"><label id="lbl-edit-vendor"></label><select id="edit-vendor"></select></div>
+          <div class="row"><label id="lbl-edit-pack"></label><input id="edit-pack" /></div>
+          <div class="two-col">
+            <div class="row"><label id="lbl-edit-par"></label><input id="edit-par" type="number" step="1" min="0" /></div>
+            <div class="row">
+              <label id="lbl-edit-mult"></label>
+              <select id="edit-useMult">
+                <option value="true"  id="opt-yes-edit"></option>
+                <option value="false" id="opt-no-edit"></option>
+              </select>
+            </div>
+          </div>
+          <div class="two-col">
+            <div class="row">
+              <label id="lbl-edit-active"></label>
+              <select id="edit-active">
+                <option value="true"  id="opt-active-edit"></option>
+                <option value="false" id="opt-inactive-edit"></option>
+              </select>
+            </div>
+            <div></div>
+          </div>
+          <hr>
+          <div class="section-label" id="sl-pickpath-edit"></div>
+          <div class="two-col">
+            <div class="row">
+              <label id="lbl-edit-current-area"></label>
+              <input id="edit-area-current" disabled />
+            </div>
+            <div class="row">
+              <label id="lbl-edit-new-area"></label>
+              <select id="edit-area-new"><option value="" id="opt-no-change"></option></select>
+            </div>
+          </div>
+          <div class="hint" id="hint-edit-area"></div>
+          <div class="form-actions">
+            <button class="btn-secondary" onclick="clearEditForm()"  id="btn-edit-clear"></button>
+            <button class="btn-primary btn-save" onclick="doEdit()" id="edit-btn"></button>
+          </div>
+          <div id="edit-status" class="status"></div>
+
+          <div id="edit-danger-zone" style="display:none;">
+            <hr>
+            <div class="section-label" style="color:#c0392b;" id="sl-danger"></div>
+            <div class="warning-banner" id="warn-danger"></div>
+            <div id="edit-delete-prompt">
+              <button class="btn-danger" style="width:100%;" onclick="showDeleteConfirm()" id="btn-delete-item"></button>
+            </div>
+            <div id="edit-delete-confirm-zone" style="display:none;">
+              <div class="confirm-text" id="edit-delete-confirm-text"></div>
+              <div class="form-actions" style="margin-top:0;">
+                <button class="btn-secondary" onclick="hideDeleteConfirm()" id="btn-cancel-delete"></button>
+                <button class="btn-danger"    onclick="doDeleteFromEdit()" id="edit-delete-btn" id="btn-confirm-delete"></button>
+              </div>
+            </div>
+            <div id="edit-delete-status" class="status"></div>
+          </div>
+          </div><!-- /edit-form-body -->
+        </div>
+
+        <!-- INACTIVE -->
+        <div id="panel-inactive" class="panel">
+          <div class="panel-heading">
+            <span id="ph-inactive"></span>
+            <span id="inactive-count-badge" class="count-badge zero">0</span>
+          </div>
+          <div class="info-banner" id="banner-inactive"></div>
+          <div id="inactive-list-wrap">
+            <div class="unassigned-empty" id="inactive-empty-msg"></div>
+          </div>
+          <div id="inactive-status" class="status"></div>
+        </div>
+
+        <!-- UNASSIGNED -->
+        <div id="panel-unassigned" class="panel">
+          <div class="panel-heading">
+            <span id="ph-unassigned"></span>
+            <span id="unassigned-count-badge" class="count-badge">—</span>
+          </div>
+          <div class="unassigned-banner" id="banner-unassigned"></div>
+          <button class="btn-load" style="margin-bottom:10px;" onclick="loadUnassigned()" id="btn-refresh-unassigned"></button>
+          <div id="unassigned-list-wrap">
+            <div class="unassigned-empty" id="unassigned-init-msg"></div>
+          </div>
+          <div id="unassigned-status" class="status"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── i18n ───────────────────────────────────────────────────────────────────
+    var LANG = 'en';
+
+    var T = {
+      en: {
+        allVendors:'All Vendors', byVendor:'By Vendor', az:'A–Z',
+        loadingItems:'Loading items…', noMatch:'No items match the filter.',
+        item:'item', items:'items',
+        legendNoArea:'Active — no Storage Area (not on any order sheet)',
+        legendInactive:'Inactive',
+        phView:'Item Details',
+        hintView:'← Click any row in the list\nto see details\nand jump to Edit.',
+        btnClear:'Clear', btnEditThis:'Edit This Item →',
+        phAdd:'Add New Item', lblName:'Item Name', lblVendor:'Vendor',
+        lblPack:'Pack / Unit', lblPar:'Base Par', lblMult:'Use Multiplier',
+        lblArea:'Storage Area', areaOptional:'(optional)',
+        areaLater:'— Assign later via Manage Pick Path —',
+        hintArea:'Selecting an area places this item at the bottom of that group immediately after saving.',
+        btnAdd:'Add Item',
+        phEdit:'Edit Item', lblVendorSel:'Vendor', lblItemSel:'Item',
+        optSelVendor:'-- Select a vendor --', optSelItem:'-- Select a vendor first --',
+        optSelItemReady:'-- Select an item --',
+        lblEditName:'Item Name', hintEditName:'Leave blank to keep current name.',
+        lblReassignVendor:'Reassign to Vendor', lblEditPack:'Pack / Unit',
+        lblEditPar:'Base Par', lblEditMult:'Use Multiplier',
+        lblEditActive:'Active', optActive:'Active', optInactive:'Inactive',
+        slPickPath:'Pick Path', lblCurrentArea:'Current Area', lblNewArea:'Reassign to',
+        optNoChange:'— No change —',
+        hintEditArea:'Reassigning places this item at the bottom of the new area\'s group.',
+        btnEditClear:'Clear', btnEditSave:'Save Changes',
+        slDanger:'Danger Zone',
+        warnDanger:'Prefer setting <b>Active → Inactive</b> above if you might reorder this item.<br>Delete only if added by mistake.',
+        btnDeleteItem:'🗑 Delete This Item Permanently',
+        btnCancelDelete:'Cancel', btnConfirmDelete:'Delete Permanently',
+        confirmDelete:'Permanently delete', cannotUndo:'? This cannot be undone.',
+        phUnassigned:'Unassigned Items',
+        bannerUnassigned:'These active items have <strong>no Storage Area assigned</strong> and won\'t appear on any vendor order sheet.<br><br>Fix via <strong>Ordering Guide → Manage Pick Path</strong>: select the vendor, drag the item into a Storage Area group, and Save.',
+        btnRefresh:'↻ Refresh List', clickRefresh:'Click Refresh to load.',
+        allAssigned:'✅ All active items have a Storage Area assigned.',
+        loadingUnassigned:'Loading…',
+        phInactive:'Inactive Items',
+        bannerInactive:'These items are set to <strong>Inactive</strong> and won\'t appear on any vendor order sheet. To reactivate, click <b>→ Edit</b> and set Active → Active.',
+        allActive:'✅ All items are currently active.',
+        nameRequired:'Item Name is required.', vendorRequired:'Select a vendor.',
+        parRequired:'Base Par must be a number.',
+        saving:'Saving…', savingDeleting:'Deleting…',
+        added:'Added ', assignedTo:' → assigned to "', assignedEnd:'".',
+        addedNoArea:' — remember to assign a Storage Area.',
+        saved:'Saved: ', savedArea:' → reassigned to "', savedFail:' — area reassignment failed.',
+        editFirst:'Select a vendor and item first.',
+        deleted:'Deleted: ', yes:'YES', no:'NO',
+        loading:'Loading ', loadErr:'Error: ',
+        thFlag:'Par Review',
+        legendEmpty:'Always Empty (on hand near zero in ≥75% of orders, par 3+, last 14 days)',
+        legendOver:'Over-Ordered (on hand ≥50% of par in ≥50% of orders, last 14 days)',
+        flagEmpty:'Always Empty',
+        flagOver:'Over-Ordered',
+        flagBoth:'Empty + Over',
+        flagNone:'—',
+        flagNoData:'No data yet',
+        flagOrders:'orders logged',
+        flagAvgOnHand:'Avg On Hand',
+        flagEmptyCount:'Times Empty',
+        flagOverCount:'Times Over'
+      },
+      es: {
+        allVendors:'Todos los Proveedores', byVendor:'Por Proveedor', az:'A–Z',
+        loadingItems:'Cargando artículos…', noMatch:'Ningún artículo coincide con el filtro.',
+        item:'artículo', items:'artículos',
+        legendNoArea:'Activo — sin Área de Almacén (no aparece en ninguna hoja)',
+        legendInactive:'Inactivo',
+        phView:'Detalles del Artículo',
+        hintView:'← Haz clic en cualquier fila\npara ver detalles\ny saltar a Editar.',
+        btnClear:'Limpiar', btnEditThis:'Editar Este Artículo →',
+        phAdd:'Agregar Nuevo Artículo', lblName:'Nombre del Artículo', lblVendor:'Proveedor',
+        lblPack:'Empaque / Unidad', lblPar:'Par Base', lblMult:'Usar Multiplicador',
+        lblArea:'Área de Almacén', areaOptional:'(opcional)',
+        areaLater:'— Asignar después vía Administrar Ruta —',
+        hintArea:'Seleccionar un área coloca este artículo al fondo de ese grupo al guardar.',
+        btnAdd:'Agregar Artículo',
+        phEdit:'Editar Artículo', lblVendorSel:'Proveedor', lblItemSel:'Artículo',
+        optSelVendor:'-- Selecciona un proveedor --', optSelItem:'-- Selecciona un proveedor primero --',
+        optSelItemReady:'-- Selecciona un artículo --',
+        lblEditName:'Nombre del Artículo', hintEditName:'Deja en blanco para conservar el nombre actual.',
+        lblReassignVendor:'Reasignar a Proveedor', lblEditPack:'Empaque / Unidad',
+        lblEditPar:'Par Base', lblEditMult:'Usar Multiplicador',
+        lblEditActive:'Activo', optActive:'Activo', optInactive:'Inactivo',
+        slPickPath:'Ruta de Picking', lblCurrentArea:'Área Actual', lblNewArea:'Reasignar a',
+        optNoChange:'— Sin cambio —',
+        hintEditArea:'Reasignar coloca el artículo al fondo del grupo del área nueva.',
+        btnEditClear:'Limpiar', btnEditSave:'Guardar Cambios',
+        slDanger:'Zona de Peligro',
+        warnDanger:'Prefiere <b>Activo → Inactivo</b> arriba si puedes reordenar este artículo.<br>Elimina solo si fue agregado por error.',
+        btnDeleteItem:'🗑 Eliminar Este Artículo Permanentemente',
+        btnCancelDelete:'Cancelar', btnConfirmDelete:'Eliminar Permanentemente',
+        confirmDelete:'¿Eliminar permanentemente', cannotUndo:'? No se puede deshacer.',
+        phUnassigned:'Artículos Sin Área',
+        bannerUnassigned:'Estos artículos activos <strong>no tienen Área de Almacén asignada</strong> y no aparecerán en ninguna hoja de pedido.<br><br>Corrígelo en <strong>Ordering Guide → Administrar Ruta</strong>: selecciona el proveedor, arrastra el artículo a un grupo de área y guarda.',
+        btnRefresh:'↻ Actualizar Lista', clickRefresh:'Haz clic en Actualizar para cargar.',
+        allAssigned:'✅ Todos los artículos activos tienen un Área de Almacén asignada.',
+        loadingUnassigned:'Cargando…',
+        phInactive:'Artículos Inactivos',
+        bannerInactive:'Estos artículos están <strong>Inactivos</strong> y no aparecerán en ninguna hoja de pedido. Para reactivar, haz clic en <b>→ Editar</b> y cambia Activo → Activo.',
+        allActive:'✅ Todos los artículos están activos actualmente.',
+        nameRequired:'El nombre del artículo es obligatorio.', vendorRequired:'Selecciona un proveedor.',
+        parRequired:'El Par Base debe ser un número.',
+        saving:'Guardando…', savingDeleting:'Eliminando…',
+        added:'Agregado ', assignedTo:' → asignado a "', assignedEnd:'".',
+        addedNoArea:' — recuerda asignar un Área de Almacén.',
+        saved:'Guardado: ', savedArea:' → reasignado a "', savedFail:' — la reasignación de área falló.',
+        editFirst:'Selecciona un proveedor y un artículo primero.',
+        deleted:'Eliminado: ', yes:'SÍ', no:'NO',
+        loading:'Cargando ', loadErr:'Error: ',
+        thFlag:'Revisión de Par',
+        legendEmpty:'Siempre Vacío (En Stock cerca de cero en ≥75% de pedidos, par 3+, últimos 14 días)',
+        legendOver:'Sobre-Pedido (En Stock ≥50% del par en ≥50% de pedidos, últimos 14 días)',
+        flagEmpty:'Siempre Vacío',
+        flagOver:'Sobre-Pedido',
+        flagBoth:'Vacío + Sobre',
+        flagNone:'—',
+        flagNoData:'Sin datos',
+        flagOrders:'pedidos registrados',
+        flagAvgOnHand:'Prom. En Stock',
+        flagEmptyCount:'Veces Vacío',
+        flagOverCount:'Veces Sobre'
+      }
+    };
+
+    function t(k) { return T[LANG][k] || T.en[k] || k; }
+
+    function setLang(lang) {
+      LANG = lang;
+      document.body.className = 'lang-' + lang;  // drives panel.saving::after content
+      document.querySelectorAll('.lang-btn').forEach(function(b, i) {
+        b.classList.toggle('active', ['en','es'][i] === lang);
+      });
+      document.querySelectorAll('.en,.es').forEach(function(el) {
+        el.style.display = el.classList.contains(lang) ? 'inline' : 'none';
+      });
+      applyTranslations();
+    }
+
+    function applyTranslations() {
+      // Toolbar
+      setText('opt-all-vendors-items', t('allVendors'));
+      setText('sort-by-vendor', t('byVendor'));
+      setText('sort-by-name',   t('az'));
+      // Table headers
+      setInnerHTML('th-item',   t('item').charAt(0).toUpperCase()+t('item').slice(1) + ' <span class="si" id="si-name"></span>');
+      setInnerHTML('th-vendor', t('lblVendor') + ' <span class="si on" id="si-vendor">▲</span>');
+      setInnerHTML('th-pack',   t('lblPack') + ' <span class="si" id="si-pack"></span>');
+      setInnerHTML('th-par',    t('lblPar') + ' <span class="si" id="si-par"></span>');
+      setInnerHTML('th-active', t('lblEditActive') + ' <span class="si" id="si-active"></span>');
+      setInnerHTML('th-mult',   'Mult <span class="si" id="si-useMult"></span>');
+      setText('th-sheet', 'On Sheet');
+      setText('th-flag',  t('thFlag'));
+      setText('legend-empty', t('legendEmpty'));
+      setText('legend-over',  t('legendOver'));
+      // Legend
+      setText('legend-noarea',   t('legendNoArea'));
+      setText('legend-inactive', t('legendInactive'));
+      // Loading states — re-render spinner (not plain text) so a language
+      // switch mid-load doesn't nuke the spinner DOM with a text node.
+      if (byId('table-loading').style.display !== 'none') {
+        byId('table-loading').innerHTML = loadingHtml_('loadingItems');
+      }
+      if (byId('table-empty').style.display   !== 'none') setText('table-empty',   t('noMatch'));
+      // View panel
+      setText('ph-view', t('phView'));
+      byId('view-select-hint').textContent = t('hintView');
+      setText('btn-clear-view',  t('btnClear'));
+      setText('btn-edit-this',   t('btnEditThis'));
+      byId('view-noarea-banner').innerHTML = '⚠ ' + t('legendNoArea') + ' — assign via <strong>Manage Pick Path</strong>.';
+      // Add panel
+      setText('ph-add',          t('phAdd'));
+      setText('lbl-add-name',    t('lblName'));
+      setAttr('add-name', 'placeholder', 'e.g., Roma Tomatoes');
+      setText('lbl-add-vendor',  t('lblVendor'));
+      setText('lbl-add-pack',    t('lblPack'));
+      setAttr('add-pack', 'placeholder', 'e.g., CASE (6), EA, BAG');
+      setText('lbl-add-par',     t('lblPar'));
+      setAttr('add-par', 'placeholder', '10');
+      setText('lbl-add-mult',    t('lblMult'));
+      setText('opt-yes-add',     t('yes'));
+      setText('opt-no-add',      t('no'));
+      setText('sl-pickpath',     t('slPickPath'));
+      setText('lbl-add-area',    t('lblArea') + ' (' + t('areaOptional') + ')');
+      setText('opt-area-later',  t('areaLater'));
+      setText('hint-add-area',   t('hintArea'));
+      setText('btn-add-lbl',     t('btnAdd'));
+      // Edit panel
+      setText('ph-edit',           t('phEdit'));
+      setText('lbl-edit-vendor-sel', t('lblVendorSel'));
+      setText('opt-sel-vendor-edit', t('optSelVendor'));
+      setText('lbl-edit-item-sel',   t('lblItemSel'));
+      var itemSel = byId('edit-item-select');
+      if (itemSel && itemSel.disabled) setText('opt-sel-item-edit', t('optSelItem'));
+      setText('lbl-edit-name',      t('lblEditName'));
+      setAttr('edit-name', 'placeholder', t('hintEditName'));
+      setText('hint-edit-name',     t('hintEditName'));
+      setText('lbl-edit-vendor',    t('lblReassignVendor'));
+      setText('lbl-edit-pack',      t('lblEditPack'));
+      setText('lbl-edit-par',       t('lblEditPar'));
+      setText('lbl-edit-mult',      t('lblEditMult'));
+      setText('opt-yes-edit',       t('yes'));
+      setText('opt-no-edit',        t('no'));
+      setText('lbl-edit-active',    t('lblEditActive'));
+      setText('opt-active-edit',    t('optActive'));
+      setText('opt-inactive-edit',  t('optInactive'));
+      setText('sl-pickpath-edit',   t('slPickPath'));
+      setText('lbl-edit-current-area', t('lblCurrentArea'));
+      setAttr('edit-area-current', 'placeholder', t('optNoChange').replace(/—/g,'').trim());
+      setText('lbl-edit-new-area',  t('lblNewArea'));
+      setText('opt-no-change',      t('optNoChange'));
+      setText('hint-edit-area',     t('hintEditArea'));
+      setText('btn-edit-clear',     t('btnEditClear'));
+      setText('edit-btn',           t('btnEditSave'));
+      setText('sl-danger',          t('slDanger'));
+      setInnerHTML('warn-danger',   t('warnDanger'));
+      setText('btn-delete-item',    t('btnDeleteItem'));
+      setText('btn-cancel-delete',  t('btnCancelDelete'));
+      setText('edit-delete-btn',    t('btnConfirmDelete'));
+      // Unassigned panel
+      setText('ph-unassigned',         t('phUnassigned'));
+      setInnerHTML('banner-unassigned', t('bannerUnassigned'));
+      setText('btn-refresh-unassigned', t('btnRefresh'));
+      // Inactive panel
+      setText('ph-inactive',         t('phInactive'));
+      setInnerHTML('banner-inactive', t('bannerInactive'));
+      // Re-render table to update pill text
+      renderTable();
+    }
+
+    function setText(id, text) { var el = byId(id); if (el) el.textContent = text; }
+    function setInnerHTML(id, html) { var el = byId(id); if (el) el.innerHTML = html; }
+    function setAttr(id, attr, val) { var el = byId(id); if (el) el.setAttribute(attr, val); }
+
+    // ── App state ─────────────────────────────────────────────────────────────
+    let allItems = [], sortKey = 'vendor', sortAsc = true, selectedItem = null;
+    let parFlags = {}; // {itemId: {flag, timesOrdered, avgOnHand, par, emptyCount, overCount}}
+    let areaList = [];
+    let editItems = [], editLookup = '';
+
+    // View All cache constants — declared up here, ABOVE the IIFE that runs
+    // loadAllItems() on modal open. const/let are subject to the temporal
+    // dead zone, so if these lived next to the cache helpers below (which
+    // are after the IIFE in source order), the first cache read would throw
+    // "Cannot access X before initialization", get swallowed by the helper's
+    // try/catch, and silently fall back to a network fetch on every open.
+    // See readItemsCache_ / writeItemsCache_ / clearItemsCache_ further down
+    // for the actual logic.
+    const ITEMS_CACHE_KEY = 'mog_manageItems_cache_v1';
+    const ITEMS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+    function byId(id) { return document.getElementById(id); }
+
+    function bumpMutationTs_() {
+      // Signals to other modals' caches that data has changed and they
+      // should invalidate on next open. Stored under a shared localStorage
+      // key that must match the literal used by every reader/writer across
+      // modals — currently only ManageItems' View All cache reads it.
+      try { localStorage.setItem('mog_lastMutationTs', String(Date.now())); } catch (e) {}
+    }
+    function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function setStatus(key, msg, type) {
+      const el = byId(key + '-status'); if (!el) return;
+      el.textContent = msg; el.className = 'status ' + (type || '');
+    }
+
+    // Saving overlay: dims a panel + shows a centered SAVING/GUARDANDO label
+    // via .panel.saving CSS rules. Pair every (panelId, true) call with a
+    // (panelId, false) on BOTH success and failure paths in commit handlers
+    // — otherwise the panel stays locked behind the overlay.
+    function setSavingPanel_(panelId, on) {
+      const p = byId(panelId);
+      if (!p) return;
+      if (on) p.classList.add('saving');
+      else    p.classList.remove('saving');
+    }
+
+    // Same pattern as setSavingPanel_ but uses the .deleting overlay (red
+    // DELETING/ELIMINANDO label) so the user sees the right verb during
+    // destructive actions. Pair every (id, true) with a (id, false) on
+    // success AND failure.
+    function setDeletingPanel_(panelId, on) {
+      const p = byId(panelId);
+      if (!p) return;
+      if (on) p.classList.add('deleting');
+      else    p.classList.remove('deleting');
+    }
+
+    // Centered spinner placeholder for in-flight initial fetches. Resolves
+    // the label via t() at render time, so a language switch mid-load
+    // requires a re-render to retranslate (acceptable; load times are short).
+    function loadingHtml_(translationKey) {
+      return '<div class="loading-state">' +
+               '<div class="spinner"></div>' +
+               '<div class="loading-label">' + esc(t(translationKey || 'loading')) + '</div>' +
+             '</div>';
+    }
+
+    // Inline loading swap for the Edit panel's item-select row. While
+    // items are being fetched for a vendor we hide the <select> and show
+    // a compact spinner card in the same .row. Pair every (true) with a
+    // (false) on success AND failure.
+    function setItemSelectLoading_(on) {
+      const sel = byId('edit-item-select');
+      const card = byId('edit-item-loading');
+      if (!sel || !card) return;
+      sel.style.display  = on ? 'none' : '';
+      card.style.display = on ? ''     : 'none';  // '' falls back to .loading-state's display:flex
+    }
+
+    // Three-way state controller for the Edit panel's form area below the
+    // vendor/item selectors:
+    //   'empty'   — no item selected yet (placeholder hint is shown)
+    //   'loading' — fetching item data from the server (spinner is shown)
+    //   'loaded'  — form is populated and editable (form body is shown)
+    // Only one of the three child elements is ever visible at a time. Always
+    // pair a 'loading' call with a follow-up 'loaded' (success) or 'empty'
+    // (failure) call — otherwise the form stays locked behind the spinner.
+    function setEditFormState_(state) {
+      const empty   = byId('edit-form-empty');
+      const loading = byId('edit-form-loading');
+      const body    = byId('edit-form-body');
+      if (empty)   empty.style.display   = state === 'empty'   ? '' : 'none';
+      if (loading) loading.style.display = state === 'loading' ? '' : 'none';
+      if (body)    body.style.display    = state === 'loaded'  ? '' : 'none';
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    (function() {
+      ['add-vendor','edit-vendor','edit-vendor-select'].forEach(id => {
+        const sel = byId(id); if (!sel) return;
+        VENDOR_LIST.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+      });
+      const vf = byId('view-vendor-filter');
+      VENDOR_LIST.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; vf.appendChild(o); });
+
+      google.script.run
+        .withSuccessHandler(areas => {
+          areaList = areas;
+          ['add-area','edit-area-new'].forEach(id => {
+            const sel = byId(id);
+            while (sel.options.length > 1) sel.remove(1);
+            areas.forEach(a => { const o = document.createElement('option'); o.value = a.name; o.textContent = a.name; sel.appendChild(o); });
+          });
+        })
+        .withFailureHandler(() => {})
+        .getStorageAreaList();
+
+      setLang('en');
+      loadAllItems();
+    })();
+
+    // ── Tab switching ─────────────────────────────────────────────────────────
+    const TAB_KEYS = ['view','add','edit','inactive','unassigned'];
+    function switchTab(key) {
+      document.querySelectorAll('.top-tab').forEach((t, i) => t.classList.toggle('active', TAB_KEYS[i] === key));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      byId('panel-' + key).classList.add('active');
+      if (key === 'edit')       clearEditForm();   // always reset when clicking the tab directly
+      if (key === 'inactive')   renderInactive();
+      if (key === 'unassigned') loadUnassigned();
+    }
+
+    // ── Item table ────────────────────────────────────────────────────────────
+    //
+    // View All cache: getAllItemsForView + getParReviewFlags results are
+    // cached in localStorage between modal opens so reopening the modal
+    // renders instantly instead of waiting on two round-trips.
+    //
+    // Apps Script HTML modals are rendered in fresh iframes each open, so
+    // sessionStorage and in-memory state are wiped on close. localStorage
+    // survives the iframe lifecycle and is the only place this can live.
+    //
+    // Invalidation: every successful add / edit / delete in this modal
+    // calls clearItemsCache_() before re-loading, so the next render
+    // refetches. The TTL is the safety net for out-of-band changes (e.g.
+    // StorageAreas or ReorderPickPath modal making writes — they don't
+    // touch this cache, so the TTL caps how long stale rows can linger).
+    //
+    // Bump the cache key suffix (_v1 → _v2 …) whenever the shape of
+    // items[] or flags{} changes; old caches will be ignored instead of
+    // mis-parsed. ITEMS_CACHE_KEY and ITEMS_CACHE_TTL are declared near the
+    // top of the script — see the comment up there for the reason.
+
+    function readItemsCache_() {
+      try {
+        const raw = localStorage.getItem(ITEMS_CACHE_KEY);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj || typeof obj !== 'object') return null;
+        if (!obj.ts || (Date.now() - obj.ts) > ITEMS_CACHE_TTL) return null;
+        if (!Array.isArray(obj.items)) return null;
+        // Cross-modal staleness check: any modal that mutates shared data
+        // bumps the global 'mog_lastMutationTs' key. If that timestamp is
+        // newer than our cache, treat as a miss so we refetch on next open.
+        // This catches StorageAreas, ReorderPickPath, ManageVendors, and
+        // AdminReset writes that don't go through this modal's own
+        // clearItemsCache_() path.
+        const mutTs = Number(localStorage.getItem('mog_lastMutationTs') || 0);
+        if (mutTs > obj.ts) return null;
+        return obj;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function writeItemsCache_(items, flags) {
+      try {
+        localStorage.setItem(ITEMS_CACHE_KEY, JSON.stringify({
+          ts: Date.now(),
+          items: items,
+          flags: flags || {}
+        }));
+      } catch (e) {
+        // localStorage may be disabled (private browsing, full quota, etc.).
+        // Cache failure is non-fatal — the modal still works without it.
+      }
+    }
+
+    function clearItemsCache_() {
+      try { localStorage.removeItem(ITEMS_CACHE_KEY); } catch (e) {}
+    }
+
+    function loadAllItems() {
+      // Cache hit: render synchronously, skip both round-trips. The render
+      // path matches a fresh fetch — renderTable() respects the current
+      // vendor filter, sort order, and selectedItem state.
+      const cached = readItemsCache_();
+      if (cached) {
+        allItems = cached.items;
+        parFlags = cached.flags || {};
+        byId('table-loading').style.display = 'none';
+        renderTable();
+        return;
+      }
+
+      byId('table-loading').innerHTML = loadingHtml_('loadingItems');
+      byId('table-loading').style.padding = '0';  // override .table-loading 36px (spinner has its own)
+      byId('table-loading').style.display = 'block';
+      byId('item-table').style.display = 'none';
+      byId('table-empty').style.display = 'none';
+
+      // Single combined round-trip: server returns { items, flags } via the
+      // getManageItemsBootstrap endpoint (server-side wrapped with
+      // CacheService keyed by the document mutation timestamp). Saves one
+      // full network round-trip vs the previous parallel pair, and skips
+      // the sheet read entirely when the server cache hits.
+      google.script.run
+        .withSuccessHandler(result => {
+          allItems = (result && result.items) || [];
+          parFlags = (result && result.flags) || {};
+          writeItemsCache_(allItems, parFlags); // populate client cache for next open
+          byId('table-loading').style.display = 'none';
+          renderTable();
+        })
+        .withFailureHandler(err => {
+          byId('table-loading').style.padding = '';  // restore .table-loading default for text mode
+          byId('table-loading').textContent = t('loadErr') + (err.message || String(err));
+        })
+        .getManageItemsBootstrap();
+    }
+
+    function setSort(key) {
+      if (sortKey === key) sortAsc = !sortAsc; else { sortKey = key; sortAsc = true; }
+      byId('sort-by-vendor').classList.toggle('active', sortKey === 'vendor');
+      byId('sort-by-name').classList.toggle('active',   sortKey === 'name');
+      renderTable();
+    }
+
+    function applyFilters() { renderTable(); }
+
+    function renderTable() {
+      const vf = byId('view-vendor-filter').value.toLowerCase();
+      let rows = allItems.filter(x => !vf || x.vendor.toLowerCase() === vf);
+      rows = rows.slice().sort((a, b) => {
+        let va = a[sortKey], vb = b[sortKey];
+        if (typeof va === 'boolean') { va = va ? 1 : 0; vb = vb ? 1 : 0; }
+        if (typeof va === 'number') return sortAsc ? va - vb : vb - va;
+        return sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+      });
+      ['name','vendor','pack','par','active','useMult'].forEach(k => {
+        const el = byId('si-' + k); if (!el) return;
+        el.textContent = k === sortKey ? (sortAsc ? '▲' : '▼') : '';
+        el.className   = 'si' + (k === sortKey ? ' on' : '');
+      });
+      const cnt = rows.length;
+      byId('view-count').textContent = cnt + ' ' + (cnt !== 1 ? t('items') : t('item'));
+      const tbody = byId('item-tbody'); tbody.innerHTML = '';
+      if (!rows.length) {
+        byId('item-table').style.display = 'none';
+        byId('table-empty').textContent  = t('noMatch');
+        byId('table-empty').style.display = 'block'; return;
+      }
+      byId('item-table').style.display = ''; byId('table-empty').style.display = 'none';
+
+      rows.forEach(item => {
+        const tr = document.createElement('tr');
+        if (!item.active) tr.classList.add('inactive-row');
+        if (item.active && !item.hasArea) tr.classList.add('no-area-row');
+        if (selectedItem && selectedItem.id === item.id) tr.classList.add('selected');
+
+        const onSheetHtml = !item.active
+          ? "<span style='color:#ddd'>—</span>"
+          : item.hasArea
+            ? "<span class='pill pill-yes'>✓</span>"
+            : "<span class='pill pill-noarea'>⚠ " + t('no') + "</span>";
+
+        const flagHtml = buildFlagPill(item.id, item.active);
+        tr.innerHTML =
+          "<td class='td-name'>" + esc(item.name) + "<span class='td-id'>" + esc(item.id) + "</span></td>" +
+          "<td class='td-vendor'>" + esc(item.vendor) + "</td>" +
+          "<td class='td-pack'>" + esc(item.pack || '—') + "</td>" +
+          "<td class='td-par'>" + (item.par !== '' ? item.par : '—') + "</td>" +
+          "<td class='td-center'><span class='pill " + (item.active ? 'pill-active' : 'pill-inactive') + "'>" + (item.active ? t('yes') : t('no')) + "</span></td>" +
+          "<td class='td-center'><span class='pill " + (item.useMult ? 'pill-yes' : 'pill-no') + "'>" + (item.useMult ? t('yes') : t('no')) + "</span></td>" +
+          "<td class='td-center'>" + onSheetHtml + "</td>" +
+          "<td class='td-center'>" + flagHtml + "</td>";
+        tr.addEventListener('click', () => selectItem(item));
+        tbody.appendChild(tr);
+      });
+    }
+
+    function selectItem(item) {
+      selectedItem = item; renderTable(); switchTab('view');
+      byId('view-select-hint').style.display = 'none';
+      byId('view-detail').style.display = 'block';
+      const ab = item.active
+        ? "<span class='badge badge-active'>" + t('optActive') + "</span>"
+        : "<span class='badge badge-inactive'>" + t('optInactive') + "</span>";
+      const sh = !item.active ? '—'
+        : item.hasArea
+          ? "<span class='badge badge-active'>✓ " + t('yes') + "</span>"
+          : "<span class='badge badge-noarea'>⚠ " + t('no') + "</span>";
+      const flagDetail = buildFlagDetail(item.id, item.active);
+      byId('view-detail-grid').innerHTML =
+        "<div class='dk'>ID</div><div class='dv'>"     + esc(item.id)         + "</div>" +
+        "<div class='dk'>" + t('lblName')   + "</div><div class='dv'>" + esc(item.name)       + "</div>" +
+        "<div class='dk'>" + t('lblVendor') + "</div><div class='dv'>" + esc(item.vendor)     + "</div>" +
+        "<div class='dk'>" + t('lblPack')   + "</div><div class='dv'>" + esc(item.pack || '—')+ "</div>" +
+        "<div class='dk'>" + t('lblPar')    + "</div><div class='dv'>" + (item.par !== '' ? item.par : '—') + "</div>" +
+        "<div class='dk'>" + t('lblEditActive') + "</div><div class='dv'>" + ab + "</div>" +
+        "<div class='dk'>Mult</div><div class='dv'>" + (item.useMult ? t('yes') : t('no')) + "</div>" +
+        "<div class='dk'>On Sheet</div><div class='dv'>" + sh + "</div>" +
+        flagDetail;
+      byId('view-noarea-banner').style.display = (item.active && !item.hasArea) ? 'block' : 'none';
+    }
+
+    // ── Par Review flag helpers ───────────────────────────────────────────────
+    function buildFlagPill(itemId, active) {
+      if (!active) return "<span style='color:#ddd'>—</span>";
+      const f = parFlags[itemId];
+      if (!f) return "<span style='color:#ddd'>—</span>";
+      if (f.timesOrdered < 5) return "<span style='font-size:10px;color:#bbb;font-style:italic'>" + t('flagNoData') + "</span>";
+      if (!f.flag) return "<span style='color:#bbb'>✓</span>";
+      const pillClass = f.flag === 'empty' ? 'pill-empty' : f.flag === 'over' ? 'pill-over' : 'pill-both';
+      const label     = f.flag === 'empty' ? t('flagEmpty') : f.flag === 'over' ? t('flagOver') : t('flagBoth');
+      return "<span class='pill " + pillClass + "'>⚠ " + label + "</span>";
+    }
+
+    function buildFlagDetail(itemId, active) {
+      if (!active) return '';
+      const f = parFlags[itemId];
+      if (!f) return '';
+      if (f.timesOrdered < 5) {
+        return "<div class='dk'>" + t('thFlag') + "</div><div class='dv' style='color:#bbb;font-style:italic'>" +
+          t('flagNoData') + " (" + f.timesOrdered + "/5 " + t('flagOrders') + ")</div>";
+      }
+      const label = !f.flag ? t('flagNone')
+        : f.flag === 'empty' ? t('flagEmpty')
+        : f.flag === 'over'  ? t('flagOver')
+        : t('flagBoth');
+      const style = !f.flag ? 'color:#1a6b2e;font-weight:bold'
+        : f.flag === 'over'  ? 'color:#7a1a1a;font-weight:bold'
+        : 'color:#856404;font-weight:bold';
+      return "<div class='dk'>" + t('thFlag') + "</div><div class='dv' style='" + style + "'>⚠ " + label + "</div>" +
+        "<div class='dk'>" + t('flagOrders') + "</div><div class='dv'>" + f.timesOrdered + "</div>" +
+        "<div class='dk'>" + t('flagAvgOnHand') + "</div><div class='dv'>" + f.avgOnHand + "</div>" +
+        "<div class='dk'>" + t('flagEmptyCount') + "</div><div class='dv'>" + f.emptyCount + "</div>" +
+        "<div class='dk'>" + t('flagOverCount') + "</div><div class='dv'>" + f.overCount + "</div>";
+    }
+
+    function clearViewDetail() {
+      selectedItem = null;
+      byId('view-select-hint').style.display = 'block';
+      byId('view-detail').style.display = 'none';
+      renderTable();
+    }
+
+    function loadClickedItemToEdit() {
+      if (!selectedItem) return;
+      loadItemIntoEdit(selectedItem);
+    }
+
+    // Shared helper — switches to Edit tab and populates the form for a given item.
+    // Does the tab switch manually (bypasses the clearEditForm in switchTab) since
+    // we are about to populate the form immediately anyway. Clears stale field
+    // values and switches the form area into 'loading' state before the fetch so
+    // the user never sees the previous item's data peeking through during the
+    // round trip — pair with 'loaded' on success and 'empty' on failure.
+    function loadItemIntoEdit(item) {
+      selectedItem = item;
+      // Switch to edit tab without triggering the clearEditForm reset in switchTab
+      document.querySelectorAll('.top-tab').forEach((tab, i) => tab.classList.toggle('active', TAB_KEYS[i] === 'edit'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      byId('panel-edit').classList.add('active');
+
+      // Reset all stale state and switch the form area into a loading state so
+      // the user never sees fields prefilled with the previous item's data.
+      clearEditFormFields();
+      setEditFormState_('loading');
+
+      byId('edit-vendor-select').value = item.vendor;
+      const sel = byId('edit-item-select');
+      sel.disabled = true;
+      setItemSelectLoading_(true);
+      google.script.run
+        .withSuccessHandler(items => {
+          editItems = items;
+          sel.innerHTML = '<option value="">' + t('optSelItemReady') + '</option>';
+          items.forEach(it => {
+            const o = document.createElement('option'); o.value = it.id;
+            o.textContent = it.name + (it.active ? '' : ' (' + t('optInactive') + ')');
+            sel.appendChild(o);
+          });
+          sel.disabled = false; sel.value = item.id;
+          setItemSelectLoading_(false);
+          editLookup = item.id;
+          byId('edit-name').value    = item.name;
+          byId('edit-vendor').value  = item.vendor;
+          byId('edit-pack').value    = item.pack || '';
+          byId('edit-par').value     = item.par !== '' ? item.par : '';
+          byId('edit-active').value  = item.active  ? 'true' : 'false';
+          byId('edit-useMult').value = item.useMult ? 'true' : 'false';
+          setEditFormState_('loaded');
+          setStatus('edit-load', 'Loaded: ' + item.id, 'ok'); setStatus('edit', '');
+          showDangerZone(item); fetchCurrentArea(item.id);
+        })
+        .withFailureHandler(err => {
+          setItemSelectLoading_(false);
+          setEditFormState_('empty');
+          setStatus('edit-load', err.message || String(err), 'warn');
+          sel.innerHTML = '<option value="">-- Error --</option>';
+        })
+        .getItemsByVendor(item.vendor);
+    }
+
+    // ── ADD ───────────────────────────────────────────────────────────────────
+    function doAdd() {
+      const name = byId('add-name').value.trim(), vendor = byId('add-vendor').value;
+      const pack = byId('add-pack').value.trim(), par = byId('add-par').value;
+      const useMult = byId('add-useMult').value, area = byId('add-area').value;
+      if (!name)   return setStatus('add', t('nameRequired'), 'warn');
+      if (!vendor) return setStatus('add', t('vendorRequired'), 'warn');
+      if (par === '' || isNaN(Number(par))) return setStatus('add', t('parRequired'), 'warn');
+      byId('add-btn').disabled = true; setStatus('add', t('saving'), 'info');
+      setSavingPanel_('panel-add', true);
+      // Pass areaName in the payload — server does the inline area assignment
+      // atomically, eliminating a second roundtrip.
+      bumpMutationTs_();
+      google.script.run
+        .withSuccessHandler(res => {
+          if (area && res.assignedArea) {
+            setStatus('add', t('added') + res.id + t('assignedTo') + res.assignedArea + t('assignedEnd'), 'ok');
+          } else if (area) {
+            // areaName was sent but server didn't echo an assignedArea — partial success.
+            setStatus('add', t('added') + res.id + ' — ' + t('addedNoArea'), 'warn');
+          } else {
+            setStatus('add', t('added') + res.id + t('addedNoArea'), 'ok');
+          }
+          ['add-name','add-pack','add-par'].forEach(id => byId(id).value = '');
+          byId('add-area').value = '';
+          byId('add-btn').disabled = false;
+          setSavingPanel_('panel-add', false);
+          clearItemsCache_();
+          allItems = []; loadAllItems();
+        })
+        .withFailureHandler(err => {
+          setSavingPanel_('panel-add', false);
+          setStatus('add', err.message || String(err), 'warn');
+          byId('add-btn').disabled = false;
+        })
+        .commitUpsertItem({ mode:'add', name, vendor, pack, par: Number(par), useMult, active:'true', areaName: area });
+    }
+
+    // ── EDIT ──────────────────────────────────────────────────────────────────
+    function loadEditItems() {
+      // Note: do NOT call clearEditForm() here — it would wipe the vendor
+      // select the user just changed. clearEditFormFields handles the form
+      // body without touching the vendor dropdown.
+      const vendor = byId('edit-vendor-select').value;
+      clearEditFormFields();
+      editItems = [];
+      setEditFormState_('empty');
+      const sel = byId('edit-item-select');
+      if (!vendor) {
+        sel.innerHTML = '<option value="">' + t('optSelItem') + '</option>';
+        sel.disabled = true;
+        return;
+      }
+      sel.disabled = true;
+      setItemSelectLoading_(true);
+      google.script.run
+        .withSuccessHandler(items => {
+          editItems = items;
+          sel.innerHTML = '<option value="">' + t('optSelItemReady') + '</option>';
+          items.forEach(item => {
+            const o = document.createElement('option'); o.value = item.id;
+            o.textContent = item.name + (item.active ? '' : ' (' + t('optInactive') + ')');
+            sel.appendChild(o);
+          });
+          sel.disabled = false;
+          setItemSelectLoading_(false);
+          if (!items.length) setStatus('edit-load', t('noMatch'), 'info');
+        })
+        .withFailureHandler(err => {
+          setItemSelectLoading_(false);
+          setStatus('edit-load', err.message || String(err), 'warn');
+          sel.innerHTML = '<option value="">-- Error --</option>';
+        })
+        .getItemsByVendor(vendor);
+    }
+
+    function onEditItemChange() {
+      const itemId = byId('edit-item-select').value;
+      clearEditFormFields();
+      if (!itemId) { setEditFormState_('empty'); return; }
+      const item = editItems.find(x => x.id === itemId);
+      if (!item)   { setEditFormState_('empty'); return; }
+      editLookup = item.id;
+      byId('edit-name').value    = item.name;
+      byId('edit-vendor').value  = item.vendor;
+      byId('edit-pack').value    = item.pack || '';
+      byId('edit-par').value     = item.par !== '' ? item.par : '';
+      byId('edit-active').value  = item.active  ? 'true' : 'false';
+      byId('edit-useMult').value = item.useMult ? 'true' : 'false';
+      setEditFormState_('loaded');
+      setStatus('edit-load', 'Loaded: ' + item.id, 'ok'); setStatus('edit', '');
+      showDangerZone(item); fetchCurrentArea(item.id);
+    }
+
+    function fetchCurrentArea(itemId) {
+      byId('edit-area-current').value = '…';
+      google.script.run
+        .withSuccessHandler(item => { byId('edit-area-current').value = item && item.currentArea ? item.currentArea : '(' + t('optNoChange').replace(/—/g,'').trim() + ')'; })
+        .withFailureHandler(() => { byId('edit-area-current').value = ''; })
+        .getItemForEdit(itemId);
+    }
+
+    function doEdit() {
+      if (!editLookup) return setStatus('edit', t('editFirst'), 'warn');
+      const par = byId('edit-par').value;
+      if (par === '' || isNaN(Number(par))) return setStatus('edit', t('parRequired'), 'warn');
+      byId('edit-btn').disabled = true; setStatus('edit', t('saving'), 'info');
+      setSavingPanel_('panel-edit', true);
+      const newArea = byId('edit-area-new').value, vendor = byId('edit-vendor').value;
+      // Pass areaName in payload so server does the inline reassignment atomically.
+      bumpMutationTs_();
+      google.script.run
+        .withSuccessHandler(res => {
+          if (newArea && res.assignedArea) {
+            setStatus('edit', t('saved') + res.id + t('savedArea') + res.assignedArea + '".', 'ok');
+            byId('edit-area-current').value = res.assignedArea;
+            byId('edit-area-new').value = '';
+          } else if (newArea) {
+            setStatus('edit', t('saved') + res.id + t('savedFail'), 'warn');
+          } else {
+            setStatus('edit', t('saved') + res.id, 'ok');
+          }
+          byId('edit-btn').disabled = false;
+          setSavingPanel_('panel-edit', false);
+          clearItemsCache_();
+          allItems = []; loadAllItems();
+        })
+        .withFailureHandler(err => {
+          setSavingPanel_('panel-edit', false);
+          setStatus('edit', err.message || String(err), 'warn');
+          byId('edit-btn').disabled = false;
+        })
+        .commitUpsertItem({ mode:'edit', lookup:editLookup, name:byId('edit-name').value.trim(), vendor, pack:byId('edit-pack').value.trim(), par:Number(par), active:byId('edit-active').value, useMult:byId('edit-useMult').value, areaName: newArea });
+    }
+
+    function clearEditFormFields() {
+      ['edit-name','edit-pack','edit-par'].forEach(id => byId(id).value = '');
+      byId('edit-vendor').value  = '';
+      byId('edit-active').value  = 'true'; byId('edit-useMult').value = 'false';
+      byId('edit-area-current').value = ''; byId('edit-area-new').value = '';
+      editLookup = '';
+      setStatus('edit', ''); setStatus('edit-load', '');
+      hideDangerZone();
+    }
+    function clearEditForm() {
+      clearEditFormFields();
+      byId('edit-vendor-select').value = '';
+      byId('edit-item-select').innerHTML = '<option value="">' + t('optSelItem') + '</option>';
+      byId('edit-item-select').disabled = true; editItems = []; editLookup = '';
+      setItemSelectLoading_(false);  // ensure spinner doesn't survive a reset
+      setEditFormState_('empty');    // hide form body, show empty placeholder
+      setStatus('edit-load', ''); setStatus('edit', '');
+    }
+
+    // ── Delete from Edit ──────────────────────────────────────────────────────
+    function showDangerZone(item) {
+      byId('edit-danger-zone').style.display = 'block';
+      byId('edit-delete-prompt').style.display = 'block';
+      byId('edit-delete-confirm-zone').style.display = 'none';
+      setStatus('edit-delete', '');
+    }
+    function hideDangerZone() {
+      byId('edit-danger-zone').style.display = 'none';
+      byId('edit-delete-prompt').style.display = 'block';
+      byId('edit-delete-confirm-zone').style.display = 'none';
+      setStatus('edit-delete', '');
+    }
+    function showDeleteConfirm() {
+      if (!editLookup) return;
+      const item = editItems.find(x => x.id === editLookup);
+      const name = item ? item.name : editLookup;
+      byId('edit-delete-confirm-text').innerHTML = t('confirmDelete') + ' <b>' + esc(name) + '</b>' + t('cannotUndo');
+      byId('edit-delete-prompt').style.display = 'none';
+      byId('edit-delete-confirm-zone').style.display = 'block';
+      setStatus('edit-delete', '');
+    }
+    function hideDeleteConfirm() {
+      byId('edit-delete-prompt').style.display = 'block';
+      byId('edit-delete-confirm-zone').style.display = 'none';
+      setStatus('edit-delete', '');
+    }
+    function doDeleteFromEdit() {
+      if (!editLookup) return;
+      byId('edit-delete-btn').disabled = true; setStatus('edit-delete', t('savingDeleting'), 'info');
+      setDeletingPanel_('panel-edit', true);
+      bumpMutationTs_();
+      google.script.run
+        .withSuccessHandler(res => {
+          setStatus('edit-delete', t('deleted') + res.name + ' (' + res.id + ')', 'ok');
+          byId('edit-delete-btn').disabled = false;
+          setDeletingPanel_('panel-edit', false);
+          clearItemsCache_();
+          clearEditForm(); allItems = []; loadAllItems();
+        })
+        .withFailureHandler(err => {
+          setDeletingPanel_('panel-edit', false);
+          setStatus('edit-delete', err.message || String(err), 'warn');
+          byId('edit-delete-btn').disabled = false;
+        })
+        .commitDeleteItem(editLookup);
+    }
+
+    // ── INACTIVE ──────────────────────────────────────────────────────────────
+    function renderInactive() {
+      const items = allItems.filter(x => !x.active);
+      const badge = byId('inactive-count-badge');
+      badge.textContent = items.length;
+      badge.className   = 'count-badge' + (items.length === 0 ? ' zero' : '');
+
+      const wrap = byId('inactive-list-wrap');
+      if (!items.length) {
+        wrap.innerHTML = "<div class='unassigned-empty'>" + t('allActive') + "</div>";
+        return;
+      }
+
+      const sorted = items.slice().sort((a, b) => {
+        const vc = a.vendor.localeCompare(b.vendor);
+        return vc !== 0 ? vc : a.name.localeCompare(b.name);
+      });
+
+      const list = document.createElement('div');
+      list.className = 'inactive-list';
+      sorted.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'inact-row';
+        row.innerHTML =
+          "<div><div class='inactive-name'>" + esc(item.name) + "</div>" +
+          "<div class='inactive-meta'>" + esc(item.vendor) + " · " + esc(item.id) +
+          (item.pack ? " · " + esc(item.pack) : "") + "</div></div>";
+        const btn = document.createElement('button');
+        btn.className   = 'btn-inline-edit';
+        btn.textContent = t('btnEditThis');
+        btn.onclick     = () => loadItemIntoEdit(item);
+        row.appendChild(btn);
+        list.appendChild(row);
+      });
+      wrap.innerHTML = '';
+      wrap.appendChild(list);
+    }
+
+    // ── UNASSIGNED ────────────────────────────────────────────────────────────
+    function loadUnassigned() {
+      setStatus('unassigned', t('loadingUnassigned'), 'info');
+      byId('unassigned-list-wrap').innerHTML = loadingHtml_('loadingUnassigned');
+      google.script.run
+        .withSuccessHandler(items => {
+          setStatus('unassigned', '');
+          const badge = byId('unassigned-count-badge');
+          badge.textContent = items.length;
+          badge.className   = 'count-badge' + (items.length === 0 ? ' zero' : '');
+          const wrap = byId('unassigned-list-wrap');
+          if (!items.length) { wrap.innerHTML = "<div class='unassigned-empty'>" + t('allAssigned') + "</div>"; return; }
+          const list = document.createElement('div'); list.className = 'unassigned-list';
+          items.forEach(item => {
+            const row = document.createElement('div'); row.className = 'unassigned-row';
+            row.innerHTML =
+              "<div><div class='unassigned-name'>" + esc(item.name) + "</div><div class='unassigned-meta'>" + esc(item.vendor) + " · " + esc(item.id) + "</div></div>" +
+              "<div style='font-size:10px;color:#ccc'>" + esc(item.pack || '') + "</div>";
+            list.appendChild(row);
+          });
+          wrap.innerHTML = ''; wrap.appendChild(list);
+        })
+        .withFailureHandler(err => {
+          setStatus('unassigned', err.message || String(err), 'warn');
+          byId('unassigned-list-wrap').innerHTML = "<div class='unassigned-empty'>Error loading.</div>";
+        })
+        .getUnassignedActiveItems();
+    }
+  </script>
+  </body>
+</html>

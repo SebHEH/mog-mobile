@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <script>
+      var AREA_LIST = <?!= areaListJson ?>;
+    </script>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 13px;
+        background: #f4f5f7;
+        color: #222;
+      }
+
+      /* ── Header ── */
+      .header {
+        background: #1a1a2e;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 14px;
+        height: 44px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+      .header-title { font-size: 13px; font-weight: bold; letter-spacing: 0.03em; }
+      .lang-group { display: flex; gap: 4px; }
+      .lang-btn {
+        padding: 3px 9px; font-size: 10px; font-weight: bold; cursor: pointer;
+        color: rgba(255,255,255,0.45); background: transparent;
+        border: 1px solid rgba(255,255,255,0.2); border-radius: 3px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
+      .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
+
+      /* ── Body padding ── */
+      .body { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+
+      /* ── Area list card ── */
+      .list-card { background: #fff; border: 1px solid #e0e3e8; border-radius: 6px; overflow: hidden; }
+      .list-card-header {
+        background: #1a3a2e; color: #fff;
+        padding: 7px 12px; font-size: 10px; font-weight: bold;
+        letter-spacing: 0.06em; text-transform: uppercase;
+        display: flex; align-items: center; justify-content: space-between;
+      }
+      .area-count {
+        background: rgba(255,255,255,0.2); border-radius: 10px;
+        padding: 1px 7px; font-size: 9px;
+      }
+      .area-list { list-style: none; }
+      .area-item {
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 12px; border-bottom: 1px solid #f0f2f5;
+        cursor: grab; user-select: none; transition: background 0.1s;
+      }
+      .area-item:last-child { border-bottom: none; }
+      .area-item:hover { background: #f7f9fb; }
+      .area-item.dragging { opacity: 0.4; }
+      .area-item.drag-over { border-top: 2px solid #1a3a2e; background: #f0f7f4; }
+
+      .drag-handle { color: #ccc; font-size: 14px; cursor: grab; flex-shrink: 0; }
+      .order-badge {
+        min-width: 30px; text-align: center; font-size: 10px; font-weight: bold;
+        color: #aaa; background: #f0f0f0; border-radius: 3px; padding: 2px 5px; flex-shrink: 0;
+      }
+      .name-col { flex: 1; min-width: 0; }
+      .area-name { font-size: 12px; font-weight: bold; color: #1a3a2e; }
+      .area-actions { display: flex; gap: 4px; flex-shrink: 0; }
+      .btn-icon {
+        background: none; border: 1px solid #ddd; border-radius: 3px;
+        cursor: pointer; font-size: 11px; padding: 3px 7px; color: #666; line-height: 1.4;
+      }
+      .btn-icon:hover { background: #f0f0f0; border-color: #bbb; }
+      .btn-icon.danger:hover { background: #fff0f0; border-color: #e8a0a0; color: #c0392b; }
+
+      /* Inline rename form */
+      .rename-form {
+        display: none; margin-top: 5px;
+        background: #f0f7f4; border: 1px solid #c8ddd5;
+        border-radius: 4px; padding: 6px 8px;
+        align-items: center; gap: 6px;
+      }
+      .rename-form.visible { display: flex; }
+      .rename-form input {
+        flex: 1; padding: 4px 7px; border: 1px solid #ccc;
+        border-radius: 3px; font-size: 12px;
+      }
+      .rename-form input:focus { outline: none; border-color: #1a3a2e; }
+      .btn-sm {
+        padding: 4px 9px; border: none; border-radius: 3px;
+        font-size: 11px; font-weight: bold; cursor: pointer; white-space: nowrap;
+      }
+      .btn-sm:hover { opacity: 0.85; }
+      .btn-sm-save   { background: #1a6b2e; color: #fff; }
+      .btn-sm-cancel { background: #e0e0e0; color: #333; }
+
+      .empty-list {
+        padding: 20px; text-align: center;
+        font-size: 11px; color: #aaa; font-style: italic;
+      }
+
+      /* ── Action cards ── */
+      .action-card { background: #fff; border: 1px solid #e0e3e8; border-radius: 6px; overflow: hidden; }
+      .action-header {
+        padding: 9px 12px; font-size: 10px; font-weight: bold;
+        letter-spacing: 0.06em; text-transform: uppercase; color: #444;
+        background: #f8f9fa; border-bottom: 1px solid #e8eaed;
+        display: flex; align-items: center; justify-content: space-between;
+        cursor: pointer; user-select: none;
+      }
+      .action-header:hover { background: #f0f2f5; }
+      .chevron { font-size: 10px; color: #aaa; transition: transform 0.15s; }
+      .action-body { padding: 12px; }
+      .action-body.hidden { display: none; }
+
+      .warning-banner {
+        background: #fff3f3; border: 1px solid #e8a0a0; border-radius: 4px;
+        padding: 8px 10px; font-size: 11px; color: #7a1a1a; margin-bottom: 10px; line-height: 1.5;
+      }
+
+      /* ── Form elements ── */
+      .form-row { margin-bottom: 10px; }
+      label { display: block; font-size: 11px; font-weight: bold; color: #444; margin-bottom: 3px; }
+      input[type="text"], select {
+        width: 100%; padding: 7px 8px; border: 1px solid #ccc;
+        border-radius: 4px; font-size: 12px; background: #fff;
+      }
+      input:focus, select:focus { outline: none; border-color: #1a3a2e; }
+
+      /* ── Buttons ── */
+      .btn-row { display: flex; gap: 8px; }
+      button.btn-primary, button.btn-danger {
+        flex: 2; padding: 8px 12px; border: none; border-radius: 4px;
+        font-size: 12px; font-weight: bold; cursor: pointer;
+      }
+      button.btn-primary { background: #1a6b2e; color: #fff; }
+      button.btn-danger  { background: #c0392b; color: #fff; }
+      button:hover    { opacity: 0.85; }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      /* ── Status ── */
+      .status { font-size: 11px; margin-top: 8px; min-height: 16px; }
+      .status.ok   { color: #1f6d2a; font-weight: bold; }
+      .status.warn { color: #9a2c2c; font-weight: bold; }
+      .status.info { color: #555; }
+
+      .hint-footer {
+        font-size: 10px; color: #bbb; text-align: center; padding: 0 0 4px;
+      }
+
+      /* ── Saving overlay (card-level feedback during in-flight commits).
+         Applied to whichever card initiated the action: list-card for
+         row-level ops (rename, quickDelete, reorder) and the appropriate
+         action-card for panel-level ops (Add, Delete). pointer-events:none
+         on children also prevents the user from triggering a second commit
+         (e.g. spam-clicking the Add button or another row's 🗑) while the
+         first is in flight. Pair every setSavingCard_(id, true) with a
+         (id, false) on BOTH success and failure. */
+      .list-card.saving,
+      .action-card.saving { position: relative; }
+      .list-card.saving > *,
+      .action-card.saving > * { opacity: 0.4; pointer-events: none; }
+      .list-card.saving::after,
+      .action-card.saving::after {
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 18px; font-weight: bold; letter-spacing: 1px;
+        color: #1a6b2e;
+        z-index: 5; pointer-events: none;
+      }
+      body.lang-en .list-card.saving::after,
+      body.lang-en .action-card.saving::after { content: 'SAVING\2026'; }
+      body.lang-es .list-card.saving::after,
+      body.lang-es .action-card.saving::after { content: 'GUARDANDO\2026'; }
+
+      /* ── i18n ── */
+      .es { display: none; }
+      .en { display: inline; }
+    </style>
+  </head>
+  <body class="lang-en">
+
+    <div class="header">
+      <div class="header-title">
+        <span class="en">Storage Areas</span>
+        <span class="es">Áreas de Almacén</span>
+      </div>
+      <div class="lang-group">
+        <button class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button class="lang-btn"        onclick="setLang('es')">ES</button>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <!-- Area list -->
+      <div class="list-card" id="list-card">
+        <div class="list-card-header">
+          <span>
+            <span class="en">Areas</span>
+            <span class="es">Áreas</span>
+          </span>
+          <span class="area-count" id="area-count">0</span>
+        </div>
+        <ul class="area-list" id="area-list"></ul>
+      </div>
+
+      <!-- Add -->
+      <div class="action-card" id="add-card">
+        <div class="action-header" onclick="toggleSection('add')">
+          <span>
+            <span class="en">➕  Add Area</span>
+            <span class="es">➕  Agregar Área</span>
+          </span>
+          <span class="chevron" id="chevron-add">▼</span>
+        </div>
+        <div class="action-body" id="body-add">
+          <div class="form-row">
+            <label>
+              <span class="en">Area Name</span>
+              <span class="es">Nombre del Área</span>
+            </label>
+            <input type="text" id="add-name" />
+          </div>
+          <div class="btn-row">
+            <button class="btn-primary" id="add-btn" onclick="doAdd()">
+              <span class="en">Add Area</span>
+              <span class="es">Agregar Área</span>
+            </button>
+          </div>
+          <div id="add-status" class="status"></div>
+        </div>
+      </div>
+
+      <!-- Delete -->
+      <div class="action-card" id="delete-card">
+        <div class="action-header" onclick="toggleSection('delete')">
+          <span>
+            <span class="en">🗑  Delete Area</span>
+            <span class="es">🗑  Eliminar Área</span>
+          </span>
+          <span class="chevron" id="chevron-delete">▼</span>
+        </div>
+        <div class="action-body hidden" id="body-delete">
+          <div class="warning-banner">
+            <span class="en">Items assigned to a deleted area lose their assignment and won't appear on order sheets until reassigned.</span>
+            <span class="es">Los artículos asignados a un área eliminada perderán su asignación y no aparecerán en hojas de pedido hasta ser reasignados.</span>
+          </div>
+          <div class="form-row">
+            <label>
+              <span class="en">Select Area to Delete</span>
+              <span class="es">Selecciona el Área a Eliminar</span>
+            </label>
+            <select id="delete-select"></select>
+          </div>
+          <div class="btn-row">
+            <button class="btn-danger" id="delete-btn" onclick="doDelete()">
+              <span class="en">Delete Area</span>
+              <span class="es">Eliminar Área</span>
+            </button>
+          </div>
+          <div id="delete-status" class="status"></div>
+        </div>
+      </div>
+
+      <!-- Footer hint -->
+      <div class="hint-footer">
+        <span class="en">Drag ⠿ to reorder · ✎ to rename · 🗑 to delete from list</span>
+        <span class="es">Arrastra ⠿ para reordenar · ✎ renombrar · 🗑 eliminar desde la lista</span>
+      </div>
+
+    </div>
+
+    <script>
+      var LANG = 'en';
+
+      var T = {
+        en: {
+          selectArea:'-- Select an area --', addPlaceholder:'e.g., Walk-In Cooler',
+          blankName:'Area name cannot be blank.', alreadyExists:'" already exists.',
+          adding:'Adding…', added:'Added "', addedEnd:'".',
+          selectToDelete:'Select an area to delete.',
+          deleting:'Deleting…', deleted:'Deleted "', itemsLost:' item(s) unassigned — reassign them in Manage Pick Path.',
+          renamed:'Renamed.', orderSaved:'Order saved.',
+          renamePh:'New name…', save:'Save', cancel:'Cancel',
+          confirmDelete:'Delete "', confirmDeleteEnd:'"? Assigned items will lose their area.',
+          noAreas:'No areas yet — add one below.'
+        },
+        es: {
+          selectArea:'-- Selecciona un área --', addPlaceholder:'ej. Cámara Fría',
+          blankName:'El nombre no puede estar vacío.', alreadyExists:'" ya existe.',
+          adding:'Agregando…', added:'Agregada "', addedEnd:'".',
+          selectToDelete:'Selecciona un área para eliminar.',
+          deleting:'Eliminando…', deleted:'Eliminada "', itemsLost:' artículo(s) sin área — reasígnalos en Gestionar Ruta de Picking.',
+          renamed:'Renombrado.', orderSaved:'Orden guardado.',
+          renamePh:'Nuevo nombre…', save:'Guardar', cancel:'Cancelar',
+          confirmDelete:'¿Eliminar "', confirmDeleteEnd:'"? Los artículos asignados perderán su área.',
+          noAreas:'Sin áreas — agrega una abajo.'
+        }
+      };
+
+      function t(k) { return T[LANG][k] || T.en[k] || k; }
+
+      function setLang(lang) {
+        LANG = lang;
+        document.body.className = 'lang-' + lang;  // drives card.saving::after content
+        document.querySelectorAll('.lang-btn').forEach(function(b, i) {
+          b.classList.toggle('active', ['en','es'][i] === lang);
+        });
+        document.querySelectorAll('.en,.es').forEach(function(el) {
+          el.style.display = el.classList.contains(lang) ? 'inline' : 'none';
+        });
+        byId('add-name').placeholder = t('addPlaceholder');
+        populateDeleteSelect();
+        renderList();
+      }
+
+      var areas      = AREA_LIST.slice();
+      var dragSrcIdx = null;
+      var renamingIdx = null;
+
+      function byId(id) { return document.getElementById(id); }
+
+      function bumpMutationTs_() {
+        // Signals to other modals' caches that data has changed and they
+        // should invalidate on next open. Stored under a shared localStorage
+        // key that must match the literal used by every reader/writer across
+        // modals — currently only ManageItems' View All cache reads it.
+        try { localStorage.setItem('mog_lastMutationTs', String(Date.now())); } catch (e) {}
+      }
+
+      function setStatus(key, msg, type) {
+        var el = byId(key + '-status');
+        if (!el) return;
+        el.textContent = msg;
+        el.className   = 'status ' + (type || '');
+      }
+
+      // Saving overlay control. Adds .saving to a card by id ('list-card',
+      // 'add-card', 'delete-card'), which dims its contents + locks pointer
+      // events + shows a centered SAVING/GUARDANDO label. Pair every
+      // (id, true) call with a (id, false) on BOTH success and failure paths.
+      function setSavingCard_(cardId, on) {
+        var c = byId(cardId);
+        if (!c) return;
+        if (on) c.classList.add('saving');
+        else    c.classList.remove('saving');
+      }
+
+      // ── Section toggle ────────────────────────────────────────────────────────
+      var sectionState = { add: false, delete: true }; // true = collapsed
+
+      function toggleSection(key) {
+        sectionState[key] = !sectionState[key];
+        var body    = byId('body-' + key);
+        var chevron = byId('chevron-' + key);
+        body.classList.toggle('hidden', sectionState[key]);
+        chevron.style.transform = sectionState[key] ? 'rotate(-90deg)' : '';
+      }
+
+      // Apply initial collapsed states
+      Object.keys(sectionState).forEach(function(key) {
+        if (sectionState[key]) {
+          var body = byId('body-' + key);
+          var chev = byId('chevron-' + key);
+          if (body) body.classList.add('hidden');
+          if (chev) chev.style.transform = 'rotate(-90deg)';
+        }
+      });
+
+      // ── Render list ───────────────────────────────────────────────────────────
+      function renderList() {
+        var ul  = byId('area-list');
+        var cnt = byId('area-count');
+        ul.innerHTML = '';
+        cnt.textContent = areas.length;
+
+        if (!areas.length) {
+          var li = document.createElement('li');
+          li.className   = 'empty-list';
+          li.textContent = t('noAreas');
+          ul.appendChild(li);
+          return;
+        }
+
+        areas.forEach(function(area, i) {
+          var li       = document.createElement('li');
+          li.className = 'area-item';
+          li.draggable = true;
+
+          var handle       = document.createElement('span');
+          handle.className = 'drag-handle';
+          handle.textContent = '⠿';
+
+          var badge       = document.createElement('span');
+          badge.className = 'order-badge';
+          badge.textContent = (i + 1) * 10;
+
+          // Name + inline rename container
+          var nameCol       = document.createElement('div');
+          nameCol.className = 'name-col';
+
+          var nameEl       = document.createElement('div');
+          nameEl.className = 'area-name';
+          nameEl.textContent = area.name;
+
+          var renameForm       = document.createElement('div');
+          renameForm.className = 'rename-form';
+          renameForm.id        = 'rf-' + i;
+
+          var renameInput         = document.createElement('input');
+          renameInput.type        = 'text';
+          renameInput.placeholder = t('renamePh');
+          renameInput.id          = 'ri-' + i;
+          renameInput.onkeydown   = (function(idx) {
+            return function(e) {
+              if (e.key === 'Enter')  submitRename(idx);
+              if (e.key === 'Escape') cancelRename(idx);
+            };
+          })(i);
+
+          var saveBtn       = document.createElement('button');
+          saveBtn.className = 'btn-sm btn-sm-save';
+          saveBtn.textContent = t('save');
+          saveBtn.onclick   = (function(idx) { return function() { submitRename(idx); }; })(i);
+
+          var cancelBtn       = document.createElement('button');
+          cancelBtn.className = 'btn-sm btn-sm-cancel';
+          cancelBtn.textContent = t('cancel');
+          cancelBtn.onclick   = (function(idx) { return function() { cancelRename(idx); }; })(i);
+
+          renameForm.appendChild(renameInput);
+          renameForm.appendChild(saveBtn);
+          renameForm.appendChild(cancelBtn);
+
+          nameCol.appendChild(nameEl);
+          nameCol.appendChild(renameForm);
+
+          // Action buttons
+          var actions       = document.createElement('div');
+          actions.className = 'area-actions';
+
+          var renBtn       = document.createElement('button');
+          renBtn.className = 'btn-icon';
+          renBtn.textContent = '✎';
+          renBtn.title     = LANG === 'es' ? 'Renombrar' : 'Rename';
+          renBtn.onclick   = (function(idx) { return function(e) { e.stopPropagation(); startRename(idx); }; })(i);
+
+          var delBtn       = document.createElement('button');
+          delBtn.className = 'btn-icon danger';
+          delBtn.textContent = '🗑';
+          delBtn.title     = LANG === 'es' ? 'Eliminar' : 'Delete';
+          delBtn.onclick   = (function(idx) { return function(e) { e.stopPropagation(); quickDelete(idx); }; })(i);
+
+          actions.appendChild(renBtn);
+          actions.appendChild(delBtn);
+
+          li.appendChild(handle);
+          li.appendChild(badge);
+          li.appendChild(nameCol);
+          li.appendChild(actions);
+
+          // Drag events
+          li.addEventListener('dragstart', (function(idx, el) {
+            return function(e) {
+              dragSrcIdx = idx;
+              el.classList.add('dragging');
+              e.dataTransfer.effectAllowed = 'move';
+            };
+          })(i, li));
+
+          li.addEventListener('dragend', function() {
+            li.classList.remove('dragging');
+            document.querySelectorAll('.area-item').forEach(function(el) {
+              el.classList.remove('drag-over');
+            });
+          });
+
+          li.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            document.querySelectorAll('.area-item').forEach(function(el) {
+              el.classList.remove('drag-over');
+            });
+            li.classList.add('drag-over');
+          });
+
+          li.addEventListener('drop', (function(idx) {
+            return function(e) {
+              e.preventDefault();
+              li.classList.remove('drag-over');
+              if (dragSrcIdx === null || dragSrcIdx === idx) return;
+              var moved = areas.splice(dragSrcIdx, 1)[0];
+              areas.splice(idx, 0, moved);
+              dragSrcIdx = null;
+              saveOrder();
+            };
+          })(i));
+
+          ul.appendChild(li);
+        });
+      }
+
+      // ── Rename ────────────────────────────────────────────────────────────────
+      function startRename(idx) {
+        if (renamingIdx !== null && renamingIdx !== idx) {
+          var old = byId('rf-' + renamingIdx);
+          if (old) old.classList.remove('visible');
+        }
+        renamingIdx = idx;
+        var form  = byId('rf-' + idx);
+        var input = byId('ri-' + idx);
+        form.classList.add('visible');
+        input.value = areas[idx].name;
+        input.focus();
+        input.select();
+      }
+
+      function cancelRename(idx) {
+        var form = byId('rf-' + idx);
+        if (form) form.classList.remove('visible');
+        renamingIdx = null;
+      }
+
+      function submitRename(idx) {
+        var input   = byId('ri-' + idx);
+        var oldName = areas[idx].name;
+        var newName = input ? input.value.trim() : '';
+        if (!newName || newName.toLowerCase() === oldName.toLowerCase()) {
+          cancelRename(idx); return;
+        }
+        if (areas.some(function(a, j) { return j !== idx && a.name.toLowerCase() === newName.toLowerCase(); })) {
+          if (input) { input.style.borderColor = '#e8a0a0'; setTimeout(function() { input.style.borderColor = ''; }, 1500); }
+          return;
+        }
+        // Optimistic: update local state + UI immediately, refetch only on error.
+        areas[idx].name = newName;
+        cancelRename(idx);
+        renderList();
+        populateDeleteSelect();
+        setStatus('add', t('renamed'), 'ok');
+        setTimeout(function() { setStatus('add',''); }, 2000);
+        bumpMutationTs_();
+        google.script.run
+          .withFailureHandler(function(err) {
+            setStatus('add', err.message || String(err), 'warn');
+            // Snap back to server truth on failure.
+            refreshAreas();
+          })
+          .commitRenameStorageArea(oldName, newName);
+      }
+
+      // ── Quick delete from list ────────────────────────────────────────────────
+      function quickDelete(idx) {
+        var name = areas[idx].name;
+        if (!window.confirm(t('confirmDelete') + name + t('confirmDeleteEnd'))) return;
+        // Optimistic: remove locally + render, then call server. Snap back on error.
+        areas.splice(idx, 1);
+        renderList();
+        populateDeleteSelect();
+        setStatus('delete', t('deleting'), 'info');
+        bumpMutationTs_();
+        google.script.run
+          .withSuccessHandler(function(res) {
+            var msg = t('deleted') + name + '".';
+            if (res.inUseCount > 0) msg += ' ' + res.inUseCount + t('itemsLost');
+            setStatus('delete', msg, 'ok');
+            setTimeout(function() { setStatus('delete',''); }, 3000);
+          })
+          .withFailureHandler(function(err) {
+            setStatus('delete', err.message || String(err), 'warn');
+            refreshAreas();  // snap back
+          })
+          .commitDeleteStorageArea(name);
+      }
+
+      // ── Delete (panel) ────────────────────────────────────────────────────────
+      function doDelete() {
+        var name = byId('delete-select').value;
+        if (!name) return setStatus('delete', t('selectToDelete'), 'warn');
+        var idx = areas.findIndex(function(a) { return a.name === name; });
+        if (idx === -1) { setStatus('delete', t('selectToDelete'), 'warn'); return; }
+        // Optimistic: remove locally + render. Snap back on error.
+        areas.splice(idx, 1);
+        renderList();
+        populateDeleteSelect();
+        byId('delete-btn').disabled = true;
+        setStatus('delete', t('deleting'), 'info');
+        bumpMutationTs_();
+        google.script.run
+          .withSuccessHandler(function(res) {
+            byId('delete-btn').disabled = false;
+            var msg = t('deleted') + name + '".';
+            if (res.inUseCount > 0) msg += ' ' + res.inUseCount + t('itemsLost');
+            setStatus('delete', msg, 'ok');
+          })
+          .withFailureHandler(function(err) {
+            byId('delete-btn').disabled = false;
+            setStatus('delete', err.message || String(err), 'warn');
+            refreshAreas();
+          })
+          .commitDeleteStorageArea(name);
+      }
+
+      // ── Save order (after drag) ───────────────────────────────────────────────
+      function saveOrder() {
+        // Local areas array was already reordered in the drop handler. Just
+        // re-render with new badges and confirm with the server. On failure,
+        // snap back to server truth.
+        renderList();
+        var names = areas.map(function(a) { return a.name; });
+        setStatus('add', t('orderSaved'), 'ok');
+        setTimeout(function() { setStatus('add',''); }, 2000);
+        bumpMutationTs_();
+        google.script.run
+          .withFailureHandler(function(err) {
+            setStatus('add', err.message || String(err), 'warn');
+            refreshAreas();
+          })
+          .commitReorderStorageAreas(names);
+      }
+
+      // ── Add ───────────────────────────────────────────────────────────────────
+      function doAdd() {
+        var name = byId('add-name').value.trim();
+        if (!name) return setStatus('add', t('blankName'), 'warn');
+        if (areas.some(function(a) { return a.name.toLowerCase() === name.toLowerCase(); })) {
+          return setStatus('add', '"' + name + t('alreadyExists'), 'warn');
+        }
+        // Optimistic: append locally + render. New area gets order = (length+1)*10
+        // which matches what the server will assign.
+        areas.push({ name: name, order: (areas.length + 1) * 10 });
+        renderList();
+        populateDeleteSelect();
+        byId('add-name').value = '';
+        byId('add-btn').disabled = true;
+        setStatus('add', t('adding'), 'info');
+        bumpMutationTs_();
+        google.script.run
+          .withSuccessHandler(function() {
+            byId('add-btn').disabled = false;
+            setStatus('add', t('added') + name + t('addedEnd'), 'ok');
+          })
+          .withFailureHandler(function(err) {
+            byId('add-btn').disabled = false;
+            setStatus('add', err.message || String(err), 'warn');
+            refreshAreas();  // snap back if server rejected
+          })
+          .commitAddStorageArea(name);
+      }
+
+      // ── Populate delete select ────────────────────────────────────────────────
+      function populateDeleteSelect() {
+        var sel = byId('delete-select');
+        var cur = sel.value;
+        sel.innerHTML = '<option value="">' + t('selectArea') + '</option>';
+        areas.forEach(function(a) {
+          var o = document.createElement('option');
+          o.value = a.name; o.textContent = a.name;
+          if (a.name === cur) o.selected = true;
+          sel.appendChild(o);
+        });
+      }
+
+      // ── Refresh from server ───────────────────────────────────────────────────
+      function refreshAreas(callback) {
+        google.script.run
+          .withSuccessHandler(function(list) {
+            areas = list;
+            renderList();
+            populateDeleteSelect();
+            if (callback) callback();
+          })
+          .withFailureHandler(function(err) { console.error(err); })
+          .getStorageAreaList();
+      }
+
+      // ── Init ──────────────────────────────────────────────────────────────────
+      setLang('en');
+    </script>
+  </body>
+</html>

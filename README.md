@@ -25,10 +25,24 @@ mog-mobile/
 ├── rpr/                    GENERATED — Roll Play Rosslyn
 │   ├── index.html          Built from template/index.html with deployment URL injected
 │   └── sw.js               Copy of template/sw.js
+├── apps-script/            Apps Script backend (the .gs + HTML modals bound to each store Sheet)
+│   ├── MOGApi.gs
+│   ├── OrderGuideScript.gs
+│   ├── *.html              (Manage*, OrderHistory, ReorderPickPath, StorageAreas, etc.)
+│   ├── deploy.ps1          One-command push to all stores + the master template
+│   └── README.md           Apps Script workflow docs
 └── README.md               This file
 ```
 
 Per-store directories (`rpr/`, future `rpt/`, `rpfc/`, etc.) are **generated** by `build.py`. Never edit them directly — your changes will be overwritten on the next build. Edit `template/` instead, then run `build.py`.
+
+## Apps Script backend
+
+The server-side code that each store's Google Sheet runs lives in `apps-script/`. Code is identical across all stores; per-store config (location name, PIN, vendor data) lives in the spreadsheet itself, not in the script.
+
+Edit a file in `apps-script/`, then run `.\apps-script\deploy.ps1` to push the change to every store + the master template in one command. Spreadsheet data, triggers, and named ranges are never touched — clasp only updates the bound script project.
+
+See `apps-script/README.md` for the one-time setup (Node.js + clasp install, Script ID collection, reconciliation diff) and the day-to-day workflow.
 
 ## Day-to-day workflow
 
@@ -53,7 +67,7 @@ The full sequence, end to end:
 
 In the new location's spreadsheet:
 
-1. Add `MOGApi.gs` (the version in this repo's project files, **v0.8.0 or later**).
+1. Add `apps-script/MOGApi.gs` and `apps-script/OrderGuideScript.gs` plus all the HTML modal files from this repo's `apps-script/` folder. (After initial setup, append the new store's Script ID to `apps-script/.clasp-targets.json` and future updates push automatically — see `apps-script/README.md`.)
 2. From the Apps Script editor, run `setupMobileApi()`. Five prompts:
    - 4–8 digit store PIN
    - Location name (e.g. "Roll Play Tysons")

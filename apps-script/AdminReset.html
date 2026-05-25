@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 13px;
+        background: #f9f9f9;
+        color: #222;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Header ── */
+      .header {
+        background: #fff;
+        border-bottom: 2px solid #7a1a1a;
+        padding: 10px 14px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        flex-shrink: 0;
+      }
+      .header-text { flex: 1; }
+      .header h3 { font-size: 13px; font-weight: bold; color: #7a1a1a; }
+      .header p  { font-size: 10px; color: #888; margin-top: 4px; line-height: 1.4; }
+      .lang-group { display: flex; gap: 4px; margin-top: 2px; }
+      .lang-btn {
+        padding: 3px 9px; font-size: 10px; font-weight: bold; cursor: pointer;
+        color: #888; background: transparent; border: 1px solid #ccc; border-radius: 3px;
+      }
+      .lang-btn.active { background: #7a1a1a; color: #fff; border-color: #7a1a1a; }
+      .lang-btn:hover:not(.active) { background: #f5f5f5; }
+
+      /* ── Scrollable body ── */
+      .body { flex: 1; overflow-y: auto; padding: 14px 14px 0; }
+      .body::-webkit-scrollbar { width: 5px; }
+      .body::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+      /* ── Section ── */
+      .section { background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 12px; overflow: hidden; }
+      .section-header {
+        padding: 10px 12px; background: #f5f5f5; border-bottom: 1px solid #eee;
+        display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none;
+      }
+      .section-header:hover { background: #ececec; }
+      .section-header input[type="checkbox"] {
+        width: 16px; height: 16px; accent-color: #7a1a1a; flex-shrink: 0; cursor: pointer;
+      }
+      .section-title { font-size: 12px; font-weight: bold; color: #222; flex: 1; }
+      .section-badge {
+        font-size: 9px; font-weight: bold; padding: 2px 7px; border-radius: 10px; flex-shrink: 0;
+      }
+      .badge-safe    { background: #d4edda; color: #1f6d2a; }
+      .badge-caution { background: #fff3cd; color: #856404; }
+      .badge-danger  { background: #f8d7da; color: #7a1a1a; }
+      .section-desc { padding: 9px 12px 10px 38px; font-size: 11px; color: #555; line-height: 1.6; border-top: 1px solid #f0f0f0; }
+      .section-desc.hidden { display: none; }
+
+      /* ── Warning ── */
+      .warning-banner {
+        background: #fff3f3; border: 1px solid #e8a0a0; border-radius: 5px;
+        padding: 10px 12px; font-size: 11px; color: #7a1a1a; margin-bottom: 14px; line-height: 1.6;
+      }
+      .warning-banner strong { font-size: 12px; }
+
+      /* ── Confirm input ── */
+      .confirm-area {
+        background: #fff; border: 1px solid #ddd; border-radius: 6px;
+        padding: 12px; margin-bottom: 14px;
+      }
+      .confirm-area label { display: block; font-size: 11px; font-weight: bold; color: #444; margin-bottom: 6px; }
+      .confirm-area input[type="text"] {
+        width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px;
+        font-size: 12px; font-family: monospace; letter-spacing: 0.05em;
+      }
+      .confirm-area input[type="text"]:focus { outline: none; border-color: #7a1a1a; }
+      .confirm-area .hint { font-size: 10px; color: #888; margin-top: 5px; }
+
+      /* ── Summary chip ── */
+      #selectionSummary {
+        font-size: 10px; color: #555; background: #f0f0f0; border-radius: 4px;
+        padding: 5px 10px; margin-bottom: 12px; text-align: center; font-style: italic;
+      }
+      #selectionSummary.has-selection { background: #fff3f3; color: #7a1a1a; font-style: normal; font-weight: bold; }
+
+      /* ── Footer ── */
+      .footer { position: sticky; bottom: 0; background: #f9f9f9; border-top: 1px solid #ddd; padding: 10px 14px 12px; flex-shrink: 0; }
+      .btn-row { display: flex; gap: 8px; }
+      button { padding: 9px 12px; cursor: pointer; border: none; border-radius: 4px; font-size: 12px; font-weight: bold; }
+      .btn-close  { background: #e0e0e0; color: #333; flex: 1; }
+      .btn-reset  { background: #7a1a1a; color: #fff; flex: 2; }
+      button:hover    { opacity: 0.85; }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+      .status { font-size: 11px; margin-top: 8px; min-height: 16px; text-align: center; }
+      .status.ok   { color: #1f6d2a; font-weight: bold; }
+      .status.warn { color: #9a2c2c; font-weight: bold; }
+      .status.info { color: #555; }
+
+      /* ── i18n ── */
+      .es { display: none; }
+      .en { display: inline; }
+    </style>
+  </head>
+  <body>
+
+    <div class="header">
+      <div class="header-text">
+        <h3>⚠ <span class="en">Admin Reset</span><span class="es">Restablecimiento Admin</span></h3>
+        <p>
+          <span class="en">Select only the components you want to clear. Everything else stays untouched.</span>
+          <span class="es">Selecciona solo los componentes que deseas limpiar. El resto queda intacto.</span>
+        </p>
+      </div>
+      <div class="lang-group">
+        <button class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button class="lang-btn"        onclick="setLang('es')">ES</button>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <!-- ── OPTION 1: Pick Path DB ── -->
+      <div class="section">
+        <div class="section-header" onclick="toggleSection('db', event)">
+          <input type="checkbox" id="chk-db" onchange="updateSummary()" onclick="event.stopPropagation()">
+          <span class="section-title">
+            <span class="en">Pick Path Database (K:P)</span>
+            <span class="es">Base de Datos de Ruta (K:P)</span>
+          </span>
+          <span class="section-badge badge-safe">
+            <span class="en">Recommended</span>
+            <span class="es">Recomendado</span>
+          </span>
+        </div>
+        <div class="section-desc" id="desc-db">
+          <span class="en">
+            Clears the hidden pick path database rows (SETUP columns K–P).<br><br>
+            <strong>Use this to:</strong> Remove duplicate entries, stale vendor rows, or orphaned item records without touching anything else.<br><br>
+            ✓ Vendors stay intact<br>
+            ✓ Storage areas stay intact<br>
+            ✓ Pick path list (rows 21+) stays intact<br>
+            ✓ MASTER_ITEMS untouched
+          </span>
+          <span class="es">
+            Limpia las filas ocultas de la base de datos de ruta (SETUP columnas K–P).<br><br>
+            <strong>Úsalo para:</strong> Eliminar entradas duplicadas, filas de proveedores desactualizadas o registros huérfanos sin tocar nada más.<br><br>
+            ✓ Proveedores intactos<br>
+            ✓ Áreas de almacén intactas<br>
+            ✓ Lista de ruta (filas 21+) intacta<br>
+            ✓ MASTER_ITEMS sin cambios
+          </span>
+        </div>
+      </div>
+
+      <!-- ── OPTION 2: Pick Path List ── -->
+      <div class="section">
+        <div class="section-header" onclick="toggleSection('list', event)">
+          <input type="checkbox" id="chk-list" onchange="updateSummary()" onclick="event.stopPropagation()">
+          <span class="section-title">
+            <span class="en">Pick Path List (SETUP rows 21+)</span>
+            <span class="es">Lista de Ruta (SETUP filas 21+)</span>
+          </span>
+          <span class="section-badge badge-caution">
+            <span class="en">Caution</span>
+            <span class="es">Precaución</span>
+          </span>
+        </div>
+        <div class="section-desc hidden" id="desc-list">
+          <span class="en">
+            Clears the working pick path list visible in SETUP (columns A, B, D from row 21 onward).<br><br>
+            The hidden database (K:P) is <em>not</em> cleared unless you also check that option. You can reload by switching the vendor in B2.<br><br>
+            ✓ Vendors stay intact<br>
+            ✓ Storage areas stay intact<br>
+            ✓ Pick path database stays intact<br>
+            ✓ MASTER_ITEMS untouched
+          </span>
+          <span class="es">
+            Limpia la lista de ruta visible en SETUP (columnas A, B, D desde la fila 21).<br><br>
+            La base de datos oculta (K:P) <em>no</em> se limpia a menos que también marques esa opción. Puedes recargar cambiando el proveedor en B2.<br><br>
+            ✓ Proveedores intactos<br>
+            ✓ Áreas de almacén intactas<br>
+            ✓ Base de datos de ruta intacta<br>
+            ✓ MASTER_ITEMS sin cambios
+          </span>
+        </div>
+      </div>
+
+      <!-- ── OPTION 3: Vendor Table ── -->
+      <div class="section">
+        <div class="section-header" onclick="toggleSection('vendors', event)">
+          <input type="checkbox" id="chk-vendors" onchange="updateSummary()" onclick="event.stopPropagation()">
+          <span class="section-title">
+            <span class="en">Vendor Table + Name List (R:Y, Z)</span>
+            <span class="es">Tabla de Proveedores + Lista (R:Y, Z)</span>
+          </span>
+          <span class="section-badge badge-danger">
+            <span class="en">Destructive</span>
+            <span class="es">Destructivo</span>
+          </span>
+        </div>
+        <div class="section-desc hidden" id="desc-vendors">
+          <span class="en">
+            Clears all vendor names from column Z and their multipliers from S–Y, plus the R dropdown rows.<br><br>
+            ⚠ Vendor tabs are <strong>not</strong> deleted — only the table data is cleared. You will need to re-add vendors manually.
+          </span>
+          <span class="es">
+            Limpia todos los nombres de proveedores de la columna Z, sus multiplicadores de S–Y, y las filas del menú R.<br><br>
+            ⚠ Las pestañas de proveedores <strong>no</strong> se eliminan — solo se limpia la tabla. Deberás agregar los proveedores manualmente.
+          </span>
+        </div>
+      </div>
+
+      <!-- ── OPTION 4: Storage Areas ── -->
+      <div class="section">
+        <div class="section-header" onclick="toggleSection('areas', event)">
+          <input type="checkbox" id="chk-areas" onchange="updateSummary()" onclick="event.stopPropagation()">
+          <span class="section-title">
+            <span class="en">Storage Areas (H:I)</span>
+            <span class="es">Áreas de Almacén (H:I)</span>
+          </span>
+          <span class="section-badge badge-danger">
+            <span class="en">Destructive</span>
+            <span class="es">Destructivo</span>
+          </span>
+        </div>
+        <div class="section-desc hidden" id="desc-areas">
+          <span class="en">
+            Clears the storage area name and order table (SETUP H2:I19). All area dropdowns will become empty.<br><br>
+            ⚠ Items in the pick path DB that reference these areas will have orphaned area assignments until areas are re-created and items reassigned.
+          </span>
+          <span class="es">
+            Limpia la tabla de nombres y orden de áreas (SETUP H2:I19). Todos los menús de áreas quedarán vacíos.<br><br>
+            ⚠ Los artículos en la base de datos de ruta que referencian estas áreas quedarán huérfanos hasta que se recreen las áreas y se reasignen los artículos.
+          </span>
+        </div>
+      </div>
+
+      <!-- ── OPTION 5: Order Log ── -->
+      <div class="section">
+        <div class="section-header" onclick="toggleSection('orderLog', event)">
+          <input type="checkbox" id="chk-orderLog" onchange="updateSummary()" onclick="event.stopPropagation()">
+          <span class="section-title">
+            <span class="en">Order Log (LOG_ORDERS)</span>
+            <span class="es">Registro de Pedidos (LOG_ORDERS)</span>
+          </span>
+          <span class="section-badge badge-caution">
+            <span class="en">Caution</span>
+            <span class="es">Precaución</span>
+          </span>
+        </div>
+        <div class="section-desc hidden" id="desc-orderLog">
+          <span class="en">
+            Clears all data rows in the LOG_ORDERS sheet. The header row is preserved.<br><br>
+            Use this to wipe order history (e.g. before a fresh start, after testing, or after a full system reset).<br><br>
+            ✓ All other sheets untouched<br>
+            ✓ Header row preserved<br>
+            ⚠ Order history cannot be recovered after this action.
+          </span>
+          <span class="es">
+            Limpia todas las filas de datos en la hoja LOG_ORDERS. La fila de encabezado se conserva.<br><br>
+            Úsalo para borrar el historial de pedidos (ej. antes de un reinicio limpio, después de pruebas, o tras un restablecimiento completo).<br><br>
+            ✓ Todas las demás hojas intactas<br>
+            ✓ Fila de encabezado conservada<br>
+            ⚠ El historial de pedidos no se puede recuperar después de esta acción.
+          </span>
+        </div>
+      </div>
+
+      <!-- Summary -->
+      <div id="selectionSummary"></div>
+
+      <!-- Confirm -->
+      <div class="confirm-area">
+        <label>
+          <span class="en">Type <strong>RESET</strong> to confirm</span>
+          <span class="es">Escribe <strong>RESET</strong> para confirmar</span>
+        </label>
+        <input type="text" id="confirm-input" placeholder="RESET"
+               oninput="updateResetBtn()" autocomplete="off"
+               autocorrect="off" autocapitalize="characters" spellcheck="false">
+        <div class="hint">
+          <span class="en">This action cannot be undone.</span>
+          <span class="es">Esta acción no se puede deshacer.</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="footer">
+      <div class="btn-row">
+        <button class="btn-close" id="btn-cancel" onclick="google.script.host.close()">
+          <span class="en">Cancel</span>
+          <span class="es">Cancelar</span>
+        </button>
+        <button class="btn-reset" id="reset-btn" disabled onclick="doReset()">
+          <span class="en">Reset Selected</span>
+          <span class="es">Restablecer Seleccionado</span>
+        </button>
+      </div>
+      <div id="status" class="status"></div>
+    </div>
+
+    <script>
+      var LANG = 'en';
+
+      var T = {
+        en: {
+          noSelection: 'No components selected — choose at least one above.',
+          willReset:   'Will reset: ',
+          resetting:   'Resetting… please wait.',
+          done:        'Done! Cleared: ',
+          labels: {
+            db:       'Pick Path DB',
+            list:     'Pick Path List',
+            vendors:  'Vendor Table',
+            areas:    'Storage Areas',
+            orderLog: 'Order Log'
+          }
+        },
+        es: {
+          noSelection: 'Ningún componente seleccionado — elige al menos uno arriba.',
+          willReset:   'Se restablecerá: ',
+          resetting:   'Restableciendo… por favor espera.',
+          done:        '¡Listo! Limpiado: ',
+          labels: {
+            db:       'Base de Datos de Ruta',
+            list:     'Lista de Ruta',
+            vendors:  'Tabla de Proveedores',
+            areas:    'Áreas de Almacén',
+            orderLog: 'Registro de Pedidos'
+          }
+        }
+      };
+
+      function t(k) { return T[LANG][k] || T.en[k] || k; }
+
+      function setLang(lang) {
+        LANG = lang;
+        document.querySelectorAll('.lang-btn').forEach(function(b, i) {
+          b.classList.toggle('active', ['en','es'][i] === lang);
+        });
+        document.querySelectorAll('.en,.es').forEach(function(el) {
+          el.style.display = el.classList.contains(lang) ? 'inline' : 'none';
+        });
+        updateSummary();
+      }
+
+      function byId(id) { return document.getElementById(id); }
+
+      function bumpMutationTs_() {
+        // Signals to other modals' caches that data has changed and they
+        // should invalidate on next open. Stored under a shared localStorage
+        // key that must match the literal used by every reader/writer across
+        // modals — currently only ManageItems' View All cache reads it.
+        try { localStorage.setItem('mog_lastMutationTs', String(Date.now())); } catch (e) {}
+      }
+
+      function setStatus(msg, type) {
+        const el = byId('status');
+        el.textContent = msg;
+        el.className   = 'status ' + (type || '');
+      }
+
+      // ── Expand/collapse description ───────────────────────────────────────────
+      const ALL_KEYS = ['db','list','vendors','areas','orderLog'];
+
+      function toggleSection(key, e) {
+        if (e && e.target && e.target.type === 'checkbox') return;
+        byId('desc-' + key).classList.toggle('hidden');
+      }
+
+      // ── Selection summary ─────────────────────────────────────────────────────
+      function updateSummary() {
+        const selected = ALL_KEYS.filter(k => byId('chk-' + k).checked);
+        const el = byId('selectionSummary');
+        if (!selected.length) {
+          el.textContent = t('noSelection');
+          el.className   = '';
+        } else {
+          el.textContent = t('willReset') + selected.map(k => t('labels')[k]).join(', ');
+          el.className   = 'has-selection';
+        }
+        updateResetBtn();
+      }
+
+      function updateResetBtn() {
+        const hasSelection = ALL_KEYS.some(k => byId('chk-' + k).checked);
+        const confirmed    = byId('confirm-input').value.trim().toUpperCase() === 'RESET';
+        byId('reset-btn').disabled = !(hasSelection && confirmed);
+      }
+
+      // ── Execute reset ─────────────────────────────────────────────────────────
+      function doReset() {
+        const options = {
+          pickPathDb:   byId('chk-db').checked,
+          pickPathList: byId('chk-list').checked,
+          vendors:      byId('chk-vendors').checked,
+          areas:        byId('chk-areas').checked,
+          orderLog:     byId('chk-orderLog').checked
+        };
+
+        byId('reset-btn').disabled = true;
+        setStatus(t('resetting'), 'info');
+
+        bumpMutationTs_();
+        google.script.run
+          .withSuccessHandler(function(res) {
+            const labels = t('labels');
+            const parts  = [];
+            if (res.clearedDb)       parts.push(labels.db);
+            if (res.clearedList)     parts.push(labels.list);
+            if (res.clearedVendors)  parts.push(labels.vendors);
+            if (res.clearedAreas)    parts.push(labels.areas);
+            if (res.clearedOrderLog) parts.push(labels.orderLog);
+            setStatus(t('done') + parts.join(', ') + '.', 'ok');
+            ALL_KEYS.forEach(function(k) { byId('chk-' + k).checked = false; });
+            byId('confirm-input').value = '';
+            updateSummary();
+          })
+          .withFailureHandler(function(err) {
+            setStatus(err.message || String(err), 'warn');
+            byId('reset-btn').disabled = false;
+          })
+          .commitSelectiveReset(options);
+      }
+
+      // ── Init ──────────────────────────────────────────────────────────────────
+      byId('desc-db').classList.remove('hidden');
+      byId('chk-db').checked = true;
+      setLang('en'); // called last so updateSummary fires once with correct state
+    </script>
+  </body>
+</html>
