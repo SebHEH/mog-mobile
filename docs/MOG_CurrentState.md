@@ -8,14 +8,16 @@ If this doc and `CLAUDE.md` conflict on a specific fact, `CLAUDE.md` wins for st
 
 ## Pinned focus
 
-**No active in-flight work.** The 2026-05-24 session landed two big deliverables: the repo consolidation (Master-Ordering-Guide merged into mog-mobile + clasp deploy workflow) AND the Claude Code scaffold itself. Both are complete.
+**Apps Script modal performance pass — in progress.** Item #1 of a 7-item audit shipped 2026-05-25 (Order History modal: 2 concurrent RPCs → 1 bootstrap call, also cut a duplicate `LOG_ORDERS` sheet read). Six items remain, ranked by impact. The audit punch-list lives in `docs/MOG_SessionHandoff_2026_05_25.md`.
 
 ### Next-session candidates (impact-ranked)
 
-1. **Decommission `Master-Ordering-Guide` GitHub repo** (~2026-05-31, one week after consolidation lands). Delete the repo on GitHub and rename the local folder to `.archive`. Low effort, removes a foot-gun.
-2. **Stress-test the deploy workflow with a real code change.** Pick a tiny improvement (a typo fix in `apps-script/HowToUse.html`, a CSS tweak in `template/index.html`), push it through the full edit→deploy→smoke-test loop. Confirms the workflow is real, not just paper.
-3. **Sebastian's outstanding PWA backlog** (when surfaced) — anything in `template/index.html` that's been waiting for the consolidation to finish. Currently unknown; ask at session start.
-4. **Service worker `CACHE_VERSION` bump audit.** Both `sw.js` (hub) and `template/sw.js` are currently at `v5`. Confirm no pending shell changes need a bump.
+1. **ManageVendors nested-RPC unroll** (BIG, audit item #2). `ManageVendors.html` ~line 856 chains `commitUpdateVendorMults` → `commitUpdateVendorCutoff` in success callback. Merge into one server fn accepting both payloads.
+2. **`api_getDashboard_` CacheService** (MEDIUM-BIG, audit item #3). `MOGApi.gs` ~lines 345–421 read vendor + item + storage areas sequentially every dashboard hit. Mirror cache pattern from `getManageItemsBootstrap` (mutation-timestamp invalidation via `DocumentProperties`).
+3. **StorageAreas RPC consolidation** (MEDIUM, audit item #4). 6 separate RPCs → 1 `mutateStorageAreas({add, delete})`.
+4. **`getSheet_` handle caching / `getVendorTableData` adjacent-range merge / `fetchCurrentArea()` removal** (audit items #5–7). Smaller; bundle if a session has appetite for incremental wins.
+5. **Decommission `Master-Ordering-Guide` GitHub repo** (~2026-05-31, one week after consolidation lands). Delete on GitHub, rename local folder to `.archive`. Low effort, removes a foot-gun.
+6. **Service worker `CACHE_VERSION` bump audit.** Both `sw.js` (hub) and `template/sw.js` are at `v5`. Confirm no pending shell changes need a bump.
 
 ---
 
@@ -100,4 +102,5 @@ Most recent first. Trim entries older than ~5 sessions when this list gets unwie
 
 | Date | Session | Outcome |
 |---|---|---|
+| 2026-05-25 | Order History modal RPC consolidation | Apps Script modal perf audit produced 7-item ranked punch-list. Item #1 shipped: `getOrderHistoryBootstrap` server fn + rewired `OrderHistory.html` window.onload → 1 RPC instead of 2 on modal open, 1 fewer `LOG_ORDERS` read. Deployed to all 9 clasp targets. Side-note: Node + clasp + clasp login installed on `sebcn` machine for the first time. |
 | 2026-05-24 | Repo consolidation + Claude Code scaffold | Master-Ordering-Guide repo merged into mog-mobile; `apps-script/` folder created; clasp deploy workflow set up; 2 new stores (rpfrf, rptfo) onboarded; CLAUDE.md + docs/ + 3 repo-specific skills written. Commits: `d95080f`, `bb68221`, plus this scaffold commit. |
