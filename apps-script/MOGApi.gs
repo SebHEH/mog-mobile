@@ -342,7 +342,46 @@ function api_commitReset_() {
 }
 
 
+// Cached entry point. The compute lives in api_getDashboard_compute_ — this
+// wrapper is a near-copy of the getManageItemsBootstrap pattern: key by
+// dateStr + getServerMutationTs_ so the cache invalidates on (a) midnight
+// rollover and (b) any admin mutation that already bumps the shared ts.
+// On-hand saves from the PWA also bump that ts (see api_saveOnHand_).
+// Fail-safe: any CacheService error falls through to a fresh compute, never
+// breaks the dashboard.
 function api_getDashboard_() {
+  const dateStr = getActiveOrderDate_().dateStr;
+  const ts = getServerMutationTs_();
+  const cacheKey = 'dashboard_v1_' + dateStr + '_' + ts;
+
+  let cache = null;
+  try { cache = CacheService.getDocumentCache(); } catch (e) { cache = null; }
+
+  if (cache) {
+    try {
+      const hit = cache.get(cacheKey);
+      if (hit) return JSON.parse(hit);
+    } catch (e) {
+      // bad cached content or read error — fall through to compute
+    }
+  }
+
+  const payload = api_getDashboard_compute_();
+
+  if (cache) {
+    try {
+      const json = JSON.stringify(payload);
+      // CacheService caps at 100KB per key; leave headroom for overhead.
+      if (json.length < 95000) cache.put(cacheKey, json, 300);
+    } catch (e) {
+      // non-fatal: payload already in hand
+    }
+  }
+  return payload;
+}
+
+
+function api_getDashboard_compute_() {
   const tz        = Session.getScriptTimeZone();
   const active    = getActiveOrderDate_();
   const dateStr   = active.dateStr;
@@ -353,6 +392,7 @@ function api_getDashboard_() {
   const vendorMults  = readVendorMultipliers_(setup);
   const vendorCutoffs = readVendorCutoffs_(setup);
   const todaysLog    = getTodaysLogByVendor_(dateStr);
+  const itemCounts   = countActiveItemsByVendor_();
 
   const out = [];
   for (const vendorName of allVendors) {
@@ -360,7 +400,7 @@ function api_getDashboard_() {
     if ((Number(mults[dayOfWeek]) || 0) <= 0) continue; // not an order day
 
     const meta      = VENDOR_META[vendorName] || {};
-    const itemCount = countActiveItemsForVendor_(vendorName);
+    const itemCount = itemCounts.get(vendorName) || 0;
     const log       = todaysLog.get(vendorName);
 
     let status       = 'not_started';
@@ -630,6 +670,12 @@ function api_saveOnHand_(payload) {
     block[u.row - minRow][0] = u.val;
   }
   range.setValues(block);
+
+  // Invalidate the dashboard CacheService entry — enteredCount and
+  // in_progress status reflect on-hand values, so a count save must show
+  // up on the next dashboard hit. Shares the ts with the manage-items
+  // bootstrap cache (cheap to recompute that one on the rare overlap).
+  bumpServerMutationTs_();
 
   return { saved: updates.length, vendor: vendor };
 }
@@ -1062,6 +1108,26 @@ function countActiveItemsForVendor_(vendor) {
     if (String(r[COL.VENDOR - 1] || '').trim() === vendor && r[COL.ACTIVE - 1] === true) count++;
   }
   return count;
+}
+
+
+// Bulk variant of countActiveItemsForVendor_ — one MASTER_ITEMS scan returns
+// counts for every vendor at once. The dashboard used to call the singular
+// form inside its per-vendor loop, rescanning master ~10x per hit; this
+// folds it into a single pass.
+function countActiveItemsByVendor_() {
+  const sh = getSheet_(SHEET_MASTER);
+  const lastRow = sh.getLastRow();
+  const map = new Map();
+  if (lastRow < 2) return map;
+  const data = sh.getRange(2, 1, lastRow - 1, COL.ACTIVE).getValues();
+  for (const r of data) {
+    if (r[COL.ACTIVE - 1] !== true) continue;
+    const v = String(r[COL.VENDOR - 1] || '').trim();
+    if (!v) continue;
+    map.set(v, (map.get(v) || 0) + 1);
+  }
+  return map;
 }
 
 
