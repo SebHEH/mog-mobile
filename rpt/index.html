@@ -1652,7 +1652,10 @@
   // ============================================================
   const state = {
     apiUrl:     window.MOG_API_URL,
-    pin:        localStorage.getItem('mog_pin') || '',
+    // The PIN is session-only — never restored from localStorage. KMs
+    // re-enter their 4-digit PIN on every fresh open. (Caching it caused
+    // more confusion than it saved.)
+    pin:        '',
     // When set, the session was authenticated with the multi-unit
     // manager master PIN (set by the hub via sessionStorage before
     // redirect). Drives the manager-mode banner and the exit path.
@@ -2553,12 +2556,11 @@
     // server's classification — the client's sessionStorage flag is
     // only a hint.
     state.isManagerMode = !!data.isManagerMode;
-    // Only persist the PIN to localStorage in normal (store-PIN) mode.
-    // Master-mode credentials live in sessionStorage and die on tab
-    // close; we never want them written to localStorage where they'd
-    // survive past the manager's session.
+    // The PIN itself is never persisted — it lives only in state.pin for
+    // the life of the tab, so a KM re-enters it on every fresh open. We
+    // still cache the resolved location/abbr in normal (store-PIN) mode
+    // for display; master mode never writes localStorage.
     if (!state.isManagerMode) {
-      localStorage.setItem('mog_pin', pin);
       localStorage.setItem('mog_location', state.location);
       localStorage.setItem('mog_loc_abbr', state.locAbbr);
     }
@@ -2745,7 +2747,33 @@
     const label = state.lang === 'en'
       ? ('Loading ' + strong + ' order guide')
       : ('Cargando guía de ' + strong);
-    await playTransitionAnimation(proceedAfterAuth(), label);
+
+    // On a NEW DAY we must NOT run the auto-reset inside the transition's
+    // work-promise: the transition overlay is z-80 and the reset's
+    // "Detected new day…" busy overlay is z-70, so the reset would run
+    // hidden behind the loading bar (which just pulses for the multi-second
+    // commitReset and reads as "stuck loading"). Instead, let the transition
+    // wrap only the fast status check (+ the normal-day app load), finish
+    // its ceremony and fade out, THEN hand off to the visible reset overlay.
+    let pendingStale = null;
+    await playTransitionAnimation((async function () {
+      try {
+        const status = await api('getResetStatus');
+        if (status.isStale) {
+          pendingStale = status;
+        } else {
+          await showMainApp();
+        }
+      } catch (err) {
+        console.error('proceedAfterAuth error:', err);
+        await showMainApp();
+      }
+    })(), label);
+
+    if (pendingStale) {
+      showStaleScreen(pendingStale);
+      await autoRunStaleReset();
+    }
   }
 
   function signOut() {
@@ -6064,12 +6092,18 @@
     });
   }
 
+  // Legacy cleanup: older app versions cached the store PIN in
+  // localStorage. We no longer do — proactively wipe any stale value so
+  // it doesn't linger on disk on existing installs.
+  try { localStorage.removeItem('mog_pin'); } catch (e) { /* non-fatal */ }
+
   // Manager-mode entry path: the hub stashed a master PIN in
-  // sessionStorage before redirecting us here. That credential takes
-  // precedence over any cached store PIN. On rejection (server doesn't
-  // accept the master PIN), bounce back to the hub with a failure flag
-  // so the hub can show a clear "wrong code" message instead of falling
-  // through to a confusing per-store PIN gate.
+  // sessionStorage before redirecting us here. On rejection (server
+  // doesn't accept the master PIN), bounce back to the hub with a failure
+  // flag so the hub can show a clear "wrong code" message instead of
+  // falling through to a confusing per-store PIN gate. Outside of
+  // manager mode there's no cached store PIN anymore, so we always land
+  // on the PIN screen and the KM re-enters their 4 digits.
   let masterPin = '';
   try { masterPin = sessionStorage.getItem('mog_master_pin') || ''; }
   catch (e) { masterPin = ''; }
@@ -6084,10 +6118,6 @@
         } catch (e) { /* non-fatal */ }
         window.location.href = '../?master_failed=1';
       });
-  } else if (state.pin) {
-    tryPin(state.pin)
-      .then(() => proceedAfterAuth())
-      .catch(() => showPinScreen());
   } else {
     showPinScreen();
   }
