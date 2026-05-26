@@ -2612,8 +2612,15 @@
   async function proceedAfterAuth() {
     try {
       const status = await api('getResetStatus');
-      if (status.isStale) showStaleScreen(status);
-      else {
+      if (status.isStale) {
+        // New day detected — show the stale screen for context, then
+        // auto-run the reset instead of waiting for a manual tap. The
+        // recap email fires server-side as part of commitReset, so the
+        // order is logged + emailed no matter what. The manual button
+        // remains as a fallback if the auto-reset fails.
+        showStaleScreen(status);
+        await autoRunStaleReset();
+      } else {
         await showMainApp();
       }
     } catch (err) {
@@ -2622,14 +2629,31 @@
     }
   }
 
+  // Auto-fires the daily reset the first time the app is opened on a new
+  // day. Shows a "Detected new day — resetting…" overlay so the automatic
+  // clear is visible, not silent. Falls back to the manual stale-screen
+  // button (re-enabled) if the reset fails.
+  async function autoRunStaleReset() {
+    await runStaleReset_(
+      state.lang === 'en'
+        ? 'Detected new day — resetting On Hand…'
+        : 'Nuevo día detectado — reiniciando inventario…'
+    );
+  }
+
+  // Manual stale-screen button handler.
   async function handleStaleReset() {
+    await runStaleReset_(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
+  }
+
+  // Shared reset core for both the manual button and the new-day auto-reset.
+  // busyLabel is shown on the full-screen overlay while the reset runs.
+  async function runStaleReset_(busyLabel) {
     const btn   = $('stale-reset-btn');
     const errEl = $('stale-error');
     btn.disabled = true;
     errEl.textContent = '';
-    btn.querySelector('span.lang-en').textContent = 'Resetting…';
-    btn.querySelector('span.lang-es').textContent = 'Reiniciando…';
-    showBusy(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
+    showBusy(busyLabel);
     try {
       await api('commitReset');
       state.cache.dashboard = null;

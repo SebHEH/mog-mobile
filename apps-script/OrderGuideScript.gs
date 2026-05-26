@@ -435,6 +435,100 @@ function ensureDashboardEditTrigger_() {
 
 
 
+// Installable open trigger — auto-runs the daily reset the first time the
+// Sheet is opened on a new day. Mirrors the PWA's new-day auto-reset so a
+// manager who opens the Sheet directly (without touching the PWA) still
+// finalizes the cycle: logs the order, emails the recap, clears On Hand.
+//
+// Must be INSTALLABLE, not the simple onOpen: a simple trigger can't send
+// email (MailApp needs authorization a simple trigger doesn't have). The
+// installable trigger runs as whoever installed it, so the recap email
+// sends under that account — which is exactly what authorizes MailApp.
+//
+// Idempotent: gated on AE9 (last reset) < today, so only the first open of
+// the day does work; every later open in the same cycle is a two-cell read
+// and return. Never throws — an open-trigger error must not block the Sheet.
+function dailyResetOnOpen_() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const oe = ss.getSheetByName(SHEET_ORDER_ENTRY);
+    if (!oe) return;
+    const tz = ss.getSpreadsheetTimeZone();
+
+    const todayRaw = oe.getRange(ORDER_ENTRY_DATE_CELL).getValue();  // AE2 =TODAY()
+    const resetRaw = oe.getRange(LAST_RESET_DATE_CELL).getValue();   // AE9 last reset
+
+    const todayStr = (todayRaw instanceof Date && !isNaN(todayRaw.getTime()))
+      ? Utilities.formatDate(todayRaw, tz, 'yyyy-MM-dd')
+      : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+    let lastResetStr = null;
+    if (resetRaw instanceof Date && !isNaN(resetRaw.getTime())) {
+      lastResetStr = Utilities.formatDate(resetRaw, tz, 'yyyy-MM-dd');
+    }
+
+    // Stale = never reset, or last reset is before today. If it's already
+    // been reset today, this cycle is finalized — no-op.
+    const isStale = (lastResetStr === null) || (lastResetStr < todayStr);
+    if (!isStale) return;
+
+    // Visible, non-blocking feedback — the Sheet equivalent of the PWA's
+    // "Detected new day" overlay. toast() never blocks the open.
+    ss.toast('Detected new day — resetting On Hand…', 'Daily reset', 5);
+
+    // Log the prior cycle to Order History, email the recap (deduped via
+    // MOG_LAST_RECAP_SENT_DATE), then clear On Hand on every vendor tab.
+    const result = commitLogAndReset();
+
+    // Advance the cycle: stamp AE9 so this won't re-fire today and the
+    // PWA's getResetStatus stops reporting stale. Mirror the manual sheet
+    // reset by also clearing the emergency override if it's on.
+    const today = new Date();
+    oe.getRange(LAST_RESET_DATE_CELL).setValue(today);
+    const overrideRange = oe.getRange(EMERGENCY_OVERRIDE_CELL);
+    if (overrideRange.getValue() === true) {
+      overrideRange.setValue(false);
+      PropertiesService.getDocumentProperties()
+        .setProperty(EMERGENCY_OVERRIDE_LASTDATE_PROP,
+                     Utilities.formatDate(today, tz, 'yyyy-MM-dd'));
+    }
+
+    const logged = result && result.logged
+      ? (result.rowsLogged + ' item(s) logged. ')
+      : '';
+    ss.toast(logged + 'On Hand reset for the new day.', 'Daily reset', 6);
+  } catch (err) {
+    // An open-trigger error must never surface to the user or stop the
+    // Sheet from opening. Log for triage and move on.
+    Logger.log('dailyResetOnOpen_ error: ' + (err.stack || err));
+  }
+}
+
+
+
+
+// Idempotent installer for the daily-reset open trigger. Creating the
+// trigger requires user authorization — the first call surfaces a
+// permission prompt. Subsequent calls find the existing trigger and no-op.
+// Installed alongside the dashboard edit trigger from buildHomeDashboard.
+function ensureDailyResetTrigger_() {
+  const handlerName = 'dailyResetOnOpen_';
+  const existing = ScriptApp.getProjectTriggers().some(t =>
+    t.getHandlerFunction() === handlerName &&
+    t.getEventType() === ScriptApp.EventType.ON_OPEN
+  );
+  if (existing) return { created: false };
+
+  ScriptApp.newTrigger(handlerName)
+    .forSpreadsheet(SpreadsheetApp.getActive())
+    .onOpen()
+    .create();
+  return { created: true };
+}
+
+
+
+
 // Dispatch table for HOME dashboard quick-action checkboxes. Resolved at
 // call time via the function name string so all references are robust to
 // reordering of the file.
@@ -3023,72 +3117,13 @@ function resetOnHandAllVendors() {
 
 
 
-  // ── Background recap email ───────────────────────────────────────────────
-  //
-  // Fires BEFORE commitLogAndReset clears the on-hand values, so the
-  // email reflects the orders being placed today. Mirrors the PWA's
-  // pre-reset auto-send so a GM resetting from the sheet doesn't have
-  // to also remember to send the email.
-  //
-  // Gated by PROP_LAST_RECAP_SENT_DATE: if the same cycle was already
-  // emailed by another path (KM tapping send on the PWA, bulk-mark
-  // autosend), this skips silently so recipients don't receive
-  // duplicates.
-  //
-  // Guarded with typeof — if MOGApi.gs is missing (location hasn't been
-  // onboarded to the mobile API yet), the email step is silently
-  // skipped and the reset proceeds normally. Email failures NEVER
-  // block reset; the worst-case is "no email this time, reset still
-  // worked."
-  let emailResult = null;
-  if (typeof buildRecapSections_ === 'function' &&
-      typeof readRecipients_      === 'function' &&
-      typeof sendRecapEmail_      === 'function') {
-    try {
-      const props    = PropertiesService.getScriptProperties();
-      const lastSent = props.getProperty('MOG_LAST_RECAP_SENT_DATE') || '';
-      const orderDateStr = getLogOrderDate_();
-      if (lastSent !== orderDateStr) {
-        const recipients = readRecipients_().filter(r => r.active && r.email);
-        if (recipients.length) {
-          const recap = buildRecapSections_(null);
-          if (recap.sections.length) {
-            let sent = 0, failed = 0;
-            for (const r of recipients) {
-              try {
-                sendRecapEmail_(r.email, recap.sections, recap.cycleDate, recap.totalItems);
-                sent++;
-              } catch (e) {
-                failed++;
-                Logger.log('Sheet-reset recap failed for ' + r.email + ': ' + (e.stack || e));
-              }
-            }
-            if (sent > 0) {
-              props.setProperty('MOG_LAST_RECAP_SENT_DATE', recap.cycleDate);
-            }
-            emailResult = { sent: sent, failed: failed, cycleDate: recap.cycleDate };
-          } else {
-            emailResult = { skipped: 'no-items-to-recap' };
-          }
-        } else {
-          emailResult = { skipped: 'no-recipients' };
-        }
-      } else {
-        emailResult = { skipped: 'already-sent-this-cycle' };
-      }
-    } catch (e) {
-      // Any unexpected error in the email path is non-blocking — the
-      // reset itself still runs below. Log for triage.
-      Logger.log('Sheet-reset recap autosend error: ' + (e.stack || e));
-      emailResult = { error: String(e.message || e) };
-    }
-  }
-
-
-
-
   // ── Run log + reset ──────────────────────────────────────────────────────
-  const result = commitLogAndReset();
+  // The recap email is now sent inside commitLogAndReset (deduped via
+  // MOG_LAST_RECAP_SENT_DATE), so every reset path — this sheet menu, the
+  // PWA reset button, and the PWA new-day auto-reset — emails exactly once
+  // per cycle. result.emailResult carries the status for the message below.
+  const result      = commitLogAndReset();
+  const emailResult = result.emailResult || null;
 
 
 
@@ -3197,15 +3232,75 @@ function commitLogAndReset() {
     PropertiesService.getDocumentProperties().setProperty(LAST_LOG_DATE_PROP, orderDate);
   }
 
-  // Reset On Hand after logging
+  // Send the daily recap email BEFORE clearing on-hand — the email is
+  // built from the live on-hand values, so it must run while they're still
+  // populated. Deduped via MOG_LAST_RECAP_SENT_DATE so calling reset from
+  // multiple paths (sheet menu, PWA button, PWA new-day auto-reset) sends
+  // at most one email per cycle. Never blocks the reset on email failure.
+  const emailResult = sendRecapIfUnsent_();
+
+  // Reset On Hand after logging + emailing
   resetAllVendorOnHand_();
 
   return {
     logged:        rows.length > 0,
     orderDate,
     rowsLogged:    rows.length,
-    rowsReplaced:  deletedCount
+    rowsReplaced:  deletedCount,
+    emailResult:   emailResult
   };
+}
+
+
+// Sends the daily recap email to every active recipient, at most once per
+// order cycle. Deduped via the MOG_LAST_RECAP_SENT_DATE script property so
+// it's safe to call from any reset path. Reads LIVE on-hand state, so call
+// it BEFORE clearing on-hand. Never throws — returns a status object purely
+// for optional UI messaging (the sheet reset dialog surfaces it).
+//
+// Guarded with typeof — if MOGApi.gs isn't present (a location not yet
+// onboarded to the mobile API), the email step is silently skipped and the
+// reset proceeds normally.
+function sendRecapIfUnsent_() {
+  if (typeof buildRecapSections_ !== 'function' ||
+      typeof readRecipients_     !== 'function' ||
+      typeof sendRecapEmail_     !== 'function') {
+    return null;
+  }
+  try {
+    const props        = PropertiesService.getScriptProperties();
+    const lastSent     = props.getProperty('MOG_LAST_RECAP_SENT_DATE') || '';
+    const orderDateStr = getLogOrderDate_();
+    if (lastSent === orderDateStr) {
+      return { skipped: 'already-sent-this-cycle' };
+    }
+    const recipients = readRecipients_().filter(r => r.active && r.email);
+    if (!recipients.length) {
+      return { skipped: 'no-recipients' };
+    }
+    const recap = buildRecapSections_(null);
+    if (!recap.sections.length) {
+      return { skipped: 'no-items-to-recap' };
+    }
+    let sent = 0, failed = 0;
+    for (const r of recipients) {
+      try {
+        sendRecapEmail_(r.email, recap.sections, recap.cycleDate, recap.totalItems);
+        sent++;
+      } catch (e) {
+        failed++;
+        Logger.log('Recap send failed for ' + r.email + ': ' + (e.stack || e));
+      }
+    }
+    if (sent > 0) {
+      props.setProperty('MOG_LAST_RECAP_SENT_DATE', recap.cycleDate);
+    }
+    return { sent: sent, failed: failed, cycleDate: recap.cycleDate };
+  } catch (e) {
+    // Non-blocking — the reset still runs. Log for triage.
+    Logger.log('sendRecapIfUnsent_ error: ' + (e.stack || e));
+    return { error: String(e.message || e) };
+  }
 }
 
 
@@ -4086,6 +4181,14 @@ function buildHomeDashboard() {
 
 
 
+  // Preserve the last reset date (AE9) across the rebuild. A rebuild is a
+  // layout operation, not a reset, so it must not change the ordering-cycle
+  // state. The clear range below wipes AE9, so capture it now and restore it
+  // after the layout is rebuilt. Without this the banner goes red on every
+  // rebuild AND the daily-reset open trigger would treat the rebuild as a
+  // new day and auto-fire a reset + recap email on the next open.
+  const preservedResetDate = sh.getRange(DASH.RESET_DATE).getValue();
+
   // Strip protections (so subsequent writes don't fail) and break any
   // existing merges in the dashboard area before clearing. Use a generous
   // 50-row clear range so we always wipe any prior larger layout.
@@ -4219,6 +4322,14 @@ function buildHomeDashboard() {
   // Used only by the Reset On Hand status strip's conditional formatting.
   sh.getRange(DASH.RESET_DATE).setNumberFormat("yyyy-mm-dd");
 
+  // Restore the pre-rebuild reset date so the banner keeps its true color
+  // (green if already reset today) and the daily-reset open trigger doesn't
+  // see a rebuild as a new day. Only restore a real date — a blank/invalid
+  // value means "never reset," which should correctly stay blank (red).
+  if (preservedResetDate instanceof Date && !isNaN(preservedResetDate.getTime())) {
+    sh.getRange(DASH.RESET_DATE).setValue(preservedResetDate);
+  }
+
 
 
 
@@ -4271,6 +4382,21 @@ function buildHomeDashboard() {
 
 
 
+  // === INSTALL DAILY-RESET OPEN TRIGGER ===
+  // Auto-runs the reset (log + recap email + clear) the first time the
+  // Sheet is opened on a new day. Must be installable so it can send email.
+  // First call may surface an authorization prompt.
+  let resetTriggerStatus = "already installed";
+  try {
+    const result = ensureDailyResetTrigger_();
+    resetTriggerStatus = result.created ? "installed (you may need to authorize)" : "already installed";
+  } catch (err) {
+    resetTriggerStatus = "FAILED — " + err.message + " (try running buildHomeDashboard from the script editor once to grant permissions)";
+  }
+
+
+
+
   ui.alert(
     "Dashboard built ✓",
     "The HOME dashboard is ready on the ORDER_ENTRY tab.\n\n" +
@@ -4279,6 +4405,7 @@ function buildHomeDashboard() {
     (vendorSync.skipped > 0 ? "  • " + vendorSync.skipped + " vendor name(s) had no matching tab — skipped.\n" : "") +
     (vendorSync.errors.length > 0 ? "  • Errors: " + vendorSync.errors.join("; ") + "\n" : "") +
     "\nDashboard edit trigger: " + triggerStatus + "\n" +
+    "Daily-reset open trigger: " + resetTriggerStatus + "\n" +
     "\nWhat to do next:\n" +
     "  • If you have an old Reset On Hand button drawing, you can delete it — the new Reset tile replaces it.\n" +
     "  • Tap any Quick Action checkbox to open that sidebar.\n" +
