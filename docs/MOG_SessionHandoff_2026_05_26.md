@@ -148,3 +148,99 @@ then `python deploy.py --redeploy` to fan out.
 Gotcha: deploy.py is the tool now. The two .ps1 scripts are gone. If
 you reach for `.\deploy.ps1` you're using a stale memory.
 ```
+
+---
+---
+
+# Later session — Skills expansion + full skills audit
+
+**Session focus:** Identify repeatedly-done MOG tasks worth promoting to skills, build them, then audit the whole MOG skill set for visibility, determinism, and composability.
+**Outcome:** Added 3 new pattern skills (rpc-consolidation, apps-script-caching, modal-ux-sweep), then ran a 3-part audit that added visibility frontmatter, extracted 3 deterministic helper scripts (route.py, validate.py, audit_modals.py), and de-duplicated the canary/redeploy logic that was restated across 5 skills. All scripts smoke-tested; the modal auditor caught (and was corrected for) a real false-positive before shipping. **No store-facing code shipped — all `.claude/` tooling.**
+**Next session focus:** ManageVendors edit-form UX redesign (the delivery-day vs raw-mults inconsistency), or parallelize deploy.py — both still open.
+
+## What shipped
+
+### 3 new pattern skills (promoted from recurring session work)
+- `.claude/skills/mog-rpc-consolidation/SKILL.md` — the bootstrap/commit consolidation pattern used 3 sessions running (OrderHistory, ManageVendors, dashboard). Encodes the additive-only rule, the "count the actual RPCs first" caution (the audit overstated counts twice historically), Rhino-safety pointer, and push-vs-redeploy routing.
+- `.claude/skills/mog-apps-script-caching/SKILL.md` — the `CacheService` + reused-`getServerMutationTs_` recipe with the `api_foo_` / `api_foo_compute_` split. Captures the "reuse the shared ts, don't make a per-feature one" decision (1 bump callsite vs 11+) and the existing bump callsites you get invalidation from for free.
+- `.claude/skills/mog-modal-ux-sweep/SKILL.md` — cross-modal consistency sweeps. Modal inventory (5 save-capable / 2 read-only), the canonical `.status.ok` flash CSS block, and the StorageAreas flex-column gotcha baked in.
+- `CLAUDE.md` skills table updated to register all three. Confirmed no overlap with existing skills (deploy-workflow routes, cheatsheet recalls commands — neither encodes these patterns).
+
+### Audit Part 1 — Visibility (frontmatter)
+- `mog-add-store` → `disable-model-invocation: true`. Only skill whose Claude-driven steps push to production; rare + explicit so the `/run` friction is negligible.
+- `mog-rpc-consolidation`, `mog-apps-script-caching`, `mog-modal-ux-sweep` → `user-invocable: false`. Pure background pattern knowledge; never menu-picked.
+- **Calibration (don't re-litigate):** the 3 pattern skills deliberately did NOT get `disable-model-invocation` despite ending in a deploy command — their value is auto-firing guidance *before* code is written, and the deploy step is already canary-gated. `disable-model-invocation` is for skills whose autonomous firing triggers an *ungated* side effect. `mog-session-handoff` stayed invocable (suggests commits, never executes them).
+
+### Audit Part 2 + 3 — Deterministic scripts + composability
+- `.claude/skills/mog-deploy-workflow/scripts/route.py` (NEW) — deterministic deploy router. Given changed file path(s), prints layer + exact command + canary flag + VERIFY notes; strongest action across files wins. Guards pitfall #4a. `mog-deploy-workflow` now points at it as source of truth.
+- `.claude/skills/mog-add-store/scripts/validate.py` (NEW) — Script-ID / web-app-`/exec`-URL validators, replacing the eyeballed regex in Steps 2 & 5.
+- `.claude/skills/mog-modal-ux-sweep/scripts/audit_modals.py` (NEW) — drift detector across the 5 save-capable modals. New Step 0 runs it before deciding what to sweep.
+- **Composability:** canary-first + push-vs-redeploy logic was restated in 5 skills. Trimmed the inline deploy prose out of rpc-consolidation, apps-script-caching, and modal-ux-sweep down to their one skill-specific routing fact + a pointer to `route.py`. Single source of truth now.
+- Scripts are stdlib-only, Python 3, zero-dep (match build.py/deploy.py). Em-dashes swapped for ASCII after rendering as `?` on the Windows cp1252 console.
+
+### Also this session — fixed the handoff skill's date discipline
+- `mog-session-handoff/SKILL.md` revised: use today's actual date; if today's handoff file already exists, **update it in place** (append a "Later session" block) rather than creating a new file or bumping to a future date. This block is the first product of that rule — it consolidated an erroneously future-dated `MOG_SessionHandoff_2026_05_28.md` (deleted) back into today's (05-26) file.
+
+## Outstanding (carry forward)
+
+**Uncommitted at handoff time:** the two newest scripts and their skill wiring:
+- `M .claude/skills/mog-add-store/SKILL.md` (validate.py wiring, Steps 2 & 5)
+- `M .claude/skills/mog-modal-ux-sweep/SKILL.md` (audit_modals.py Step 0)
+- `?? .claude/skills/mog-add-store/scripts/validate.py`
+- `?? .claude/skills/mog-modal-ux-sweep/scripts/audit_modals.py`
+- Plus this session's skill revision (`mog-session-handoff/SKILL.md`) and the doc consolidation.
+
+**Audit punch list (still 1 of 7):** Item #6, parallelize `deploy.py` (~30s → ~5s). Not urgent.
+
+**Sebastian's flagged UX inconsistency:** ManageVendors edit-form vs add-form mismatch (delivery-day picker on add, raw mults on edit). Needs an architectural walkthrough; may involve a small schema migration. `mog-rpc-consolidation` applies if the redesign touches the save path.
+
+**Other deferred:** StorageAreas full draft-mode UX; decommission `Master-Ordering-Guide` repo (~2026-05-31).
+
+**Date-drift note:** `MOG_SessionHandoff_2026_05_27.md` exists but today is 05-26 — that file is itself post-dated (same class of error as the deleted 05-28). Not touched this session; flag for Sebastian to reconcile if desired.
+
+## Files touched (later session)
+
+**New skills:** `mog-rpc-consolidation`, `mog-apps-script-caching`, `mog-modal-ux-sweep` SKILL.md
+**New scripts:** `mog-deploy-workflow/scripts/route.py`, `mog-add-store/scripts/validate.py`, `mog-modal-ux-sweep/scripts/audit_modals.py`
+**Skill edits:** `mog-add-store/SKILL.md` (frontmatter + validate.py wiring), `mog-deploy-workflow/SKILL.md` (route.py section), `mog-rpc-consolidation` + `mog-apps-script-caching` + `mog-modal-ux-sweep/SKILL.md` (frontmatter + prose trim + Step 0), `mog-session-handoff/SKILL.md` (date discipline)
+**Docs/config:** `CLAUDE.md` (skills table + @-import), `docs/MOG_CurrentState.md`, this file. Deleted erroneous `docs/MOG_SessionHandoff_2026_05_28.md`.
+**No deploys.**
+
+## Commits landed (later session)
+
+```
+79785bc Skills pass
+ebce6b9 Skills upgrade
+d1d72e0 FULL UPDATES
+```
+
+(validate.py + audit_modals.py + the handoff-skill revision + doc consolidation from the final turns are still uncommitted — see Outstanding.)
+
+## Opening prompt for next session
+
+```
+Resume MOG work. Recent work (filed under 05-26) was all skills infrastructure —
+no code shipped to the stores. Added 3 pattern skills (mog-rpc-consolidation,
+mog-apps-script-caching, mog-modal-ux-sweep), audited the now-7 MOG skills
+(visibility frontmatter, 3 deterministic helper scripts — route.py / validate.py
+/ audit_modals.py, de-duplicated canary/redeploy logic), and fixed the handoff
+skill's date discipline (update today's file in place; never future-date).
+
+First: the validate.py + audit_modals.py scripts, their 2 SKILL.md wirings, and
+the handoff-skill revision are likely still uncommitted. Commit them if not done.
+
+Two real next directions:
+1. ManageVendors edit-form UX redesign — add-form/edit-form mismatch
+   (delivery-day picker vs raw mults). Architectural walkthrough first; may
+   involve a small schema migration. mog-rpc-consolidation applies if it
+   touches the save path.
+2. Parallelize deploy.py (last audit item). ~30s -> ~5s. Bounded, mechanical.
+
+Read docs/MOG_CurrentState.md for invariants first. For any backend change the
+deploy decision now has a deterministic source of truth:
+`python .claude/skills/mog-deploy-workflow/scripts/route.py <changed-file>`.
+Canary-first still applies.
+
+Housekeeping: MOG_SessionHandoff_2026_05_27.md is post-dated relative to the
+real calendar (today is 05-26) — reconcile or ignore as you see fit.
+```

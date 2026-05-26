@@ -39,7 +39,13 @@ Walk Sebastian through them one at a time. Don't dump the full list at once — 
 4. Copy the **Script ID** from the "IDs" section.
 5. Paste it back to Claude.
 
-**Validation:** Script ID should be 56-character base64-ish string starting with `1`. If it starts with `AKfycb...`, that's a deployment ID, not a Script ID — Sebastian grabbed the wrong field; redirect him to Project Settings.
+**Validation:** Run the deterministic validator instead of eyeballing it:
+
+```
+python .claude/skills/mog-add-store/scripts/validate.py scriptid <the pasted value>
+```
+
+`OK` (exit 0) means proceed. `INVALID` (exit 1) prints the reason — most commonly Sebastian grabbed a deployment ID (`AKfycb...`) instead of the Script ID; redirect him to Project Settings.
 
 ### Step 3 (Claude, locally) — Add to `.clasp-targets.json` and push code
 
@@ -87,7 +93,13 @@ python deploy.py --target <newslug>
 6. Copy the **Web app URL** at the end (looks like `https://script.google.com/macros/s/<deployment-id>/exec`).
 7. Paste it back to Claude.
 
-**Validation:** URL must match the pattern `https://script.google.com/macros/s/[^/]+/exec`. If it ends in `/edit` or `/dev` instead, Sebastian copied the wrong URL — redirect him to the "Web app URL" field specifically.
+**Validation:** Run the validator instead of eyeballing it:
+
+```
+python .claude/skills/mog-add-store/scripts/validate.py exec-url <the pasted URL>
+```
+
+`OK` means proceed. `INVALID` means it ends in `/edit` or `/dev` — Sebastian copied the wrong URL; redirect him to the "Web app URL" field specifically.
 
 The deployment ID inside that URL is what `deploy.py --redeploy` needs for future MOGApi.gs changes to reach this store. Add it to `.clasp-targets.json` now so future deploys "just work":
 

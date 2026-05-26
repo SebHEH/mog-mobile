@@ -56,6 +56,14 @@ If any future sweep adds a new top-level card or section inside `.body` in Stora
 
 ## The discipline
 
+0. **Run the drift detector first.** Before deciding what to sweep, see which of the 5 save-capable modals already have the canonical signatures (`saveFlash`, `.status.ok::before`, a `google.script.host.close()` affordance):
+
+   ```
+   python .claude/skills/mog-modal-ux-sweep/scripts/audit_modals.py
+   ```
+
+   It prints a per-modal grid and exits non-zero on any drift. This replaces a manual eyeball pass across 5 files and tells you exactly which modals need the change. Adding a new signature to track? Add it to the `SIGNATURES` list in the script. The detector only finds presence/absence — *where* to place a missing block stays your judgment.
+
 1. **Inventory the modals first.** Save-capable (5) vs all-modals (7) — pick the set based on what's being swept. Don't fix one and forget the rest.
 2. **Read each target file before editing** — modals drift; assume the starting state differs slightly. The change may already be present in 2 of 5 and missing in 3.
 3. **Apply the change identically** — copy-paste the canonical block, don't re-derive it per modal. Re-derivation is how the drift happens in the first place.

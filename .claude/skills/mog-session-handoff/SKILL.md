@@ -17,13 +17,21 @@ End of any session that produced material changes:
 
 Skip when the session was pure exploration (read-only, no commits) or when the work was a single-line typo fix with no architectural implication.
 
-## Two-file update — both are mandatory
+## Date discipline (read this before naming the file)
 
-1. **Write** `docs/MOG_SessionHandoff_YYYY_MM_DD.md` using today's date.
-2. **Edit** `CLAUDE.md` — replace the `@docs/MOG_SessionHandoff_<old-date>.md` line with `@docs/MOG_SessionHandoff_<new-date>.md`.
+Use **today's actual date** — the date in the session context is authoritative. Then:
+
+- **If `docs/MOG_SessionHandoff_<today>.md` already exists, UPDATE it in place.** Don't create a second file for the same day, and don't bump to tomorrow's date to get a unique filename. Append this session's work as a new `## Later session — <topic>` block under the existing content (keep the earlier session's sections intact above it). One handoff file per calendar day.
+- **Never invent a future date.** A filename collision is the signal to *update today's file*, not to increment the date. Bumping past today (e.g. writing a 05-28 file when today is 05-26) corrupts the chronology and is the specific mistake this rule exists to prevent.
+- A collision with an *older* date (today's file doesn't exist yet, but yesterday's does) is normal — just write today's file.
+
+## Three-file update — all mandatory
+
+1. **Write or update** `docs/MOG_SessionHandoff_<today>.md` per the date discipline above.
+2. **Edit** `CLAUDE.md` — point the `@docs/MOG_SessionHandoff_<...>.md` line at today's file. If it already points there (because you updated today's existing file), no change needed — just confirm.
 3. **Edit** `docs/MOG_CurrentState.md` — append a row to the "Recent significant changes" table at the bottom; update "Pinned focus" and "Next-session candidates" if material.
 
-Skipping step 2 means the next session loads a stale handoff. Skipping step 3 means CurrentState drifts from reality. Both have to happen in the same session.
+Skipping step 2 means the next session loads a stale handoff. Skipping step 3 means CurrentState drifts from reality. All happen in the same session.
 
 ## Handoff document spine
 
@@ -82,6 +90,7 @@ When a session bundled unrelated bodies of work (e.g., consolidation + scaffold 
 - **Don't paste tool output.** If `clasp push` printed "10 files pushed to rpr", you say "deployed to rpr via deploy.py, all targets succeeded." Verbose tool transcripts make the doc unscannable.
 - **Don't bundle the carry-forward list with the pitched next-session focus.** Carry-forward is "things we didn't finish"; next-session focus is "what we'd start next." A clean handoff distinguishes them.
 - **Don't forget the canary-first reminder** when the carry-forward includes a deploy. Future Claude needs the explicit prompt to do a `--target <slug>` test push before fanning out.
+- **Don't create a future-dated handoff to dodge a filename collision.** If today's file already exists, update it in place (see Date discipline). Same-day work belongs in the same-day file; a bumped date corrupts the chronology.
 
 ## After the handoff lands
 
