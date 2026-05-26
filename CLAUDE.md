@@ -67,6 +67,7 @@ Skills auto-load and trigger via the descriptions in their frontmatter.
 | `mog-session-handoff` | End-of-session capture. Writes `docs/MOG_SessionHandoff_YYYY_MM_DD.md` and updates this file's @-import line. |
 | `mog-deploy-workflow` | Any code change — routes the change to the right layer (`deploy.py` for backend, `build.py` + git push for PWA/config) and enforces canary-first deploys. |
 | `mog-add-store` | New-store onboarding — the full end-to-end procedure (Drive copy → Script ID → `.clasp-targets.json` → `setupMobileApi()` → web-app deploy → `stores.json` → `build.py` → push). |
+| `mog-cheatsheet` | On-demand command reference. Triggers on "cheat sheet" / "remind me the command" / "what was that flag" / "how do I deploy". Dumps the relevant `deploy.py` / `build.py` / git invocations verbatim. |
 
 **User-global** (`~/.claude/skills/<name>/SKILL.md` — load in every Claude Code session):
 
