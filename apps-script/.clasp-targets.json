@@ -3,46 +3,55 @@
     "slug": "_template",
     "label": "Master template (copied for new stores)",
     "scriptId": "1uW7k2MLb6-dg-Ovx5wYPQee9y5noBPtBRq5UZksuVG9ghcv5r8Uv-kUO",
+    "deploymentId": null,
     "isTemplate": true
   },
   {
     "slug": "rpr",
     "label": "Roll Play - Rosslyn BOH",
-    "scriptId": "1FGadbpeTGGsIf2hQEWnjaIZe1wI8_P4RMY8vmWnHFkbjDofIY-cQ538F"
+    "scriptId": "1FGadbpeTGGsIf2hQEWnjaIZe1wI8_P4RMY8vmWnHFkbjDofIY-cQ538F",
+    "deploymentId": "AKfycbxRbLvqVy8aU1S_bzc6jwWvNzGD6_lUA0aKPyANckBxj9g3qd_3bYf6a3MviuK3oZNZJw"
   },
   {
     "slug": "rprfo",
     "label": "Roll Play - Rosslyn FOH",
-    "scriptId": "1iHm2I3-NFkEoPcqN4kCnN-mXeMdZfZGlx2xemh1ta1_hCoXBKDM7-otM"
+    "scriptId": "1iHm2I3-NFkEoPcqN4kCnN-mXeMdZfZGlx2xemh1ta1_hCoXBKDM7-otM",
+    "deploymentId": "AKfycbwFfttvgdYBOl_djrfhp3DluHrgByRIHid-opCl3yln2bovKzV23AaipPvj9ptc2kjG"
   },
   {
     "slug": "rpt",
     "label": "Roll Play - Tysons BOH",
-    "scriptId": "1VMZFvyfnUm2vUW2mWHssLrHhMS0xG5IUkxPpliBE9EX2yg95sDfWlzkW"
+    "scriptId": "1VMZFvyfnUm2vUW2mWHssLrHhMS0xG5IUkxPpliBE9EX2yg95sDfWlzkW",
+    "deploymentId": "AKfycbybndYIG-bwC0rXzwYUiMTJUexuAGZMnixnBwsVUyPW6MpzUik5iFKEAprmVzcss6A7sg"
   },
   {
     "slug": "rptfo",
     "label": "Roll Play - Tysons FOH",
-    "scriptId": "1LieGgJhLxoOlp0bEbbFqfjcMwpCGkRptBX1em8-dfavmTclB02pmmmTE"
+    "scriptId": "1LieGgJhLxoOlp0bEbbFqfjcMwpCGkRptBX1em8-dfavmTclB02pmmmTE",
+    "deploymentId": "AKfycbxR7VJbt6Uc5zgznuPf1lkFl_1vPeZ-rDmNsSS9ByKxpopt1TylrIISSG9O7zbI5Otq"
   },
   {
     "slug": "rpfr",
     "label": "Roll Play - Founders BOH",
-    "scriptId": "1qZIWafAt3x1qfg9uG9XlZZjU-nGEwIdoNeg4yRfKVZ9FJzDIOWJqwVv1"
+    "scriptId": "1qZIWafAt3x1qfg9uG9XlZZjU-nGEwIdoNeg4yRfKVZ9FJzDIOWJqwVv1",
+    "deploymentId": "AKfycbzdQyjNQrd0PZv0X4c8uJxSiniKtWoramL3YNH1RxpGZubBRcoGPyBMIxWyI-RqW47Q"
   },
   {
     "slug": "rpfrf",
     "label": "Roll Play - Founders FOH",
-    "scriptId": "1_CjSGM_AHTKG1BcjJ70sckRVu7QODSNvFLr0bRTc8SoDN6Iz-npDRA04"
+    "scriptId": "1_CjSGM_AHTKG1BcjJ70sckRVu7QODSNvFLr0bRTc8SoDN6Iz-npDRA04",
+    "deploymentId": "AKfycbyQ9f6JcM7dgI2Ng4WAsHWbrVENW_o9WTnkvjSVyLC6VAHnLHsJ5qnnXOhy7oqn-Kh9AQ"
   },
   {
     "slug": "tnyt",
     "label": "Teas'n You - Tysons BOH",
-    "scriptId": "1bqgHCSMUDUfPSgzgTQg-4yZYU04b51_khWU4ZPP1rD9bvMURmecc81Hb"
+    "scriptId": "1bqgHCSMUDUfPSgzgTQg-4yZYU04b51_khWU4ZPP1rD9bvMURmecc81Hb",
+    "deploymentId": "AKfycbzb2173ENr43g4Y7r7QnaykAaFOEby0bpwlZwcpzpeBuFhpmrlv1NJFxD3J84jTnORKtw"
   },
   {
     "slug": "tnytf",
     "label": "Teas'n You - Tysons FOH",
-    "scriptId": "1yLsE1YaC7UUwYf3MLJi2YMyOn1LJUW7UuTyX01JUpM5nRQQms_Li3nXk"
+    "scriptId": "1j0YLDMlgpdVo_bs9enKzZtvJwmNOrCIZdv6rxWsPv6qPJGU9oODzPOPE",
+    "deploymentId": "AKfycbwu1tg87fi65QUkS6IUCt6gI9fR23Q4T_bH5btrRR9zNXJ-6JvStkzida1zONomVfdREw"
   }
 ]
