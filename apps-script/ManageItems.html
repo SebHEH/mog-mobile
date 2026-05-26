@@ -184,9 +184,14 @@
       .btn-danger    { flex: 2; background: #c0392b; color: #fff; }
       .btn-load      { width: 100%; background: #3a7bd5; color: #fff; margin-top: 6px; }
       .status { font-size: 12px; margin-top: 8px; min-height: 18px; line-height: 1.4; }
-      .status.ok   { color: #1a6b2e; font-weight: bold; }
+      .status.ok   { color: #1a6b2e; font-weight: bold; animation: saveFlash 0.9s ease-out; padding: 3px 8px; border-radius: 4px; display: inline-block; }
+      .status.ok::before { content: '✓ '; }
       .status.warn { color: #9a2c2c; font-weight: bold; }
       .status.info { color: #555; }
+      @keyframes saveFlash {
+        0%   { background: rgba(26,107,46,0.20); }
+        100% { background: transparent; }
+      }
       hr { border: none; border-top: 1px solid #e8eaed; margin: 14px 0; }
       .detail-card { display: none; border: 1px solid #e0e3e8; border-radius: 6px; padding: 10px 12px; background: #fff; margin: 10px 0; }
       .detail-card.visible { display: block; }
@@ -1222,7 +1227,7 @@
           byId('edit-useMult').value = item.useMult ? 'true' : 'false';
           setEditFormState_('loaded');
           setStatus('edit-load', 'Loaded: ' + item.id, 'ok'); setStatus('edit', '');
-          showDangerZone(item); fetchCurrentArea(item.id);
+          showDangerZone(item); setCurrentAreaFromItem(item);
         })
         .withFailureHandler(err => {
           setItemSelectLoading_(false);
@@ -1324,15 +1329,16 @@
       byId('edit-useMult').value = item.useMult ? 'true' : 'false';
       setEditFormState_('loaded');
       setStatus('edit-load', 'Loaded: ' + item.id, 'ok'); setStatus('edit', '');
-      showDangerZone(item); fetchCurrentArea(item.id);
+      showDangerZone(item); setCurrentAreaFromItem(item);
     }
 
-    function fetchCurrentArea(itemId) {
-      byId('edit-area-current').value = '…';
-      google.script.run
-        .withSuccessHandler(item => { byId('edit-area-current').value = item && item.currentArea ? item.currentArea : '(' + t('optNoChange').replace(/—/g,'').trim() + ')'; })
-        .withFailureHandler(() => { byId('edit-area-current').value = ''; })
-        .getItemForEdit(itemId);
+    // Reads currentArea straight off the item object that getItemsByVendor
+    // now returns inline — replaces the old fetchCurrentArea helper that
+    // fired a separate getItemForEdit RPC just to fetch this one field.
+    function setCurrentAreaFromItem(item) {
+      byId('edit-area-current').value = item && item.currentArea
+        ? item.currentArea
+        : '(' + t('optNoChange').replace(/—/g,'').trim() + ')';
     }
 
     function doEdit() {

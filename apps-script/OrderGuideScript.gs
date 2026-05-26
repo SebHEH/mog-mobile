@@ -184,9 +184,23 @@ const LAST_RESET_DATE_CELL    = DASH.RESET_DATE;         // hidden, written by r
 /***********************
  * 2) GENERIC HELPERS
  ***********************/
+// Per-execution memoization of sheet handles. Apps Script V8 resets
+// globals between invocations (doPost, sidebar callbacks, menu triggers
+// each run in a fresh script context), so this Map naturally clears at
+// the start of every request — no cross-execution pollution risk.
+// Within one invocation, getSheet_(SHEET_SETUP) is often called 3-5
+// times from independent helpers (e.g. api_getDashboard_compute_ chains
+// readVendorMultipliers_, readVendorCutoffs_, getVendorList — each
+// historically did its own getSheetByName). Memoizing here saves the
+// repeated lookup without any callsite changes.
+const _SHEET_CACHE_ = new Map();
+
 function getSheet_(name) {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  let sh = _SHEET_CACHE_.get(name);
+  if (sh) return sh;
+  sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
   if (!sh) throw new Error("Sheet not found: " + name);
+  _SHEET_CACHE_.set(name, sh);
   return sh;
 }
 
@@ -602,22 +616,23 @@ function getVendorTableData() {
   const sh      = getSheet_(VENDOR_TABLE.SHEET);
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
-  // Read names from Z and multipliers from S:Y, paired by row.
-  // Also read cutoff times from AA (added Feb 2026 — see VENDOR_CUTOFF_COL).
-  // We read AA in its own getRange call rather than expanding the S:Y range
-  // because AA is non-contiguous (skips Z) and bundling them would force a
-  // single 9-wide read including a useless duplicate of the vendor name.
-  const names   = sh.getRange(2, VENDOR_LIST_COL,   lastRow - 1, 1).getValues();
-  const mults   = sh.getRange(2, VENDOR_TABLE.MULT_COL, lastRow - 1, 7).getValues();
-  const cutoffs = sh.getRange(2, VENDOR_CUTOFF_COL, lastRow - 1, 1).getValues();
+  // Single 9-wide read covering S(mults start) through AA(cutoff). Layout:
+  //   row[0..6] = S:Y multipliers (Mon-Sun)
+  //   row[7]   = Z (vendor name)
+  //   row[8]   = AA (cutoff time)
+  // Previously this was 3 separate getRange calls; merging is cheaper per
+  // call than the duplicated-Z-column concern that motivated the split,
+  // since each .getValues() round-trip dominates the cost.
+  const block = sh.getRange(2, VENDOR_TABLE.MULT_COL, lastRow - 1, 9).getValues();
   const out = [];
-  for (let i = 0; i < names.length; i++) {
-    const n = String(names[i][0] || "").trim();
+  for (let i = 0; i < block.length; i++) {
+    const row = block[i];
+    const n = String(row[7] || "").trim();
     if (!n) continue;
     out.push({
       name:       n,
-      mults:      mults[i].map(v => Number(v) || 0),
-      cutoffTime: normalizeCutoffString_(cutoffs[i][0])
+      mults:      row.slice(0, 7).map(v => Number(v) || 0),
+      cutoffTime: normalizeCutoffString_(row[8])
     });
   }
   return out;
@@ -1220,20 +1235,36 @@ function getItemsByVendor(vendor) {
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
   const vLow = String(vendor || "").trim().toLowerCase();
+
+  // Build a Map<itemId, areaName> from the pick-path DB so each item can
+  // ship its currentArea inline — saves a follow-up getItemForEdit round
+  // trip after the user picks an item in the edit form.
+  const areaByItemId = new Map();
+  const pickDb = readPickDb_(getSheet_(SHEET_SETUP));
+  for (const r of pickDb) {
+    const id   = String(r[1] || "").trim();
+    const area = String(r[3] || "").trim();
+    if (id && area && !areaByItemId.has(id)) areaByItemId.set(id, area);
+  }
+
   return sh
     .getRange(2, 1, lastRow - 1, Math.max(COL.NOTES, COL.ACTIVE))
     .getValues()
     .filter(r => String(r[COL.VENDOR - 1] || "").trim().toLowerCase() === vLow
               && String(r[COL.ID   - 1] || "").trim()
               && String(r[COL.NAME - 1] || "").trim())
-    .map(r => ({
-      id:     String(r[COL.ID     - 1] || "").trim(),
-      name:   String(r[COL.NAME   - 1] || "").trim(),
-      vendor: String(r[COL.VENDOR - 1] || "").trim(),
-      pack:   String(r[COL.PACK   - 1] || "").trim(),
-      par:    r[COL.PAR    - 1],
-      active: r[COL.ACTIVE - 1] === true
-    }))
+    .map(r => {
+      const id = String(r[COL.ID - 1] || "").trim();
+      return {
+        id:          id,
+        name:        String(r[COL.NAME   - 1] || "").trim(),
+        vendor:      String(r[COL.VENDOR - 1] || "").trim(),
+        pack:        String(r[COL.PACK   - 1] || "").trim(),
+        par:         r[COL.PAR    - 1],
+        active:      r[COL.ACTIVE - 1] === true,
+        currentArea: areaByItemId.get(id) || ""
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -1749,31 +1780,33 @@ function showStorageAreasSidebar() {
 
 
 
-function commitAddStorageArea(name) {
+// Shared skeleton for storage-area mutations that rewrite the whole list
+// (add / delete / reorder). The mutator receives (current, setup) and
+// returns { newList, payload? } — newList is what gets written; payload
+// merges into the return object. Rename doesn't fit this shape because
+// it edits the area block in place (no list rewrite), so it keeps its
+// own implementation.
+function commitAreaListMutation_(mutate) {
   bumpServerMutationTs_();
-  const areaName = String(name || "").trim();
-  if (!areaName) throw new Error("Area name cannot be blank.");
-
-
-
-
   const setup   = getSheet_(SHEET_SETUP);
   const current = getStorageAreaList();
-
-
-
-
-  if (current.some(a => a.name.toLowerCase() === areaName.toLowerCase())) {
-    throw new Error("\"" + areaName + "\" already exists.");
-  }
-
-
-
-
-  current.push({ name: areaName });
-  writeAreaList_(setup, current);
+  const result  = mutate(current, setup);
+  writeAreaList_(setup, result.newList);
   syncPickDbAreaOrders_(setup);
-  return { ok: true };
+  return Object.assign({ ok: true }, result.payload || {});
+}
+
+
+function commitAddStorageArea(name) {
+  return commitAreaListMutation_(function(current) {
+    const areaName = String(name || "").trim();
+    if (!areaName) throw new Error("Area name cannot be blank.");
+    if (current.some(a => a.name.toLowerCase() === areaName.toLowerCase())) {
+      throw new Error("\"" + areaName + "\" already exists.");
+    }
+    current.push({ name: areaName });
+    return { newList: current };
+  });
 }
 
 
@@ -1852,81 +1885,44 @@ function commitRenameStorageArea(oldName, newName) {
 
 
 function commitDeleteStorageArea(name) {
-  bumpServerMutationTs_();
-  const target = String(name || "").trim();
-  if (!target) throw new Error("Area name is required.");
-
-
-  const setup   = getSheet_(SHEET_SETUP);
-  const current = getStorageAreaList();
-
-
-  if (!current.some(a => a.name.toLowerCase() === target.toLowerCase())) {
-    throw new Error("\"" + target + "\" was not found.");
-  }
-
-
-  // Remove pick path DB entries for items assigned to this area.
-  // Items are NOT deactivated — they remain active in MASTER_ITEMS
-  // and will appear as unassigned in the Pick Path sidebar.
-  const existingDb = readPickDb_(setup);
-  const cleanedDb  = existingDb.filter(r => String(r[3] || "").trim().toLowerCase() !== target.toLowerCase());
-  const inUseCount = existingDb.length - cleanedDb.length;
-  writePickDb_(setup, cleanedDb);
-
-
-  // Remove the area from the area list and sync order numbers.
-  const kept = current.filter(a => a.name.toLowerCase() !== target.toLowerCase());
-  writeAreaList_(setup, kept);
-  syncPickDbAreaOrders_(setup);
-
-
-  return { ok: true, inUseCount };
+  return commitAreaListMutation_(function(current, setup) {
+    const target = String(name || "").trim();
+    if (!target) throw new Error("Area name is required.");
+    if (!current.some(a => a.name.toLowerCase() === target.toLowerCase())) {
+      throw new Error("\"" + target + "\" was not found.");
+    }
+    // Remove pick path DB entries for items assigned to this area.
+    // Items are NOT deactivated — they remain active in MASTER_ITEMS
+    // and will appear as unassigned in the Pick Path sidebar.
+    const existingDb = readPickDb_(setup);
+    const cleanedDb  = existingDb.filter(r => String(r[3] || "").trim().toLowerCase() !== target.toLowerCase());
+    const inUseCount = existingDb.length - cleanedDb.length;
+    writePickDb_(setup, cleanedDb);
+    return {
+      newList: current.filter(a => a.name.toLowerCase() !== target.toLowerCase()),
+      payload: { inUseCount: inUseCount }
+    };
+  });
 }
 
 
 
 
 function commitReorderStorageAreas(orderedNames) {
-  bumpServerMutationTs_();
   if (!Array.isArray(orderedNames) || !orderedNames.length) throw new Error("No areas provided.");
-
-
-
-
-  const setup   = getSheet_(SHEET_SETUP);
-  const current = getStorageAreaList();
-  const currentNames = new Set(current.map(a => a.name.toLowerCase()));
-
-
-
-
-  const cleaned = orderedNames
-    .map(n => String(n || "").trim())
-    .filter(n => n && currentNames.has(n.toLowerCase()));
-
-
-
-
-  if (!cleaned.length) throw new Error("No valid area names received.");
-
-
-
-
-  const inSidebar = new Set(cleaned.map(n => n.toLowerCase()));
-  const extras    = current.filter(a => !inSidebar.has(a.name.toLowerCase()));
-  const finalList = [...cleaned.map(n => ({ name: n })), ...extras];
-
-
-
-
-  writeAreaList_(setup, finalList);
-  syncPickDbAreaOrders_(setup);
-
-
-
-
-  return { ok: true, count: cleaned.length };
+  return commitAreaListMutation_(function(current) {
+    const currentNames = new Set(current.map(a => a.name.toLowerCase()));
+    const cleaned = orderedNames
+      .map(n => String(n || "").trim())
+      .filter(n => n && currentNames.has(n.toLowerCase()));
+    if (!cleaned.length) throw new Error("No valid area names received.");
+    const inSidebar = new Set(cleaned.map(n => n.toLowerCase()));
+    const extras    = current.filter(a => !inSidebar.has(a.name.toLowerCase()));
+    return {
+      newList: [...cleaned.map(n => ({ name: n })), ...extras],
+      payload: { count: cleaned.length }
+    };
+  });
 }
 
 

@@ -188,10 +188,31 @@
       button:hover    { opacity: 0.85; }
       button:disabled { opacity: 0.4; cursor: not-allowed; }
       .status { font-size: 11px; margin-top: 8px; min-height: 16px; }
-      .status.ok   { color: #1f6d2a; font-weight: bold; }
+      .status.ok   { color: #1f6d2a; font-weight: bold; animation: saveFlash 0.9s ease-out; padding: 3px 8px; border-radius: 4px; display: inline-block; }
+      .status.ok::before { content: '✓ '; }
       .status.warn { color: #9a2c2c; font-weight: bold; }
       .status.info { color: #555; }
+      @keyframes saveFlash {
+        0%   { background: rgba(31,109,42,0.20); }
+        100% { background: transparent; }
+      }
       hr { border: none; border-top: 1px solid #eee; margin: 10px 0; }
+
+      /* Sticky footer with Close button — matches the pattern used in
+         ReorderPickPath / AdminReset so every save-capable modal has a
+         clear exit affordance. */
+      .modal-footer {
+        flex: 0 0 auto;
+        background: #fff; border-top: 1px solid #e8eaed;
+        padding: 8px 12px;
+      }
+      button.btn-close {
+        width: 100%; padding: 9px 12px;
+        background: #e0e0e0; color: #333;
+        border: none; border-radius: 4px;
+        font-size: 12px; font-weight: bold; cursor: pointer;
+      }
+      button.btn-close:hover { opacity: 0.85; }
 
       /* ── Loading state (centered spinner — replaces text-only "Loading…"
          indicator while the initial vendor list is being fetched). ── */
@@ -396,6 +417,13 @@
 
       </div><!-- /action-panels -->
     </div><!-- /scroll-body -->
+
+    <div class="modal-footer">
+      <button class="btn-close" onclick="google.script.host.close()">
+        <span class="en">Close</span>
+        <span class="es">Cerrar</span>
+      </button>
+    </div>
 
     <script>
       const DAYS      = ["mon","tue","wed","thu","fri","sat","sun"];

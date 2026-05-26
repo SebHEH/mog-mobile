@@ -98,9 +98,14 @@
       button:hover    { opacity: 0.85; }
       button:disabled { opacity: 0.4; cursor: not-allowed; }
       .status { font-size: 11px; margin-top: 8px; min-height: 16px; text-align: center; }
-      .status.ok   { color: #1f6d2a; font-weight: bold; }
+      .status.ok   { color: #1f6d2a; font-weight: bold; animation: saveFlash 0.9s ease-out; padding: 3px 8px; border-radius: 4px; }
+      .status.ok::before { content: '✓ '; }
       .status.warn { color: #9a2c2c; font-weight: bold; }
       .status.info { color: #555; }
+      @keyframes saveFlash {
+        0%   { background: rgba(31,109,42,0.20); }
+        100% { background: transparent; }
+      }
 
       /* ── i18n ── */
       .es { display: none; }

@@ -13,6 +13,10 @@
         font-size: 13px;
         background: #f4f5f7;
         color: #222;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
       }
 
       /* ── Header ── */
@@ -24,8 +28,7 @@
         justify-content: space-between;
         padding: 0 14px;
         height: 44px;
-        position: sticky;
-        top: 0;
+        flex-shrink: 0;
         z-index: 10;
       }
       .header-title { font-size: 13px; font-weight: bold; letter-spacing: 0.03em; }
@@ -40,7 +43,14 @@
       .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
 
       /* ── Body padding ── */
-      .body { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+      .body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+      /* Without this, .body's flex children (list-card, action-cards) shrink
+         to fit when content exceeds .body's height instead of overflowing.
+         .list-card has overflow:hidden, so the shrunk content gets clipped
+         and .body never scrolls. flex-shrink:0 makes children stay at their
+         natural size, which pushes .body past its bounds and triggers the
+         intended overflow-y:auto scroll. */
+      .body > * { flex-shrink: 0; }
 
       /* ── Area list card ── */
       .list-card { background: #fff; border: 1px solid #e0e3e8; border-radius: 6px; overflow: hidden; }
@@ -78,7 +88,10 @@
         cursor: pointer; font-size: 11px; padding: 3px 7px; color: #666; line-height: 1.4;
       }
       .btn-icon:hover { background: #f0f0f0; border-color: #bbb; }
-      .btn-icon.danger:hover { background: #fff0f0; border-color: #e8a0a0; color: #c0392b; }
+      /* Destructive action — surfaces as red at rest so it never looks like
+         a neutral icon button. Hover deepens the color to confirm the affordance. */
+      .btn-icon.danger { background: #fff5f5; border-color: #e8a0a0; color: #c0392b; }
+      .btn-icon.danger:hover { background: #ffe5e5; border-color: #c0392b; }
 
       /* Inline rename form */
       .rename-form {
@@ -147,13 +160,34 @@
 
       /* ── Status ── */
       .status { font-size: 11px; margin-top: 8px; min-height: 16px; }
-      .status.ok   { color: #1f6d2a; font-weight: bold; }
+      .status.ok   { color: #1f6d2a; font-weight: bold; animation: saveFlash 0.9s ease-out; padding: 3px 8px; border-radius: 4px; display: inline-block; }
+      .status.ok::before { content: '✓ '; }
       .status.warn { color: #9a2c2c; font-weight: bold; }
       .status.info { color: #555; }
+      @keyframes saveFlash {
+        0%   { background: rgba(31,109,42,0.20); }
+        100% { background: transparent; }
+      }
 
       .hint-footer {
         font-size: 10px; color: #bbb; text-align: center; padding: 0 0 4px;
       }
+
+      /* Sticky footer with Close button — matches the pattern used in
+         ReorderPickPath / AdminReset so every save-capable modal has a
+         clear exit affordance. Stays pinned outside the scrolling .body. */
+      .modal-footer {
+        flex: 0 0 auto;
+        background: #fff; border-top: 1px solid #e8eaed;
+        padding: 8px 12px;
+      }
+      button.btn-close {
+        width: 100%; padding: 9px 12px;
+        background: #e0e0e0; color: #333;
+        border: none; border-radius: 4px;
+        font-size: 12px; font-weight: bold; cursor: pointer;
+      }
+      button.btn-close:hover { opacity: 0.85; }
 
       /* ── Saving overlay (card-level feedback during in-flight commits).
          Applied to whichever card initiated the action: list-card for
@@ -239,37 +273,6 @@
         </div>
       </div>
 
-      <!-- Delete -->
-      <div class="action-card" id="delete-card">
-        <div class="action-header" onclick="toggleSection('delete')">
-          <span>
-            <span class="en">🗑  Delete Area</span>
-            <span class="es">🗑  Eliminar Área</span>
-          </span>
-          <span class="chevron" id="chevron-delete">▼</span>
-        </div>
-        <div class="action-body hidden" id="body-delete">
-          <div class="warning-banner">
-            <span class="en">Items assigned to a deleted area lose their assignment and won't appear on order sheets until reassigned.</span>
-            <span class="es">Los artículos asignados a un área eliminada perderán su asignación y no aparecerán en hojas de pedido hasta ser reasignados.</span>
-          </div>
-          <div class="form-row">
-            <label>
-              <span class="en">Select Area to Delete</span>
-              <span class="es">Selecciona el Área a Eliminar</span>
-            </label>
-            <select id="delete-select"></select>
-          </div>
-          <div class="btn-row">
-            <button class="btn-danger" id="delete-btn" onclick="doDelete()">
-              <span class="en">Delete Area</span>
-              <span class="es">Eliminar Área</span>
-            </button>
-          </div>
-          <div id="delete-status" class="status"></div>
-        </div>
-      </div>
-
       <!-- Footer hint -->
       <div class="hint-footer">
         <span class="en">Drag ⠿ to reorder · ✎ to rename · 🗑 to delete from list</span>
@@ -278,27 +281,32 @@
 
     </div>
 
+    <div class="modal-footer">
+      <button class="btn-close" onclick="google.script.host.close()">
+        <span class="en">Close</span>
+        <span class="es">Cerrar</span>
+      </button>
+    </div>
+
     <script>
       var LANG = 'en';
 
       var T = {
         en: {
-          selectArea:'-- Select an area --', addPlaceholder:'e.g., Walk-In Cooler',
+          addPlaceholder:'e.g., Walk-In Cooler',
           blankName:'Area name cannot be blank.', alreadyExists:'" already exists.',
           adding:'Adding…', added:'Added "', addedEnd:'".',
-          selectToDelete:'Select an area to delete.',
-          deleting:'Deleting…', deleted:'Deleted "', itemsLost:' item(s) unassigned — reassign them in Manage Pick Path.',
+          itemsLost:' item(s) unassigned — reassign them in Manage Pick Path.',
           renamed:'Renamed.', orderSaved:'Order saved.',
           renamePh:'New name…', save:'Save', cancel:'Cancel',
           confirmDelete:'Delete "', confirmDeleteEnd:'"? Assigned items will lose their area.',
           noAreas:'No areas yet — add one below.'
         },
         es: {
-          selectArea:'-- Selecciona un área --', addPlaceholder:'ej. Cámara Fría',
+          addPlaceholder:'ej. Cámara Fría',
           blankName:'El nombre no puede estar vacío.', alreadyExists:'" ya existe.',
           adding:'Agregando…', added:'Agregada "', addedEnd:'".',
-          selectToDelete:'Selecciona un área para eliminar.',
-          deleting:'Eliminando…', deleted:'Eliminada "', itemsLost:' artículo(s) sin área — reasígnalos en Gestionar Ruta de Picking.',
+          itemsLost:' artículo(s) sin área — reasígnalos en Gestionar Ruta de Picking.',
           renamed:'Renombrado.', orderSaved:'Orden guardado.',
           renamePh:'Nuevo nombre…', save:'Guardar', cancel:'Cancelar',
           confirmDelete:'¿Eliminar "', confirmDeleteEnd:'"? Los artículos asignados perderán su área.',
@@ -318,7 +326,6 @@
           el.style.display = el.classList.contains(lang) ? 'inline' : 'none';
         });
         byId('add-name').placeholder = t('addPlaceholder');
-        populateDeleteSelect();
         renderList();
       }
 
@@ -355,7 +362,7 @@
       }
 
       // ── Section toggle ────────────────────────────────────────────────────────
-      var sectionState = { add: false, delete: true }; // true = collapsed
+      var sectionState = { add: false }; // true = collapsed
 
       function toggleSection(key) {
         sectionState[key] = !sectionState[key];
@@ -544,7 +551,6 @@
         areas[idx].name = newName;
         cancelRename(idx);
         renderList();
-        populateDeleteSelect();
         setStatus('add', t('renamed'), 'ok');
         setTimeout(function() { setStatus('add',''); }, 2000);
         bumpMutationTs_();
@@ -558,53 +564,26 @@
       }
 
       // ── Quick delete from list ────────────────────────────────────────────────
+      // Feedback model: optimistic visual (row disappears immediately) is the
+      // primary confirmation. On server error, refreshAreas() snaps the row
+      // back AND alert() makes the failure visible. inUseCount messaging is
+      // surfaced via alert too — too important to hide if items lost their
+      // area assignment.
       function quickDelete(idx) {
         var name = areas[idx].name;
         if (!window.confirm(t('confirmDelete') + name + t('confirmDeleteEnd'))) return;
-        // Optimistic: remove locally + render, then call server. Snap back on error.
         areas.splice(idx, 1);
         renderList();
-        populateDeleteSelect();
-        setStatus('delete', t('deleting'), 'info');
         bumpMutationTs_();
         google.script.run
           .withSuccessHandler(function(res) {
-            var msg = t('deleted') + name + '".';
-            if (res.inUseCount > 0) msg += ' ' + res.inUseCount + t('itemsLost');
-            setStatus('delete', msg, 'ok');
-            setTimeout(function() { setStatus('delete',''); }, 3000);
+            if (res.inUseCount > 0) {
+              window.alert(res.inUseCount + t('itemsLost'));
+            }
           })
           .withFailureHandler(function(err) {
-            setStatus('delete', err.message || String(err), 'warn');
+            window.alert(err.message || String(err));
             refreshAreas();  // snap back
-          })
-          .commitDeleteStorageArea(name);
-      }
-
-      // ── Delete (panel) ────────────────────────────────────────────────────────
-      function doDelete() {
-        var name = byId('delete-select').value;
-        if (!name) return setStatus('delete', t('selectToDelete'), 'warn');
-        var idx = areas.findIndex(function(a) { return a.name === name; });
-        if (idx === -1) { setStatus('delete', t('selectToDelete'), 'warn'); return; }
-        // Optimistic: remove locally + render. Snap back on error.
-        areas.splice(idx, 1);
-        renderList();
-        populateDeleteSelect();
-        byId('delete-btn').disabled = true;
-        setStatus('delete', t('deleting'), 'info');
-        bumpMutationTs_();
-        google.script.run
-          .withSuccessHandler(function(res) {
-            byId('delete-btn').disabled = false;
-            var msg = t('deleted') + name + '".';
-            if (res.inUseCount > 0) msg += ' ' + res.inUseCount + t('itemsLost');
-            setStatus('delete', msg, 'ok');
-          })
-          .withFailureHandler(function(err) {
-            byId('delete-btn').disabled = false;
-            setStatus('delete', err.message || String(err), 'warn');
-            refreshAreas();
           })
           .commitDeleteStorageArea(name);
       }
@@ -638,7 +617,6 @@
         // which matches what the server will assign.
         areas.push({ name: name, order: (areas.length + 1) * 10 });
         renderList();
-        populateDeleteSelect();
         byId('add-name').value = '';
         byId('add-btn').disabled = true;
         setStatus('add', t('adding'), 'info');
@@ -656,26 +634,12 @@
           .commitAddStorageArea(name);
       }
 
-      // ── Populate delete select ────────────────────────────────────────────────
-      function populateDeleteSelect() {
-        var sel = byId('delete-select');
-        var cur = sel.value;
-        sel.innerHTML = '<option value="">' + t('selectArea') + '</option>';
-        areas.forEach(function(a) {
-          var o = document.createElement('option');
-          o.value = a.name; o.textContent = a.name;
-          if (a.name === cur) o.selected = true;
-          sel.appendChild(o);
-        });
-      }
-
       // ── Refresh from server ───────────────────────────────────────────────────
       function refreshAreas(callback) {
         google.script.run
           .withSuccessHandler(function(list) {
             areas = list;
             renderList();
-            populateDeleteSelect();
             if (callback) callback();
           })
           .withFailureHandler(function(err) { console.error(err); })
