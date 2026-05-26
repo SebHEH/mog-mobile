@@ -244,3 +244,87 @@ Canary-first still applies.
 Housekeeping: MOG_SessionHandoff_2026_05_27.md is post-dated relative to the
 real calendar (today is 05-26) — reconcile or ignore as you see fit.
 ```
+
+---
+---
+
+# Later session — New-day auto-reset + guaranteed recap email
+
+**Session date:** 2026-05-26
+**Session focus:** Make the daily on-hand reset (and its recap email) fire automatically when a KM opens the app/Sheet on a new day, so emails + Order-History logging always happen and Sebastian can track usage — instead of depending on someone remembering to tap Reset.
+**Outcome:** Shipped store-facing code to all 8 web-app stores + template. Three coupled changes: (1) the recap email is now a deduped side-effect of the reset commit itself, so EVERY reset path emails exactly once per cycle; (2) the PWA auto-fires the reset on first open of a new day with a visible "Detected new day" overlay; (3) a new installable onOpen trigger auto-resets when the Google Sheet is opened on a new day. Plus a latent-bug fix: `buildHomeDashboard` now preserves AE9 so a rebuild no longer reds-out the banner or looks like a new day. Canary smoke-tested on rpr (banner-preserve + recap-on-reset both confirmed by Sebastian), then fanned out. Commit `04b7098`, pushed to `main`.
+**Next session focus:** Confirm Sebastian completed the per-Sheet "Rebuild Home Dashboard" trigger installs; then the still-open ManageVendors edit-form UX redesign or deploy.py parallelization.
+
+## What shipped
+
+### 1. Recap email coupled into the reset commit (root-cause fix)
+- **`apps-script/OrderGuideScript.gs`** — new `sendRecapIfUnsent_()` helper (extracted from the inline block that used to live in `resetOnHandAllVendors`). Sends the recap to all active recipients, deduped via the `MOG_LAST_RECAP_SENT_DATE` script property, reads LIVE on-hand so it must run before the clear, never throws.
+- **`commitLogAndReset`** — now calls `sendRecapIfUnsent_()` after the LOG_ORDERS snapshot but before `resetAllVendorOnHand_()`, and returns `emailResult` in its result object. Because every reset path funnels through `commitLogAndReset`, the email is now guaranteed on the sheet menu, PWA reset button, PWA stale-gate, PWA new-day auto-reset, and the sheet-open trigger — exactly once per cycle.
+- **`resetOnHandAllVendors`** — dropped its own pre-email block; now reads `result.emailResult` for the confirmation dialog. *Why:* the email was previously bolted onto some paths and not others (the PWA stale-gate and `api_commitReset_` never emailed). Centralizing in the commit is the root fix, not per-caller patches.
+
+### 2. PWA auto-reset on new-day open
+- **`template/index.html`** — `proceedAfterAuth()`: when `getResetStatus` reports `isStale`, it now shows the stale screen for context and immediately calls a new `autoRunStaleReset()` instead of waiting for a manual tap. Refactored the reset body out of `handleStaleReset` into a shared `runStaleReset_(busyLabel)`; the manual button still calls it (fallback if auto fails). The overlay reads "Detected new day — resetting On Hand…" so the auto-clear is visible, not silent.
+- **`template/sw.js`** — `CACHE_VERSION` v5 -> v6 so phones evict the old shell.
+
+### 3. Sheet-open auto-reset (installable trigger)
+- **`apps-script/OrderGuideScript.gs`** — new `dailyResetOnOpen_()` (installable onOpen handler): gated on AE9 < today, shows a `ss.toast()` "Detected new day", runs `commitLogAndReset()`, stamps AE9, clears emergency override; wrapped so a trigger error can never block the Sheet from opening. New `ensureDailyResetTrigger_()` installer (modeled on `ensureDashboardEditTrigger_`), wired into `buildHomeDashboard` next to the edit-trigger install, with status surfaced in the "Dashboard built" alert. *Why installable, not simple onOpen:* a simple trigger can't call MailApp. The installable trigger runs as the installer, which authorizes the email.
+
+### 4. Preserve AE9 across dashboard rebuild (latent-bug fix)
+- **`apps-script/OrderGuideScript.gs`** — `buildHomeDashboard` now reads AE9 before the rows-1..50 x cols-1..35 clear ([the clear wipes col 31/AE9]) and restores it after re-applying the number format (only if it's a real date). *Why:* without this, every rebuild blanked AE9 -> banner red + the new open-trigger would treat a rebuild as a new day and auto-fire a spurious reset+email.
+
+## Outstanding (carry forward)
+
+- **MANUAL, Sebastian's to do — per-Sheet trigger install.** The sheet-open auto-reset only activates after running **Ordering Guide -> 🏠 Rebuild Home Dashboard** in each of the 8 live Sheets, approving the auth prompt once. Until then a store has the PWA auto-reset + guaranteed email, but not the sheet-open path. The PWA path needs no per-store step. Installable triggers don't copy with a spreadsheet, so future cloned stores install it on their first dashboard rebuild during onboarding.
+- **Verification gate not fully closed:** the PWA *auto-fire on open* (no tap) wasn't directly smoke-tested on the canary (PWA build is all-stores, not per-store), only the server email-coupling and the AE9-preserve were. Worth confirming on a live store the morning after a stale day.
+- Still open from prior sessions: ManageVendors edit-form UX redesign; parallelize deploy.py (last audit item); decommission `Master-Ordering-Guide` repo.
+- **build.py quirk noted:** running `python build.py` with an unchanged `stores.json` crashes at the hub-registry injection assert ("registry injection produced no change") AFTER all store dirs are written. Benign for store-dir refreshes, but it's a footgun — a future `--skip-hub-when-unchanged` guard would be nice.
+
+## Files touched this chat
+
+**Apps Script source:**
+- `apps-script/OrderGuideScript.gs` — `sendRecapIfUnsent_` (new), `commitLogAndReset` (email + return), `resetOnHandAllVendors` (trim), `dailyResetOnOpen_` (new), `ensureDailyResetTrigger_` (new), `buildHomeDashboard` (AE9 preserve + trigger install)
+
+**PWA source:**
+- `template/index.html` — `proceedAfterAuth`, `autoRunStaleReset` (new), `handleStaleReset` (-> `runStaleReset_`)
+- `template/sw.js` — CACHE_VERSION v6
+
+**Generated (build.py refresh):**
+- `rpr/ rprfo/ rpt/ rptfo/ rpfr/ rpfrf/ tnyt/ tnytf/` index.html + sw.js
+
+**Deployed:** all 9 clasp targets pushed; 8 web-apps redeployed (`python deploy.py --redeploy`). PWA pushed to GitHub Pages.
+
+## Commits landed this session
+
+```
+04b7098 Auto-reset on new day + guarantee recap email on every reset path
+```
+
+## Opening prompt for next session
+
+```
+Resume MOG work. Last session (filed under 05-26, "New-day auto-reset")
+shipped store-facing code to all 8 stores: the recap email is now a deduped
+side-effect of commitLogAndReset (so every reset path emails once per cycle),
+the PWA auto-fires the reset on first open of a new day ("Detected new day"
+overlay), and a new installable onOpen trigger (dailyResetOnOpen_) does the
+same when the Google Sheet is opened. Also fixed buildHomeDashboard to
+preserve AE9 across a rebuild (banner no longer reds out; rebuild isn't seen
+as a new day). Commit 04b7098, deployed + pushed.
+
+FIRST: confirm Sebastian finished the per-Sheet "Rebuild Home Dashboard" trigger
+installs (8 Sheets, one auth prompt each) — that's the only thing standing
+between "shipped" and "fully live" for the sheet-open path. The PWA path is
+already live everywhere.
+
+Candidate next directions:
+1. ManageVendors edit-form UX redesign (delivery-day picker vs raw mults) —
+   architectural walkthrough first; possible small schema migration.
+2. Parallelize deploy.py (last audit item, ~30s -> ~5s, mechanical).
+
+Read docs/MOG_CurrentState.md for invariants. Backend deploy routing has a
+deterministic source of truth: route.py. Canary-first still applies.
+
+Gotcha: `python build.py` crashes on the hub-registry assert when stores.json
+is unchanged — this is AFTER store dirs are written, so it's benign for a
+template-only refresh.
+```
