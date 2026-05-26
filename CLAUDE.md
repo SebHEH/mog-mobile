@@ -21,8 +21,8 @@ Replace the path here with the newest handoff at the end of each session that sh
 - **Runtime / stack**: Vanilla JS PWA (no bundler, no framework) + Google Apps Script (V8 server-side, **Rhino ES5** in HTML modals) + Python templating (`build.py`)
 - **Deploy**:
   - PWA: GitHub Pages auto-deploys from `main`. Edit `template/` → run `python build.py` → commit + push.
-  - Apps Script: `clasp` via `apps-script/deploy.ps1`. Edit `apps-script/<file>` → run `.\deploy.ps1` (bound-sidebar-only changes) or `.\deploy.ps1 -Redeploy` (any MOGApi.gs / `api_*` change — bumps each store's web-app `/exec` URL too). Push reaches all 9 targets in ~30s; `-Redeploy` adds ~3s/target.
-- **Build / test**: No CI yet. `python build.py --dry-run` previews PWA build. `.\deploy.ps1 -DryRun` previews Apps Script deploy. There are no automated tests — verification is manual (open the live URL, run an order).
+  - Apps Script: `clasp` via `deploy.py` (at repo root, alongside `build.py`). Edit `apps-script/<file>` → run `python deploy.py` (bound-sidebar-only changes) or `python deploy.py --redeploy` (any MOGApi.gs / `api_*` change — bumps each store's web-app `/exec` URL too). Push reaches all 9 targets in ~30s; `--redeploy` adds ~3s/target.
+- **Build / test**: No CI yet. `python build.py --dry-run` previews PWA build. `python deploy.py --dry-run` previews Apps Script deploy (combine with `--redeploy` to preview the redeploy phase too). There are no automated tests — verification is manual (open the live URL, run an order).
 
 ## Layer routing
 
@@ -33,12 +33,12 @@ Every change anchors to one of these layers. Pick the layer before drafting any 
 | **Hub** | `index.html`, `sw.js`, `manifest.json`, `stores.json` | Concept picker, manager mode, store registry. First thing a KM sees. |
 | **Per-store PWA** | `template/index.html`, `template/sw.js` | The store-facing app. `build.py` copies this to every `<slug>/` dir with deployment URLs injected. |
 | **Apps Script backend** | `apps-script/*.gs`, `apps-script/*.html`, `apps-script/appsscript.json` | Bound script that runs in each Sheet. Identical across all 9 deploy targets — per-store config lives in spreadsheet data, not code. |
-| **Deploy infrastructure** | `build.py`, `apps-script/deploy.ps1`, `apps-script/discover-deployments.ps1`, `apps-script/.clasp-targets.json` | How code reaches production. `.clasp-targets.json` holds both `scriptId` (for source push) and `deploymentId` (for web-app version bump) per target. |
+| **Deploy infrastructure** | `build.py`, `deploy.py`, `apps-script/.clasp-targets.json` | How code reaches production. `.clasp-targets.json` holds both `scriptId` (for source push) and `deploymentId` (for web-app version bump) per target. `deploy.py --discover` finds deploymentIds on a fresh checkout. |
 | **Generated (do NOT edit)** | `rpr/`, `rprfo/`, `rpt/`, `rptfo/`, `rpfr/`, `rpfrf/`, `tnyt/`, `tnytf/` | Output of `build.py`. Overwritten on every build. |
 
 **Anti-patterns:**
 - Editing `rpr/index.html` directly instead of `template/index.html` → lost on next build.
-- Editing code in the Apps Script editor for one store → overwritten on next `deploy.ps1` run; the other 8 targets stay stale until you also edit the local file.
+- Editing code in the Apps Script editor for one store → overwritten on next `deploy.py` run; the other 8 targets stay stale until you also edit the local file.
 - Adding a store to `stores.json` without running `build.py` → hub shows the tile but `/<slug>/` 404s.
 - Putting per-store data (PINs, location names, vendor lists) into `.gs` files → breaks the "identical across all stores" invariant; spreadsheet data is the per-store layer.
 
@@ -47,14 +47,14 @@ Every change anchors to one of these layers. Pick the layer before drafting any 
 Carry these across every session:
 
 1. **Never edit generated `<slug>/` dirs.** They're overwritten by `build.py` on every build. Edit `template/` instead.
-2. **Never edit code in the Apps Script editor.** `apps-script/deploy.ps1` overwrites it. Edit `apps-script/<file>` locally, then deploy.
+2. **Never edit code in the Apps Script editor.** `deploy.py` overwrites it. Edit `apps-script/<file>` locally, then deploy.
 3. **`.gs` files are identical across all 9 deploy targets.** Per-store config (PIN, location name, vendor data) lives in the spreadsheet itself via PropertiesService or sheet contents — never hardcode in `.gs` files.
 4. **Apps Script HTML modals run in Rhino (ES5).** No arrow functions, no `let`/`const` in `<script>` blocks of `apps-script/*.html`, no template literals, no destructuring in function params. The `.gs` files themselves run on V8 — modern syntax is fine there. The `rhino-safe-html` skill triggers on modal edits.
 5. **Three placeholders in `template/index.html` must each appear exactly once:** `__MOG_API_URL__`, `__MOG_THEME__`, `__MOG_APPLE_TOUCH_ICON__`. `build.py` fails loud if not — never replace them by hand.
 6. **The `STORE_REGISTRY` marker line in root `index.html` is build-injected.** Don't hand-edit the array; edit `stores.json` and run `build.py`.
 7. **Bump `CACHE_VERSION`** in `template/sw.js` (and `sw.js` for hub changes) when shipping shell changes so old caches evict from KMs' phones.
 8. **Slugs in `stores.json` are immutable once published.** KMs have bookmarks and home-screen icons at `/<slug>/`. Renaming breaks them.
-9. **Source push and web-app redeploy are separate steps.** `clasp push` (default `deploy.ps1`) updates the script project, which bound sidebars read from HEAD — that's enough for changes to `ManageVendors.html`, `ManageItems.html`, `OrderHistory.html`, etc. and the `.gs` functions they call directly. The PWA hits each Sheet's `/exec` URL, which serves a *versioned snapshot*, so changes to `MOGApi.gs` (or any `api_*` function the PWA calls) need `deploy.ps1 -Redeploy` to bump the version. When unsure, use `-Redeploy`.
+9. **Source push and web-app redeploy are separate steps.** `clasp push` (default `python deploy.py`) updates the script project, which bound sidebars read from HEAD — that's enough for changes to `ManageVendors.html`, `ManageItems.html`, `OrderHistory.html`, etc. and the `.gs` functions they call directly. The PWA hits each Sheet's `/exec` URL, which serves a *versioned snapshot*, so changes to `MOGApi.gs` (or any `api_*` function the PWA calls) need `python deploy.py --redeploy` to bump the version. When unsure, use `--redeploy`.
 
 ## Skills
 
@@ -65,7 +65,7 @@ Skills auto-load and trigger via the descriptions in their frontmatter.
 | Skill | When it triggers |
 |---|---|
 | `mog-session-handoff` | End-of-session capture. Writes `docs/MOG_SessionHandoff_YYYY_MM_DD.md` and updates this file's @-import line. |
-| `mog-deploy-workflow` | Any code change — routes the change to the right layer (`deploy.ps1` for backend, `build.py` + git push for PWA/config) and enforces canary-first deploys. |
+| `mog-deploy-workflow` | Any code change — routes the change to the right layer (`deploy.py` for backend, `build.py` + git push for PWA/config) and enforces canary-first deploys. |
 | `mog-add-store` | New-store onboarding — the full end-to-end procedure (Drive copy → Script ID → `.clasp-targets.json` → `setupMobileApi()` → web-app deploy → `stores.json` → `build.py` → push). |
 
 **User-global** (`~/.claude/skills/<name>/SKILL.md` — load in every Claude Code session):
@@ -91,10 +91,10 @@ Skills auto-load and trigger via the descriptions in their frontmatter.
 ## Common pitfalls
 
 1. **Editing `<slug>/index.html` (generated dir) instead of `template/index.html`** — lost on next build.
-2. **Editing in the Apps Script editor** — overwritten by next `deploy.ps1`. There's no "this one store has a custom hotfix" pattern; the discipline is local edit + deploy to all.
+2. **Editing in the Apps Script editor** — overwritten by next `python deploy.py`. There's no "this one store has a custom hotfix" pattern; the discipline is local edit + deploy to all.
 3. **Forgetting `python build.py` after editing `stores.json` or `template/`** — generated dirs go stale; hub picker may show a store with no working URL.
-4. **Forgetting `.\deploy.ps1` after editing `apps-script/<file>`** — local repo is ahead of all 9 deployed Sheets; KMs run stale code until you remember.
-4a. **Forgetting `-Redeploy` after a MOGApi.gs change** — bound sidebars look right (they read HEAD), but the PWA's `/exec` URL is a versioned snapshot and still serves the old code. Use `.\deploy.ps1 -Redeploy` for any change to `MOGApi.gs` or anything called from it.
+4. **Forgetting `python deploy.py` after editing `apps-script/<file>`** — local repo is ahead of all 9 deployed Sheets; KMs run stale code until you remember.
+4a. **Forgetting `--redeploy` after a MOGApi.gs change** — bound sidebars look right (they read HEAD), but the PWA's `/exec` URL is a versioned snapshot and still serves the old code. Use `python deploy.py --redeploy` for any change to `MOGApi.gs` or anything called from it.
 5. **Adding ES6+ syntax (arrow functions, `let`/`const`, template literals) to `apps-script/*.html` `<script>` blocks** — runtime error in Rhino. The `.gs` files themselves are V8 and accept modern syntax; the HTML modals are NOT.
 6. **Slug rename in `stores.json`** — breaks bookmarks and home-screen icons. If you really need to rename, leave a redirect.
 7. **Not bumping `CACHE_VERSION`** — KMs' phones serve the old shell from disk forever. Bump on any HTML-shell change in `template/sw.js` (or root `sw.js` for hub changes).
@@ -113,6 +113,7 @@ mog-mobile/
 ├── manifest.json                PWA manifest for the hub.
 ├── stores.json                  Store registry: slug, concept, location, deployment URL.
 ├── build.py                     Python templating: stores.json + template/ → <slug>/ dirs + STORE_REGISTRY injection.
+├── deploy.py                    Push (and optionally --redeploy) apps-script/ to all 9 clasp targets. Also handles --discover for deploymentId bootstrap.
 ├── icons/                       Branding (heh-180.png, rp-180.png, etc.).
 ├── template/                    PER-STORE PWA SOURCE.
 │   ├── index.html               (311 KB — the store app UI).
@@ -129,9 +130,7 @@ mog-mobile/
 │   ├── StorageAreas.html        Storage area config modal.
 │   ├── HowToUse.html            In-app help modal.
 │   ├── appsscript.json          Manifest (timezone, OAuth scopes, webapp config).
-│   ├── .clasp-targets.json      Slug → {scriptId, deploymentId} map for deploy.ps1 / discover-deployments.ps1.
-│   ├── deploy.ps1               One-command push (+ optional -Redeploy) to all 9 targets.
-│   └── discover-deployments.ps1 One-time helper to find each Sheet's web-app deployment ID.
+│   └── .clasp-targets.json      Slug → {scriptId, deploymentId} map for deploy.py.
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.
 │   └── MOG_SessionHandoff_*.md  Per-session handoffs (newest @-imported above).

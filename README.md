@@ -29,8 +29,9 @@ mog-mobile/
 │   ├── MOGApi.gs
 │   ├── OrderGuideScript.gs
 │   ├── *.html              (Manage*, OrderHistory, ReorderPickPath, StorageAreas, etc.)
-│   ├── deploy.ps1          One-command push to all stores + the master template
+│   ├── .clasp-targets.json Slug → {scriptId, deploymentId} map consumed by deploy.py
 │   └── README.md           Apps Script workflow docs
+├── deploy.py               Push (and optionally --redeploy) apps-script/ to all stores + the master template
 └── README.md               This file
 ```
 
@@ -40,7 +41,7 @@ Per-store directories (`rpr/`, future `rpt/`, `rpfc/`, etc.) are **generated** b
 
 The server-side code that each store's Google Sheet runs lives in `apps-script/`. Code is identical across all stores; per-store config (location name, PIN, vendor data) lives in the spreadsheet itself, not in the script.
 
-Edit a file in `apps-script/`, then run `.\apps-script\deploy.ps1` to push the change to every store + the master template in one command. Spreadsheet data, triggers, and named ranges are never touched — clasp only updates the bound script project.
+Edit a file in `apps-script/`, then run `python deploy.py` from the repo root to push the change to every store + the master template in one command. Add `--redeploy` when the change is in `MOGApi.gs` (or anything the PWA calls via `/exec`) — that bumps each store's web-app version so the live URL serves the new code. Spreadsheet data, triggers, and named ranges are never touched — clasp only updates the bound script project.
 
 See `apps-script/README.md` for the one-time setup (Node.js + clasp install, Script ID collection, reconciliation diff) and the day-to-day workflow.
 

@@ -1,4 +1,4 @@
-# clasp - rewritten per-target by apps-script/deploy.ps1, not useful to commit
+# clasp - rewritten per-target by deploy.py, not useful to commit
 apps-script/.clasp.json
 
 # clasp login credentials - NEVER commit

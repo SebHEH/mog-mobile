@@ -52,14 +52,13 @@ Edit `apps-script/.clasp-targets.json`. Insert the new entry in a sensible spot 
 }
 ```
 
-Then push code to ONLY the new store (canary-style; no need to redeploy the others):
+Then push code to ONLY the new store (canary-style; no need to redeploy the others). From the repo root:
 
-```powershell
-cd apps-script
-.\deploy.ps1 -Target <newslug>
+```
+python deploy.py --target <newslug>
 ```
 
-**Verification:** `deploy.ps1` reports `OK: <newslug>` with 10 files pushed. If it errors with "Project settings not found" or similar, the Script ID is wrong — back up to Step 2.
+**Verification:** `deploy.py` reports `PUSH OK: <newslug>` with 10 files pushed. If it errors with "Project settings not found" or similar, the Script ID is wrong — back up to Step 2.
 
 ### Step 4 (Sebastian, in the new Sheet's Apps Script editor) — Run `setupMobileApi()`
 
@@ -88,6 +87,16 @@ cd apps-script
 7. Paste it back to Claude.
 
 **Validation:** URL must match the pattern `https://script.google.com/macros/s/[^/]+/exec`. If it ends in `/edit` or `/dev` instead, Sebastian copied the wrong URL — redirect him to the "Web app URL" field specifically.
+
+The deployment ID inside that URL is what `deploy.py --redeploy` needs for future MOGApi.gs changes to reach this store. Add it to `.clasp-targets.json` now so future deploys "just work":
+
+```
+python deploy.py --discover --target <newslug>
+```
+
+Paste the printed `deploymentId` into the entry you added in Step 3.
+
+**Verification:** `deploy.py --discover` prints `Found deployment @1: AKfycb...`. If it prints "No versioned web-app deployment found", Step 5 didn't actually publish (re-check that "Deploy" was clicked, not just "Save").
 
 ### Step 6 (Claude, locally) — Add to `stores.json`
 
@@ -144,7 +153,7 @@ After the 8 steps complete and smoke test passes:
 
 ## Anti-patterns
 
-- **Don't skip the canary deploy in Step 3.** If you run `.\deploy.ps1` (all targets) instead of `.\deploy.ps1 -Target <newslug>`, you'd redeploy to 8 other stores unnecessarily. Harmless if the code hasn't changed locally, but wasteful and risks unintended pushes if it has.
+- **Don't skip the canary deploy in Step 3.** If you run `python deploy.py` (all targets) instead of `python deploy.py --target <newslug>`, you'd redeploy to 8 other stores unnecessarily. Harmless if the code hasn't changed locally, but wasteful and risks unintended pushes if it has.
 - **Don't update `stores.json` BEFORE the web app is deployed.** `build.py` validates the deployment URL pattern; a placeholder URL will fail validation, and a real-but-not-yet-deployed URL will 500 when the PWA hits it.
 - **Don't forget the `setupMobileApi()` step.** Without it, the Sheet has the code but no per-store PropertiesService config — the PWA will load but auth will fail mysteriously.
 - **Don't reuse a slug that was previously published and then removed.** KMs may have home-screen icons at `/<slug>/`. Pick a new slug; the old one stays retired.

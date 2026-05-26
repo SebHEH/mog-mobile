@@ -12,7 +12,7 @@ The artifact that bridges chat sessions for the MOG codebase. Produces `docs/MOG
 End of any session that produced material changes:
 - Code commits (push to GitHub, `clasp push` to one or more stores)
 - New skills, new docs, scaffold changes
-- Deploy infrastructure changes (deploy.ps1 edits, .clasp-targets.json edits)
+- Deploy infrastructure changes (deploy.py edits, .clasp-targets.json edits)
 - Schema-ish changes (new fields in stores.json, new placeholder in template/index.html)
 
 Skip when the session was pure exploration (read-only, no commits) or when the work was a single-line typo fix with no architectural implication.
@@ -43,7 +43,7 @@ Use this structure, in this order:
 
 <Itemized list. For each item:
 - What changed (file path, function name, behavior)
-- Mechanism (commit hash if applicable, deploy.ps1 run, build.py run)
+- Mechanism (commit hash if applicable, deploy.py run, build.py run)
 - Why this approach (the one or two sentences that future-you needs to NOT re-litigate)>
 
 ## Outstanding (carry forward)
@@ -52,7 +52,7 @@ Use this structure, in this order:
 
 ## Files touched this chat
 
-<Concrete file list grouped by purpose. Distinguish source edits from generated-file refreshes (build.py output, deploy.ps1 pushes).>
+<Concrete file list grouped by purpose. Distinguish source edits from generated-file refreshes (build.py output, deploy.py pushes).>
 
 ## Commits landed this session
 
@@ -79,9 +79,9 @@ When a session bundled unrelated bodies of work (e.g., consolidation + scaffold 
 
 - **Don't restate `CLAUDE.md` invariants** in the handoff. Those live in `CLAUDE.md` and `MOG_CurrentState.md`. The handoff is about what's NEW this session.
 - **Don't include a play-by-play timeline.** "First I read X, then I edited Y" is noise. Skip to "we changed X from A to B because C."
-- **Don't paste tool output.** If `clasp push` printed "10 files pushed to rpr", you say "deployed to rpr via deploy.ps1, all targets succeeded." Verbose tool transcripts make the doc unscannable.
+- **Don't paste tool output.** If `clasp push` printed "10 files pushed to rpr", you say "deployed to rpr via deploy.py, all targets succeeded." Verbose tool transcripts make the doc unscannable.
 - **Don't bundle the carry-forward list with the pitched next-session focus.** Carry-forward is "things we didn't finish"; next-session focus is "what we'd start next." A clean handoff distinguishes them.
-- **Don't forget the canary-first reminder** when the carry-forward includes a deploy. Future Claude needs the explicit prompt to do a `-Target <slug>` test push before fanning out.
+- **Don't forget the canary-first reminder** when the carry-forward includes a deploy. Future Claude needs the explicit prompt to do a `--target <slug>` test push before fanning out.
 
 ## After the handoff lands
 
