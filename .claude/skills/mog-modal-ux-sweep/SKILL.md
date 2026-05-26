@@ -1,5 +1,6 @@
 ---
 name: mog-modal-ux-sweep
+user-invocable: false
 description: Apply an identical UX micro-change consistently across all MOG Apps Script modals so they don't drift apart. Use whenever Sebastian asks to "do this on all the modals", "make sure every modal has X", "the Saved feedback should be the same everywhere", "add a Close button to the ones missing it", or any change phrased as a sweep across the modal set. ALSO trigger when fixing a UX inconsistency Sebastian flagged (e.g. one modal has ✓ + green flash, the others don't — that's a sweep waiting to happen). Skip for changes scoped to a single modal's unique workflow (e.g. ManageVendors edit-form redesign, StorageAreas draft-mode rework) — those aren't sweeps, they're per-modal redesigns.
 ---
 
@@ -59,7 +60,7 @@ If any future sweep adds a new top-level card or section inside `.body` in Stora
 2. **Read each target file before editing** — modals drift; assume the starting state differs slightly. The change may already be present in 2 of 5 and missing in 3.
 3. **Apply the change identically** — copy-paste the canonical block, don't re-derive it per modal. Re-derivation is how the drift happens in the first place.
 4. **Rhino ES5 on any JS edits.** All seven modal HTML files run in Rhino. No arrow fns / `let` / `const` / template literals in `<script>` blocks. `rhino-safe-html` auto-triggers.
-5. **Bound-sidebar deploy only.** Modal HTML changes don't need `--redeploy` — bound sidebars read HEAD. `python deploy.py --target rpr` canary, smoke-test in the rpr Sheet, then `python deploy.py` to fan out.
+5. **Deploy.** Skill-specific routing fact: modal HTML changes are bound-sidebar only — no `--redeploy` (sidebars read HEAD). For the exact command + canary discipline, defer to `mog-deploy-workflow` — run its router: `python .claude/skills/mog-deploy-workflow/scripts/route.py apps-script/StorageAreas.html`.
 6. **Smoke-test more than one modal in the canary Sheet** — the whole point of a sweep is consistency; verify it in 2-3 of the swept modals before fanning out.
 
 ## Anti-patterns (caught in past sessions)

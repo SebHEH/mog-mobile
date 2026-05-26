@@ -1,5 +1,6 @@
 ---
 name: mog-rpc-consolidation
+user-invocable: false
 description: Pattern for collapsing multiple `google.script.run` calls or duplicate sheet reads in MOG Apps Script modals into a single server-side bootstrap or commit function. Use whenever a modal's load or save fires more than one RPC, a `.gs` function does redundant `getRange` / `getDataRange` reads, Sebastian mentions "modal feels slow", "consolidate the RPCs", "merge these calls", "bootstrap function", or the work is the next item on the modal performance audit punch-list. ALSO trigger when reviewing a modal's `window.onload` or save handler and you can count >1 `google.script.run` calls fired in succession or in parallel — that's exactly the smell this skill addresses. Skip for changes that aren't about call-count reduction (pure UX polish, schema migrations, new features that don't have an existing N-call equivalent).
 ---
 
@@ -22,12 +23,7 @@ The Apps Script modal performance audit pattern. Three sessions in a row (2026-0
 
 5. **Rhino ES5 safety on the HTML side.** The client rewrite lives in `apps-script/*.html` `<script>` blocks — that's Rhino, not V8. No arrow functions, no `let`/`const`, no template literals, no destructuring. The `rhino-safe-html` user-global skill is the canonical reference and triggers automatically on those edits. The `.gs` server fn itself runs on V8 and can use modern syntax freely — the syntax barrier is one-sided.
 
-6. **Pick the deploy mechanism by where the new server fn lives:**
-   - New fn is in `OrderGuideScript.gs` and called only from bound sidebars (e.g. `Manage*.html`) → `python deploy.py` (no `--redeploy`). Bound sidebars read HEAD.
-   - New fn is in `MOGApi.gs` or any `api_*` function the PWA calls via `/exec` → `python deploy.py --redeploy`. The `/exec` URL serves a versioned snapshot; push alone leaves it stale.
-   - When unsure → `--redeploy`. Costs ~3s/target, ships correctness.
-
-7. **Canary first, fan out second.** `python deploy.py --target rpr` (with `--redeploy` if applicable) → wait for Sebastian to open the live thing and confirm → then full deploy. Don't accept "no tooling errors" as verification — Sebastian validates by using the feature.
+6. **Deploy.** Skill-specific routing fact: a new fn in `MOGApi.gs` needs `--redeploy` (PWA reads `/exec`); a new fn in `OrderGuideScript.gs` called only from bound sidebars needs plain push. For the exact command + canary discipline, defer to `mog-deploy-workflow` — run its router: `python .claude/skills/mog-deploy-workflow/scripts/route.py <the file you edited>`.
 
 ## Anti-patterns (caught in past sessions)
 

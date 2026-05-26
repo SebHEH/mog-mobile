@@ -7,6 +7,16 @@ description: Route any MOG code change to the right layer and the right deploy m
 
 The first decision before any code edit in mog-mobile: which layer owns this change, and what's the deploy path? Getting this wrong ships fixes to the wrong place (e.g., editing `rpr/index.html` instead of `template/index.html`, losing the change on the next build) or leaves them stranded (e.g., editing `apps-script/MOGApi.gs` locally and forgetting to run `python deploy.py`).
 
+## Deterministic router (run this first)
+
+For the push-vs-`--redeploy` decision, don't eyeball the table — run the router. It's the single source of truth and guards pitfall #4a (forgetting `--redeploy` on a MOGApi.gs change). From repo root:
+
+```
+python .claude/skills/mog-deploy-workflow/scripts/route.py <changed-path> [<path> ...]
+```
+
+It prints the layer, the exact deploy command, whether canary-first applies, and a VERIFY note for the genuinely ambiguous cases (appsscript.json scope changes, a new `api_*` fn added to a `.gs` file). The strongest action across all changed files wins. The table below is the human-readable version of the same rules — use it to understand *why*; use the router to decide.
+
 ## The routing decision
 
 Read the change request and answer: **which layer?**

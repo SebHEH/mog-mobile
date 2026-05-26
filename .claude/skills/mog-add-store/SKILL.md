@@ -1,5 +1,6 @@
 ---
 name: mog-add-store
+disable-model-invocation: true
 description: End-to-end checklist for onboarding a new store location to the MOG system — from copying the master template Sheet in Google Drive to the new store's PWA URL going live on the hub. Use whenever Sebastian asks to "add a new store", "set up a new location", "onboard <city/concept>", "new sheet for <location>", or any close variant. The procedure has 8 steps spanning Drive UI, Apps Script editor, local files, and git — most steps are user-actions Sebastian must perform himself; Claude's job is to guide the order, validate inputs along the way, and handle the local file edits in the middle. Skip when the user only wants to update an existing store's data or deployment URL — that's a `stores.json` edit, not a full onboarding.
 ---
 

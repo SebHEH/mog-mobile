@@ -1,5 +1,6 @@
 ---
 name: mog-apps-script-caching
+user-invocable: false
 description: Recipe for adding `CacheService` + mutation-timestamp invalidation to an `api_*` function in `apps-script/MOGApi.gs`. Use whenever a frequently-called PWA-facing read function is being added or refactored, when a dashboard / list / aggregation endpoint feels slow on repeat hits, when Sebastian asks "should this be cached", "cache this", "add caching to api_X", or when the modal performance audit calls for cache wrapping (e.g. `api_getDashboard_`, `getManageItemsBootstrap`). ALSO trigger when adding a new `api_*` read endpoint that aggregates more than one sheet or scans MASTER_ITEMS / LOG_ORDERS — those are exactly the shape that benefits. Skip for write paths (they bump, they don't cache), for one-off admin endpoints, and for reads that depend on inputs that aren't easily key-able (e.g. random-sampling).
 ---
 
@@ -53,7 +54,7 @@ If the new write affects data read by a cached endpoint, add `bumpServerMutation
 
 ## Deploy
 
-Cache wraps live in `apps-script/MOGApi.gs` (the PWA-facing API surface). MOGApi.gs is served via `/exec`, which is a versioned snapshot — push alone doesn't reach the live PWA. **Always `python deploy.py --redeploy`** for cache-wrap changes. Canary first: `python deploy.py --target rpr --redeploy`, smoke-test the PWA at `sebheh.github.io/mog-mobile/rpr/`, then fan out.
+Skill-specific routing fact: cache wraps **always** live in `apps-script/MOGApi.gs`, so they **always** need `--redeploy` (the `/exec` URL serves a versioned snapshot; push alone leaves the PWA on old code). For the exact command + canary discipline, defer to `mog-deploy-workflow` — run its router: `python .claude/skills/mog-deploy-workflow/scripts/route.py apps-script/MOGApi.gs`.
 
 ## Anti-patterns
 
