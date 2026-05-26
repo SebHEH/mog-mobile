@@ -895,6 +895,45 @@ function commitUpdateVendorCutoff(vendorName, cutoffTime) {
 }
 
 
+// Called by ManageVendors sidebar - inline editor save.
+// Commits multipliers (S:Y) AND cutoff (AA) for a vendor in a single
+// RPC against one row lookup. Validates both inputs upfront so we fail
+// before any write — no partial-success state where mults saved but
+// cutoff didn't (or vice versa).
+function commitUpdateVendorMultsAndCutoff(vendorName, mults, cutoffTime) {
+  bumpServerMutationTs_();
+  const name = String(vendorName || "").trim();
+  if (!name) throw new Error("Vendor name is required.");
+  if (!Array.isArray(mults) || mults.length !== 7) throw new Error("7 multiplier values required.");
+
+  const cutoffNorm = (cutoffTime === undefined || cutoffTime === null || cutoffTime === '')
+    ? null
+    : normalizeCutoffString_(cutoffTime);
+  if (cutoffTime && cutoffNorm === null) {
+    throw new Error('Cutoff time format not recognized. Use "HH:MM" (24h) or "H:MM AM/PM".');
+  }
+
+  const setup   = getSheet_(VENDOR_TABLE.SHEET);
+  const lastRow = setup.getLastRow();
+  if (lastRow < 2) throw new Error("No vendors found.");
+
+  const zVals = setup.getRange(2, VENDOR_LIST_COL, lastRow - 1, 1).getValues();
+  let targetRow = -1;
+  for (let i = 0; i < zVals.length; i++) {
+    if (String(zVals[i][0] || "").trim().toLowerCase() === name.toLowerCase()) {
+      targetRow = i + 2;
+      break;
+    }
+  }
+  if (targetRow === -1) throw new Error('"' + name + '" not found in vendor list.');
+
+  setup.getRange(targetRow, VENDOR_TABLE.MULT_COL, 1, 7).setValues([mults]);
+  setup.getRange(targetRow, VENDOR_CUTOFF_COL).setValue(cutoffNorm || '');
+
+  return { ok: true, cutoffTime: cutoffNorm };
+}
+
+
 // Called by ManageVendors sidebar - Remove tab.
 // Removes vendor row from table and from data validation list.
 // Tab, items, and pick path DB are left untouched.

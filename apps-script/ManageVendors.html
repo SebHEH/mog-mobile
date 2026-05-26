@@ -846,50 +846,34 @@
         setSavingCard_('vcard-' + vIdx, true);
         bumpMutationTs_();
 
-        // Two-step save: multipliers first, then cutoff. Both have to
-        // succeed for the card to show "saved". If multipliers fail we
-        // never attempt the cutoff write — the operator can fix and
-        // retry. If multipliers succeed but cutoff fails, we still
-        // surface the error (cutoff is the more recently-added field
-        // and more likely to have format issues if someone types it
-        // directly into the cell).
+        // One-shot save: server commits multipliers and cutoff in a
+        // single RPC against one row lookup. Halves round-trips and
+        // eliminates the partial-success state where mults saved but
+        // cutoff failed (or vice versa).
         google.script.run
           .withSuccessHandler(function() {
-            // Multipliers committed; now save cutoff.
-            google.script.run
-              .withSuccessHandler(function() {
-                setSavingCard_('vcard-' + vIdx, false);
-                statusEl.textContent = t('saved');
-                statusEl.className   = 'inline-status ok';
-                saveBtn.disabled     = false;
-                if (vendorData[vIdx]) {
-                  vendorData[vIdx].mults = mults;
-                  vendorData[vIdx].cutoffTime = cutoffVal || null;
-                }
-                const shorts  = LANG === 'es' ? DAY_SHORT_ES : DAY_SHORT_EN;
-                const pillRow = byId('pills-' + vIdx);
-                pillRow.innerHTML = '';
-                mults.forEach(function(m, i) {
-                  const pill = document.createElement('div');
-                  pill.className = 'day-pill';
-                  pill.innerHTML =
-                    "<div class='day-pill-label'>" + shorts[i] + "</div>" +
-                    "<div class='day-pill-val " + multClass(m) + "'>" + fmtMult(m) + "</div>";
-                  pillRow.appendChild(pill);
-                });
-                // Refresh the cutoff badge in place — no full re-render
-                // needed, just updates the badge text/style.
-                const badge = byId('cutoff-badge-' + vIdx);
-                if (badge) applyCutoffBadge_(badge, cutoffVal || null);
-                setTimeout(function() { closeInlineEdit(vIdx, editBtn); }, 900);
-              })
-              .withFailureHandler(function(err) {
-                setSavingCard_('vcard-' + vIdx, false);
-                statusEl.textContent = err.message || String(err);
-                statusEl.className   = 'inline-status warn';
-                saveBtn.disabled     = false;
-              })
-              .commitUpdateVendorCutoff(vendorName, cutoffVal);
+            setSavingCard_('vcard-' + vIdx, false);
+            statusEl.textContent = t('saved');
+            statusEl.className   = 'inline-status ok';
+            saveBtn.disabled     = false;
+            if (vendorData[vIdx]) {
+              vendorData[vIdx].mults = mults;
+              vendorData[vIdx].cutoffTime = cutoffVal || null;
+            }
+            const shorts  = LANG === 'es' ? DAY_SHORT_ES : DAY_SHORT_EN;
+            const pillRow = byId('pills-' + vIdx);
+            pillRow.innerHTML = '';
+            mults.forEach(function(m, i) {
+              const pill = document.createElement('div');
+              pill.className = 'day-pill';
+              pill.innerHTML =
+                "<div class='day-pill-label'>" + shorts[i] + "</div>" +
+                "<div class='day-pill-val " + multClass(m) + "'>" + fmtMult(m) + "</div>";
+              pillRow.appendChild(pill);
+            });
+            const badge = byId('cutoff-badge-' + vIdx);
+            if (badge) applyCutoffBadge_(badge, cutoffVal || null);
+            setTimeout(function() { closeInlineEdit(vIdx, editBtn); }, 900);
           })
           .withFailureHandler(function(err) {
             setSavingCard_('vcard-' + vIdx, false);
@@ -897,7 +881,7 @@
             statusEl.className   = 'inline-status warn';
             saveBtn.disabled     = false;
           })
-          .commitUpdateVendorMults(vendorName, mults);
+          .commitUpdateVendorMultsAndCutoff(vendorName, mults, cutoffVal);
       }
 
       // ── ADD ──────────────────────────────────────────────────────────────────
