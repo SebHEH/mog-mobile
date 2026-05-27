@@ -33,7 +33,7 @@
 // or service-worker behavior that needs old caches evicted. Old
 // caches are deleted in the `activate` handler.
 
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const SHELL_CACHE   = 'mog-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'mog-runtime-' + CACHE_VERSION;
 
@@ -98,9 +98,10 @@ self.addEventListener('fetch', (event) => {
   // let the browser handle the fetch normally.
   if (isAppsScriptApi_(url)) return;
 
-  // Navigation requests (i.e. the HTML document itself): SWR.
-  // For any same-origin navigation we serve the cached shell and
-  // refresh in the background. This is what lets the app launch
+  // Navigation requests (i.e. the HTML document itself): NETWORK-FIRST
+  // with cache fallback (see handleNavigation_). When online we always
+  // fetch fresh HTML so deploys take effect on the next navigation; when
+  // the network fails we serve the cached shell so the app still launches
   // offline.
   if (req.mode === 'navigate') {
     event.respondWith(handleNavigation_(req));

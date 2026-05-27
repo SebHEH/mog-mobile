@@ -420,7 +420,7 @@
     .recipient-card .recipient-info { flex: 1; min-width: 0; }
     .recipient-card .recipient-name {
       font-size: 15px; font-weight: 600;
-      color: var(--text-1);
+      color: var(--text);
       display: flex; align-items: center; gap: 6px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
@@ -3459,12 +3459,13 @@
   // busy/loading overlay, the email prompt sharing the same modal
   // shell).
   function uiIsInteractive_() {
-    // Confirm/email modal — shared shell with id 'modal-overlay'.
-    const modal = document.getElementById('modal-overlay');
-    if (modal && modal.classList.contains('show')) return true;
-    // Full-screen busy overlay.
+    // Confirm/email modal — the backdrop element toggles .open when the
+    // shared confirm/email modal is shown (see showConfirm).
+    const backdrop = document.getElementById('modal-backdrop');
+    if (backdrop && backdrop.classList.contains('open')) return true;
+    // Full-screen busy overlay — toggles .open in showBusy/hideBusy.
     const busy = document.getElementById('busy-overlay');
-    if (busy && busy.classList.contains('show')) return true;
+    if (busy && busy.classList.contains('open')) return true;
     return false;
   }
 
@@ -5311,7 +5312,7 @@
         // local sent flag is set inside sendDailyRecap so UI flips
         // correctly.
         if (!result.alreadySent) {
-          showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+          showToast(t('summarySent') + ' · ' + result.vendorCount + ' ' + (state.lang === 'en' ? 'vendors' : 'proveedores'), 'success');
         }
         if (state.cache.dashboard) renderToday(state.cache.dashboard);
       } else if (result && !result.cancelled) {
@@ -5573,8 +5574,7 @@
 
     showBusy(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
     try {
-      const result = await api('commitReset');
-      console.log('[reset] api result:', result);
+      await api('commitReset');
 
       // Wipe caches and per-cycle localStorage BEFORE the reload so the
       // self-heal in loadToday has the cleanest possible starting state.
@@ -5639,7 +5639,7 @@
       return;
     }
     if (result.ok) {
-      showToast(t('summarySent') + ' · ' + result.vendorCount + ' vendors', 'success');
+      showToast(t('summarySent') + ' · ' + result.vendorCount + ' ' + (state.lang === 'en' ? 'vendors' : 'proveedores'), 'success');
     } else {
       const m = String((result.error && result.error.message) || '');
       if (result.offline) showToast(t('offlineRetry'), 'error');
