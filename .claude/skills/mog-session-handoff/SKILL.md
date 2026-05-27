@@ -97,4 +97,4 @@ When a session bundled unrelated bodies of work (e.g., consolidation + scaffold 
 1. Confirm `CLAUDE.md`'s @-import line points at the new dated handoff (not the old one).
 2. Confirm `docs/MOG_CurrentState.md` has been updated.
 3. Suggest a commit. Recommended message: `docs: session handoff YYYY-MM-DD — <one-line topic>`.
-4. Provide a copy-pasteable chat name for Sebastian (the conversation often gets labeled by topic — match the handoff's topic).
+4. Provide a copy-pasteable chat name for Sebastian (the conversation often gets labeled by topic — match the handoff's topic). **Always present it in a fenced code block** so he can copy it directly, the same way suggested commits are presented — never inline prose.
