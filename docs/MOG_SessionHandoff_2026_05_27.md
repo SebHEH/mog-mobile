@@ -121,3 +121,88 @@ or the scroll will silently break (.list-card has overflow:hidden, so
 shrunk content gets clipped instead of triggering .body's overflow-y
 scroll). Bit me twice last session.
 ```
+
+---
+---
+
+# Later session — ManageItems multi-vendor items + modal declutter
+
+**Session date:** 2026-05-27
+**Session focus:** The ManageItems redesign — let an item be orderable from multiple vendors with a one-tap switchable *active* vendor, plus a declutter pass on the modal.
+**Outcome:** Shipped to all 9 clasp targets (bound-sidebar push, no `--redeploy` — none of the changed functions are `api_*` endpoints the PWA hits). Canary rprfo smoke-tested by Sebastian across three iterations before fan-out. **Verified from the actual store sheet (downloaded xlsx) that the order math is independent of SKU and that par is shared per-item — so the multi-vendor model is math-safe.**
+**Next session focus:** The modal-chrome de-dup sweep across the *other* modal-dialog modals (OrderHistory etc.), which Sebastian approved for "afterwards."
+
+## What shipped
+
+### Data model — eligible vendors in a NEW column O (not a repurpose of D)
+- `apps-script/OrderGuideScript.gs` — `COL.ELIGIBLE_VENDORS = 15` (column **O**), a brand-new column. `COL.SKU` (D) was **kept**, not repurposed.
+- **Why column O, not repurpose D (do NOT re-litigate):** the original plan was to repurpose the dead SKU column D. Reviewing the real `RP_ROSSLYN_FOH` xlsx showed every vendor tab's hidden "SKU" column (cols C and S) does `XLOOKUP(id, MASTER_ITEMS!A, MASTER_ITEMS!D)` — so writing vendor lists into D would surface them in those columns. SKU's column D is already blank for items (so SKU is effectively already gone). Column O is referenced by no in-sheet formula → purely additive, zero risk. Sebastian decided SKU doesn't need scrubbing (it's hidden).
+- **Order math confirmed safe:** the vendor tab `Order` column (F) is `ROUNDUP(par × H2 − onHand)` where `par = XLOOKUP(id, MASTER_ITEMS!A, MASTER_ITEMS!G)` and H2 is the vendor's day-of-week multiplier. SKU isn't involved. Par is shared per-item; switching an item's active vendor moves it to that vendor's tab and applies that vendor's multiplier. "1-day par, multiplier does the rest" — verified from the sheet.
+- New helpers: `parseEligibleVendors_`, `serializeEligibleVendors_`, `normalizeEligibleList_` (validates against the vendor table, always includes the active vendor, drops unknowns → reads self-heal even before the backfill). List stored pipe-delimited in O.
+- `commitUpsertItem` writes the eligible list to O on add + edit (active vendor always forced in). `getAllItemsForView` (+ hoisted vendor map) and `getItemForEdit` now return `eligibleVendors`. `findItemRow_` read widened to include col O.
+- **`commitSwitchActiveVendor(itemId, newVendor)`** (NEW) — the quick-switch backend. Validates the target is eligible, rewrites col C, migrates the pick-path row to the new vendor carrying the storage area over (areas are global), returns `needsArea:true` only if the item was unassigned. Par untouched.
+- **`migrateItemVendorsColumn()`** (NEW, idempotent) — one-time per-store backfill wired into **Ordering Guide → Mobile API → Migrate Item Vendors**. Sets the O header to "Eligible Vendors" and seeds each item's list = its current vendor. **Optional** — purely sheet hygiene; reads self-heal so the feature works without it.
+- Bumped both cache keys (`getManageItemsBootstrap` server key `manageItems_v1_`→`v2_`; client `ITEMS_CACHE_KEY` →`_v2`) since `getAllItemsForView`'s item shape gained `eligibleVendors`.
+
+### Modal UI — `apps-script/ManageItems.html`
+- **Eligible-vendor checklist** ("Also orderable from") in Add + Edit — lists every vendor except the active one (implicit). Wired into both `commitUpsertItem` saves.
+- **Quick-switch "Active vendor" control** on the View detail. Always shown for consistency; enabled when the item has ≥2 eligible vendors, grayed with "Only orderable from one vendor." otherwise. Switch → `commitSwitchActiveVendor` → re-renders detail + refetches table; surfaces the `needsArea` warning.
+- **Declutter (all 6 Sebastian asked for):** (1) removed the Edit top tab + the now-vestigial in-panel vendor/item selectors — editing is only via View → row → "Edit This Item", and `loadItemIntoEdit` now does one light `getItemForEdit` fetch instead of the whole-vendor-list `getItemsByVendor` (RPC removed); (2) legend shortened + reworded — 🟡 "Possible under-ordering", 🔴 "Possible over-ordering", "No storage area", Inactive entry dropped; (3) table set to `width:100%` + `overflow-x:hidden` so the Par Review column + legend show without horizontal scroll; (4) red count chip on the Unassigned tab; (5) count chip on the Inactive tab (both derived from `allItems`, no extra RPC); (6) Add panel given a green top accent + "＋ Add New Item" heading to distinguish it from Edit.
+- **Removed the modal's self-added "Manage Items" title + ✕** from the dark bar — they doubled Google's `showModalDialog` chrome (title + X + border, which is unavoidable). Now a single title + single X.
+- Removed dead code orphaned by the above (`loadEditItems`, `onEditItemChange`, `setItemSelectLoading_`, `setCurrentAreaFromItem`, `editItems` var, unused legend CSS). EN/ES parity maintained (102 keys each, verified).
+
+## Outstanding (carry forward)
+
+- **Run the backfill per store when convenient** — Ordering Guide → Mobile API → Migrate Item Vendors, on each of the 9 sheets. Optional (feature works without it); it just renames the O header + seeds vendor names. Like the trigger-install pattern, it's a per-Sheet manual step.
+- **Modal-chrome de-dup sweep (next session, Sebastian-approved):** the other `showModalDialog` modals (OrderHistory, and check ManageVendors/StorageAreas/ReorderPickPath/AdminReset/HowToUse) likely add their own title + ✕ that doubles Google's chrome. Same fix as ManageItems. `mog-modal-ux-sweep` applies.
+- **DATA-INTEGRITY CAVEAT — rpr (Roll Play Rosslyn BOH) pars:** may not be set up as true 1-day pars. If so, switching its items between vendors produces wrong order quantities (the multiplier assumes a 1-day par). Sebastian said he'll **manually recalc rpr's pars to true 1-day pars** before relying on multi-vendor there. rprfo (canary) already has correct pars. Quantify/fix rpr before using the switch on it.
+- Pack stays single per item (Sebastian's call); SKU left in place but hidden (not scrubbed).
+- Older backlog still open: ManageVendors edit-form redesign, parallelize deploy.py, StorageAreas draft-mode UX.
+
+## Files touched (later session)
+
+**Apps Script source:**
+- `apps-script/OrderGuideScript.gs` — `COL` (SKU kept @D, `ELIGIBLE_VENDORS`@O), `ELIGIBLE_VENDOR_DELIM`, eligible helpers, `commitUpsertItem`, `commitSwitchActiveVendor` (new), `getAllItemsForView`, `getItemForEdit`, `findItemRow_`, `migrateItemVendorsColumn` (new), menu wiring, `getManageItemsBootstrap` cache key
+- `apps-script/ManageItems.html` — eligible checklist, quick-switch, Edit-tab/selector removal + `loadItemIntoEdit` rewrite, legend reword, no-scroll table, tab chips, Add accent, chrome de-dup, dead-code + i18n, client cache key
+
+**Docs:**
+- `docs/MOG_SessionHandoff_2026_05_27.md` (this block), `docs/MOG_CurrentState.md`, `CLAUDE.md` (@-import → this file)
+
+**Deployed to:** all 9 clasp targets via `python deploy.py` (bound-sidebar, no `--redeploy`). Canary rprfo first.
+
+## Commits landed (later session)
+
+```
+(committed at end of session — feat: ManageItems multi-vendor items + modal declutter; docs: session handoff)
+```
+
+## Opening prompt for next session
+
+```
+Resume MOG work. Last session (2026-05-27, later block) shipped the ManageItems
+multi-vendor redesign + a modal declutter, live on all 9 stores (bound-sidebar
+push, no --redeploy). Items can now be orderable from multiple vendors (eligible
+list in MASTER_ITEMS column O — a NEW column; SKU in D was left alone because
+every vendor tab XLOOKUPs D for its hidden SKU column) with a one-tap "Active
+vendor" quick-switch on the View detail (commitSwitchActiveVendor moves the item
+to that vendor's tab; par is shared, the vendor's day-multiplier does the rest).
+Declutter: removed the Edit tab + vestigial selectors, reworded the legend
+(Possible under/over-ordering), no-scroll table, Inactive/Unassigned tab count
+chips, green Add panel, and removed the modal's self-added title+X that doubled
+Google's chrome.
+
+Top next direction Sebastian approved: sweep the SAME chrome de-dup (remove
+self-added title + ✕ that doubles showModalDialog's frame) across the other
+modals — OrderHistory first, then check the rest. mog-modal-ux-sweep applies.
+
+CAVEAT to surface immediately: rpr (Rosslyn BOH) pars may NOT be true 1-day
+pars — switching its items between vendors would give wrong quantities until
+Sebastian manually recalcs them. rprfo (canary) is fine.
+
+Per-store TODO: run Ordering Guide → Mobile API → Migrate Item Vendors on each
+sheet when convenient (optional sheet hygiene; feature works without it).
+
+Read docs/MOG_CurrentState.md for invariants. Deploy routing has a deterministic
+source of truth: python .claude/skills/mog-deploy-workflow/scripts/route.py
+<file>. Canary-first (rprfo for ManageItems work — correct pars).
+```
