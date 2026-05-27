@@ -328,3 +328,74 @@ Gotcha: `python build.py` crashes on the hub-registry assert when stores.json
 is unchanged — this is AFTER store dirs are written, so it's benign for a
 template-only refresh.
 ```
+
+---
+---
+
+# Later session — PWA auth/overlay fixes + ManageVendors picker + modal sweep + build.py guard
+
+**Session date:** 2026-05-26
+**Session focus:** Clear remaining backlog — fix the new-day reset overlay being hidden on the PIN-entry path, remove the cached PIN, ship the long-flagged ManageVendors edit-form redesign, fix the build.py footgun, and start a cross-modal consistency sweep.
+**Outcome:** Five things shipped and live across all stores. Two PWA fixes (committed `8aa491a`, pushed to Pages), the ManageVendors delivery-day picker (deployed all 9, `c86d9d3`), a modal close-affordance sweep (deployed all 9, `588b20d`), and a build.py idempotency guard (`0c11016`). Housekeeping confirmed done by Sebastian: old `Master-Ordering-Guide` repo decommissioned, all 8 per-Sheet trigger installs completed.
+**Next session focus:** ManageItems redesign (multi-vendor items + active-vendor switching) — a real data-model project; start with a read-only investigation. Or finish the modal sweep (#2 header/title, #3 footer button).
+
+## What shipped
+
+1. **New-day reset overlay hidden on PIN-entry path (PWA fix).** `template/index.html` `handlePinSubmit`: the auto-reset used to run *inside* `playTransitionAnimation`'s work-promise, so the `z80` loading bar covered the `z70` "Detected new day…" overlay and the multi-second `commitReset` just read as "stuck loading." Fix: the transition now wraps only the fast `getResetStatus` check (+ normal-day `showMainApp`); on a new day it sets `pendingStale`, lets the bar finish/fade, *then* shows the stale screen + auto-reset overlay. The two auto-login callers (lines ~6105/6116) were untouched — they have no transition overlay and already worked. `CACHE_VERSION` v6→v7.
+2. **Cached PIN removed.** PIN is now session-only (`state.pin` in memory, every API call still sends it). Dropped the `localStorage.getItem/setItem('mog_pin')` at boot + in `tryPin`; deleted the dead `else if (state.pin)` auto-login branch; added a boot-time `localStorage.removeItem('mog_pin')` so existing devices get the stored PIN wiped on next open. Master-PIN manager-mode path (sessionStorage) deliberately left intact. Every fresh open/reload now shows the PIN screen. (Same commit `8aa491a` as #1.)
+3. **ManageVendors edit-form delivery-day picker** (`apps-script/ManageVendors.html`, `c86d9d3`). The long-flagged add-form/edit-form mismatch. **Zero schema change** — chosen deliberately for "easy across all stores without breaking anything." Extracted the gap math into a pure `computeMultsFromDelivery(deliveryDays)` (shared by add-form's `recalcMultipliers` and the new edit path); added `inferDeliveryFromMults(mults)` (display-only seeding) and `recalcInlineMults(vIdx)`. The edit-form now shows the same Delivery Days picker, pre-checked by inference from current mults. **Non-destructive guarantee:** opening a card never recomputes; stored mults change only if the KM explicitly toggles a day. ES5-safe new code. Canary rpr smoke-tested by Sebastian, fanned out to all 9. Bound-sidebar push, no `--redeploy`.
+4. **Modal close-affordance sweep** (`apps-script/OrderHistory.html`, `apps-script/HowToUse.html`, `588b20d`). From a cross-modal survey: OrderHistory's top-close glyph `×`→`✕` (matches ManageItems); HowToUse's `btn-close` dark-green→grey `#e0e0e0`/`#333` (it was the lone outlier; 4 of 5 bottom-Close buttons were already grey). AdminReset's "Cancel" label left alone (correct for a destructive-confirm modal). Deployed all 9.
+5. **build.py hub-registry idempotency guard** (`0c11016`). Replaced the `assert hub_html_new != hub_html` (which crashed on an unchanged `stores.json` *after* writing all store dirs) with a clean `[skip] hub registry already current` no-op. build.py is now genuinely idempotent, matching the docs.
+
+## Outstanding (carry forward)
+
+- **Modal consistency sweep — #2 and #3 still open.** The 3-axis auditor (`audit_modals.py`) is green, but a manual survey found drift the script doesn't cover: (#2) header/title markup differs three ways (`.header-text` vs `.header-title`+`<h2>` vs sticky-bar-no-header); (#3) footer primary-action button naming/styling differs (`btn-primary` vs `btn-reset` vs `btn-save`). Both touch every modal's markup and need a "canonical version" decision first. Recommend its own session.
+- **ManageItems redesign (Sebastian's top idea).** Declutter the modal AND add multi-vendor items: select which vendors an item can be ordered from + easily switch the *active* vendor (e.g., when one vendor is cheaper that week). This changes the data model (item→one vendor becomes item→many with a designated active one) and ripples into the ordering math (order qty = par × that vendor's day-multiplier). Key design questions before any code: is the par shared across vendors (Sebastian's "1-day par, multiplier does the rest" intent) or per-vendor? where does the active-vendor flag live? does mid-cycle switching affect in-flight orders/history? **Data-integrity risk:** RP Rosslyn's pars may NOT have been set up as 1-day pars — switching its items between vendors would silently produce wrong quantities. Quantify that before designing. Start with a read-only investigation of MASTER_ITEMS schema + ordering math.
+- **Parallelize deploy.py** — last formal audit item. Sebastian explicitly deprioritized it this session ("30s isn't hurting"). Walkthrough already exists (ThreadPoolExecutor + per-target temp working dirs that COPY apps-script/ so each clasp run is isolated; default all-concurrent with `--jobs` throttle for API rate limits).
+- **Rhino-ES5 invariant discrepancy.** CLAUDE.md invariant #4 says modals are Rhino/ES5, but ManageVendors.html's script already uses arrow fns / `const` / `let` and works in production (HtmlService modals render in the *browser*, not Rhino). New code this session was written ES5-safe anyway. Reconcile the invariant + the `rhino-safe-html` skill at some point — separate cleanup.
+
+## Files touched this chat
+
+**PWA source:** `template/index.html` (handlePinSubmit defer-stale; cached-PIN removal), `template/sw.js` (CACHE_VERSION v7)
+**Generated (build.py refresh):** all 8 `<slug>/` index.html + sw.js
+**Apps Script source:** `apps-script/ManageVendors.html` (delivery picker + shared compute helper), `apps-script/OrderHistory.html` (glyph), `apps-script/HowToUse.html` (btn-close color)
+**Deploy infra:** `build.py` (idempotency guard)
+**Deployed:** apps-script changes pushed to all 9 clasp targets (bound-sidebar, no redeploy). PWA pushed to GitHub Pages.
+
+## Commits landed this session
+
+```
+0c11016 Make build.py hub-registry injection idempotent (skip when unchanged)
+588b20d Unify modal close affordance: consistent X glyph and grey Close button
+c86d9d3 Add delivery-day picker to ManageVendors edit-form (infer from mults, no schema change)
+8aa491a Show new-day reset overlay on PIN-entry path; stop caching the PIN
+```
+
+## Opening prompt for next session
+
+```
+Resume MOG work. Last session (filed under 05-26, "PWA fixes + ManageVendors
+picker + modal sweep") shipped 5 things, all live: new-day reset overlay fix +
+cached-PIN removal (PWA, 8aa491a), ManageVendors edit-form delivery-day picker
+(c86d9d3, NO schema change — infers delivery days from existing mults,
+non-destructive until the KM toggles a day), a modal close-affordance sweep
+(588b20d), and a build.py idempotency guard (0c11016). Old Master-Ordering-Guide
+repo is decommissioned and all 8 per-Sheet trigger installs are done.
+
+Top next direction: ManageItems redesign — declutter + multi-vendor items with
+easy active-vendor switching. This is a DATA-MODEL project, not a quick change.
+Start read-only: investigate the MASTER_ITEMS schema + ordering math (order qty =
+par × vendor day-multiplier). Key risk to quantify FIRST: RP Rosslyn's pars may
+not be 1-day pars, so switching its items between vendors would produce wrong
+quantities. Architectural walkthrough before any code.
+
+Also open: finish the modal consistency sweep (#2 header/title markup, #3 footer
+primary-action button) — needs a canonical-version decision, touches every modal.
+
+Read docs/MOG_CurrentState.md for invariants. Backend deploy routing has a
+deterministic source of truth: route.py. Canary-first still applies.
+
+Note: CLAUDE.md invariant #4 (modals = Rhino/ES5) is inaccurate — modals render
+in the browser and ManageVendors.html already uses ES6 in prod. New code is
+still written ES5-safe; reconcile the invariant + rhino-safe-html skill someday.
+```
