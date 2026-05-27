@@ -223,8 +223,15 @@ def inject_hub_registry(stores, dry_run):
         print(f"  [dry-run]   new: {new_line.strip()[:80]}{'...' if len(new_line.strip()) > 80 else ''}")
         return
 
+    if new_line == old_line:
+        # Registry already current (e.g. stores.json unchanged since the
+        # last build). Nothing to inject — a benign no-op, not an error.
+        # Keeps build.py idempotent so a template-only rebuild doesn't
+        # crash after the store dirs are written.
+        print(f"  [skip]    hub registry already current ({len(public_registry)} stores)")
+        return
+
     hub_html_new = hub_html.replace(old_line, new_line)
-    assert hub_html_new != hub_html, "registry injection produced no change"
     with open(HUB_INDEX, 'w', encoding='utf-8') as f:
         f.write(hub_html_new)
     print(f"  [done]    injected {len(public_registry)} stores into hub registry")
