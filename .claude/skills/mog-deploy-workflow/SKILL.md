@@ -23,11 +23,11 @@ Read the change request and answer: **which layer?**
 
 | If the change is to... | Layer | Deploy mechanism | Verification |
 |---|---|---|---|
-| Server-side `.gs` logic (API, sheet ops, triggers) called by bound sidebars only | Apps Script backend | `python deploy.py` (canary first: `--target rpr`, then full) | Open the canary Sheet, exercise the changed function. After full deploy, spot-check 1-2 other stores. |
-| `MOGApi.gs` or any `.gs` function the PWA calls via `/exec` | Apps Script backend | `python deploy.py --redeploy` (canary first: `--target rpr --redeploy`, then full with `--redeploy`). The `--redeploy` bumps each store's web-app version so the PWA's `/exec` URL serves the new code; without it, pushes don't reach the live PWA. | Open the PWA at `sebheh.github.io/mog-mobile/rpr/` and exercise the changed `api_*` function. After full deploy, spot-check another store's PWA. |
+| Server-side `.gs` logic (API, sheet ops, triggers) called by bound sidebars only | Apps Script backend | `python deploy.py` (canary first: `--target rprfo`, then full) | Open the canary Sheet, exercise the changed function. After full deploy, spot-check 1-2 other stores. |
+| `MOGApi.gs` or any `.gs` function the PWA calls via `/exec` | Apps Script backend | `python deploy.py --redeploy` (canary first: `--target rprfo --redeploy`, then full with `--redeploy`). The `--redeploy` bumps each store's web-app version so the PWA's `/exec` URL serves the new code; without it, pushes don't reach the live PWA. | Open the PWA at `sebheh.github.io/mog-mobile/rprfo/` and exercise the changed `api_*` function. After full deploy, spot-check another store's PWA. |
 | HTML modal under `apps-script/*.html` | Apps Script backend | `python deploy.py` (bound sidebars read HEAD — no `--redeploy` needed). **`rhino-safe-html` skill must trigger first** — modals run in Rhino ES5. | Open the modal in the canary Sheet, click through its workflow. |
 | `apps-script/appsscript.json` (manifest, scopes) | Apps Script backend | `python deploy.py` (add `--redeploy` if PWA-side scopes changed). **Bump version awareness:** new OAuth scopes may require re-authorization in each Sheet. | After push, open the canary Sheet and run a function that uses the new scope; accept any re-auth prompt. |
-| Per-store PWA UI (`template/index.html`, `template/sw.js`) | Per-store PWA | `python build.py` regenerates all `<slug>/` dirs → `git add -A; git commit; git push` → GitHub Pages auto-deploys (~1 min). | Open `sebheh.github.io/mog-mobile/rpr/` in incognito; verify the change. If shell changed, bump `template/sw.js`'s `CACHE_VERSION` first. |
+| Per-store PWA UI (`template/index.html`, `template/sw.js`) | Per-store PWA | `python build.py` regenerates all `<slug>/` dirs → `git add -A; git commit; git push` → GitHub Pages auto-deploys (~1 min). | Open `sebheh.github.io/mog-mobile/rprfo/` in incognito; verify the change. If shell changed, bump `template/sw.js`'s `CACHE_VERSION` first. |
 | Hub picker (`index.html`, `sw.js` at root, `manifest.json`) | Hub | `git commit; git push` (no build needed unless `stores.json` also changed). | Open `sebheh.github.io/mog-mobile/` in incognito (or with `?force_picker=1`); verify picker behavior. |
 | `stores.json` (new store, slug change, deployment URL update) | Hub registry | `python build.py` → `git commit; git push`. Build re-injects `STORE_REGISTRY` in root `index.html` AND regenerates all per-store dirs. | Open the hub; verify the new/changed tile appears and routes to the right URL. |
 | `apps-script/.clasp-targets.json` (add/remove deploy target, populate `deploymentId`) | Deploy infrastructure | `git commit; git push` (config-only). Next `python deploy.py` will pick it up. | `python deploy.py --dry-run` should list the new target without `FILL_ME_IN` errors. For a new store, run `python deploy.py --discover --target <slug>` to find the deploymentId. |
@@ -36,13 +36,15 @@ Read the change request and answer: **which layer?**
 
 ## Canary-first discipline (carry-forward from Sebastian's stated preference)
 
+The canary store is **`rprfo`** (it moved from `rpr` on 2026-05-27 — rprfo is the least dangerous store, and rpr's pars may not be true 1-day pars). The authoritative value lives in `route.py`'s `CANARY` constant; this prose mirrors it. If the canary ever moves again, change the constant in `route.py` and re-run the router — don't hand-edit slugs into the skills.
+
 For ANY multi-target deploy (clasp to 9 stores; `build.py` regenerating 8 store dirs), do the canary first, then fan out:
 
-1. Deploy to `rpr` only: `python deploy.py --target rpr` (add `--redeploy` if the change is in MOGApi.gs or any `api_*` function). For PWA changes, `build.py` already generates all 8 — but ASK Sebastian to test `sebheh.github.io/mog-mobile/rpr/` first before celebrating.
+1. Deploy to the canary only: `python deploy.py --target rprfo` (add `--redeploy` if the change is in MOGApi.gs or any `api_*` function). For PWA changes, `build.py` already generates all 8 — but ASK Sebastian to test `sebheh.github.io/mog-mobile/rprfo/` first before celebrating.
 2. Wait for Sebastian to actually open the thing and confirm it works. Don't accept "no errors in tooling output" as verification.
 3. Only then run the full deploy: `python deploy.py` (with `--redeploy` if applicable) for Apps Script, or just confirm the other 7 store URLs also work.
 
-The reason: spreadsheet data and per-store state vary subtly. A change that works in rpr's data shape may surface a bug in tnyt's. Catching it on the canary means 1 store affected, not 9.
+The reason: spreadsheet data and per-store state vary subtly. A change that works in the canary's data shape may surface a bug in tnyt's. Catching it on the canary means 1 store affected, not 9.
 
 ## When the layer choice isn't obvious
 
@@ -75,7 +77,7 @@ Layer: <which layer from the table>
 Files to edit: <absolute paths>
 Deploy mechanism: <clasp / build.py / git only>
 Verification: <how Sebastian will know it worked>
-Canary-first: <yes — start with rpr / no — single-target change>
+Canary-first: <yes — start with rprfo / no — single-target change>
 ```
 
 This makes the routing decision auditable and gives Sebastian a chance to redirect before any edit happens.

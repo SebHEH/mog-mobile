@@ -17,7 +17,17 @@ End of any session that produced material changes:
 
 Skip when the session was pure exploration (read-only, no commits) or when the work was a single-line typo fix with no architectural implication.
 
-## Date discipline (read this before naming the file)
+## Gather the facts deterministically first
+
+Before naming the file or assembling the commit list, run the fact-gather — it removes the two mechanical lookups (today's date + whether today's file exists) and the recurring future-date mistake along with them:
+
+```
+python .claude/skills/mog-session-handoff/scripts/handoff_facts.py
+```
+
+It prints today's date in filename form, the binary **UPDATE-IN-PLACE vs CREATE-NEW** decision (a script can't be tempted to bump the date to dodge a collision — that's the whole point), the commits not yet on `origin/main` (your "Commits landed this session" block), and any uncommitted changes (so the handoff doesn't claim work shipped that's still dirty). It's read-only and never commits. Use its output as the factual spine; spend your judgment on the prose.
+
+## Date discipline (the script makes this call — this is the why)
 
 Use **today's actual date** — the date in the session context is authoritative. Then:
 

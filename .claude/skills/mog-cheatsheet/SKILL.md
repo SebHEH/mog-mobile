@@ -18,8 +18,8 @@ All commands run from the **repo root** (`C:\Users\sebcn\Documents\Github\mog-mo
 | Push to all 9 stores (bound-sidebar change, e.g. ManageVendors / ManageItems / OrderHistory edits) | `python deploy.py` |
 | Push + redeploy web-app URL to all (MOGApi.gs / any `api_*` change) | `python deploy.py --redeploy` |
 | Push + redeploy with a description tag in deployment history | `python deploy.py --redeploy --description "<msg>"` |
-| Canary push to one store only | `python deploy.py --target rpr` |
-| Canary push + redeploy to one store | `python deploy.py --target rpr --redeploy` |
+| Canary push to one store only | `python deploy.py --target rprfo` |
+| Canary push + redeploy to one store | `python deploy.py --target rprfo --redeploy` |
 | Dry run (preview, nothing runs) | `python deploy.py --dry-run` |
 | Dry run preview of push + redeploy | `python deploy.py --dry-run --redeploy` |
 | Find deploymentIds for fresh checkout or new store | `python deploy.py --discover` |
@@ -28,7 +28,7 @@ All commands run from the **repo root** (`C:\Users\sebcn\Documents\Github\mog-mo
 
 **When `--redeploy` is required:** any change to `MOGApi.gs` or any `api_*` function the PWA calls via the `/exec` URL. When unsure, pass `--redeploy` — costs ~3s/target extra. Bound-sidebar changes (Manage*, OrderHistory, etc.) don't need it.
 
-**Canary-first discipline:** `--target rpr` first, smoke-test, then fan out with no `--target` flag.
+**Canary-first discipline:** `--target rprfo` first, smoke-test, then fan out with no `--target` flag. (Canary = `rprfo`; `route.py`'s `CANARY` constant is the source of truth — if it ever moves again, change it there, not here.)
 
 ---
 
@@ -74,8 +74,8 @@ Real `scriptId` and `deploymentId` values are committed to git — fresh checkou
 **Bound-sidebar change (e.g. ManageVendors.html):**
 ```
 # edit apps-script/ManageVendors.html
-python deploy.py --target rpr     # canary
-# smoke-test the sidebar in the rpr Sheet
+python deploy.py --target rprfo     # canary
+# smoke-test the sidebar in the rprfo Sheet
 python deploy.py                  # fan out
 git add -A && git commit -m "<msg>" && git push
 ```
@@ -83,8 +83,8 @@ git add -A && git commit -m "<msg>" && git push
 **MOGApi.gs change (PWA-facing):**
 ```
 # edit apps-script/MOGApi.gs
-python deploy.py --target rpr --redeploy
-# smoke-test the PWA at sebheh.github.io/mog-mobile/rpr/
+python deploy.py --target rprfo --redeploy
+# smoke-test the PWA at sebheh.github.io/mog-mobile/rprfo/
 python deploy.py --redeploy
 git add -A && git commit -m "<msg>" && git push
 ```

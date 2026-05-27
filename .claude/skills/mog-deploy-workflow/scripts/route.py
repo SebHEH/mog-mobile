@@ -22,13 +22,21 @@ VERIFY note rather than guessing — that's where human judgment stays.
 import sys
 import posixpath
 
+# Single source of truth for the canary store. The canary is a ROLE (the store
+# we smoke-test first before fanning out), not a fixed identity — it moved from
+# rpr to rprfo on 2026-05-27 (rprfo is the least dangerous store; rpr's pars may
+# not be true 1-day pars). Every skill that names the canary should derive it
+# from here (or from this script's output), never hardcode it again — that's the
+# drift this constant exists to kill.
+CANARY = "rprfo"
+
 # Action ranking — the strongest action across all changed files wins.
 GIT_ONLY, BUILD, PUSH, REDEPLOY = 0, 1, 2, 3
 ACTION_NAME = {
     GIT_ONLY: "git push only",
     BUILD: "python build.py  ->  git commit + push",
-    PUSH: "python deploy.py            (canary: --target rpr first)",
-    REDEPLOY: "python deploy.py --redeploy (canary: --target rpr --redeploy first)",
+    PUSH: "python deploy.py            (canary: --target %s first)" % CANARY,
+    REDEPLOY: "python deploy.py --redeploy (canary: --target %s --redeploy first)" % CANARY,
 }
 
 
@@ -107,7 +115,7 @@ def main(argv):
     for reason in reasons:
         print("Reason: " + reason)
     if winner in (PUSH, REDEPLOY):
-        print("Canary-first: yes - smoke-test rpr, then fan out.")
+        print("Canary-first: yes - smoke-test %s, then fan out." % CANARY)
     return 0
 
 

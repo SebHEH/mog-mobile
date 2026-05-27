@@ -71,6 +71,9 @@ Skills auto-load and trigger via the descriptions in their frontmatter.
 | `mog-rpc-consolidation` | Pattern for collapsing multiple `google.script.run` calls or duplicate sheet reads in modals into a single bootstrap or commit server fn. Triggers when a modal fires >1 RPC on load/save, on audit-punch-list items, or "consolidate the RPCs" / "merge these calls". |
 | `mog-apps-script-caching` | `CacheService` + `getServerMutationTs_` recipe for `api_*` reads in `MOGApi.gs`. Triggers when adding caching to an existing `api_*` fn or introducing a new aggregation endpoint. Always pairs with `--redeploy`. |
 | `mog-modal-ux-sweep` | Apply an identical UX micro-change consistently across the 5 save-capable modals (or all 7). Triggers on "do this to all the modals" / "make sure every modal has X" / fixing a flagged cross-modal inconsistency. |
+| `mog-i18n-parity` | Deterministic EN/ES key-parity check across the modals (ships `scripts/check_i18n_parity.py`, `--all` scans `apps-script/*.html`). Triggers on "check the parity" / "did I drop a translation key" / end of any modal session that changed strings. Replaces the by-eye "102 keys each" count. |
+| `mog-sheet-formula-verify` | Prove a data-model / order-math change is safe against the LIVE store sheet before shipping. Triggers on "does any formula use column X" / "can I repurpose the SKU column" / "verify the order math" / any MASTER_ITEMS column change. The discipline that caught the column-D-vs-O near-miss. |
+| `mog-pwa-audit` | Full-file audit of the PWA layer (`template/index.html` + `sw.js`) for latent bugs / dead code / unlocalized strings / cache hygiene. PWA-layer twin of `appsscript-codebase-audit`. Triggers on "audit the PWA" / "review template/index.html" / after a big PWA edit. |
 
 **User-global** (`~/.claude/skills/<name>/SKILL.md` — load in every Claude Code session):
 
