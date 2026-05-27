@@ -206,3 +206,83 @@ Read docs/MOG_CurrentState.md for invariants. Deploy routing has a deterministic
 source of truth: python .claude/skills/mog-deploy-workflow/scripts/route.py
 <file>. Canary-first (rprfo for ManageItems work — correct pars).
 ```
+
+---
+---
+
+# Later session — Modal Close/chrome sweep + ManageItems layout + OrderHistory revamp
+
+**Session date:** 2026-05-27
+**Session focus:** Continue the modal-chrome de-dup sweep, then a full UX pass — ManageItems table layout fixes and an OrderHistory revamp toward the PWA's format.
+**Outcome:** Shipped to all 9 stores via `python deploy.py` (all changes bound-sidebar / client-side — **no `--redeploy`**). Canary rprfo throughout (~8 smoke-test iterations). Verified from the live store sheet that OrderHistory already pulls flat rows from the public `getOrderHistory`/`getOrderHistoryBootstrap`, so the revamp needed **zero** MOGApi.gs change.
+**Next session focus:** Either the ManageVendors edit-form redesign (delivery-day picker parity with Add — flagged earlier, needs a walkthrough/possible schema migration), or whatever new UX itch surfaces.
+
+## What shipped
+
+### A — Modal chrome de-dup + Close-button consistency
+- **OrderHistory + ManageVendors:** removed the self-added title (and OrderHistory's top `✕`) that doubled Google's `showModalDialog` chrome. **Group A only** — Sebastian's call; the content-header modals (AdminReset/StorageAreas/ReorderPickPath/HowToUse) keep their headings.
+- **Footer Close normalized** to a compact bottom-right button in a slim `.modal-footer` (`display:flex; justify-content:flex-end; padding:6px 12px`; button `padding:7px 24px`, grey `#e0e0e0/#333`) on ManageItems, OrderHistory, ManageVendors, StorageAreas — matches HowToUse. AdminReset/ReorderPickPath keep their two-button Close+primary row (correct for save modals).
+- **Standing decision:** **rprfo is now the canary** (not rpr) — least dangerous store. Saved to memory (`feedback-canary-target`). The deploy router still prints `--target rpr`; override to rprfo.
+
+### B — ManageItems layout
+- **`.shell` `height:100vh` → `100%`** — Apps Script modal iframe fill bug: `100vh` under-resolves in the sandboxed `showModalDialog` iframe, leaving a white gap + squeezed table; `100%` chains correctly from `html,body{height:100%}`. (The 4 content-header modals use `body{height:100vh}` directly and are correct as-is — do NOT switch those to `100%` or the body collapses.)
+- Right pane **390→300px**, table cell padding **12→7px**, per-column `max-width`s dropped, modal **`setWidth(1200)→1400`** so all 8 columns (incl PAR REVIEW) show without horizontal cutoff.
+- **Header split into its own non-scrolling table** + shared `<colgroup>` (`table-layout:fixed`, % widths) so the **scrollbar starts below the header**; styled 12px scrollbar + matching 12px head gutter keeps the two tables column-aligned. Click-to-sort removed (was on the old single table); the View detail/Add/Edit panes unchanged.
+- Secondary "Clear" button color unified to `#e0e0e0/#333`.
+
+### C — OrderHistory revamp (100% client-side)
+- **Why no server change (don't re-litigate):** the modal already gets flat rows from public `getOrderHistory(f)` + `getOrderHistoryBootstrap(f)` and does all grouping/aggregation in the browser. The PWA's `api_getHistory_` wraps the same `getOrderHistory`. So this was an `OrderHistory.html`-only rewrite → bound-sidebar push, no `--redeploy`.
+- **Recent** → PWA-style: date groups ("Today/Yesterday · date"), vendor **cards** (vendor, order time, item-count badge, `›`), click → **detail drill-down** (items: name + on-hand + qty×pack, `‹ Back`). Card clicks wired via indexed `addEventListener` (robust to vendor names with apostrophes — `esc` doesn't escape `'`).
+- **Item History** → per-item **accordion**: collapsible header (item name + Case Pack + order-count badge); expand → Date/Vendor/On Hand/Qty. Item ID dropped, repeated-date column gone, On Hand kept (par tuning). Column sort removed; item search kept; single search result auto-expands.
+- **Vendor Summary** → **collapsible**, starts **closed** when filter = All Vendors (`autoOpen = getFilters().vendorFilter!=='ALL'`), auto-opens when filtered to one vendor. **Item ID → Case Pack** column; **Avg On Hand dropped** (+ its ⚠ flag); per-vendor totals row now shows **unique item count** ("TOTAL — Vendor: N items"); bottom desc shows total unique items.
+- **Copy → Print:** `printSummary()` → `window.print()` + `@media print` (hides chrome/inactive tabs, force-opens collapsed summary bodies, prints a clean title + date-range header).
+- **Card pop-out styling** (white, border, radius, shadow, spacing, hover lift) across Recent cards, Item History groups, Summary blocks.
+- **Dead code removed:** `toggleVG`, `exportCurrentTab`, `flashCopy`, `sortItem`, `itemSortCol/Dir`, `.copy-flash` div+CSS, `sort-asc/desc` CSS, `.vendor-group`/`.date-subheader` CSS. i18n: removed `colItemId/sortHint/entries/copied/colAvgOnHand/highAvgTip`, added `today/yesterday/order/orders/colPack` — EN+ES kept at parity.
+
+## Outstanding (carry forward)
+- **rpr 1-day-par recalc** before using the active-vendor switch there (carried from earlier; rprfo fine).
+- **Per-store Migrate Item Vendors** menu run (optional sheet hygiene; carried).
+- **OrderHistory header-split (scrollbar-below-header) NOT applied** — its item/summary tables build headers in JS and the accordion design sidesteps the need. Revisit only if the scrollbar-over-header look bothers anyone.
+- **ManageVendors edit-form redesign** still open (delivery-day picker parity with Add; needs walkthrough, maybe schema migration).
+- Verification: all canary/fan-out validated by Sebastian on rprfo live URLs; the other 8 not individually smoke-tested (standard for this repo).
+
+## Files touched this chat
+**Apps Script source:**
+- `apps-script/OrderHistory.html` — full revamp (cards, accordion, collapsible summary, print, card styling, dead-code/i18n cleanup)
+- `apps-script/ManageItems.html` — chrome de-dup, footer Close, `100%` fill, right-pane/column tightening, header-split table + colgroup + styled scrollbar, secondary button color
+- `apps-script/ManageVendors.html` — chrome de-dup (title removed), `top-bar` justify flex-end, footer Close compact
+- `apps-script/StorageAreas.html` — footer Close compact bottom-right
+- `apps-script/OrderGuideScript.gs` — `showManageItemsSidebar` width 1200→1400
+
+**Docs:** `docs/MOG_SessionHandoff_2026_05_27.md` (this block), `docs/MOG_CurrentState.md`, `CLAUDE.md` (@-import already on today's file).
+
+**Deployed to:** all 9 clasp targets via `python deploy.py` (bound-sidebar, no `--redeploy`). Canary rprfo first.
+
+## Commits landed this session
+```
+(committed at end of session — feat: modal Close/chrome sweep + ManageItems layout + OrderHistory revamp)
+```
+
+## Opening prompt for next session
+```
+Resume MOG work. Last session (2026-05-27, third block) shipped a modal UX pass
+live on all 9 stores (bound-sidebar, no --redeploy): (1) chrome de-dup + compact
+bottom-right footer Close across ManageItems/OrderHistory/ManageVendors/StorageAreas;
+(2) ManageItems layout — .shell 100vh→100% fill fix, narrower right pane + tighter
+columns + modal width 1400 so all 8 cols show, table header split into its own
+table so the scrollbar starts below the header; (3) OrderHistory revamp — Recent
+is now PWA-style date-grouped vendor CARDS with click-to-detail, Item History is a
+per-item ACCORDION (Item ID dropped, On Hand kept), Vendor Summary is collapsible
+(starts closed on All Vendors, Item ID→Case Pack, Avg On Hand dropped, totals show
+unique item count), and Copy became Print (window.print + @media print).
+
+CANARY IS NOW rprfo (not rpr) — least dangerous store; the route.py still says rpr,
+override it. CAVEAT still standing: rpr pars may not be true 1-day pars — recalc
+before using the active-vendor switch there.
+
+Likely next: ManageVendors edit-form redesign (delivery-day picker parity with the
+Add form — needs an architectural walkthrough; the mults→delivery mapping isn't
+trivially reversible, may need a small schema migration). Read docs/MOG_CurrentState.md
+for invariants; deploy routing source of truth is
+python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
+```
