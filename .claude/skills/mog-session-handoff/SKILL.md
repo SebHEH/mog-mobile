@@ -98,3 +98,4 @@ When a session bundled unrelated bodies of work (e.g., consolidation + scaffold 
 2. Confirm `docs/MOG_CurrentState.md` has been updated.
 3. Suggest a commit. Recommended message: `docs: session handoff YYYY-MM-DD — <one-line topic>`.
 4. Provide a copy-pasteable chat name for Sebastian (the conversation often gets labeled by topic — match the handoff's topic). **Always present it in a fenced code block** so he can copy it directly, the same way suggested commits are presented — never inline prose.
+5. Also surface the **"Opening prompt for next session"** block in the chat wrap-up as its own fenced code block (not just buried in the handoff doc), so Sebastian can copy it straight into the next session. Both the chat name and the opening prompt should be copy-pasteable code blocks in the final message.
