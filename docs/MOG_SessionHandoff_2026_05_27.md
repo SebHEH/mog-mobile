@@ -286,3 +286,75 @@ trivially reversible, may need a small schema migration). Read docs/MOG_CurrentS
 for invariants; deploy routing source of truth is
 python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
 ```
+
+---
+---
+
+# Later session — Modal consistency check + PWA audit + fixes
+
+**Session date:** 2026-05-27
+**Session focus:** One more modal-consistency pass, then a full audit of the PWA (`template/index.html` + `template/sw.js`) for bugs / UX rough edges / cleanup.
+**Outcome:** Modals confirmed consistent (no changes — the two candidate "nits" would either break a layout or just shuffle which kind of consistency you have). PWA audit found **one real latent bug** (a dead background-refresh safety gate) + 4 minor cleanups; all fixed, built to all 8 store dirs, committed `b7b8aeb`, and pushed to `main` (GitHub Pages live). `CACHE_VERSION` v7→v8.
+**Next session focus:** ManageVendors edit-form redesign (delivery-day picker parity with Add — still the top open item; needs a walkthrough, maybe a schema migration).
+
+## Section A — Modal consistency pass (no changes shipped)
+
+Ran `audit_modals.py` (all 5 save-capable modals pass save-flash / ok-checkmark / close-affordance) and hand-compared footer CSS, `.status.ok`, lang-toggle, and chrome across all 7 modals. Findings:
+- The 4 single-button footers (ManageItems, OrderHistory, ManageVendors, StorageAreas) are **byte-identical**. saveFlash + ✓ present on all 5 save modals. Lang-toggle `rgba(255,255,255,0.18)` shared by 5; AdminReset's red is intentional (destructive theme).
+- Candidate nits, all **deliberately NOT fixed** (don't re-litigate): (1) ManageItems `.status.ok` uses `#1a6b2e` vs the other 4's `#1f6d2a` — but `#1a6b2e` is ManageItems' theme green throughout, so changing only `.status.ok` trades cross-modal consistency for intra-modal inconsistency, and the two greens are visually identical. (2) AdminReset `.status.ok` lacks `display:inline-block` — but its `.status` is `text-align:center` full-width by design; adding inline-block would **break the centering**. (3) HowToUse footer (`.footer`, `7px 22px`, `#f9f9f9`) differs slightly from OrderHistory's `.modal-footer` — left alone (HowToUse is themed differently). **Verdict: modals are consistent; the nits aren't worth touching.**
+
+## Section B — PWA audit + fixes (shipped)
+
+Read the entire `template/index.html` (6128 lines) + `sw.js`. The PWA is a mature, well-commented codebase; no security issues, no broken offline logic, no XSS in the hand-built HTML (vendor names escaped at every insertion). Findings + fixes:
+
+1. **`uiIsInteractive_()` was a dead safety gate (the one real bug)** — `index.html` ~line 3461. The background dashboard refresh (`maybeBackgroundRefreshDashboard_`, fires on `visibilitychange`) has a gate meant to skip re-rendering Today when a modal/busy overlay is open. It checked `getElementById('modal-overlay')` + `.contains('show')`, but the real confirm modal is `#modal-backdrop`/`#modal` toggling `.open`, and `#busy-overlay` toggles `.open` not `.show` — so it **always returned false**. Result: a background refresh that lands while a confirm/busy overlay is open repaints the Today list underneath it (the jank the gate was written to prevent — no data loss, low-medium severity). **Fix:** check `#modal-backdrop`/`#busy-overlay` with `.open`. Clearly a regression from an earlier modal-id refactor.
+2. **Stale SWR comment in `sw.js`** (~line 101) — the navigate-handler comment still described stale-while-revalidate; the impl is network-first (correctly described in the file's top block). Comment corrected.
+3. **Debug `console.log('[reset] api result:', result)`** in `onHomeResetClick` removed (and the now-unused `result` binding dropped — `await api('commitReset')`).
+4. **Two hardcoded `' vendors'` toasts** (`autoSendDailyRecap_` ~5314, `onDailySummaryClick` ~5642) rendered the English word in Spanish. Localized via the same inline `state.lang === 'en' ? 'vendors' : 'proveedores'` pattern `renderRecap` already uses (no new T key — matches existing code).
+5. **Undefined CSS var `--text-1`** on `.recipient-name` (~line 423) → `var(--text)` (no visible change today since the values coincide; latent typo).
+6. **`CACHE_VERSION` v7→v8** in `template/sw.js` so phones evict the old shell.
+
+**Deploy:** PWA layer — `python build.py` regenerated all 8 store dirs (sw.js uniformly 6,848 bytes = v8; hub registry a clean idempotent no-op), then commit + `git push`. **No clasp, no `--redeploy`** (this is the PWA, not Apps Script). GitHub Pages serves all stores from the one push — no per-store canary possible for the PWA.
+
+## Files touched (this session)
+
+**PWA source:**
+- `template/index.html` — `uiIsInteractive_` gate fix, removed reset `console.log` + unused `result`, localized 2 vendor-count toasts, `--text-1`→`--text`
+- `template/sw.js` — corrected SWR→network-first comment, `CACHE_VERSION` v7→v8
+
+**Generated (build.py output, do not hand-edit):**
+- `rpr/ rprfo/ rpt/ rptfo/ rpfr/ rpfrf/ tnyt/ tnytf/` — index.html + sw.js refreshed in each
+
+**Docs:** `docs/MOG_SessionHandoff_2026_05_27.md` (this block), `docs/MOG_CurrentState.md`, `CLAUDE.md` (@-import already on today's file).
+
+## Commits landed (this session)
+
+```
+b7b8aeb fix: PWA background-refresh modal gate + audit cleanups
+```
+
+## Opening prompt for next session
+
+```
+Resume MOG work. Last session (2026-05-27, fourth block) did a PWA audit of
+template/index.html + sw.js and shipped one real bug fix + cleanups, live on all
+8 stores (PWA layer: build.py + git push, CACHE_VERSION v7→v8, commit b7b8aeb).
+The bug: uiIsInteractive_ (the background-refresh "don't repaint under a modal"
+gate) checked a nonexistent #modal-overlay/.show — the real elements are
+#modal-backdrop/#busy-overlay toggling .open — so it always returned false and
+the gate did nothing; now fixed. Also: localized 2 "N vendors" toasts, removed a
+reset console.log, fixed an undefined --text-1 CSS var, corrected a stale sw.js
+comment. Modals were re-checked for consistency and left as-is (the only nits
+would break a layout or just shuffle consistency).
+
+Top open direction: ManageVendors edit-form redesign — delivery-day + lead-day
+picker parity with the Add form. Needs an architectural walkthrough first; the
+mults→delivery mapping isn't trivially reversible (may need a small schema
+migration storing deliveryDays[] + leadDays as columns, computing mults at save).
+
+Standing: CANARY IS rprfo (not rpr) — route.py still prints rpr, override it.
+CAVEAT: rpr pars may not be true 1-day pars — recalc before using the
+active-vendor switch there. Read docs/MOG_CurrentState.md for invariants; deploy
+routing source of truth is
+python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
+```
