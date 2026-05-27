@@ -8,6 +8,8 @@ description: Apply an identical UX micro-change consistently across all MOG Apps
 
 The MOG modals weren't built in lockstep — they drift apart between sessions. The 2026-05-27 session shipped the strongest cross-modal sweep yet (✓ + green flash, Close buttons, etc.). Treat sweeps as their own discipline: inventory first, apply identically, gotchas captured.
 
+**This is the MOG specialization of the global `modal-ux-sweep` skill.** The global skill owns the generic discipline (detector → inventory → apply identically → ES5 → deploy → smoke-test) and the generic anti-patterns; read it for the *why*. This file pins the MOG specifics: the concrete modal inventory, the canonical Saved-beat block, the StorageAreas flex gotcha, the `audit_modals.py` detector, and MOG deploy routing.
+
 ## Modal inventory (carry forward — used by every sweep)
 
 **Save-capable modals (5)** — have a save flow with `.status.ok` feedback, need Saved-beat consistency:
@@ -54,30 +56,25 @@ Sticky-footer Close button in the modal-footer div, outside the scrolling body. 
 
 If any future sweep adds a new top-level card or section inside `.body` in StorageAreas, it must remain a flex child with `flex-shrink: 0` or the scroll silently breaks. This bit twice during the 5/27 session — two failed push iterations before nailed.
 
-## The discipline
+## The discipline (MOG specifics — generic step order lives in global `modal-ux-sweep`)
 
-0. **Run the drift detector first.** Before deciding what to sweep, see which of the 5 save-capable modals already have the canonical signatures (`saveFlash`, `.status.ok::before`, a `google.script.host.close()` affordance):
+Two steps have MOG-specific mechanics:
 
-   ```
-   python .claude/skills/mog-modal-ux-sweep/scripts/audit_modals.py
-   ```
+- **Step 0 — run the MOG drift detector** over the 5 save-capable modals before deciding what to sweep:
 
-   It prints a per-modal grid and exits non-zero on any drift. This replaces a manual eyeball pass across 5 files and tells you exactly which modals need the change. Adding a new signature to track? Add it to the `SIGNATURES` list in the script. The detector only finds presence/absence — *where* to place a missing block stays your judgment.
+  ```
+  python .claude/skills/mog-modal-ux-sweep/scripts/audit_modals.py
+  ```
 
-1. **Inventory the modals first.** Save-capable (5) vs all-modals (7) — pick the set based on what's being swept. Don't fix one and forget the rest.
-2. **Read each target file before editing** — modals drift; assume the starting state differs slightly. The change may already be present in 2 of 5 and missing in 3.
-3. **Apply the change identically** — copy-paste the canonical block, don't re-derive it per modal. Re-derivation is how the drift happens in the first place.
-4. **Rhino ES5 on any JS edits.** All seven modal HTML files run in Rhino. No arrow fns / `let` / `const` / template literals in `<script>` blocks. `rhino-safe-html` auto-triggers.
-5. **Deploy.** Skill-specific routing fact: modal HTML changes are bound-sidebar only — no `--redeploy` (sidebars read HEAD). For the exact command + canary discipline, defer to `mog-deploy-workflow` — run its router: `python .claude/skills/mog-deploy-workflow/scripts/route.py apps-script/StorageAreas.html`.
-6. **Smoke-test more than one modal in the canary Sheet** — the whole point of a sweep is consistency; verify it in 2-3 of the swept modals before fanning out.
+  Per-modal grid, exits non-zero on drift. Add a new signature to track to the `SIGNATURES` list. The detector finds presence/absence only — *where* a missing block goes stays your judgment.
 
-## Anti-patterns (caught in past sessions)
+- **Step 5 — deploy.** Modal HTML changes are bound-sidebar only — no `--redeploy` (sidebars read HEAD). Route via `mog-deploy-workflow`: `python .claude/skills/mog-deploy-workflow/scripts/route.py apps-script/StorageAreas.html`. Then smoke-test 2-3 of the swept modals in the canary Sheet (rprfo) before fanning out.
 
-- **Fixing one modal and stopping.** That's how the drift started. If the change is justified for one save-capable modal, it's justified for all 5.
-- **Re-deriving the CSS block per modal.** Diffs that look "the same-ish" but have one different color or one missing rule. Copy-paste the canonical block.
-- **ES6 syntax in the JS rewrite.** The `.gs` side is V8; the HTML side is Rhino. Sweep edits live in HTML. ES5 only.
-- **Skipping `flex-shrink: 0` when adding a new card inside StorageAreas' `.body`.** Silently breaks the scroll. The gotcha is real.
-- **Bundling a sweep with a per-modal redesign.** Mixed scopes, hard to review, hard to verify. Sweep is its own session (or its own commit at minimum).
+The other steps (inventory the right set, read-before-edit, apply identically, ES5 on JS edits) are generic — see global `modal-ux-sweep`.
+
+## Anti-patterns
+
+The generic sweep anti-patterns (fixing one modal and stopping, re-deriving the CSS block per modal, ES6 in modal JS, bundling a sweep with a per-modal redesign) live in global `modal-ux-sweep`. The MOG-specific one worth repeating: **skipping `flex-shrink: 0` when adding a new card inside StorageAreas' `.body`** silently breaks the scroll (see the gotcha above) — it bit twice in one session.
 
 ## Composition with other skills
 
