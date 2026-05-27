@@ -26,12 +26,11 @@
         color: #fff;
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: flex-end;
         padding: 0 14px;
         height: 44px;
         flex-shrink: 0;
       }
-      .top-bar-title { font-size: 13px; font-weight: bold; letter-spacing: 0.03em; }
       .lang-group { display: flex; gap: 4px; }
       .lang-btn {
         padding: 3px 9px; font-size: 10px; font-weight: bold; cursor: pointer;
@@ -204,10 +203,11 @@
       .modal-footer {
         flex: 0 0 auto;
         background: #fff; border-top: 1px solid #e8eaed;
-        padding: 8px 12px;
+        padding: 6px 12px;
+        display: flex; justify-content: flex-end;
       }
       button.btn-close {
-        width: 100%; padding: 9px 12px;
+        padding: 7px 24px;
         background: #e0e0e0; color: #333;
         border: none; border-radius: 4px;
         font-size: 12px; font-weight: bold; cursor: pointer;
@@ -281,10 +281,6 @@
   <body class="lang-en">
 
     <div class="top-bar">
-      <div class="top-bar-title">
-        <span class="en">Manage Vendors</span>
-        <span class="es">Administrar Proveedores</span>
-      </div>
       <div class="lang-group">
         <button class="lang-btn active" onclick="setLang('en')">EN</button>
         <button class="lang-btn"        onclick="setLang('es')">ES</button>

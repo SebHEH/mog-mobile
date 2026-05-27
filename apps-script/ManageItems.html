@@ -17,7 +17,20 @@
         overflow: hidden;
       }
 
-      .shell { display: flex; flex-direction: column; height: 100vh; }
+      .shell { display: flex; flex-direction: column; height: 100%; }
+      .modal-footer {
+        flex: 0 0 auto;
+        background: #fff; border-top: 1px solid #e8eaed;
+        padding: 6px 12px;
+        display: flex; justify-content: flex-end;
+      }
+      button.btn-close {
+        padding: 7px 24px;
+        background: #e0e0e0; color: #333;
+        border: none; border-radius: 4px;
+        font-size: 12px; font-weight: bold; cursor: pointer;
+      }
+      button.btn-close:hover { opacity: 0.85; }
 
       /* ── Top bar ── */
       .top-bar {
@@ -84,13 +97,18 @@
       .sort-toggle button.active { background: #1a1a2e; color: #fff; }
       .sort-toggle button:hover:not(.active) { background: #e4e4e4; }
       .item-count-badge { font-size: 12px; color: #aaa; white-space: nowrap; flex-shrink: 0; }
+      .table-head { flex-shrink: 0; overflow: hidden; padding-right: 12px; background: #f5f6f8; border-bottom: 2px solid #dde1e7; }
       .table-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
-      .item-table { width: 100%; min-width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
+      .table-scroll::-webkit-scrollbar { width: 12px; }
+      .table-scroll::-webkit-scrollbar-track { background: #fff; }
+      .table-scroll::-webkit-scrollbar-thumb { background: #c4c8cf; border-radius: 6px; border: 3px solid #fff; }
+      .item-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+      .col-item{width:23%} .col-vendor{width:14%} .col-pack{width:13%} .col-par{width:9%} .col-active{width:10%} .col-mult{width:9%} .col-sheet{width:11%} .col-review{width:11%}
       .item-table thead th {
-        position: sticky; top: 0; background: #f5f6f8; border-bottom: 2px solid #dde1e7;
-        padding: 9px 12px; text-align: left; font-size: 11px; font-weight: bold;
+        background: #f5f6f8;
+        padding: 8px 7px; text-align: left; font-size: 11px; font-weight: bold;
         color: #777; text-transform: uppercase; letter-spacing: 0.05em;
-        white-space: nowrap; cursor: pointer; user-select: none; z-index: 2;
+        white-space: nowrap; cursor: pointer; user-select: none;
       }
       .item-table thead th:hover { background: #edeef1; }
       .si { margin-left: 3px; font-size: 9px; color: #bbb; }
@@ -102,11 +120,11 @@
       .item-table tbody tr.no-area-row  { border-left: 3px solid #e05050; background: #fff8f8; }
       .item-table tbody tr.no-area-row:hover    { background: #ffeaea; }
       .item-table tbody tr.no-area-row.selected { background: #ffdada; }
-      .item-table td { padding: 9px 12px; vertical-align: middle; white-space: nowrap; }
-      .td-name   { font-weight: 600; color: #1a1a2e; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+      .item-table td { padding: 8px 7px; vertical-align: middle; white-space: nowrap; }
+      .td-name   { font-weight: 600; color: #1a1a2e; overflow: hidden; text-overflow: ellipsis; }
       .td-id     { font-size: 11px; color: #bbb; font-family: monospace; display: block; margin-top: 2px; }
-      .td-vendor { color: #555; max-width: 155px; overflow: hidden; text-overflow: ellipsis; }
-      .td-pack   { color: #777; font-size: 12px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+      .td-vendor { color: #555; overflow: hidden; text-overflow: ellipsis; }
+      .td-pack   { color: #777; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
       .td-par    { text-align: center; font-weight: bold; color: #333; width: 54px; }
       .td-center { text-align: center; width: 70px; }
       .pill { display: inline-block; padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
@@ -130,10 +148,10 @@
 
       /* ── RIGHT: forms ── */
       .right-pane {
-        width: 390px; flex-shrink: 0; display: flex; flex-direction: column;
+        width: 300px; flex-shrink: 0; display: flex; flex-direction: column;
         overflow: hidden; background: #fafbfc;
       }
-      .panel { display: none; flex-direction: column; height: 100%; overflow-y: auto; padding: 22px; }
+      .panel { display: none; flex-direction: column; height: 100%; overflow-y: auto; padding: 18px; }
       .panel.active { display: flex; }
       .panel-heading {
         font-size: 14px; font-weight: bold; color: #1a1a2e;
@@ -170,7 +188,7 @@
       button:hover    { opacity: 0.85; }
       button:disabled { opacity: 0.35; cursor: not-allowed; }
       .btn-primary   { flex: 2; background: #1a1a2e; color: #fff; }
-      .btn-secondary { flex: 1; background: #e4e6ea; color: #444; }
+      .btn-secondary { flex: 1; background: #e0e0e0; color: #333; }
       .btn-warn      { flex: 2; background: #c87800; color: #fff; }
       .btn-danger    { flex: 2; background: #c0392b; color: #fff; }
       .btn-load      { width: 100%; background: #3a7bd5; color: #fff; margin-top: 6px; }
@@ -187,7 +205,7 @@
       .detail-card { display: none; border: 1px solid #e0e3e8; border-radius: 6px; padding: 10px 12px; background: #fff; margin: 10px 0; }
       .detail-card.visible { display: block; }
       .detail-grid { display: grid; grid-template-columns: 70px 1fr; gap: 5px 10px; font-size: 12px; }
-      .dk { color: #aaa; font-weight: bold; }
+      .dk { color: #aaa; font-weight: bold; text-align: right; }
       .dv { color: #222; overflow: hidden; text-overflow: ellipsis; }
       .badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:11px; font-weight:bold; }
       .badge-active   { background:#d4edda; color:#1a6b2e; }
@@ -385,9 +403,11 @@
           <span class="item-count-badge" id="view-count"></span>
         </div>
 
-        <div class="table-scroll">
-          <div id="table-loading" class="table-loading"></div>
-          <table class="item-table" id="item-table" style="display:none">
+        <div class="table-head">
+          <table class="item-table">
+            <colgroup>
+              <col class="col-item"><col class="col-vendor"><col class="col-pack"><col class="col-par"><col class="col-active"><col class="col-mult"><col class="col-sheet"><col class="col-review">
+            </colgroup>
             <thead>
               <tr>
                 <th onclick="setSort('name')"    id="th-item"></th>
@@ -400,6 +420,14 @@
                 <th id="th-flag" style="cursor:default;"></th>
               </tr>
             </thead>
+          </table>
+        </div>
+        <div class="table-scroll">
+          <div id="table-loading" class="table-loading"></div>
+          <table class="item-table" id="item-table" style="display:none">
+            <colgroup>
+              <col class="col-item"><col class="col-vendor"><col class="col-pack"><col class="col-par"><col class="col-active"><col class="col-mult"><col class="col-sheet"><col class="col-review">
+            </colgroup>
             <tbody id="item-tbody"></tbody>
           </table>
           <div id="table-empty" class="table-empty" style="display:none"></div>
@@ -593,6 +621,13 @@
         </div>
 
       </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-close" onclick="google.script.host.close()">
+        <span class="en">Close</span>
+        <span class="es">Cerrar</span>
+      </button>
     </div>
   </div>
 

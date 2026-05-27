@@ -1266,7 +1266,7 @@ function showManageItemsSidebar() {
   const tmpl = HtmlService.createTemplateFromFile("ManageItems");
   tmpl.vendorListJson = JSON.stringify(getVendorList());
   SpreadsheetApp.getUi().showModalDialog(
-    tmpl.evaluate().setWidth(1200).setHeight(900),
+    tmpl.evaluate().setWidth(1400).setHeight(900),
     "Manage Items"
   );
 }

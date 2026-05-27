@@ -14,7 +14,20 @@
       overflow: hidden;
     }
 
-    .shell { display: flex; flex-direction: column; height: 100vh; }
+    .shell { display: flex; flex-direction: column; height: 100%; }
+    .modal-footer {
+      flex: 0 0 auto;
+      background: #fff; border-top: 1px solid #e8eaed;
+      padding: 6px 12px;
+      display: flex; justify-content: flex-end;
+    }
+    button.btn-close {
+      padding: 7px 24px;
+      background: #e0e0e0; color: #333;
+      border: none; border-radius: 4px;
+      font-size: 12px; font-weight: bold; cursor: pointer;
+    }
+    button.btn-close:hover { opacity: 0.85; }
 
     /* ── Header ── */
     .top-bar {
@@ -25,18 +38,6 @@
       flex-shrink: 0;
       height: 44px;
     }
-    .top-bar-title {
-      font-size: 14px;
-      font-weight: bold;
-      padding: 0 16px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      border-right: 1px solid rgba(255,255,255,0.12);
-      letter-spacing: 0.03em;
-      white-space: nowrap;
-    }
-    .top-bar-title span { font-size: 16px; }
     .top-tabs { display: flex; flex: 1; }
     .top-tab {
       padding: 0 18px;
@@ -74,19 +75,6 @@
     }
     .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
     .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
-
-    .top-close {
-      padding: 0 16px;
-      display: flex;
-      align-items: center;
-      font-size: 20px;
-      color: rgba(255,255,255,0.35);
-      cursor: pointer;
-      border-left: 1px solid rgba(255,255,255,0.12);
-      transition: color 0.15s;
-      line-height: 1;
-    }
-    .top-close:hover { color: #fff; }
 
     /* ── Filter bar ── */
     .filter-bar {
@@ -172,6 +160,9 @@
     .state-box .state-sub  { font-size: 11px; color: #bbb; }
 
     .table-wrap { flex: 1; overflow-y: auto; overflow-x: auto; }
+    .table-wrap::-webkit-scrollbar { width: 12px; height: 12px; }
+    .table-wrap::-webkit-scrollbar-track { background: #fff; }
+    .table-wrap::-webkit-scrollbar-thumb { background: #c4c8cf; border-radius: 6px; border: 3px solid #fff; }
 
     .result-bar {
       background: #fafbfc;
@@ -201,12 +192,7 @@
       color: #555;
       border-bottom: 2px solid #dde1e7;
       white-space: nowrap;
-      cursor: pointer;
-      user-select: none;
     }
-    thead th:hover { background: #e8eaed; color: #222; }
-    thead th.sort-asc::after  { content: " ▲"; font-size: 9px; color: #7eb8a4; }
-    thead th.sort-desc::after { content: " ▼"; font-size: 9px; color: #7eb8a4; }
     tbody tr { border-bottom: 1px solid #eff1f4; }
     tbody tr:hover { background: #f7f9fb; }
     tbody td { padding: 7px 12px; vertical-align: middle; }
@@ -220,101 +206,115 @@
     .col-vendor { font-weight: bold; color: #1a3a2e; }
     .col-qty    { font-weight: bold; color: #1a3a2e; }
     .col-onhand { color: #888; }
+    .col-pack   { color: #555; font-size: 12px; }
 
-    .vendor-group-header {
-      position: sticky;
-      top: 0;
-      background: #e8f0ec;
-      padding: 7px 16px;
-      font-size: 11px;
-      font-weight: bold;
-      color: #1a3a2e;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      border-bottom: 1px solid #d0ddd6;
-      border-top: 1px solid #d0ddd6;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      user-select: none;
+    /* ── Item History: per-item accordion ── */
+    .ih-group {
+      margin: 8px 12px; background: #fff;
+      border: 1px solid #e4e8ec; border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow: hidden;
     }
-    .vendor-group:first-child .vendor-group-header { border-top: none; }
-    .vg-badge {
-      background: #1a3a2e;
-      color: #fff;
-      font-size: 9px;
-      padding: 1px 6px;
-      border-radius: 10px;
-      font-weight: bold;
+    .ih-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 14px; cursor: pointer; user-select: none; transition: background 0.1s;
     }
-    .vg-toggle { margin-left: auto; font-size: 10px; color: #7eb8a4; }
-    .vendor-group-body.collapsed { display: none; }
+    .ih-header:hover { background: #f3f8f6; }
+    .ih-caret { color: #7eb8a4; font-size: 11px; width: 12px; flex-shrink: 0; }
+    .ih-name { font-size: 14px; font-weight: bold; color: #1a3a2e; flex: 1; min-width: 0; }
+    .ih-pack { font-size: 11px; color: #888; white-space: nowrap; }
+    .ih-count {
+      background: #1a3a2e; color: #fff; font-size: 10px; font-weight: bold;
+      padding: 2px 9px; border-radius: 10px; white-space: nowrap; flex-shrink: 0;
+    }
+    .ih-body { background: #fafbfc; }
+    .ih-body.collapsed { display: none; }
+    .ih-body thead th { background: #eef2f0; }
 
-    .date-subheader {
-      background: #fafbfc;
-      padding: 5px 16px;
-      font-size: 10px;
-      font-weight: bold;
-      color: #888;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      border-bottom: 1px solid #eff1f4;
+    /* ── Recent: date-grouped vendor cards (PWA-style) ── */
+    .hist-date-group { }
+    .hist-date-header {
+      position: sticky; top: 0; z-index: 2;
+      background: #eef2f0; color: #1a3a2e;
+      padding: 7px 16px; font-size: 11px; font-weight: bold;
+      letter-spacing: 0.04em; text-transform: uppercase;
+      border-bottom: 1px solid #d8e2dd;
     }
+    .hist-card {
+      display: flex; align-items: center; gap: 12px;
+      margin: 8px 12px; padding: 12px 14px;
+      background: #fff; border: 1px solid #e4e8ec; border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+      cursor: pointer; transition: box-shadow 0.12s, border-color 0.12s;
+    }
+    .hist-card:hover { box-shadow: 0 2px 9px rgba(0,0,0,0.14); border-color: #c7d2cc; }
+    .hist-card-main { flex: 1; min-width: 0; }
+    .hist-card-vendor { font-size: 14px; font-weight: bold; color: #1a3a2e; }
+    .hist-card-meta { font-size: 11px; color: #888; margin-top: 2px; }
+    .hist-card-count {
+      background: #1a3a2e; color: #fff; font-size: 10px; font-weight: bold;
+      padding: 2px 9px; border-radius: 10px; white-space: nowrap; flex-shrink: 0;
+    }
+    .hist-card-arrow { color: #c0ccc7; font-size: 18px; flex-shrink: 0; line-height: 1; }
 
+    /* ── Recent: detail drill-down ── */
+    .hist-detail { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+    .hist-detail.active { display: flex; }
+    .hist-detail-bar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 9px 16px; background: #fafbfc; border-bottom: 1px solid #e8eaed; flex-shrink: 0;
+    }
+    .hist-back {
+      background: #e0e0e0; color: #333; border: none; border-radius: 4px;
+      padding: 6px 13px; font-size: 12px; font-weight: bold; cursor: pointer; white-space: nowrap;
+    }
+    .hist-back:hover { background: #d2d2d2; }
+    .hist-detail-title { font-size: 14px; font-weight: bold; color: #1a3a2e; }
+    .hist-detail-sub { font-size: 11px; color: #888; margin-left: auto; white-space: nowrap; }
+    .hist-detail-list { flex: 1; overflow-y: auto; }
+
+    /* ── Vendor Summary: cleaner card blocks ── */
+    .summary-vendor-block {
+      margin: 10px 12px 0; border: 1px solid #e4e8ec; border-radius: 8px;
+      overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+    }
     .summary-vendor-header {
-      background: #1a1a2e;
-      color: #fff;
-      padding: 8px 16px;
-      font-size: 12px;
-      font-weight: bold;
-      letter-spacing: 0.03em;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      position: sticky;
-      top: 0;
-      z-index: 2;
+      background: #1a3a2e; color: #fff;
+      padding: 11px 14px; font-size: 13px; font-weight: bold;
+      letter-spacing: 0.02em; display: flex; align-items: center; gap: 10px;
+      cursor: pointer; user-select: none;
     }
+    .sv-caret { color: #7eb8a4; font-size: 11px; width: 12px; flex-shrink: 0; }
+    .sv-name  { flex: 1; min-width: 0; }
     .sv-badge {
-      background: #7eb8a4;
-      color: #1a1a2e;
-      font-size: 9px;
-      font-weight: bold;
-      padding: 1px 7px;
-      border-radius: 10px;
+      background: #7eb8a4; color: #1a3a2e; font-size: 9px; font-weight: bold;
+      padding: 1px 7px; border-radius: 10px; flex-shrink: 0;
     }
+    .sv-body.collapsed { display: none; }
+    .summary-vendor-block tbody tr:nth-child(even) { background: #fafbfc; }
     .summary-totals-row td {
-      background: #f0f4f2;
-      font-weight: bold;
-      color: #1a3a2e;
-      border-top: 2px solid #d0ddd6;
-      font-size: 11px;
+      background: #eef3f1; font-weight: bold; color: #1a3a2e;
+      border-top: 2px solid #d0ddd6; font-size: 11px;
     }
 
     .flag-high-onhand { font-size: 10px; color: #b07000; margin-left: 4px; }
 
-    .copy-flash {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: #1a3a2e;
-      color: #fff;
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: bold;
-      opacity: 0;
-      transition: opacity 0.2s;
-      pointer-events: none;
-      z-index: 999;
+    /* ── Print (Vendor Summary) ── */
+    .print-header { display: none; }
+    @media print {
+      .top-bar, .filter-bar, .modal-footer, .result-bar, .state-box { display: none !important; }
+      .tab-panel:not(.active) { display: none !important; }
+      .shell, .content-area, .tab-panel, .table-wrap { overflow: visible !important; height: auto !important; display: block !important; }
+      .print-header { display: block; padding: 0 0 10px; }
+      .print-header .ph-title { font-size: 18px; font-weight: bold; color: #000; }
+      .print-header .ph-sub { font-size: 12px; color: #444; margin-top: 3px; }
+      .summary-vendor-block { border: 1px solid #999; page-break-inside: avoid; margin: 0 0 14px; box-shadow: none !important; }
+      .summary-vendor-header { background: #1a3a2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .sv-body.collapsed { display: block !important; }
+      .sv-caret { display: none !important; }
+      table { font-size: 11px; }
+      thead th { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { background: #fff !important; }
     }
-    .copy-flash.show { opacity: 1; }
-
-    .table-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
-    .table-wrap::-webkit-scrollbar-track { background: transparent; }
-    .table-wrap::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
-    .table-wrap::-webkit-scrollbar-thumb:hover { background: #aaa; }
 
     .es { display: none; }
     .en { display: inline; }
@@ -324,11 +324,6 @@
 <div class="shell">
 
   <div class="top-bar">
-    <div class="top-bar-title">
-      <span>📋</span>
-      <span class="en">Order History</span>
-      <span class="es">Historial de Pedidos</span>
-    </div>
     <div class="top-tabs">
       <div class="top-tab active" onclick="switchTab('recent')">
         <span class="en">Recent Orders</span><span class="es">Pedidos Recientes</span>
@@ -344,7 +339,6 @@
       <button class="lang-btn active" onclick="setLang('en')">EN</button>
       <button class="lang-btn"        onclick="setLang('es')">ES</button>
     </div>
-    <div class="top-close" onclick="google.script.host.close()">✕</div>
   </div>
 
   <div class="filter-bar">
@@ -386,25 +380,37 @@
     <button class="btn-apply" onclick="loadCurrentTab()">
       <span class="en">Apply</span><span class="es">Aplicar</span>
     </button>
-    <button class="btn-export" id="export-btn" onclick="exportCurrentTab()" style="display:none">
-      📋 <span class="en">Copy</span><span class="es">Copiar</span>
+    <button class="btn-export" id="print-btn" onclick="printSummary()" style="display:none">
+      🖨 <span class="en">Print</span><span class="es">Imprimir</span>
     </button>
   </div>
 
   <div class="content-area">
 
     <div class="tab-panel active" id="panel-recent">
-      <div class="result-bar" id="recent-result-bar" style="display:none">
-        <span id="recent-count" class="result-count"></span>
-        <span id="recent-desc" class="result-desc"></span>
-        <span class="log-start-note" id="log-note"></span>
-      </div>
-      <div class="table-wrap">
-        <div class="state-box" id="recent-loading" style="display:none">
-          <div class="state-icon">⏳</div>
-          <div class="state-msg" id="lmsg-recent"></div>
+      <div id="recent-list" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
+        <div class="result-bar" id="recent-result-bar" style="display:none">
+          <span id="recent-count" class="result-count"></span>
+          <span id="recent-desc" class="result-desc"></span>
+          <span class="log-start-note" id="log-note"></span>
         </div>
-        <div id="recent-content"></div>
+        <div class="table-wrap">
+          <div class="state-box" id="recent-loading" style="display:none">
+            <div class="state-icon">⏳</div>
+            <div class="state-msg" id="lmsg-recent"></div>
+          </div>
+          <div id="recent-content"></div>
+        </div>
+      </div>
+      <div class="hist-detail" id="recent-detail">
+        <div class="hist-detail-bar">
+          <button class="hist-back" onclick="closeRecentDetail()">‹ <span class="en">Back</span><span class="es">Atrás</span></button>
+          <span class="hist-detail-title" id="recent-detail-title"></span>
+          <span class="hist-detail-sub" id="recent-detail-sub"></span>
+        </div>
+        <div class="hist-detail-list">
+          <div id="recent-detail-content"></div>
+        </div>
       </div>
     </div>
 
@@ -432,14 +438,20 @@
           <div class="state-icon">⏳</div>
           <div class="state-msg" id="lmsg-summary"></div>
         </div>
+        <div class="print-header" id="print-header"></div>
         <div id="summary-content"></div>
       </div>
     </div>
 
   </div>
-</div>
 
-<div class="copy-flash" id="copy-flash"></div>
+  <div class="modal-footer">
+    <button class="btn-close" onclick="google.script.host.close()">
+      <span class="en">Close</span>
+      <span class="es">Cerrar</span>
+    </button>
+  </div>
+</div>
 
 <script>
   /* ══ i18n ══════════════════════════════════════════════════════════════════ */
@@ -457,15 +469,15 @@
       itemPh:'Name or Item ID…',
       logNote:'Logging captures orders at time of On Hand reset.',
       rows:' rows', across:'across ', vendor:' vendor', vendors:' vendors',
-      entries:' entries', sortHint:'— click column headers to sort',
-      colDate:'Date', colVendor:'Vendor', colItem:'Item', colItemId:'Item ID',
+      order:' order', orders:' orders',
+      colDate:'Date', colVendor:'Vendor', colItem:'Item',
+      colPack:'Case Pack',
       colOnHand:'On Hand (Prev)', colQty:'Qty Ordered',
       colTimes:'Times Ordered', colTotal:'Total Qty',
-      colAvgQty:'Avg Qty / Order', colAvgOnHand:'Avg On Hand',
+      colAvgQty:'Avg Qty / Order',
       total:'TOTAL — ', item:' item', items:' items',
-      copied:'Copied to clipboard ✓',
+      today:'Today', yesterday:'Yesterday',
       highTip:'On Hand was high — par may be over-set',
-      highAvgTip:'Avg On Hand ≥ Avg Qty — consider lowering par',
       exportHeader:'ORDER SUMMARY — ', dateRange:'Date range: ',
       to:' to ', allDates:'All'
     },
@@ -480,15 +492,15 @@
       itemPh:'Nombre o ID de artículo…',
       logNote:'El registro captura pedidos al momento de reiniciar En Stock.',
       rows:' filas', across:'de ', vendor:' proveedor', vendors:' proveedores',
-      entries:' entradas', sortHint:'— haz clic en los encabezados para ordenar',
-      colDate:'Fecha', colVendor:'Proveedor', colItem:'Artículo', colItemId:'ID de Artículo',
+      order:' pedido', orders:' pedidos',
+      colDate:'Fecha', colVendor:'Proveedor', colItem:'Artículo',
+      colPack:'Empaque',
       colOnHand:'En Stock (Prev)', colQty:'Cant. Pedida',
       colTimes:'Veces Pedido', colTotal:'Cant. Total',
-      colAvgQty:'Prom. Cant. / Pedido', colAvgOnHand:'Prom. En Stock',
+      colAvgQty:'Prom. Cant. / Pedido',
       total:'TOTAL — ', item:' artículo', items:' artículos',
-      copied:'Copiado al portapapeles ✓',
+      today:'Hoy', yesterday:'Ayer',
       highTip:'En Stock fue alto — el par puede estar demasiado alto',
-      highAvgTip:'Prom. En Stock ≥ Prom. Cant. — considera bajar el par',
       exportHeader:'RESUMEN DE PEDIDOS — ', dateRange:'Rango de fechas: ',
       to:' a ', allDates:'Todo'
     }
@@ -521,8 +533,6 @@
   var currentTab  = 'recent';
   var rawHistory  = [];
   var summaryData = [];
-  var itemSortCol = 'orderDate';
-  var itemSortDir = 'desc';
   // Filter signature of the cached data — if filters haven't changed since
   // last fetch, Recent and Item tabs can both render from rawHistory without
   // hitting the server again. Summary is derived from rawHistory client-side.
@@ -593,7 +603,7 @@
       document.getElementById('panel-'+t).classList.toggle('active', t===tab);
     });
     document.getElementById('item-search-group').style.display = tab==='item' ? 'flex' : 'none';
-    document.getElementById('export-btn').style.display = tab==='summary' ? '' : 'none';
+    document.getElementById('print-btn').style.display = tab==='summary' ? '' : 'none';
     loadCurrentTab();
   }
 
@@ -650,56 +660,112 @@
       .getOrderHistory(f);
   }
 
+  // PWA-style: group by date (desc), then vendor cards. Click a card → detail.
   function renderRecent(rows) {
     hideLoading('recent');
+    closeRecentDetail();
     var content = document.getElementById('recent-content');
     var rbar    = document.getElementById('recent-result-bar');
-    if (!rows||!rows.length) { showEmpty('recent',t('noOrders'),t('noOrdersSub')); return; }
+    if (!rows||!rows.length) { content.innerHTML=''; rbar.style.display='none'; showEmpty('recent',t('noOrders'),t('noOrdersSub')); return; }
 
-    var order={}, grouped={};
+    var byDate={}, dateOrder=[];
     rows.forEach(function(r){
-      if(!grouped[r.vendor]){grouped[r.vendor]={};order[r.vendor]=1;}
-      if(!grouped[r.vendor][r.orderDate]) grouped[r.vendor][r.orderDate]=[];
-      grouped[r.vendor][r.orderDate].push(r);
+      if(!byDate[r.orderDate]){ byDate[r.orderDate]={vendors:{},order:[]}; dateOrder.push(r.orderDate); }
+      var g=byDate[r.orderDate];
+      if(!g.vendors[r.vendor]){ g.vendors[r.vendor]={vendor:r.vendor,count:0,timestamp:r.timestamp}; g.order.push(r.vendor); }
+      var vd=g.vendors[r.vendor]; vd.count++;
+      if(r.timestamp && r.timestamp > vd.timestamp) vd.timestamp=r.timestamp;
     });
-    var vendorOrder = Object.keys(order);
+    dateOrder.sort().reverse();
 
-    var html='';
-    vendorOrder.forEach(function(vendor){
-      var dm=grouped[vendor], dates=Object.keys(dm).sort().reverse();
-      var total=dates.reduce(function(s,d){return s+dm[d].length;},0);
-      var badge=total+(total===1?t('item'):t('items'));
-      html+='<div class="vendor-group">';
-      html+='<div class="vendor-group-header" onclick="toggleVG(this)">';
-      html+=esc(vendor)+' <span class="vg-badge">'+badge+'</span>';
-      html+='<span class="vg-toggle">▲</span></div>';
-      html+='<div class="vendor-group-body">';
-      dates.forEach(function(date){
-        html+='<div class="date-subheader">'+fmtDateDisplay(date)+'</div>';
-        html+='<table><tbody>';
-        dm[date].forEach(function(r){
-          var flag=r.onHandPrev>0&&r.onHandPrev>=r.qtyOrdered
-            ?'<span class="flag-high-onhand" title="'+t('highTip')+'">⚠</span>':'';
-          html+='<tr><td>'+esc(r.itemName)+flag+'</td>';
-          html+='<td class="col-id">'+esc(r.itemId)+'</td>';
-          html+='<td class="col-onhand col-num">'+r.onHandPrev+'</td>';
-          html+='<td class="col-qty col-num">'+fmtQtyWithPack(r.qtyOrdered, r.itemPack)+'</td></tr>';
-        });
-        html+='</tbody></table>';
+    var cardData=[], vendorCount=0, html='';
+    dateOrder.forEach(function(date){
+      var g=byDate[date];
+      html+='<div class="hist-date-group">';
+      html+='<div class="hist-date-header">'+esc(fmtDateHeader(date))+'</div>';
+      g.order.forEach(function(vendor){
+        var vd=g.vendors[vendor]; vendorCount++;
+        var badge=vd.count+(vd.count===1?t('item'):t('items'));
+        html+='<div class="hist-card">';
+        html+='<div class="hist-card-main">';
+        html+='<div class="hist-card-vendor">'+esc(vendor)+'</div>';
+        var tm=fmtTimeOnly(vd.timestamp);
+        html+='<div class="hist-card-meta">'+(tm?esc(tm):'')+'</div>';
+        html+='</div>';
+        html+='<span class="hist-card-count">'+badge+'</span>';
+        html+='<span class="hist-card-arrow">&rsaquo;</span>';
+        html+='</div>';
+        cardData.push({date:date, vendor:vendor});
       });
-      html+='</div></div>';
+      html+='</div>';
     });
     content.innerHTML=html;
+
+    // Attach click handlers by index (robust to vendor names with quotes).
+    var cards=content.querySelectorAll('.hist-card');
+    for(var i=0;i<cards.length;i++){
+      (function(idx){
+        cards[idx].addEventListener('click', function(){
+          openRecentDetail(cardData[idx].date, cardData[idx].vendor);
+        });
+      })(i);
+    }
+
     rbar.style.display='flex';
     document.getElementById('recent-count').textContent=rows.length+t('rows');
     document.getElementById('recent-desc').textContent=
-      t('across')+vendorOrder.length+(vendorOrder.length===1?t('vendor'):t('vendors'));
+      t('across')+vendorCount+(vendorCount===1?t('vendor'):t('vendors'));
     document.getElementById('log-note').textContent=t('logNote');
   }
 
-  function toggleVG(header) {
-    var body=header.nextElementSibling, tog=header.querySelector('.vg-toggle');
-    tog.textContent=body.classList.toggle('collapsed')?'▼':'▲';
+  function openRecentDetail(date, vendor) {
+    var items=rawHistory.filter(function(r){ return r.orderDate===date && r.vendor===vendor; });
+    document.getElementById('recent-detail-title').textContent=vendor;
+    document.getElementById('recent-detail-sub').textContent=
+      fmtDateDisplay(date)+' · '+items.length+(items.length===1?t('item'):t('items'));
+    var html='<table><thead><tr>';
+    html+='<th>'+esc(t('colItem'))+'</th>';
+    html+='<th class="col-num">'+esc(t('colOnHand'))+'</th>';
+    html+='<th class="col-num">'+esc(t('colQty'))+'</th></tr></thead><tbody>';
+    items.forEach(function(r){
+      var flag=r.onHandPrev>0&&r.onHandPrev>=r.qtyOrdered
+        ?' <span class="flag-high-onhand" title="'+t('highTip')+'">⚠</span>':'';
+      html+='<tr>';
+      html+='<td>'+esc(r.itemName)+'<span class="col-id" style="display:block">'+esc(r.itemId)+'</span></td>';
+      html+='<td class="col-onhand col-num">'+r.onHandPrev+flag+'</td>';
+      html+='<td class="col-qty col-num">'+fmtQtyWithPack(r.qtyOrdered, r.itemPack)+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table>';
+    document.getElementById('recent-detail-content').innerHTML=html;
+    document.getElementById('recent-list').style.display='none';
+    document.getElementById('recent-detail').classList.add('active');
+  }
+
+  function closeRecentDetail() {
+    var d=document.getElementById('recent-detail'); if(d) d.classList.remove('active');
+    var l=document.getElementById('recent-list'); if(l) l.style.display='flex';
+  }
+
+  // "Today · May 27, 2026" / "Yesterday · …" / plain date.
+  function fmtDateHeader(s) {
+    var disp=fmtDateDisplay(s);
+    var today=fmtD(new Date());
+    var y=new Date(); y.setDate(y.getDate()-1); var yday=fmtD(y);
+    if(s===today) return t('today')+' · '+disp;
+    if(s===yday)  return t('yesterday')+' · '+disp;
+    return disp;
+  }
+
+  function fmtTimeOnly(ts) {
+    if(!ts) return '';
+    var parts=String(ts).split(' ');
+    if(parts.length<2) return '';
+    var hm=parts[1].split(':'); if(hm.length<2) return '';
+    var h=parseInt(hm[0],10), m=hm[1];
+    if(isNaN(h)) return '';
+    var ap=h>=12?'PM':'AM', h12=h%12; if(h12===0) h12=12;
+    return h12+':'+m+' '+ap;
   }
 
   /* ══ TAB 2 ══ */
@@ -707,7 +773,6 @@
     const f = getFilters();
     const sig = filterSig(f);
     if (cachedFilterSig === sig && rawHistory.length) {
-      itemSortCol='orderDate'; itemSortDir='desc';
       filterItemHistory();
       return;
     }
@@ -716,7 +781,6 @@
       .withSuccessHandler(function(rows){
         rawHistory      = rows || [];
         cachedFilterSig = sig;
-        itemSortCol     = 'orderDate'; itemSortDir = 'desc';
         filterItemHistory();
       })
       .withFailureHandler(function(e){showError('item',e);})
@@ -733,51 +797,70 @@
     renderItemHistory(rows);
   }
 
+  // Per-item accordion: each item is a collapsible header; expand to see its
+  // order history (date, vendor, on-hand, qty). On-hand stays — helps par tuning.
   function renderItemHistory(rows) {
     var content=document.getElementById('item-content');
     var rbar=document.getElementById('item-result-bar');
     if(!rows||!rows.length){showEmpty('item',t('noItems'),t('noItemsSub'));rbar.style.display='none';return;}
 
-    rows=rows.slice().sort(function(a,b){
-      var av=a[itemSortCol],bv=b[itemSortCol];
-      if(typeof av==='string'){av=av.toLowerCase();bv=bv.toLowerCase();}
-      var c=av<bv?-1:av>bv?1:0;
-      return itemSortDir==='asc'?c:-c;
-    });
-
-    var cols=[
-      {key:'orderDate',label:t('colDate')},{key:'vendor',label:t('colVendor')},
-      {key:'itemName',label:t('colItem')},{key:'itemId',label:t('colItemId')},
-      {key:'onHandPrev',label:t('colOnHand')},{key:'qtyOrdered',label:t('colQty')}
-    ];
-    var html='<table><thead><tr>';
-    cols.forEach(function(c){
-      var cls=itemSortCol===c.key?' class="'+(itemSortDir==='asc'?'sort-asc':'sort-desc')+'"':'';
-      html+='<th'+cls+' onclick="sortItem(\''+c.key+'\')">'+esc(c.label)+'</th>';
-    });
-    html+='</tr></thead><tbody>';
+    var byItem={}, order=[];
     rows.forEach(function(r){
-      var flag=r.onHandPrev>0&&r.onHandPrev>=r.qtyOrdered
-        ?' <span class="flag-high-onhand" title="'+t('highTip')+'">⚠</span>':'';
-      html+='<tr>';
-      html+='<td class="col-date">'+fmtDateDisplay(r.orderDate)+'</td>';
-      html+='<td class="col-vendor">'+esc(r.vendor)+'</td>';
-      html+='<td>'+esc(r.itemName)+'</td>';
-      html+='<td class="col-id">'+esc(r.itemId)+'</td>';
-      html+='<td class="col-onhand col-num">'+r.onHandPrev+flag+'</td>';
-      html+='<td class="col-qty col-num">'+fmtQtyWithPack(r.qtyOrdered, r.itemPack)+'</td>';
-      html+='</tr>';
+      var key=r.itemId||r.itemName;
+      if(!byItem[key]){ byItem[key]={itemName:r.itemName, pack:r.itemPack||'', orders:[]}; order.push(key); }
+      byItem[key].orders.push(r);
     });
-    html+='</tbody></table>';
-    content.innerHTML=html;
-    rbar.style.display='flex';
-    document.getElementById('item-count').textContent=rows.length+t('entries');
-    document.getElementById('item-desc').textContent=t('sortHint');
-  }
+    order.sort(function(a,b){
+      var an=byItem[a].itemName.toLowerCase(), bn=byItem[b].itemName.toLowerCase();
+      return an<bn?-1:an>bn?1:0;
+    });
 
-  function sortItem(col){
-    itemSortDir=itemSortCol===col?(itemSortDir==='asc'?'desc':'asc'):(col==='orderDate'?'desc':'asc');
-    itemSortCol=col; filterItemHistory();
+    var autoOpen=order.length===1;
+    var html='';
+    order.forEach(function(key){
+      var g=byItem[key];
+      g.orders.sort(function(a,b){ return a.orderDate<b.orderDate?1:a.orderDate>b.orderDate?-1:0; });
+      var cnt=g.orders.length;
+      var badge=cnt+(cnt===1?t('order'):t('orders'));
+      html+='<div class="ih-group">';
+      html+='<div class="ih-header'+(autoOpen?' open':'')+'">';
+      html+='<span class="ih-caret">'+(autoOpen?'▾':'▸')+'</span>';
+      html+='<span class="ih-name">'+esc(g.itemName)+'</span>';
+      if(g.pack) html+='<span class="ih-pack">'+esc(g.pack)+'</span>';
+      html+='<span class="ih-count">'+badge+'</span>';
+      html+='</div>';
+      html+='<div class="ih-body'+(autoOpen?'':' collapsed')+'">';
+      html+='<table><thead><tr>';
+      html+='<th>'+esc(t('colDate'))+'</th><th>'+esc(t('colVendor'))+'</th>';
+      html+='<th class="col-num">'+esc(t('colOnHand'))+'</th><th class="col-num">'+esc(t('colQty'))+'</th>';
+      html+='</tr></thead><tbody>';
+      g.orders.forEach(function(r){
+        var flag=r.onHandPrev>0&&r.onHandPrev>=r.qtyOrdered
+          ?' <span class="flag-high-onhand" title="'+t('highTip')+'">⚠</span>':'';
+        html+='<tr>';
+        html+='<td class="col-date">'+fmtDateDisplay(r.orderDate)+'</td>';
+        html+='<td class="col-vendor">'+esc(r.vendor)+'</td>';
+        html+='<td class="col-onhand col-num">'+r.onHandPrev+flag+'</td>';
+        html+='<td class="col-qty col-num">'+fmtQtyWithPack(r.qtyOrdered, r.itemPack)+'</td>';
+        html+='</tr>';
+      });
+      html+='</tbody></table></div></div>';
+    });
+    content.innerHTML=html;
+
+    var headers=content.querySelectorAll('.ih-header');
+    for(var i=0;i<headers.length;i++){
+      headers[i].addEventListener('click', function(){
+        var open=this.classList.toggle('open');
+        this.querySelector('.ih-caret').textContent=open?'▾':'▸';
+        var body=this.nextElementSibling;
+        if(body) body.classList.toggle('collapsed', !open);
+      });
+    }
+
+    rbar.style.display='flex';
+    document.getElementById('item-count').textContent=order.length+(order.length===1?t('item'):t('items'));
+    document.getElementById('item-desc').textContent='';
   }
 
   /* ══ TAB 3 ══ */
@@ -816,14 +899,12 @@
           itemName:     row.itemName,
           itemPack:     row.itemPack || '',
           timesOrdered: 0,
-          totalQty:     0,
-          totalOnHand:  0
+          totalQty:     0
         };
       }
       var agg = itemMap[row.itemId];
       agg.timesOrdered += 1;
       agg.totalQty     += row.qtyOrdered;
-      agg.totalOnHand  += row.onHandPrev;
     });
     var out = [];
     Object.keys(vendorMap).sort().forEach(function(vendor) {
@@ -836,8 +917,7 @@
           itemPack:     a.itemPack || '',
           timesOrdered: a.timesOrdered,
           totalQty:     a.totalQty,
-          avgQty:       Math.round((a.totalQty    / a.timesOrdered) * 10) / 10,
-          avgOnHand:    Math.round((a.totalOnHand / a.timesOrdered) * 10) / 10
+          avgQty:       Math.round((a.totalQty / a.timesOrdered) * 10) / 10
         };
       }).sort(function(a,b) { return b.timesOrdered - a.timesOrdered; });
       out.push({ vendor: vendor, items: items });
@@ -852,78 +932,69 @@
     summaryData=data||[];
     if(!data||!data.length){showEmpty('summary',t('noData'),t('noDataSub'));rbar.style.display='none';return;}
 
-    var html='',gTotal=0,gOrders=0;
+    // Start collapsed when showing all vendors. Auto-open only when the user
+    // has filtered to a specific vendor.
+    var autoOpen=getFilters().vendorFilter!=='ALL';
+    var html='',gItems=0;
     data.forEach(function(vb){
-      var vT=0,vO=0;
       var badge=vb.items.length+(vb.items.length===1?t('item'):t('items'));
       html+='<div class="summary-vendor-block">';
-      html+='<div class="summary-vendor-header">'+esc(vb.vendor);
-      html+=' <span class="sv-badge">'+badge+'</span></div>';
+      html+='<div class="summary-vendor-header'+(autoOpen?' open':'')+'">';
+      html+='<span class="sv-caret">'+(autoOpen?'▾':'▸')+'</span>';
+      html+='<span class="sv-name">'+esc(vb.vendor)+'</span>';
+      html+='<span class="sv-badge">'+badge+'</span></div>';
+      html+='<div class="sv-body'+(autoOpen?'':' collapsed')+'">';
       html+='<table><thead><tr>';
-      [t('colItem'),t('colItemId'),t('colTimes'),t('colTotal'),t('colAvgQty'),t('colAvgOnHand')]
+      [t('colItem'),t('colPack'),t('colTimes'),t('colTotal'),t('colAvgQty')]
         .forEach(function(h,i){html+='<th'+(i>1?' class="col-num"':'')+'>'+h+'</th>';});
       html+='</tr></thead><tbody>';
       vb.items.forEach(function(item){
-        var hf=item.avgOnHand>0&&item.avgOnHand>=item.avgQty
-          ?' <span class="flag-high-onhand" title="'+t('highAvgTip')+'">⚠</span>':'';
         html+='<tr>';
-        html+='<td>'+esc(item.itemName)+(item.itemPack?'<span class="item-pack-sub">'+esc(item.itemPack)+'</span>':'')+hf+'</td>';
-        html+='<td class="col-id">'+esc(item.itemId)+'</td>';
+        html+='<td>'+esc(item.itemName)+'</td>';
+        html+='<td class="col-pack">'+esc(item.itemPack||'—')+'</td>';
         html+='<td class="col-num">'+item.timesOrdered+'</td>';
         html+='<td class="col-num col-qty">'+item.totalQty+'</td>';
         html+='<td class="col-num">'+item.avgQty+'</td>';
-        html+='<td class="col-num col-onhand">'+item.avgOnHand+'</td>';
         html+='</tr>';
-        vT+=item.totalQty; vO+=item.timesOrdered;
       });
       html+='<tr class="summary-totals-row">';
-      html+='<td colspan="2">'+t('total')+esc(vb.vendor)+'</td>';
-      html+='<td class="col-num">'+vO+'</td><td class="col-num">'+vT+'</td>';
-      html+='<td class="col-num">—</td><td class="col-num">—</td></tr>';
+      html+='<td colspan="5">'+t('total')+esc(vb.vendor)+': '+vb.items.length+(vb.items.length===1?t('item'):t('items'))+'</td>';
+      html+='</tr>';
       html+='</tbody></table></div>';
-      gTotal+=vT; gOrders+=vO;
+      html+='</div>';
+      gItems+=vb.items.length;
     });
     content.innerHTML=html;
+
+    var heads=content.querySelectorAll('.summary-vendor-header');
+    for(var i=0;i<heads.length;i++){
+      heads[i].addEventListener('click', function(){
+        var open=this.classList.toggle('open');
+        this.querySelector('.sv-caret').textContent=open?'▾':'▸';
+        var body=this.nextElementSibling;
+        if(body) body.classList.toggle('collapsed', !open);
+      });
+    }
+
     rbar.style.display='flex';
     document.getElementById('summary-count').textContent=
       data.length+(data.length===1?t('vendor'):t('vendors'));
     document.getElementById('summary-desc').textContent=
-      '· '+gOrders+' '+t('colTimes').toLowerCase()+' · '+gTotal+' '+t('colTotal').toLowerCase();
+      '· '+gItems+(gItems===1?t('item'):t('items'));
   }
 
-  /* ══ EXPORT ══ */
-  function exportCurrentTab() {
+  /* ══ PRINT ══ */
+  // Populates a print-only header, then prints. @media print hides the chrome
+  // and inactive tabs so only the Vendor Summary lands on the page.
+  function printSummary() {
     if(!summaryData||!summaryData.length) return;
-    var f=getFilters(), lines=[];
-    lines.push(t('exportHeader')+(f.vendorFilter==='ALL'?t('allVendors'):f.vendorFilter));
-    lines.push(t('dateRange')+(f.dateFrom||t('allDates'))+t('to')+(f.dateTo||t('allDates')));
-    lines.push('');
-    lines.push([t('colItem'),t('colItemId'),t('colTimes'),t('colTotal'),t('colAvgQty'),t('colAvgOnHand')].join('\t'));
-    summaryData.forEach(function(vb){
-      lines.push('');
-      lines.push('=== '+vb.vendor.toUpperCase()+' ===');
-      vb.items.forEach(function(item){
-        lines.push([item.itemName,item.itemId,item.timesOrdered,item.totalQty,item.avgQty,item.avgOnHand].join('\t'));
-      });
-      var vT=vb.items.reduce(function(s,i){return s+i.totalQty;},0);
-      var vO=vb.items.reduce(function(s,i){return s+i.timesOrdered;},0);
-      lines.push([t('total')+vb.vendor,'',vO,vT,'',''].join('\t'));
-    });
-    var text=lines.join('\n');
-    try {
-      navigator.clipboard.writeText(text).then(function(){flashCopy();});
-    } catch(e) {
-      var ta=document.createElement('textarea');
-      ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
-      document.body.appendChild(ta); ta.select(); document.execCommand('copy');
-      document.body.removeChild(ta); flashCopy();
-    }
-  }
-
-  function flashCopy(){
-    var el=document.getElementById('copy-flash');
-    el.textContent=t('copied'); el.classList.add('show');
-    setTimeout(function(){el.classList.remove('show');},2000);
+    var f=getFilters();
+    var vend=f.vendorFilter==='ALL'?t('allVendors'):f.vendorFilter;
+    var range=(f.dateFrom||t('allDates'))+t('to')+(f.dateTo||t('allDates'));
+    document.getElementById('print-header').innerHTML=
+      '<div class="ph-title">'+esc(t('exportHeader'))+esc(vend)+'</div>'+
+      '<div class="ph-sub">'+esc(t('dateRange'))+esc(range)+'</div>';
+    window.print();
   }
 
   /* ══ UI HELPERS ══ */
