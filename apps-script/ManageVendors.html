@@ -455,7 +455,9 @@
           loading:          'Loading…',
           cutoffLabel:      'Cutoff',
           noCutoff:         'No cutoff',
-          cutoffPlaceholder:'HH:MM'
+          cutoffPlaceholder:'HH:MM',
+          deliveryDaysLabel:'Delivery Days',
+          deliveryDaysHint: 'Adjusting these recalculates the multipliers below.'
         },
         es: {
           vendorRequired:   'El nombre del proveedor es obligatorio.',
@@ -477,7 +479,9 @@
           loading:          'Cargando…',
           cutoffLabel:      'Corte',
           noCutoff:         'Sin corte',
-          cutoffPlaceholder:'HH:MM'
+          cutoffPlaceholder:'HH:MM',
+          deliveryDaysLabel:'Días de Entrega',
+          deliveryDaysHint: 'Ajustarlos recalcula los multiplicadores de abajo.'
         }
       };
 
@@ -637,6 +641,39 @@
         }
       }
 
+      // Pure gap math shared by the Add form and the inline edit form.
+      // Given a 7-element boolean delivery-day array (index matches DAYS:
+      // 0=Mon..6=Sun), returns the 7 order-day multipliers. An order placed
+      // on day i arrives the next day and must cover `gap` days until the
+      // following delivery, so mult[i] = that gap (0 when nothing is due).
+      function computeMultsFromDelivery(deliveryDays) {
+        var mults = [0, 0, 0, 0, 0, 0, 0];
+        var i, j, tomorrow, gap;
+        for (i = 0; i < 7; i++) {
+          tomorrow = (i + 1) % 7;
+          if (!deliveryDays[tomorrow]) continue;
+          gap = 1;
+          for (j = 1; j <= 7; j++) {
+            if (deliveryDays[(tomorrow + j) % 7]) { gap = j; break; }
+          }
+          mults[i] = gap;
+        }
+        return mults;
+      }
+
+      // Inverse of computeMultsFromDelivery, used only to SEED the edit
+      // form's delivery picker for display. A vendor delivers on the day
+      // AFTER any order-day with a non-zero multiplier. Never used to
+      // rewrite stored mults — seeding is display-only.
+      function inferDeliveryFromMults(mults) {
+        var deliveryDays = [false, false, false, false, false, false, false];
+        var i;
+        for (i = 0; i < 7; i++) {
+          if (mults[i] && mults[i] > 0) deliveryDays[(i + 1) % 7] = true;
+        }
+        return deliveryDays;
+      }
+
       function recalcMultipliers() {
         const shorts       = LANG === 'es' ? DAY_SHORT_ES : DAY_SHORT_EN;
         const names        = LANG === 'es' ? DAY_NAMES_ES : DAY_NAMES_EN;
@@ -654,22 +691,34 @@
         summaryEl.innerHTML = '<b>' + t('delivers') + '</b>' + names.filter((_,i) => deliveryDays[i]).join(', ');
         summaryEl.className = 'delivery-summary';
 
-        const mults = new Array(7).fill(0);
-        for (let i = 0; i < 7; i++) {
-          const tomorrow = (i + 1) % 7;
-          if (!deliveryDays[tomorrow]) continue;
-          let gap = 1;
-          for (let j = 1; j <= 7; j++) {
-            if (deliveryDays[(tomorrow + j) % 7]) { gap = j; break; }
-          }
-          mults[i] = gap;
-        }
+        const mults = computeMultsFromDelivery(deliveryDays);
         DAYS.forEach((d, i) => {
           const inp = byId('mult-' + d);
           if (!inp) return;
           inp.value = mults[i] % 1 === 0 ? String(mults[i]) : mults[i].toFixed(1);
           styleMultInput(inp);
         });
+      }
+
+      // Edit-form delivery picker handler. Reads this vendor's delivery
+      // checkboxes, recomputes the multipliers, and fills the inline mult
+      // inputs (which remain the editable source of truth). Only ever fires
+      // on an explicit checkbox toggle — opening a card never calls this, so
+      // a vendor's stored mults are untouched unless the KM changes a day.
+      function recalcInlineMults(vIdx) {
+        var deliveryDays = [];
+        var i, el, inp;
+        for (i = 0; i < 7; i++) {
+          el = byId('iedel-' + vIdx + '-' + i);
+          deliveryDays.push(el ? el.checked : false);
+        }
+        var mults = computeMultsFromDelivery(deliveryDays);
+        for (i = 0; i < 7; i++) {
+          inp = byId('ie-' + vIdx + '-' + i);
+          if (!inp) continue;
+          inp.value = fmtMult(mults[i]);
+          styleMultInput(inp);
+        }
       }
 
       // ── Vendor cards ─────────────────────────────────────────────────────────
@@ -787,6 +836,36 @@
         cutoffRow.appendChild(cutoffInp);
         cutoffRow.appendChild(cutoffClearBtn);
         editArea.appendChild(cutoffRow);
+
+        // Delivery-day picker — mirrors the Add form so editing a vendor
+        // reads the same way as creating one. Seeded (display-only) from the
+        // current mults; toggling a day recomputes the mult grid below. The
+        // mult grid stays the editable source of truth, so stored mults are
+        // never changed unless the KM actually toggles a day here.
+        const delLabel = document.createElement('div');
+        delLabel.className   = 'section-label';
+        delLabel.textContent = t('deliveryDaysLabel');
+        editArea.appendChild(delLabel);
+
+        const delHint = document.createElement('div');
+        delHint.className   = 'hint';
+        delHint.textContent = t('deliveryDaysHint');
+        editArea.appendChild(delHint);
+
+        const delGrid = document.createElement('div');
+        delGrid.className = 'day-grid';
+        const inferred = inferDeliveryFromMults(v.mults);
+        shorts.forEach(function(day, i) {
+          const cell = document.createElement('div');
+          cell.className = 'day-cell';
+          cell.innerHTML =
+            '<div class="day-label">' + day + '</div>' +
+            '<input type="checkbox" class="day-check" id="iedel-' + vIdx + '-' + i + '"' +
+            (inferred[i] ? ' checked' : '') +
+            ' onchange="recalcInlineMults(' + vIdx + ')">';
+          delGrid.appendChild(cell);
+        });
+        editArea.appendChild(delGrid);
 
         const grid = document.createElement('div');
         grid.className = 'inline-mult-grid';
