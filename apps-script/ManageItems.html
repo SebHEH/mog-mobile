@@ -25,12 +25,6 @@
         display: flex; align-items: stretch;
         flex-shrink: 0; height: 50px;
       }
-      .top-bar-title {
-        font-size: 15px; font-weight: bold; padding: 0 18px;
-        display: flex; align-items: center;
-        border-right: 1px solid rgba(255,255,255,0.15);
-        letter-spacing: 0.02em; white-space: nowrap;
-      }
       .top-tabs { display: flex; flex: 1; }
       .top-tab {
         padding: 0 18px; display: flex; align-items: center;
@@ -58,12 +52,6 @@
       .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
       .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
 
-      .top-close {
-        padding: 0 14px; display: flex; align-items: center;
-        font-size: 18px; color: rgba(255,255,255,0.4); cursor: pointer;
-        border-left: 1px solid rgba(255,255,255,0.15); transition: color 0.15s;
-      }
-      .top-close:hover { color: #fff; }
 
       /* ── Two-column body ── */
       .body-split { display: flex; flex: 1; overflow: hidden; }
@@ -96,8 +84,8 @@
       .sort-toggle button.active { background: #1a1a2e; color: #fff; }
       .sort-toggle button:hover:not(.active) { background: #e4e4e4; }
       .item-count-badge { font-size: 12px; color: #aaa; white-space: nowrap; flex-shrink: 0; }
-      .table-scroll { flex: 1; overflow-y: auto; overflow-x: auto; }
-      .item-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 13px; }
+      .table-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
+      .item-table { width: 100%; min-width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
       .item-table thead th {
         position: sticky; top: 0; background: #f5f6f8; border-bottom: 2px solid #dde1e7;
         padding: 9px 12px; text-align: left; font-size: 11px; font-weight: bold;
@@ -115,7 +103,7 @@
       .item-table tbody tr.no-area-row:hover    { background: #ffeaea; }
       .item-table tbody tr.no-area-row.selected { background: #ffdada; }
       .item-table td { padding: 9px 12px; vertical-align: middle; white-space: nowrap; }
-      .td-name   { font-weight: 600; color: #1a1a2e; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+      .td-name   { font-weight: 600; color: #1a1a2e; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
       .td-id     { font-size: 11px; color: #bbb; font-family: monospace; display: block; margin-top: 2px; }
       .td-vendor { color: #555; max-width: 155px; overflow: hidden; text-overflow: ellipsis; }
       .td-pack   { color: #777; font-size: 12px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
@@ -139,7 +127,6 @@
       .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #888; }
       .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
       .swatch-noarea   { background: #fff8f8; border-left: 3px solid #e05050; }
-      .swatch-inactive { background: #eee; border: 1px solid #ddd; opacity: 0.6; }
 
       /* ── RIGHT: forms ── */
       .right-pane {
@@ -153,6 +140,10 @@
         margin-bottom: 14px; padding-bottom: 9px; border-bottom: 1px solid #e8eaed;
         flex-shrink: 0; display: flex; align-items: center; gap: 8px;
       }
+      /* Add panel — green accent so "adding a new item" is unmistakable vs Edit */
+      #panel-add.panel { border-top: 3px solid #2e9e54; }
+      #panel-add .panel-heading { color: #1a6b2e; }
+      #panel-add .panel-heading::before { content: '＋'; font-weight: bold; }
       .section-label { font-size: 11px; font-weight: bold; letter-spacing: 0.08em; color: #aaa; text-transform: uppercase; margin: 16px 0 7px; }
       .row { margin-bottom: 12px; }
       label { display: block; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 5px; }
@@ -321,6 +312,35 @@
       body.lang-en .panel.deleting::after { content: 'DELETING\2026'; }
       body.lang-es .panel.deleting::after { content: 'ELIMINANDO\2026'; }
 
+      /* ── Eligible-vendor checklist (Add / Edit) ── */
+      .vendor-checklist {
+        border: 1px solid #d0d3d9; border-radius: 5px; background: #fff;
+        max-height: 112px; overflow-y: auto; padding: 4px 0;
+      }
+      .vendor-checklist label {
+        display: flex; align-items: center; gap: 8px; margin: 0; cursor: pointer;
+        font-size: 13px; font-weight: normal; color: #333; padding: 4px 10px;
+      }
+      .vendor-checklist label:hover { background: #f0f4ff; }
+      .vendor-checklist input[type="checkbox"] { width: auto; margin: 0; }
+      .vendor-checklist .vc-empty { padding: 8px 10px; font-size: 12px; color: #aaa; font-style: italic; }
+
+      /* ── Quick-switch active-vendor control (View detail) ── */
+      .switch-vendor-row { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e8eaed; }
+      .switch-vendor-row > label {
+        display: block; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 5px;
+      }
+      .switch-vendor-row select { width: 100%; }
+
+      /* ── Tab indicators (count chip on Inactive / warning dot on Unassigned) ── */
+      .tab-chip {
+        display: inline-block; margin-left: 6px; min-width: 17px; padding: 0 5px;
+        height: 16px; line-height: 16px; border-radius: 8px; font-size: 10px;
+        font-weight: bold; text-align: center; background: rgba(255,255,255,0.25); color: #fff;
+      }
+      .top-tab.warn-tab .tab-chip { background: #e87878; color: #fff; }
+      .tab-chip.hidden { display: none; }
+
       /* ── i18n ── */
       .es { display: none; }
       .en { display: inline; }
@@ -330,10 +350,6 @@
   <div class="shell">
 
     <div class="top-bar">
-      <div class="top-bar-title">
-        <span class="en">Manage Items</span>
-        <span class="es">Administrar Artículos</span>
-      </div>
       <div class="top-tabs">
         <div class="top-tab active"   onclick="switchTab('view')">
           <span class="en">View All</span><span class="es">Ver Todo</span>
@@ -341,21 +357,17 @@
         <div class="top-tab"          onclick="switchTab('add')">
           <span class="en">Add</span><span class="es">Agregar</span>
         </div>
-        <div class="top-tab"          onclick="switchTab('edit')">
-          <span class="en">Edit</span><span class="es">Editar</span>
-        </div>
         <div class="top-tab"          onclick="switchTab('inactive')">
-          <span class="en">Inactive</span><span class="es">Inactivos</span>
+          <span class="en">Inactive</span><span class="es">Inactivos</span><span class="tab-chip hidden" id="tab-chip-inactive"></span>
         </div>
         <div class="top-tab warn-tab" onclick="switchTab('unassigned')">
-          ⚠ <span class="en">Unassigned</span><span class="es">Sin Área</span>
+          ⚠ <span class="en">Unassigned</span><span class="es">Sin Área</span><span class="tab-chip hidden" id="tab-chip-unassigned"></span>
         </div>
       </div>
       <div class="lang-group">
         <button class="lang-btn active" onclick="setLang('en')">EN</button>
         <button class="lang-btn"        onclick="setLang('es')">ES</button>
       </div>
-      <div class="top-close" onclick="google.script.host.close()">✕</div>
     </div>
 
     <div class="body-split">
@@ -395,7 +407,6 @@
 
         <div class="table-legend">
           <div class="legend-item"><div class="legend-swatch swatch-noarea"></div> <span id="legend-noarea"></span></div>
-          <div class="legend-item"><div class="legend-swatch swatch-inactive"></div> <span id="legend-inactive"></span></div>
           <div class="legend-item"><span style="font-size:11px;">🟡</span> <span id="legend-empty"></span></div>
           <div class="legend-item"><span style="font-size:11px;">🔴</span> <span id="legend-over"></span></div>
         </div>
@@ -410,6 +421,12 @@
           <div id="view-select-hint" class="select-hint" id="hint-view"></div>
           <div id="view-detail" style="display:none">
             <div class="detail-grid" id="view-detail-grid"></div>
+            <div id="view-switch-row" class="switch-vendor-row" style="display:none">
+              <label id="lbl-switch-vendor"></label>
+              <select id="view-switch-select" onchange="onQuickSwitch()"></select>
+              <div class="hint" id="hint-switch-vendor"></div>
+              <div id="view-switch-status" class="status"></div>
+            </div>
             <div id="view-noarea-banner" class="info-banner" style="display:none;"></div>
             <div class="form-actions" style="margin-top:12px">
               <button class="btn-secondary" onclick="clearViewDetail()" id="btn-clear-view"></button>
@@ -422,7 +439,12 @@
         <div id="panel-add" class="panel">
           <div class="panel-heading" id="ph-add"></div>
           <div class="row"><label id="lbl-add-name"></label><input id="add-name" /></div>
-          <div class="row"><label id="lbl-add-vendor"></label><select id="add-vendor"></select></div>
+          <div class="row"><label id="lbl-add-vendor"></label><select id="add-vendor" onchange="onAddVendorChange()"></select></div>
+          <div class="row">
+            <label id="lbl-add-eligible"></label>
+            <div id="add-eligible" class="vendor-checklist"></div>
+            <div class="hint" id="hint-add-eligible"></div>
+          </div>
           <div class="row"><label id="lbl-add-pack"></label><input id="add-pack" /></div>
           <div class="two-col">
             <div class="row"><label id="lbl-add-par"></label><input id="add-par" type="number" step="1" min="0" /></div>
@@ -452,34 +474,15 @@
         <!-- EDIT -->
         <div id="panel-edit" class="panel">
           <div class="panel-heading" id="ph-edit"></div>
-          <div class="row">
-            <label id="lbl-edit-vendor-sel"></label>
-            <select id="edit-vendor-select" onchange="loadEditItems()">
-              <option value="" id="opt-sel-vendor-edit"></option>
-            </select>
-          </div>
-          <div class="row">
-            <label id="lbl-edit-item-sel"></label>
-            <select id="edit-item-select" onchange="onEditItemChange()" disabled>
-              <option value="" id="opt-sel-item-edit"></option>
-            </select>
-            <div id="edit-item-loading" class="loading-state compact" style="display:none;">
-              <div class="spinner"></div>
-              <div class="loading-label">
-                <span class="en">Loading…</span>
-                <span class="es">Cargando…</span>
-              </div>
-            </div>
-            <div id="edit-load-status" class="status"></div>
-          </div>
+          <div id="edit-load-status" class="status"></div>
 
           <!-- Form-body states: only one of the three children is visible at a
                time, controlled by setEditFormState_(). 'empty' = no item picked
                yet (default); 'loading' = fetching the item's data; 'loaded' =
                form is populated and editable. Default is 'empty'. -->
           <div id="edit-form-empty" class="form-empty">
-            <span class="en">Select an item above to edit.</span>
-            <span class="es">Selecciona un artículo arriba para editar.</span>
+            <span class="en">Pick an item from the list, then click "Edit This Item".</span>
+            <span class="es">Elige un artículo de la lista y haz clic en "Editar Este Artículo".</span>
           </div>
 
           <div id="edit-form-loading" class="loading-state" style="display:none;">
@@ -497,7 +500,12 @@
             <input id="edit-name" />
             <div class="hint" id="hint-edit-name"></div>
           </div>
-          <div class="row"><label id="lbl-edit-vendor"></label><select id="edit-vendor"></select></div>
+          <div class="row"><label id="lbl-edit-vendor"></label><select id="edit-vendor" onchange="onEditVendorChange()"></select></div>
+          <div class="row">
+            <label id="lbl-edit-eligible"></label>
+            <div id="edit-eligible" class="vendor-checklist"></div>
+            <div class="hint" id="hint-edit-eligible"></div>
+          </div>
           <div class="row"><label id="lbl-edit-pack"></label><input id="edit-pack" /></div>
           <div class="two-col">
             <div class="row"><label id="lbl-edit-par"></label><input id="edit-par" type="number" step="1" min="0" /></div>
@@ -597,7 +605,7 @@
         allVendors:'All Vendors', byVendor:'By Vendor', az:'A–Z',
         loadingItems:'Loading items…', noMatch:'No items match the filter.',
         item:'item', items:'items',
-        legendNoArea:'Active — no Storage Area (not on any order sheet)',
+        legendNoArea:'No storage area',
         legendInactive:'Inactive',
         phView:'Item Details',
         hintView:'← Click any row in the list\nto see details\nand jump to Edit.',
@@ -608,6 +616,13 @@
         areaLater:'— Assign later via Manage Pick Path —',
         hintArea:'Selecting an area places this item at the bottom of that group immediately after saving.',
         btnAdd:'Add Item',
+        lblEligible:'Also orderable from', lblEligibleEdit:'Also orderable from',
+        hintEligible:'Check any other vendors this item can be ordered from. The active vendor (above) is always included.',
+        eligibleNoOthers:'No other vendors to add.',
+        lblSwitchVendor:'Active vendor', switchOne:'Only orderable from one vendor.',
+        hintSwitchVendor:'Switch which vendor this item is ordered from — it moves to that vendor\'s order sheet. Par is unchanged.',
+        switching:'Switching…', switched:'Now ordered from ',
+        switchNeedsArea:' — assign a Storage Area for this vendor via Manage Pick Path so it shows on the order sheet.',
         phEdit:'Edit Item', lblVendorSel:'Vendor', lblItemSel:'Item',
         optSelVendor:'-- Select a vendor --', optSelItem:'-- Select a vendor first --',
         optSelItemReady:'-- Select an item --',
@@ -642,11 +657,11 @@
         deleted:'Deleted: ', yes:'YES', no:'NO',
         loading:'Loading ', loadErr:'Error: ',
         thFlag:'Par Review',
-        legendEmpty:'Always Empty (on hand near zero in ≥75% of orders, par 3+, last 14 days)',
-        legendOver:'Over-Ordered (on hand ≥50% of par in ≥50% of orders, last 14 days)',
-        flagEmpty:'Always Empty',
-        flagOver:'Over-Ordered',
-        flagBoth:'Empty + Over',
+        legendEmpty:'Possible under-ordering',
+        legendOver:'Possible over-ordering',
+        flagEmpty:'Under',
+        flagOver:'Over',
+        flagBoth:'Under + Over',
         flagNone:'—',
         flagNoData:'No data yet',
         flagOrders:'orders logged',
@@ -658,7 +673,7 @@
         allVendors:'Todos los Proveedores', byVendor:'Por Proveedor', az:'A–Z',
         loadingItems:'Cargando artículos…', noMatch:'Ningún artículo coincide con el filtro.',
         item:'artículo', items:'artículos',
-        legendNoArea:'Activo — sin Área de Almacén (no aparece en ninguna hoja)',
+        legendNoArea:'Sin área de almacén',
         legendInactive:'Inactivo',
         phView:'Detalles del Artículo',
         hintView:'← Haz clic en cualquier fila\npara ver detalles\ny saltar a Editar.',
@@ -669,6 +684,13 @@
         areaLater:'— Asignar después vía Administrar Ruta —',
         hintArea:'Seleccionar un área coloca este artículo al fondo de ese grupo al guardar.',
         btnAdd:'Agregar Artículo',
+        lblEligible:'También se puede pedir de', lblEligibleEdit:'También se puede pedir de',
+        hintEligible:'Marca cualquier otro proveedor del que se pueda pedir este artículo. El proveedor activo (arriba) siempre se incluye.',
+        eligibleNoOthers:'No hay otros proveedores que agregar.',
+        lblSwitchVendor:'Proveedor activo', switchOne:'Solo se puede pedir de un proveedor.',
+        hintSwitchVendor:'Cambia de qué proveedor se pide este artículo — se mueve a la hoja de pedido de ese proveedor. El par no cambia.',
+        switching:'Cambiando…', switched:'Ahora se pide de ',
+        switchNeedsArea:' — asigna un Área de Almacén para este proveedor vía Administrar Ruta para que aparezca en la hoja.',
         phEdit:'Editar Artículo', lblVendorSel:'Proveedor', lblItemSel:'Artículo',
         optSelVendor:'-- Selecciona un proveedor --', optSelItem:'-- Selecciona un proveedor primero --',
         optSelItemReady:'-- Selecciona un artículo --',
@@ -703,11 +725,11 @@
         deleted:'Eliminado: ', yes:'SÍ', no:'NO',
         loading:'Cargando ', loadErr:'Error: ',
         thFlag:'Revisión de Par',
-        legendEmpty:'Siempre Vacío (En Stock cerca de cero en ≥75% de pedidos, par 3+, últimos 14 días)',
-        legendOver:'Sobre-Pedido (En Stock ≥50% del par en ≥50% de pedidos, últimos 14 días)',
-        flagEmpty:'Siempre Vacío',
-        flagOver:'Sobre-Pedido',
-        flagBoth:'Vacío + Sobre',
+        legendEmpty:'Posible bajo-pedido',
+        legendOver:'Posible sobre-pedido',
+        flagEmpty:'Bajo',
+        flagOver:'Sobre',
+        flagBoth:'Bajo + Sobre',
         flagNone:'—',
         flagNoData:'Sin datos',
         flagOrders:'pedidos registrados',
@@ -749,7 +771,6 @@
       setText('legend-over',  t('legendOver'));
       // Legend
       setText('legend-noarea',   t('legendNoArea'));
-      setText('legend-inactive', t('legendInactive'));
       // Loading states — re-render spinner (not plain text) so a language
       // switch mid-load doesn't nuke the spinner DOM with a text node.
       if (byId('table-loading').style.display !== 'none') {
@@ -761,6 +782,8 @@
       byId('view-select-hint').textContent = t('hintView');
       setText('btn-clear-view',  t('btnClear'));
       setText('btn-edit-this',   t('btnEditThis'));
+      setText('lbl-switch-vendor',  t('lblSwitchVendor'));
+      setText('hint-switch-vendor', t('hintSwitchVendor'));
       byId('view-noarea-banner').innerHTML = '⚠ ' + t('legendNoArea') + ' — assign via <strong>Manage Pick Path</strong>.';
       // Add panel
       setText('ph-add',          t('phAdd'));
@@ -779,17 +802,16 @@
       setText('opt-area-later',  t('areaLater'));
       setText('hint-add-area',   t('hintArea'));
       setText('btn-add-lbl',     t('btnAdd'));
+      setText('lbl-add-eligible',  t('lblEligible'));
+      setText('hint-add-eligible', t('hintEligible'));
       // Edit panel
       setText('ph-edit',           t('phEdit'));
-      setText('lbl-edit-vendor-sel', t('lblVendorSel'));
-      setText('opt-sel-vendor-edit', t('optSelVendor'));
-      setText('lbl-edit-item-sel',   t('lblItemSel'));
-      var itemSel = byId('edit-item-select');
-      if (itemSel && itemSel.disabled) setText('opt-sel-item-edit', t('optSelItem'));
       setText('lbl-edit-name',      t('lblEditName'));
       setAttr('edit-name', 'placeholder', t('hintEditName'));
       setText('hint-edit-name',     t('hintEditName'));
       setText('lbl-edit-vendor',    t('lblReassignVendor'));
+      setText('lbl-edit-eligible',  t('lblEligibleEdit'));
+      setText('hint-edit-eligible', t('hintEligible'));
       setText('lbl-edit-pack',      t('lblEditPack'));
       setText('lbl-edit-par',       t('lblEditPar'));
       setText('lbl-edit-mult',      t('lblEditMult'));
@@ -820,6 +842,7 @@
       setInnerHTML('banner-inactive', t('bannerInactive'));
       // Re-render table to update pill text
       renderTable();
+      if (selectedItem) renderQuickSwitch_(selectedItem);  // keep switch hint/label in the new language
     }
 
     function setText(id, text) { var el = byId(id); if (el) el.textContent = text; }
@@ -830,7 +853,7 @@
     let allItems = [], sortKey = 'vendor', sortAsc = true, selectedItem = null;
     let parFlags = {}; // {itemId: {flag, timesOrdered, avgOnHand, par, emptyCount, overCount}}
     let areaList = [];
-    let editItems = [], editLookup = '';
+    let editLookup = '';
 
     // View All cache constants — declared up here, ABOVE the IIFE that runs
     // loadAllItems() on modal open. const/let are subject to the temporal
@@ -840,7 +863,7 @@
     // try/catch, and silently fall back to a network fetch on every open.
     // See readItemsCache_ / writeItemsCache_ / clearItemsCache_ further down
     // for the actual logic.
-    const ITEMS_CACHE_KEY = 'mog_manageItems_cache_v1';
+    const ITEMS_CACHE_KEY = 'mog_manageItems_cache_v2';
     const ITEMS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
     function byId(id) { return document.getElementById(id); }
@@ -890,18 +913,6 @@
              '</div>';
     }
 
-    // Inline loading swap for the Edit panel's item-select row. While
-    // items are being fetched for a vendor we hide the <select> and show
-    // a compact spinner card in the same .row. Pair every (true) with a
-    // (false) on success AND failure.
-    function setItemSelectLoading_(on) {
-      const sel = byId('edit-item-select');
-      const card = byId('edit-item-loading');
-      if (!sel || !card) return;
-      sel.style.display  = on ? 'none' : '';
-      card.style.display = on ? ''     : 'none';  // '' falls back to .loading-state's display:flex
-    }
-
     // Three-way state controller for the Edit panel's form area below the
     // vendor/item selectors:
     //   'empty'   — no item selected yet (placeholder hint is shown)
@@ -921,12 +932,14 @@
 
     // ── Init ──────────────────────────────────────────────────────────────────
     (function() {
-      ['add-vendor','edit-vendor','edit-vendor-select'].forEach(id => {
+      ['add-vendor','edit-vendor'].forEach(id => {
         const sel = byId(id); if (!sel) return;
         VENDOR_LIST.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
       });
       const vf = byId('view-vendor-filter');
       VENDOR_LIST.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; vf.appendChild(o); });
+
+      buildVendorChecklist_('add-eligible', '', []);  // no active vendor picked yet
 
       google.script.run
         .withSuccessHandler(areas => {
@@ -945,12 +958,11 @@
     })();
 
     // ── Tab switching ─────────────────────────────────────────────────────────
-    const TAB_KEYS = ['view','add','edit','inactive','unassigned'];
+    const TAB_KEYS = ['view','add','inactive','unassigned'];
     function switchTab(key) {
       document.querySelectorAll('.top-tab').forEach((t, i) => t.classList.toggle('active', TAB_KEYS[i] === key));
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
       byId('panel-' + key).classList.add('active');
-      if (key === 'edit')       clearEditForm();   // always reset when clicking the tab directly
       if (key === 'inactive')   renderInactive();
       if (key === 'unassigned') loadUnassigned();
     }
@@ -1063,7 +1075,20 @@
 
     function applyFilters() { renderTable(); }
 
+    // Reflect global counts on the Inactive / Unassigned tab chips so the user
+    // sees there are inactive or unassigned items without opening those tabs.
+    // Derived from allItems (already loaded) — no extra round-trip.
+    function updateTabChips_() {
+      const inactiveCount   = allItems.filter(x => !x.active).length;
+      const unassignedCount = allItems.filter(x => x.active && !x.hasArea).length;
+      const ic = byId('tab-chip-inactive');
+      if (ic) { ic.textContent = inactiveCount; ic.classList.toggle('hidden', inactiveCount === 0); }
+      const uc = byId('tab-chip-unassigned');
+      if (uc) { uc.textContent = unassignedCount; uc.classList.toggle('hidden', unassignedCount === 0); }
+    }
+
     function renderTable() {
+      updateTabChips_();
       const vf = byId('view-vendor-filter').value.toLowerCase();
       let rows = allItems.filter(x => !vf || x.vendor.toLowerCase() === vf);
       rows = rows.slice().sort((a, b) => {
@@ -1137,6 +1162,7 @@
         "<div class='dk'>On Sheet</div><div class='dv'>" + sh + "</div>" +
         flagDetail;
       byId('view-noarea-banner').style.display = (item.active && !item.hasArea) ? 'block' : 'none';
+      renderQuickSwitch_(item);
     }
 
     // ── Par Review flag helpers ───────────────────────────────────────────────
@@ -1180,6 +1206,98 @@
       renderTable();
     }
 
+    // ── Eligible vendors + quick switch ─────────────────────────────────────────
+    // The eligible-vendor checklist (Add/Edit) lists every vendor EXCEPT the
+    // active one (which is implicit and always included). getCheckedEligible_
+    // returns [active, ...checked]. The quick-switch control on the View detail
+    // flips the active vendor among the item's eligible list via
+    // commitSwitchActiveVendor — par is unchanged; the item moves order sheets.
+    function buildVendorChecklist_(containerId, activeVendor, eligibleArr) {
+      const box = byId(containerId);
+      if (!box) return;
+      box.innerHTML = '';
+      const elig = {};
+      (eligibleArr || []).forEach(v => { elig[String(v).toLowerCase()] = true; });
+      const aLow = String(activeVendor || '').toLowerCase();
+      const others = VENDOR_LIST.filter(v => v.toLowerCase() !== aLow);
+      if (!others.length) {
+        box.innerHTML = "<div class='vc-empty'>" + esc(t('eligibleNoOthers')) + "</div>";
+        return;
+      }
+      others.forEach(v => {
+        const lab = document.createElement('label');
+        const cb  = document.createElement('input');
+        cb.type = 'checkbox'; cb.value = v;
+        if (elig[v.toLowerCase()]) cb.checked = true;
+        const span = document.createElement('span'); span.textContent = v;
+        lab.appendChild(cb); lab.appendChild(span);
+        box.appendChild(lab);
+      });
+    }
+
+    function getCheckedEligible_(containerId, activeVendor) {
+      const out = [];
+      if (activeVendor) out.push(activeVendor);
+      const box = byId(containerId);
+      if (box) {
+        box.querySelectorAll('input[type="checkbox"]').forEach(cb => { if (cb.checked) out.push(cb.value); });
+      }
+      return out;
+    }
+
+    // Rebuild the checklist when the active vendor changes, preserving any other
+    // boxes already ticked (pass '' as active so the prior active isn't treated
+    // as implicit and silently dropped from the preserved set).
+    function onAddVendorChange()  { buildVendorChecklist_('add-eligible',  byId('add-vendor').value,  getCheckedEligible_('add-eligible', '')); }
+    function onEditVendorChange() { buildVendorChecklist_('edit-eligible', byId('edit-vendor').value, getCheckedEligible_('edit-eligible', '')); }
+
+    function renderQuickSwitch_(item) {
+      const row  = byId('view-switch-row');
+      const sel  = byId('view-switch-select');
+      const hint = byId('hint-switch-vendor');
+      setStatus('view-switch', '');
+      const elig = (item && item.eligibleVendors && item.eligibleVendors.length) ? item.eligibleVendors : [item.vendor];
+      sel.innerHTML = '';
+      elig.forEach(v => {
+        const o = document.createElement('option'); o.value = v; o.textContent = v;
+        if (v.toLowerCase() === String(item.vendor || '').toLowerCase()) o.selected = true;
+        sel.appendChild(o);
+      });
+      // Always shown for consistency; disabled (grayed) when there's no other
+      // eligible vendor to switch to, with a hint explaining why.
+      const switchable = elig.length >= 2;
+      sel.disabled = !switchable;
+      if (hint) hint.textContent = switchable ? t('hintSwitchVendor') : t('switchOne');
+      row.style.display = 'block';
+    }
+
+    function onQuickSwitch() {
+      if (!selectedItem) return;
+      const sel = byId('view-switch-select');
+      const newVendor = sel.value;
+      if (!newVendor || newVendor.toLowerCase() === String(selectedItem.vendor || '').toLowerCase()) return;
+      sel.disabled = true;
+      setStatus('view-switch', t('switching'), 'info');
+      bumpMutationTs_();
+      google.script.run
+        .withSuccessHandler(res => {
+          selectedItem.vendor = res.vendor;
+          const entry = allItems.find(x => x.id === res.id);
+          if (entry) entry.vendor = res.vendor;
+          const msg = t('switched') + res.vendor + (res.needsArea ? t('switchNeedsArea') : '');
+          clearItemsCache_();
+          selectItem(selectedItem);                   // re-render detail with new active vendor
+          setStatus('view-switch', msg, res.needsArea ? 'warn' : 'ok');
+          loadAllItems();                             // refetch table truth in the background
+        })
+        .withFailureHandler(err => {
+          sel.disabled = false;
+          sel.value = selectedItem.vendor;            // revert the dropdown
+          setStatus('view-switch', err.message || String(err), 'warn');
+        })
+        .commitSwitchActiveVendor(selectedItem.id, newVendor);
+    }
+
     function loadClickedItemToEdit() {
       if (!selectedItem) return;
       loadItemIntoEdit(selectedItem);
@@ -1193,49 +1311,48 @@
     // round trip — pair with 'loaded' on success and 'empty' on failure.
     function loadItemIntoEdit(item) {
       selectedItem = item;
-      // Switch to edit tab without triggering the clearEditForm reset in switchTab
-      document.querySelectorAll('.top-tab').forEach((tab, i) => tab.classList.toggle('active', TAB_KEYS[i] === 'edit'));
+      // Edit has no dedicated tab anymore — it's a focused sub-view launched
+      // from the item list. Clear all tab highlights and show the edit panel.
+      document.querySelectorAll('.top-tab').forEach(tab => tab.classList.remove('active'));
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
       byId('panel-edit').classList.add('active');
 
-      // Reset all stale state and switch the form area into a loading state so
-      // the user never sees fields prefilled with the previous item's data.
+      // Reset stale state and show the loading spinner so the previous item's
+      // data never peeks through during the round-trip.
       clearEditFormFields();
       setEditFormState_('loading');
 
-      byId('edit-vendor-select').value = item.vendor;
-      const sel = byId('edit-item-select');
-      sel.disabled = true;
-      setItemSelectLoading_(true);
+      // One authoritative fetch — getItemForEdit returns every field the form
+      // needs (incl. eligibleVendors + currentArea), so no vendor-list
+      // round-trip and no in-panel selectors are needed.
       google.script.run
-        .withSuccessHandler(items => {
-          editItems = items;
-          sel.innerHTML = '<option value="">' + t('optSelItemReady') + '</option>';
-          items.forEach(it => {
-            const o = document.createElement('option'); o.value = it.id;
-            o.textContent = it.name + (it.active ? '' : ' (' + t('optInactive') + ')');
-            sel.appendChild(o);
-          });
-          sel.disabled = false; sel.value = item.id;
-          setItemSelectLoading_(false);
-          editLookup = item.id;
-          byId('edit-name').value    = item.name;
-          byId('edit-vendor').value  = item.vendor;
-          byId('edit-pack').value    = item.pack || '';
-          byId('edit-par').value     = item.par !== '' ? item.par : '';
-          byId('edit-active').value  = item.active  ? 'true' : 'false';
-          byId('edit-useMult').value = item.useMult ? 'true' : 'false';
+        .withSuccessHandler(data => {
+          if (!data) {
+            setEditFormState_('empty');
+            setStatus('edit-load', t('loadErr') + (item.id || ''), 'warn');
+            return;
+          }
+          editLookup = data.id;
+          byId('edit-name').value    = data.name;
+          byId('edit-vendor').value  = data.vendor;
+          byId('edit-pack').value    = data.pack || '';
+          byId('edit-par').value     = (data.par !== '' && data.par != null) ? data.par : '';
+          byId('edit-active').value  = data.active  ? 'true' : 'false';
+          byId('edit-useMult').value = data.useMult ? 'true' : 'false';
+          buildVendorChecklist_('edit-eligible', data.vendor, data.eligibleVendors || [data.vendor]);
+          byId('edit-area-current').value = data.currentArea
+            ? data.currentArea
+            : '(' + t('optNoChange').replace(/—/g, '').trim() + ')';
+          byId('edit-area-new').value = '';
           setEditFormState_('loaded');
-          setStatus('edit-load', 'Loaded: ' + item.id, 'ok'); setStatus('edit', '');
-          showDangerZone(item); setCurrentAreaFromItem(item);
+          setStatus('edit-load', 'Loaded: ' + data.id, 'ok'); setStatus('edit', '');
+          showDangerZone(data);
         })
         .withFailureHandler(err => {
-          setItemSelectLoading_(false);
           setEditFormState_('empty');
           setStatus('edit-load', err.message || String(err), 'warn');
-          sel.innerHTML = '<option value="">-- Error --</option>';
         })
-        .getItemsByVendor(item.vendor);
+        .getItemForEdit(item.id);
     }
 
     // ── ADD ───────────────────────────────────────────────────────────────────
@@ -1263,6 +1380,7 @@
           }
           ['add-name','add-pack','add-par'].forEach(id => byId(id).value = '');
           byId('add-area').value = '';
+          buildVendorChecklist_('add-eligible', byId('add-vendor').value, []);
           byId('add-btn').disabled = false;
           setSavingPanel_('panel-add', false);
           clearItemsCache_();
@@ -1273,74 +1391,10 @@
           setStatus('add', err.message || String(err), 'warn');
           byId('add-btn').disabled = false;
         })
-        .commitUpsertItem({ mode:'add', name, vendor, pack, par: Number(par), useMult, active:'true', areaName: area });
+        .commitUpsertItem({ mode:'add', name, vendor, eligibleVendors: getCheckedEligible_('add-eligible', vendor), pack, par: Number(par), useMult, active:'true', areaName: area });
     }
 
     // ── EDIT ──────────────────────────────────────────────────────────────────
-    function loadEditItems() {
-      // Note: do NOT call clearEditForm() here — it would wipe the vendor
-      // select the user just changed. clearEditFormFields handles the form
-      // body without touching the vendor dropdown.
-      const vendor = byId('edit-vendor-select').value;
-      clearEditFormFields();
-      editItems = [];
-      setEditFormState_('empty');
-      const sel = byId('edit-item-select');
-      if (!vendor) {
-        sel.innerHTML = '<option value="">' + t('optSelItem') + '</option>';
-        sel.disabled = true;
-        return;
-      }
-      sel.disabled = true;
-      setItemSelectLoading_(true);
-      google.script.run
-        .withSuccessHandler(items => {
-          editItems = items;
-          sel.innerHTML = '<option value="">' + t('optSelItemReady') + '</option>';
-          items.forEach(item => {
-            const o = document.createElement('option'); o.value = item.id;
-            o.textContent = item.name + (item.active ? '' : ' (' + t('optInactive') + ')');
-            sel.appendChild(o);
-          });
-          sel.disabled = false;
-          setItemSelectLoading_(false);
-          if (!items.length) setStatus('edit-load', t('noMatch'), 'info');
-        })
-        .withFailureHandler(err => {
-          setItemSelectLoading_(false);
-          setStatus('edit-load', err.message || String(err), 'warn');
-          sel.innerHTML = '<option value="">-- Error --</option>';
-        })
-        .getItemsByVendor(vendor);
-    }
-
-    function onEditItemChange() {
-      const itemId = byId('edit-item-select').value;
-      clearEditFormFields();
-      if (!itemId) { setEditFormState_('empty'); return; }
-      const item = editItems.find(x => x.id === itemId);
-      if (!item)   { setEditFormState_('empty'); return; }
-      editLookup = item.id;
-      byId('edit-name').value    = item.name;
-      byId('edit-vendor').value  = item.vendor;
-      byId('edit-pack').value    = item.pack || '';
-      byId('edit-par').value     = item.par !== '' ? item.par : '';
-      byId('edit-active').value  = item.active  ? 'true' : 'false';
-      byId('edit-useMult').value = item.useMult ? 'true' : 'false';
-      setEditFormState_('loaded');
-      setStatus('edit-load', 'Loaded: ' + item.id, 'ok'); setStatus('edit', '');
-      showDangerZone(item); setCurrentAreaFromItem(item);
-    }
-
-    // Reads currentArea straight off the item object that getItemsByVendor
-    // now returns inline — replaces the old fetchCurrentArea helper that
-    // fired a separate getItemForEdit RPC just to fetch this one field.
-    function setCurrentAreaFromItem(item) {
-      byId('edit-area-current').value = item && item.currentArea
-        ? item.currentArea
-        : '(' + t('optNoChange').replace(/—/g,'').trim() + ')';
-    }
-
     function doEdit() {
       if (!editLookup) return setStatus('edit', t('editFirst'), 'warn');
       const par = byId('edit-par').value;
@@ -1371,12 +1425,13 @@
           setStatus('edit', err.message || String(err), 'warn');
           byId('edit-btn').disabled = false;
         })
-        .commitUpsertItem({ mode:'edit', lookup:editLookup, name:byId('edit-name').value.trim(), vendor, pack:byId('edit-pack').value.trim(), par:Number(par), active:byId('edit-active').value, useMult:byId('edit-useMult').value, areaName: newArea });
+        .commitUpsertItem({ mode:'edit', lookup:editLookup, name:byId('edit-name').value.trim(), vendor, eligibleVendors: getCheckedEligible_('edit-eligible', vendor), pack:byId('edit-pack').value.trim(), par:Number(par), active:byId('edit-active').value, useMult:byId('edit-useMult').value, areaName: newArea });
     }
 
     function clearEditFormFields() {
       ['edit-name','edit-pack','edit-par'].forEach(id => byId(id).value = '');
       byId('edit-vendor').value  = '';
+      buildVendorChecklist_('edit-eligible', '', []);
       byId('edit-active').value  = 'true'; byId('edit-useMult').value = 'false';
       byId('edit-area-current').value = ''; byId('edit-area-new').value = '';
       editLookup = '';
@@ -1385,10 +1440,7 @@
     }
     function clearEditForm() {
       clearEditFormFields();
-      byId('edit-vendor-select').value = '';
-      byId('edit-item-select').innerHTML = '<option value="">' + t('optSelItem') + '</option>';
-      byId('edit-item-select').disabled = true; editItems = []; editLookup = '';
-      setItemSelectLoading_(false);  // ensure spinner doesn't survive a reset
+      editLookup = '';
       setEditFormState_('empty');    // hide form body, show empty placeholder
       setStatus('edit-load', ''); setStatus('edit', '');
     }
@@ -1408,8 +1460,7 @@
     }
     function showDeleteConfirm() {
       if (!editLookup) return;
-      const item = editItems.find(x => x.id === editLookup);
-      const name = item ? item.name : editLookup;
+      const name = (selectedItem && selectedItem.id === editLookup) ? selectedItem.name : editLookup;
       byId('edit-delete-confirm-text').innerHTML = t('confirmDelete') + ' <b>' + esc(name) + '</b>' + t('cannotUndo');
       byId('edit-delete-prompt').style.display = 'none';
       byId('edit-delete-confirm-zone').style.display = 'block';

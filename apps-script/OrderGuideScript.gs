@@ -28,15 +28,23 @@ const EMERGENCY_OVERRIDE_LASTDATE_PROP = "LAST_OVERRIDE_DATE";
 const COL = {
   ID:       1,  // A
   NAME:     2,  // B
-  VENDOR:   3,  // C
-  SKU:      4,  // D
+  VENDOR:   3,  // C  - the ACTIVE vendor (drives this item's vendor tab + order math)
+  SKU:      4,  // D  - legacy Vendor SKU; unused day-to-day but still XLOOKUP'd by
+                //      each vendor tab's (hidden) SKU display column, so left in place
   PACK:     5,  // E
   CATEGORY: 6,  // F
   PAR:      7,  // G
   ACTIVE:   12, // L
   USE_MULT: 13, // M
-  NOTES:    14  // N
+  NOTES:    14, // N
+  ELIGIBLE_VENDORS: 15 // O - pipe-delimited list of vendors this item may be ordered
+                       //      from; always includes the active vendor (C). New column,
+                       //      referenced by no in-sheet formula. See normalizeEligibleList_.
 };
+
+// Delimiter for the Eligible Vendors list stored in MASTER_ITEMS column O.
+// Pipe (not comma) so vendor names containing commas survive a round-trip.
+const ELIGIBLE_VENDOR_DELIM = "|";
 
 
 
@@ -362,6 +370,7 @@ function onOpen(e) {
       .addItem("    Status",                 "showMobileApiStatus")
       .addItem("    Clear PIN Lockout",      "clearPinLockout")
       .addSeparator()
+      .addItem("    Migrate Item Vendors",   "migrateItemVendorsColumn")
       .addItem("    Clear Config",           "clearMobileApiConfig"))
     .addToUi();
 }
@@ -1201,6 +1210,51 @@ function normalizeVendorOrThrow_(vendorName) {
 
 
 
+// ── Eligible-vendors list (MASTER_ITEMS column O) ───────────────────────────
+// An item carries a list of vendors it MAY be ordered from; one of them (the
+// value in column C) is the ACTIVE vendor that actually drives the order math.
+// The list is stored as a pipe-delimited string in column O.
+
+function parseEligibleVendors_(raw) {
+  return String(raw == null ? "" : raw)
+    .split(ELIGIBLE_VENDOR_DELIM)
+    .map(s => s.trim())
+    .filter(s => s !== "");
+}
+
+function serializeEligibleVendors_(arr) {
+  return (arr || []).join(ELIGIBLE_VENDOR_DELIM);
+}
+
+// Returns a clean, validated, deduped array of canonical vendor names that
+// ALWAYS includes the active vendor (listed first). Accepts either the raw
+// column-O string or an array (e.g. a payload from the modal). Names that
+// aren't in the SETUP vendor table are dropped -- this is what makes reads
+// safe BEFORE the one-time backfill runs: an empty or stale column O simply
+// falls back to [active vendor].
+// Pass a precomputed vendorMap (lowercase -> canonical) to avoid a getVendorList
+// call per row when normalizing many items at once.
+function normalizeEligibleList_(raw, activeVendor, vendorMap) {
+  const map = vendorMap || new Map(getVendorList().map(v => [v.toLowerCase(), v]));
+  const names = Array.isArray(raw) ? raw : parseEligibleVendors_(raw);
+  const out  = [];
+  const seen = new Set();
+  const add  = (v) => {
+    const canon = map.get(String(v == null ? "" : v).trim().toLowerCase());
+    if (!canon) return;
+    const k = canon.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(canon);
+  };
+  if (activeVendor) add(activeVendor);   // active vendor is always eligible, listed first
+  names.forEach(add);
+  return out;
+}
+
+
+
+
 
 
 
@@ -1241,17 +1295,20 @@ function getAllItemsForView() {
 
 
 
-  const numCols = Math.max(COL.USE_MULT, COL.ACTIVE, COL.PACK, COL.PAR);
+  const numCols   = Math.max(COL.USE_MULT, COL.ACTIVE, COL.PACK, COL.PAR, COL.ELIGIBLE_VENDORS);
+  const vendorMap = new Map(getVendorList().map(v => [v.toLowerCase(), v]));
   return sh
     .getRange(2, 1, lastRow - 1, numCols)
     .getValues()
     .filter(r => String(r[COL.ID - 1] || "").trim() && String(r[COL.NAME - 1] || "").trim())
     .map(r => {
-      const id = String(r[COL.ID - 1] || "").trim();
+      const id     = String(r[COL.ID - 1] || "").trim();
+      const vendor = String(r[COL.VENDOR - 1] || "").trim();
       return {
         id,
         name:    String(r[COL.NAME    - 1] || "").trim(),
-        vendor:  String(r[COL.VENDOR  - 1] || "").trim(),
+        vendor:  vendor,
+        eligibleVendors: normalizeEligibleList_(r[COL.ELIGIBLE_VENDORS - 1], vendor, vendorMap),
         pack:    String(r[COL.PACK    - 1] || "").trim(),
         par:     r[COL.PAR     - 1] !== "" ? Number(r[COL.PAR - 1]) : "",
         active:  r[COL.ACTIVE  - 1] === true,
@@ -1286,7 +1343,7 @@ function getAllItemsForView() {
 // items still render even if the par-flag computation throws.
 function getManageItemsBootstrap() {
   const ts = getServerMutationTs_();
-  const cacheKey = 'manageItems_v1_' + ts;
+  const cacheKey = 'manageItems_v2_' + ts;
 
   let cache = null;
   try { cache = CacheService.getDocumentCache(); } catch (e) { cache = null; }
@@ -1440,11 +1497,13 @@ function getItemForEdit(query) {
 
 
 
+  const vendor = String(r[COL.VENDOR - 1] || "").trim();
   return {
     sheetRow:    found.sheetRow,
     id,
     name:        String(r[COL.NAME     - 1] || "").trim(),
-    vendor:      String(r[COL.VENDOR   - 1] || "").trim(),
+    vendor:      vendor,
+    eligibleVendors: normalizeEligibleList_(r[COL.ELIGIBLE_VENDORS - 1], vendor),
     pack:        String(r[COL.PACK     - 1] || "").trim(),
     par:         r[COL.PAR     - 1],
     active:      r[COL.ACTIVE   - 1] === true,
@@ -1524,9 +1583,16 @@ function commitUpsertItem(payload) {
 
 
     // Block A:G — single setValues for ID, NAME, VENDOR, PACK, PAR. SKU (D)
-    // and CATEGORY (F) are not managed by this function; on a newly inserted
-    // row those cells are blank, so writing empty strings is a no-op.
+    // and CATEGORY (F) are not managed here; on a newly inserted row those
+    // cells are blank, so writing empty strings is a no-op.
     sh.getRange(newRow, 1, 1, 7).setValues([[itemId, name, vendor, '', pack, '', par]]);
+
+    // Eligible Vendors lives in column O, past the A:G block, so it's a
+    // separate write. The active vendor (C) is always forced into the list.
+    const eligibleStr = serializeEligibleVendors_(
+      normalizeEligibleList_(payload.eligibleVendors || [], vendor)
+    );
+    sh.getRange(newRow, COL.ELIGIBLE_VENDORS).setNumberFormat("@").setValue(eligibleStr);
 
     // Block L:N — apply checkbox validation to L:M as a single 2-cell range
     // (one setDataValidation call instead of two), then write ACTIVE,
@@ -1565,9 +1631,8 @@ function commitUpsertItem(payload) {
 
 
 
-  // Block A:G — read once, splice in the four fields this function manages,
-  // write back. Preserves ID (A), SKU (D), and CATEGORY (F) which are not
-  // managed here. One getValues + one setValues instead of four setValue calls.
+  // Block A:G — read once, splice NAME/VENDOR/PACK/PAR, write back. Preserves
+  // ID (A), SKU (D), and CATEGORY (F). One getValues + one setValues.
   const editRange = sh.getRange(row, 1, 1, 7);
   const editVals  = editRange.getValues()[0];
   editVals[COL.NAME   - 1] = editName;
@@ -1575,6 +1640,17 @@ function commitUpsertItem(payload) {
   editVals[COL.PACK   - 1] = pack;
   editVals[COL.PAR    - 1] = par;
   editRange.setValues([editVals]);
+
+  // Eligible Vendors (column O, outside the A:G block): use the payload's list
+  // when the form sent one; otherwise re-normalize whatever is stored so the
+  // active vendor stays in the list. Separate read/write since O is past G.
+  const eligibleCell   = sh.getRange(row, COL.ELIGIBLE_VENDORS);
+  const eligibleSource = (payload.eligibleVendors !== undefined && payload.eligibleVendors !== null)
+    ? payload.eligibleVendors
+    : eligibleCell.getValue();
+  eligibleCell.setNumberFormat("@").setValue(
+    serializeEligibleVendors_(normalizeEligibleList_(eligibleSource, vendor))
+  );
 
   // Block L:N — cells L and M already have checkbox validation applied
   // from the Add path, so no need to re-apply. Single setValues writes
@@ -1609,6 +1685,146 @@ function commitUpsertItem(payload) {
     reloadSetupIfVendorMatches_(vendor);
   }
   return { ok: true, mode: "edit", row, id: existing.id, assignedArea };
+}
+
+
+
+
+// Switch an item's ACTIVE vendor (the one that drives its order math) to
+// another vendor already in its eligible list. This moves the item between
+// vendor tabs: it rewrites MASTER_ITEMS column C and migrates the item's
+// pick-path row from the old vendor to the new one, carrying the storage area
+// over (storage areas are global, so the same area name is always valid for
+// the new vendor). Par is untouched -- the new vendor's day-multiplier on its
+// tab applies automatically.
+//
+// Returns { ok, id, vendor, area, needsArea }. needsArea is true when the
+// item had no storage area to carry over (it was unassigned), so the caller
+// should prompt for one; the item is still switched, it just won't appear on
+// the new vendor's order sheet until an area is assigned.
+function commitSwitchActiveVendor(itemId, newVendorRaw) {
+  bumpServerMutationTs_();
+  const id = String(itemId || "").trim();
+  if (!id) throw new Error("Item ID is required.");
+  const newVendor = normalizeVendorOrThrow_(newVendorRaw);
+
+  const master = getSheet_(SHEET_MASTER);
+  const found  = findItemRow_(id);
+  if (!found) throw new Error("Could not find an item with ID " + id + ".");
+  const row = found.sheetRow;
+  const rv  = found.rowValues;
+
+  const oldVendor = String(rv[COL.VENDOR - 1] || "").trim();
+  const name      = String(rv[COL.NAME   - 1] || "").trim();
+
+  // The target must already be in the item's eligible list.
+  const eligible = normalizeEligibleList_(rv[COL.ELIGIBLE_VENDORS - 1], oldVendor);
+  const eligibleLow = eligible.map(v => v.toLowerCase());
+  if (eligibleLow.indexOf(newVendor.toLowerCase()) === -1) {
+    throw new Error("\"" + newVendor + "\" is not in this item's eligible vendor list. " +
+                    "Add it to the item first, then switch.");
+  }
+
+  if (newVendor.toLowerCase() === oldVendor.toLowerCase()) {
+    return { ok: true, id: id, vendor: newVendor, area: "", needsArea: false, unchanged: true };
+  }
+
+  // Current storage area (under any vendor) so we can carry it over.
+  const setup = getSheet_(SHEET_SETUP);
+  const db    = readPickDb_(setup);
+  let currentArea = "";
+  for (let i = 0; i < db.length; i++) {
+    if (String(db[i][1] || "").trim() === id && String(db[i][3] || "").trim()) {
+      currentArea = String(db[i][3]).trim();
+      break;
+    }
+  }
+
+  // Flip the active vendor (column C). The eligible list (D) already contains
+  // newVendor, so D needs no change.
+  master.getRange(row, COL.VENDOR).setValue(newVendor);
+
+  // Pick-path surgery: drop every row for this item (it should only ever live
+  // under one vendor at a time), then re-add it under the new vendor if we
+  // have an area to carry. Spans two vendors, so we edit the DB directly
+  // rather than going through commitPickPathAreaAssignment (single-vendor).
+  const kept = db.filter(r => String(r[1] || "").trim() !== id);
+
+  let assignedArea = "";
+  if (currentArea) {
+    const areaOrderMap = getAreaOrderMap_();
+    const areaOrder    = areaOrderMap.has(currentArea) ? areaOrderMap.get(currentArea) : 999;
+    let   maxShelf     = 0;
+    for (let j = 0; j < kept.length; j++) {
+      if (String(kept[j][0] || "").trim().toLowerCase() === newVendor.toLowerCase() &&
+          String(kept[j][3] || "").trim() === currentArea) {
+        maxShelf = Math.max(maxShelf, Number(kept[j][5]) || 0);
+      }
+    }
+    kept.push([newVendor, id, name, currentArea, areaOrder, maxShelf + 10]);
+    assignedArea = currentArea;
+  }
+  writePickDb_(setup, kept);
+
+  // Refresh the SETUP working list if either vendor is the one selected there.
+  reloadSetupIfVendorMatches_(oldVendor);
+  reloadSetupIfVendorMatches_(newVendor);
+
+  return { ok: true, id: id, vendor: newVendor, area: assignedArea, needsArea: !assignedArea };
+}
+
+
+
+
+// One-time, idempotent backfill for the new Eligible Vendors column
+// (MASTER_ITEMS column O). Sets the column-O header and seeds every item row's
+// eligible list with the item's current active vendor (column C). SKU (column
+// D) is left untouched. Reads self-heal regardless, so this is purely sheet
+// hygiene -- it makes column O hold readable vendor names instead of blanks.
+// Safe to re-run: a row already holding a normalized list is left unchanged.
+// Run once per store from Ordering Guide -> Mobile API -> Migrate Item Vendors.
+function migrateItemVendorsColumn() {
+  const sh = getSheet_(SHEET_MASTER);
+  sh.getRange(1, COL.ELIGIBLE_VENDORS).setValue("Eligible Vendors");
+
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) {
+    SpreadsheetApp.getUi().alert("Eligible Vendors column header set. No item rows to seed.");
+    return;
+  }
+
+  const vendorMap = new Map(getVendorList().map(v => [v.toLowerCase(), v]));
+  const numRows   = lastRow - 1;
+  const aVals  = sh.getRange(2, COL.ID,               numRows, 1).getValues();
+  const cVals  = sh.getRange(2, COL.VENDOR,           numRows, 1).getValues();
+  const oRange = sh.getRange(2, COL.ELIGIBLE_VENDORS, numRows, 1);
+  const oVals  = oRange.getValues();
+
+  let changed = 0;
+  const out = [];
+  for (let i = 0; i < numRows; i++) {
+    const id = String(aVals[i][0] || "").trim();
+    if (!/^ITEM-\d+$/i.test(id)) {       // leave non-item rows untouched
+      out.push([oVals[i][0]]);
+      continue;
+    }
+    const vendor     = String(cVals[i][0] || "").trim();
+    const normalized = serializeEligibleVendors_(
+      normalizeEligibleList_(oVals[i][0], vendor, vendorMap)
+    );
+    out.push([normalized]);
+    if (String(oVals[i][0] == null ? "" : oVals[i][0]).trim() !== normalized) changed++;
+  }
+
+  oRange.setNumberFormat("@");   // plain text so pipe-delimited names aren't reformatted
+  oRange.setValues(out);
+  bumpServerMutationTs_();
+
+  SpreadsheetApp.getUi().alert(
+    "Eligible Vendors column seeded.\n\n" +
+    changed + " row(s) set to their current active vendor.\n" +
+    "Header set to \"Eligible Vendors\" (column O). Safe to re-run anytime."
+  );
 }
 
 
@@ -1780,7 +1996,7 @@ function findItemRow_(query) {
   if (lastRow < 2) return null;
   const q = String(query || "").trim();
   if (!q) return null;
-  const values = sh.getRange(2, 1, lastRow - 1, Math.max(COL.NOTES, COL.ACTIVE)).getValues();
+  const values = sh.getRange(2, 1, lastRow - 1, Math.max(COL.NOTES, COL.ACTIVE, COL.ELIGIBLE_VENDORS)).getValues();
   const qLower = q.toLowerCase();
   for (let i = 0; i < values.length; i++) {
     const id   = String(values[i][COL.ID   - 1] || "").trim();
