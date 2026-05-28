@@ -371,6 +371,7 @@ function onOpen(e) {
       .addItem("    Clear PIN Lockout",      "clearPinLockout")
       .addSeparator()
       .addItem("    Migrate Item Vendors",   "migrateItemVendorsColumn")
+      .addItem("    Recalibrate Vendor Pars","showRecalibrateVendorSidebar")
       .addItem("    Clear Config",           "clearMobileApiConfig"))
     .addToUi();
 }
@@ -1049,6 +1050,171 @@ function commitUpdateVendorMultsAndCutoff(vendorName, mults, cutoffTime) {
   setup.getRange(targetRow, VENDOR_CUTOFF_COL).setValue(cutoffNorm || '');
 
   return { ok: true, cutoffTime: cutoffNorm };
+}
+
+
+// ── Vendor Par Recalibration ─────────────────────────────────────────────────
+// One-time tool for stores where pars were calibrated against the legacy
+// (non-canonical) model — par sized to roughly "average delivery gap" with
+// mults floating around 1.0 — and we want to switch to the canonical
+// 1-day-par + canonical-multiplier model (mult_d = days until next delivery).
+// rpr is the motivating case: switching items between vendors only gives
+// correct order quantities when pars are 1-day-pars and mults are gap-days.
+//
+// The modal reads the vendor's current mults + every active-for-this-vendor
+// item's current par, surfaces three divisor framings (weekly-demand,
+// deliveries-per-week, average-gap) + a custom field, and previews each
+// item's old→new par before commit. Mults and pars commit atomically here;
+// bumpServerMutationTs_ ensures the dashboard recomputes order math on the
+// next read.
+//
+// IMPORTANT operational discipline: at a store moving to multi-vendor item
+// switching, recalibrate EVERY vendor before re-enabling switching. The
+// par is global per item; mixing canonical and legacy calibration across
+// a store's vendors will give wrong quantities when an item is switched
+// to a vendor whose mults still expect the legacy par.
+function showRecalibrateVendorSidebar() {
+  const tmpl = HtmlService.createTemplateFromFile("RecalibrateVendor");
+  tmpl.vendorListJson = JSON.stringify(getVendorList());
+  SpreadsheetApp.getUi().showModalDialog(
+    tmpl.evaluate().setWidth(720).setHeight(640),
+    "Recalibrate Vendor Pars"
+  );
+}
+
+
+// Bootstrap call on modal open and on vendor-dropdown change. Returns the
+// vendor's current mults (S:Y on its row) and the items currently active
+// for this vendor with their current par. The modal uses this to compute
+// the three suggested divisors and render the side-by-side preview.
+function getVendorRecalibrationBootstrap(vendorName) {
+  const name = String(vendorName || "").trim();
+  if (!name) throw new Error("Vendor name is required.");
+
+  const setup   = getSheet_(VENDOR_TABLE.SHEET);
+  const lastRow = setup.getLastRow();
+  if (lastRow < VENDOR_TABLE.START_ROW) throw new Error("No vendors defined.");
+  const zVals = setup.getRange(2, VENDOR_LIST_COL, lastRow - 1, 1).getValues();
+  let vendorRow = -1;
+  for (let i = 0; i < zVals.length; i++) {
+    if (String(zVals[i][0] || "").trim().toLowerCase() === name.toLowerCase()) {
+      vendorRow = i + 2;
+      break;
+    }
+  }
+  if (vendorRow === -1) throw new Error('"' + name + '" not found in vendor list.');
+  const currentMults = setup
+    .getRange(vendorRow, VENDOR_TABLE.MULT_COL, 1, 7)
+    .getValues()[0]
+    .map(v => Number(v) || 0);
+
+  const master     = getSheet_(SHEET_MASTER);
+  const masterLast = master.getLastRow();
+  const items = [];
+  if (masterLast >= 2) {
+    const numCols = Math.max(COL.ID, COL.NAME, COL.VENDOR, COL.PAR, COL.ACTIVE, COL.USE_MULT);
+    const rows    = master.getRange(2, 1, masterLast - 1, numCols).getValues();
+    const vLow    = name.toLowerCase();
+    rows.forEach(r => {
+      const v       = String(r[COL.VENDOR - 1] || "").trim().toLowerCase();
+      const isActv  = r[COL.ACTIVE - 1] === true;
+      const useMult = r[COL.USE_MULT - 1] === true;
+      // Recalibration only applies to items whose order math actually uses
+      // the vendor multiplier (USE_MULT=true). Items with a fixed par that
+      // ignores the multiplier shouldn't be divided — their par means
+      // something different and the new mults won't be applied to them.
+      if (v !== vLow || !isActv || !useMult) return;
+      const id  = String(r[COL.ID   - 1] || "").trim();
+      const nm  = String(r[COL.NAME - 1] || "").trim();
+      const par = r[COL.PAR - 1];
+      if (!id || !nm) return;
+      items.push({
+        id:   id,
+        name: nm,
+        par:  par === "" || par === null || par === undefined ? null : Number(par)
+      });
+    });
+    items.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  return { vendor: name, currentMults: currentMults, items: items };
+}
+
+
+// Atomic commit: writes new mults to the vendor row + divides every
+// active-for-this-vendor item's par by parDivisor (1-decimal rounding,
+// blank/null pars stay blank). bumpServerMutationTs_ invalidates the
+// dashboard's cached order math.
+function commitVendorRecalibration(payload) {
+  bumpServerMutationTs_();
+  payload = payload || {};
+  const name     = String(payload.vendor || "").trim();
+  const newMults = payload.newMults;
+  const divisor  = Number(payload.parDivisor);
+
+  if (!name) throw new Error("Vendor name is required.");
+  if (!Array.isArray(newMults) || newMults.length !== 7) {
+    throw new Error("7 multiplier values required.");
+  }
+  for (let i = 0; i < 7; i++) {
+    const m = Number(newMults[i]);
+    if (!isFinite(m) || m < 0) throw new Error("Multipliers must be non-negative numbers.");
+    newMults[i] = m;
+  }
+  if (!isFinite(divisor) || divisor <= 0) {
+    throw new Error("Par divisor must be a positive number.");
+  }
+
+  // Locate vendor row.
+  const setup   = getSheet_(VENDOR_TABLE.SHEET);
+  const lastRow = setup.getLastRow();
+  if (lastRow < VENDOR_TABLE.START_ROW) throw new Error("No vendors defined.");
+  const zVals = setup.getRange(2, VENDOR_LIST_COL, lastRow - 1, 1).getValues();
+  let vendorRow = -1;
+  for (let i = 0; i < zVals.length; i++) {
+    if (String(zVals[i][0] || "").trim().toLowerCase() === name.toLowerCase()) {
+      vendorRow = i + 2;
+      break;
+    }
+  }
+  if (vendorRow === -1) throw new Error('"' + name + '" not found in vendor list.');
+
+  // Compute new pars (write only col G to avoid disturbing other columns).
+  // Filter: must be active AND use the multiplier — items that don't use
+  // the vendor multiplier have a different par semantic and must not be
+  // divided here. ALWAYS rounds UP to the nearest 0.5 increment so the
+  // recalibration biases toward slight over-ordering rather than risking
+  // silent under-orders. (e.g. 2.33 -> 2.5, 2.51 -> 3.0, 4.5 -> 4.5).
+  let itemCount = 0;
+  const master     = getSheet_(SHEET_MASTER);
+  const masterLast = master.getLastRow();
+  if (masterLast >= 2) {
+    const filterCols = Math.max(COL.VENDOR, COL.ACTIVE, COL.USE_MULT);
+    const filterVals = master.getRange(2, 1, masterLast - 1, filterCols).getValues();
+    const parRange   = master.getRange(2, COL.PAR, masterLast - 1, 1);
+    const parVals    = parRange.getValues();
+    const vLow       = name.toLowerCase();
+    let mutated = false;
+    for (let i = 0; i < parVals.length; i++) {
+      const v       = String(filterVals[i][COL.VENDOR - 1] || "").trim().toLowerCase();
+      const isActv  = filterVals[i][COL.ACTIVE - 1] === true;
+      const useMult = filterVals[i][COL.USE_MULT - 1] === true;
+      if (v !== vLow || !isActv || !useMult) continue;
+      const oldPar = parVals[i][0];
+      if (oldPar === "" || oldPar === null || oldPar === undefined) continue;
+      const oldNum = Number(oldPar);
+      if (!isFinite(oldNum)) continue;
+      parVals[i][0] = Math.ceil((oldNum / divisor) * 2) / 2;
+      mutated = true;
+      itemCount++;
+    }
+    if (mutated) parRange.setValues(parVals);
+  }
+
+  // Write new mults.
+  setup.getRange(vendorRow, VENDOR_TABLE.MULT_COL, 1, 7).setValues([newMults]);
+
+  return { ok: true, vendor: name, itemCount: itemCount, divisor: divisor };
 }
 
 

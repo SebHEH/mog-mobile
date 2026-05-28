@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <script>
+      var VENDOR_LIST = <?!= vendorListJson ?>;
+    </script>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 13px;
+        background: #f4f5f7;
+        color: #222;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Header ── */
+      .header {
+        background: #1a1a2e;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 14px;
+        height: 44px;
+        flex-shrink: 0;
+      }
+      .header-title { font-size: 13px; font-weight: bold; letter-spacing: 0.03em; }
+      .lang-group { display: flex; gap: 4px; }
+      .lang-btn {
+        padding: 3px 9px; font-size: 10px; font-weight: bold; cursor: pointer;
+        color: rgba(255,255,255,0.45); background: transparent;
+        border: 1px solid rgba(255,255,255,0.2); border-radius: 3px;
+        transition: background 0.15s, color 0.15s;
+      }
+      .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
+      .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
+
+      /* ── Body ── */
+      .body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+      .body > * { flex-shrink: 0; }
+
+      /* ── Cards ── */
+      .card { background: #fff; border: 1px solid #e0e3e8; border-radius: 6px; overflow: hidden; }
+      .card-header {
+        background: #f8f9fa; border-bottom: 1px solid #e8eaed;
+        padding: 7px 12px; font-size: 10px; font-weight: bold;
+        letter-spacing: 0.06em; text-transform: uppercase; color: #444;
+      }
+      .card-body { padding: 12px; }
+
+      /* ── Form elements ── */
+      label.field-label { display: block; font-size: 11px; font-weight: bold; color: #444; margin-bottom: 4px; }
+      select, input[type="text"], input[type="number"] {
+        width: 100%; padding: 7px 8px; border: 1px solid #ccc;
+        border-radius: 4px; font-size: 12px; background: #fff;
+      }
+      select:focus, input:focus { outline: none; border-color: #1a3a2e; }
+
+      /* ── Mults strip — 7 read-only cells for current + new ── */
+      .mults-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 6px; }
+      .mult-cell {
+        text-align: center;
+        font-size: 11px; font-weight: bold;
+        padding: 6px 0;
+        background: #f0f0f0; color: #333;
+        border-radius: 3px;
+      }
+      .mult-cell.zero { color: #aaa; background: #f7f7f7; }
+      .mult-cell.new  { background: #e6f3ec; color: #1a6b2e; }
+      .mult-day { display: block; font-size: 9px; font-weight: normal; color: #777; margin-bottom: 2px; }
+      .mult-strip-note { font-size: 10px; color: #777; margin-top: 6px; line-height: 1.4; }
+
+      /* ── Delivery picker checkboxes ── */
+      .day-picker { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+      .day-cb {
+        display: flex; flex-direction: column; align-items: center;
+        padding: 7px 0; border: 1px solid #ddd; border-radius: 4px;
+        cursor: pointer; user-select: none; font-size: 10px; color: #555;
+        background: #fafafa;
+      }
+      .day-cb input { margin: 0 0 3px; cursor: pointer; }
+      .day-cb.checked { background: #e6f3ec; border-color: #1a6b2e; color: #1a3a2e; font-weight: bold; }
+
+      /* ── Divisor framings ── */
+      .framings { display: flex; flex-direction: column; gap: 6px; }
+      .framing {
+        display: flex; align-items: flex-start; gap: 8px;
+        padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px;
+        cursor: pointer; user-select: none; background: #fafafa;
+        transition: background 0.1s, border-color 0.1s;
+      }
+      .framing.selected { background: #e6f3ec; border-color: #1a6b2e; }
+      .framing input[type="radio"] { margin-top: 2px; flex-shrink: 0; }
+      .framing-text { flex: 1; min-width: 0; }
+      .framing-title { font-size: 12px; font-weight: bold; color: #1a3a2e; }
+      .framing-meta  { font-size: 11px; color: #555; margin-top: 2px; line-height: 1.4; }
+      .framing-value { font-size: 12px; font-weight: bold; color: #1a6b2e; }
+      .framing.disabled { opacity: 0.4; cursor: not-allowed; }
+      .framing.disabled .framing-value { color: #999; }
+
+      .custom-divisor {
+        display: flex; align-items: center; gap: 8px;
+        margin-top: 4px;
+      }
+      .custom-divisor input { width: 100px; }
+      .custom-divisor-label { font-size: 11px; color: #555; }
+
+      /* ── Items preview table ── */
+      .items-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      .items-table th {
+        text-align: left; font-size: 10px; font-weight: bold;
+        color: #777; text-transform: uppercase; letter-spacing: 0.05em;
+        padding: 6px 8px; border-bottom: 1px solid #eee;
+      }
+      .items-table th.num { text-align: right; }
+      .items-table td { padding: 6px 8px; border-bottom: 1px solid #f3f3f3; }
+      .items-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      .items-table tr:last-child td { border-bottom: none; }
+      .items-table .par-new { color: #1a6b2e; font-weight: bold; }
+      .items-table .par-blank { color: #bbb; font-style: italic; }
+      .items-empty {
+        padding: 20px; text-align: center;
+        font-size: 11px; color: #aaa; font-style: italic;
+      }
+      .items-count { font-size: 11px; color: #777; margin-top: 6px; }
+
+      /* ── Status / footer ── */
+      .modal-footer {
+        flex: 0 0 auto;
+        background: #fff; border-top: 1px solid #e8eaed;
+        padding: 6px 12px;
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      }
+      button.btn-close {
+        padding: 7px 24px;
+        background: #e0e0e0; color: #333;
+        border: none; border-radius: 4px;
+        font-size: 12px; font-weight: bold; cursor: pointer;
+      }
+      button.btn-save {
+        padding: 7px 24px;
+        background: #1a6b2e; color: #fff;
+        border: none; border-radius: 4px;
+        font-size: 12px; font-weight: bold; cursor: pointer;
+      }
+      button.btn-close:hover, button.btn-save:hover { opacity: 0.85; }
+      button.btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
+      .status { font-size: 11px; min-height: 16px; flex: 1; min-width: 0; text-align: center; }
+      .status.ok   { color: #1f6d2a; font-weight: bold; animation: saveFlash 0.9s ease-out; padding: 3px 8px; border-radius: 4px; display: inline-block; }
+      .status.ok::before { content: '✓ '; }
+      .status.warn { color: #9a2c2c; font-weight: bold; }
+      .status.info { color: #555; }
+      @keyframes saveFlash {
+        0%   { background: rgba(31,109,42,0.20); }
+        100% { background: transparent; }
+      }
+
+      /* Saving overlay during commit. */
+      .body.saving { position: relative; }
+      .body.saving > * { opacity: 0.4; pointer-events: none; }
+      .body.saving::after {
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 18px; font-weight: bold; letter-spacing: 1px;
+        color: #1a6b2e;
+        z-index: 5; pointer-events: none;
+      }
+      body.lang-en .body.saving::after { content: 'SAVING\2026'; }
+      body.lang-es .body.saving::after { content: 'GUARDANDO\2026'; }
+
+      .empty-prompt {
+        padding: 30px 14px; text-align: center; color: #888; font-size: 12px;
+        background: #fff; border: 1px dashed #ddd; border-radius: 6px;
+      }
+
+      .caveat {
+        background: #fff8e1; border: 1px solid #f0d080; border-radius: 4px;
+        padding: 8px 10px; font-size: 11px; color: #6a4a00; line-height: 1.5;
+      }
+      .caveat strong { color: #4a3000; }
+
+      /* ── i18n ── */
+      .es { display: none; }
+      .en { display: inline; }
+    </style>
+  </head>
+  <body class="lang-en">
+
+    <div class="header">
+      <div class="header-title">
+        <span class="en">Recalibrate Vendor Pars</span>
+        <span class="es">Recalibrar Pares de Proveedor</span>
+      </div>
+      <div class="lang-group">
+        <button class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button class="lang-btn"        onclick="setLang('es')">ES</button>
+      </div>
+    </div>
+
+    <div class="body" id="body">
+
+      <!-- 1. Vendor selection -->
+      <div class="card">
+        <div class="card-header">
+          <span class="en">1. Vendor</span><span class="es">1. Proveedor</span>
+        </div>
+        <div class="card-body">
+          <label class="field-label">
+            <span class="en">Select vendor to recalibrate</span>
+            <span class="es">Selecciona el proveedor a recalibrar</span>
+          </label>
+          <select id="vendor-select" onchange="onVendorChange()">
+            <option value="">— —</option>
+          </select>
+
+          <div id="current-mults-block" style="display:none; margin-top:12px;">
+            <label class="field-label">
+              <span class="en">Current multipliers (Mon-Sun)</span>
+              <span class="es">Multiplicadores actuales (Lun-Dom)</span>
+            </label>
+            <div class="mults-strip" id="current-mults-strip"></div>
+            <div class="mult-strip-note" id="current-mults-summary"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. New delivery schedule -->
+      <div class="card" id="schedule-card" style="display:none;">
+        <div class="card-header">
+          <span class="en">2. New delivery schedule</span>
+          <span class="es">2. Nuevo horario de entrega</span>
+        </div>
+        <div class="card-body">
+          <label class="field-label">
+            <span class="en">Check the days this vendor delivers</span>
+            <span class="es">Marca los días en que entrega este proveedor</span>
+          </label>
+          <div class="day-picker" id="day-picker"></div>
+
+          <div style="margin-top:12px;">
+            <label class="field-label">
+              <span class="en">New multipliers (mult = days until next delivery)</span>
+              <span class="es">Nuevos multiplicadores (mult = días hasta la próxima entrega)</span>
+            </label>
+            <div class="mults-strip" id="new-mults-strip"></div>
+            <div class="mult-strip-note" id="new-mults-summary"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Divisor selection -->
+      <div class="card" id="divisor-card" style="display:none;">
+        <div class="card-header">
+          <span class="en">3. Par divisor — how to convert old pars to 1-day pars</span>
+          <span class="es">3. Divisor de par — convertir pares antiguos a pares de 1 día</span>
+        </div>
+        <div class="card-body">
+          <div class="framings">
+            <div class="framing" id="framing-1" onclick="selectFraming(1)">
+              <input type="radio" name="framing" value="1">
+              <div class="framing-text">
+                <div class="framing-title">
+                  <span class="en">Weekly demand (preserves total weekly orders)</span>
+                  <span class="es">Demanda semanal (preserva el total ordenado por semana)</span>
+                </div>
+                <div class="framing-meta">
+                  <span class="en">Divisor = 7 / sum(current mults). Physically grounded.</span>
+                  <span class="es">Divisor = 7 / suma(mults actuales). Base física.</span>
+                  &nbsp; <span class="framing-value" id="framing-1-value">—</span>
+                </div>
+              </div>
+            </div>
+            <div class="framing" id="framing-2" onclick="selectFraming(2)">
+              <input type="radio" name="framing" value="2">
+              <div class="framing-text">
+                <div class="framing-title">
+                  <span class="en">Deliveries per week (divide-by-N)</span>
+                  <span class="es">Entregas por semana (dividir por N)</span>
+                </div>
+                <div class="framing-meta">
+                  <span class="en">Divisor = number of delivery days. Whole number, conservative.</span>
+                  <span class="es">Divisor = número de días de entrega. Entero, conservador.</span>
+                  &nbsp; <span class="framing-value" id="framing-2-value">—</span>
+                </div>
+              </div>
+            </div>
+            <div class="framing" id="framing-3" onclick="selectFraming(3)">
+              <input type="radio" name="framing" value="3">
+              <div class="framing-text">
+                <div class="framing-title">
+                  <span class="en">Average gap (7 / deliveries)</span>
+                  <span class="es">Brecha promedio (7 / entregas)</span>
+                </div>
+                <div class="framing-meta">
+                  <span class="en">Divisor = 7 / number of delivery days. Mathematical avg gap.</span>
+                  <span class="es">Divisor = 7 / número de días de entrega. Brecha promedio.</span>
+                  &nbsp; <span class="framing-value" id="framing-3-value">—</span>
+                </div>
+              </div>
+            </div>
+            <div class="framing" id="framing-custom" onclick="selectFraming('custom')">
+              <input type="radio" name="framing" value="custom">
+              <div class="framing-text">
+                <div class="framing-title">
+                  <span class="en">Custom</span><span class="es">Personalizado</span>
+                </div>
+                <div class="custom-divisor">
+                  <span class="custom-divisor-label">
+                    <span class="en">Divisor:</span><span class="es">Divisor:</span>
+                  </span>
+                  <input type="number" id="custom-divisor" step="0.01" min="0.01" placeholder="2.5"
+                         oninput="onCustomDivisorInput()" onfocus="selectFraming('custom')">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="caveat" style="margin-top:12px;" id="multi-vendor-caveat" style="display:none;">
+            <strong><span class="en">Heads up:</span><span class="es">Aviso:</span></strong>
+            <span class="en">Par is global per item. If this store uses multi-vendor item switching, recalibrate every vendor at this store before re-enabling switching, or order quantities will be off when items are switched.</span>
+            <span class="es">El par es global por artículo. Si esta tienda usa cambio de proveedor multi-vendor, recalibra cada proveedor antes de reactivar el cambio, o las cantidades de pedido serán incorrectas al cambiar artículos.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Items preview -->
+      <div class="card" id="items-card" style="display:none;">
+        <div class="card-header">
+          <span class="en">4. Preview — items active for this vendor that use a multiplier (new par rounded up to nearest 0.5)</span>
+          <span class="es">4. Previa — artículos activos para este proveedor que usan multiplicador (par nuevo redondeado hacia arriba al 0.5 más cercano)</span>
+        </div>
+        <div class="card-body">
+          <div id="items-table-container"></div>
+          <div class="items-count" id="items-count"></div>
+        </div>
+      </div>
+
+      <!-- Initial prompt when no vendor selected -->
+      <div class="empty-prompt" id="empty-prompt">
+        <span class="en">Pick a vendor above to start.</span>
+        <span class="es">Selecciona un proveedor arriba para empezar.</span>
+      </div>
+
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-close" onclick="doClose()">
+        <span class="en">Close</span>
+        <span class="es">Cerrar</span>
+      </button>
+      <span id="save-status" class="status"></span>
+      <button class="btn-save" id="save-btn" onclick="doSave()" disabled>
+        <span class="en">Save Recalibration</span>
+        <span class="es">Guardar Recalibración</span>
+      </button>
+    </div>
+
+    <script>
+      var LANG = 'en';
+
+      var T = {
+        en: {
+          delivers:        'Delivers: ',
+          noDelivery:      'No delivery days selected.',
+          currentMultsSum: 'Sum of current mults: ',
+          newMultsSum:     'Sum of new mults: ',
+          itemsHeaderItem: 'Item',
+          itemsHeaderOld:  'Current par',
+          itemsHeaderNew:  'New par',
+          itemsNone:       'No active items for this vendor.',
+          itemsCountFmt:   ' items will be updated.',
+          itemsCountOne:   '1 item will be updated.',
+          chooseDivisor:   'Choose a divisor approach to preview new pars.',
+          pickDeliveryDays:'Select at least one delivery day.',
+          confirmSave:     'Recalibrate ',
+          confirmSaveEnd:  '?\n\nThis will update the multipliers AND divide each item par by the selected divisor. Continue?',
+          saving:          'Saving…',
+          saved:           'Saved.',
+          unsavedClose:    'You have unsaved changes. Close anyway?',
+          loadFailed:      'Could not load vendor data.',
+          customNeedsValue:'Enter a custom divisor value.',
+          itemsBlank:      'blank'
+        },
+        es: {
+          delivers:        'Entrega: ',
+          noDelivery:      'Sin días de entrega seleccionados.',
+          currentMultsSum: 'Suma de mults actuales: ',
+          newMultsSum:     'Suma de mults nuevos: ',
+          itemsHeaderItem: 'Artículo',
+          itemsHeaderOld:  'Par actual',
+          itemsHeaderNew:  'Par nuevo',
+          itemsNone:       'No hay artículos activos para este proveedor.',
+          itemsCountFmt:   ' artículos serán actualizados.',
+          itemsCountOne:   '1 artículo será actualizado.',
+          chooseDivisor:   'Elige un enfoque de divisor para ver la previa.',
+          pickDeliveryDays:'Selecciona al menos un día de entrega.',
+          confirmSave:     '¿Recalibrar ',
+          confirmSaveEnd:  '?\n\nEsto actualizará los multiplicadores Y dividirá cada par de artículo por el divisor seleccionado. ¿Continuar?',
+          saving:          'Guardando…',
+          saved:           'Guardado.',
+          unsavedClose:    'Tienes cambios sin guardar. ¿Cerrar de todos modos?',
+          loadFailed:      'No se pudo cargar los datos del proveedor.',
+          customNeedsValue:'Ingresa un divisor personalizado.',
+          itemsBlank:      'vacío'
+        }
+      };
+
+      function t(k) { return T[LANG][k] || T.en[k] || k; }
+
+      // Day labels — index 0=Mon..6=Sun (matches sheet's S:Y order).
+      var DAY_NAMES_EN = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      var DAY_NAMES_ES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+
+      // Modal state.
+      var currentVendor   = '';
+      var currentMults    = [0,0,0,0,0,0,0];   // 7 numbers from server
+      var currentItems    = [];                // [{id,name,par}]
+      var newSchedule     = [false,false,false,false,false,false,false]; // 7 booleans, idx 0=Mon
+      var newMults        = [0,0,0,0,0,0,0];
+      var selectedFraming = null;              // 1 | 2 | 3 | 'custom'
+      var customDivisor   = null;              // number
+      var isDirty         = false;
+
+      function byId(id) { return document.getElementById(id); }
+
+      function setLang(lang) {
+        LANG = lang;
+        document.body.className = 'lang-' + lang;
+        var btns = document.querySelectorAll('.lang-btn');
+        for (var i = 0; i < btns.length; i++) {
+          btns[i].classList.toggle('active', ['en','es'][i] === lang);
+        }
+        var els = document.querySelectorAll('.en,.es');
+        for (var j = 0; j < els.length; j++) {
+          els[j].style.display = els[j].classList.contains(lang) ? 'inline' : 'none';
+        }
+        // Re-render anything language-dependent.
+        renderDayPicker();
+        renderCurrentMultsStrip();
+        renderNewMultsStrip();
+        renderFramingValues();
+        renderItemsPreview();
+      }
+
+      function setStatus(msg, type) {
+        var el = byId('save-status');
+        if (!el) return;
+        el.textContent = msg || '';
+        el.className = 'status ' + (type || '');
+      }
+
+      function setSaving(on) {
+        var el = byId('body');
+        if (!el) return;
+        if (on) el.classList.add('saving');
+        else    el.classList.remove('saving');
+      }
+
+      function markDirty() {
+        isDirty = true;
+      }
+
+      // ── Vendor dropdown ───────────────────────────────────────────────────────
+      (function populateVendors() {
+        var sel = byId('vendor-select');
+        for (var i = 0; i < VENDOR_LIST.length; i++) {
+          var opt = document.createElement('option');
+          opt.value = VENDOR_LIST[i];
+          opt.textContent = VENDOR_LIST[i];
+          sel.appendChild(opt);
+        }
+      })();
+
+      function onVendorChange() {
+        var name = byId('vendor-select').value;
+        if (!name) {
+          resetState();
+          return;
+        }
+        // If dirty, confirm before switching away.
+        if (isDirty && currentVendor && name !== currentVendor) {
+          if (!window.confirm(t('unsavedClose'))) {
+            byId('vendor-select').value = currentVendor;
+            return;
+          }
+        }
+        currentVendor = name;
+        loadVendor(name);
+      }
+
+      function loadVendor(name) {
+        setStatus(t('saving'), 'info');
+        google.script.run
+          .withSuccessHandler(function(data) {
+            setStatus('');
+            currentMults = (data.currentMults || []).slice();
+            currentItems = (data.items || []).slice();
+            // Initialize new schedule by inferring from current mults
+            // (delivery on day after any nonzero mult day) — this gives
+            // the KM a sensible starting point they can adjust.
+            newSchedule = inferDeliveryFromMults(currentMults);
+            newMults    = computeMultsFromDelivery(newSchedule);
+            selectedFraming = null;
+            customDivisor   = null;
+            isDirty = false;
+
+            byId('current-mults-block').style.display = 'block';
+            byId('schedule-card').style.display = 'block';
+            byId('divisor-card').style.display  = 'block';
+            byId('items-card').style.display    = 'block';
+            byId('empty-prompt').style.display  = 'none';
+
+            renderCurrentMultsStrip();
+            renderDayPicker();
+            renderNewMultsStrip();
+            renderFramingValues();
+            renderItemsPreview();
+            updateSaveButton();
+          })
+          .withFailureHandler(function(err) {
+            setStatus(err.message || t('loadFailed'), 'warn');
+          })
+          .getVendorRecalibrationBootstrap(name);
+      }
+
+      function resetState() {
+        currentVendor = '';
+        currentMults  = [0,0,0,0,0,0,0];
+        currentItems  = [];
+        newSchedule   = [false,false,false,false,false,false,false];
+        newMults      = [0,0,0,0,0,0,0];
+        selectedFraming = null;
+        customDivisor   = null;
+        isDirty = false;
+        byId('current-mults-block').style.display = 'none';
+        byId('schedule-card').style.display = 'none';
+        byId('divisor-card').style.display  = 'none';
+        byId('items-card').style.display    = 'none';
+        byId('empty-prompt').style.display  = 'block';
+        setStatus('');
+        updateSaveButton();
+      }
+
+      // ── Pure gap math (ported verbatim from ManageVendors.html) ───────────────
+      // Given a 7-element boolean delivery-day array (index 0=Mon..6=Sun),
+      // returns the 7 order-day multipliers. mult[i] = gap until next delivery
+      // for an order placed on day i (i+1 arrives next, then count days until
+      // following delivery).
+      function computeMultsFromDelivery(deliveryDays) {
+        var mults = [0,0,0,0,0,0,0];
+        var i, j, tomorrow, gap;
+        for (i = 0; i < 7; i++) {
+          tomorrow = (i + 1) % 7;
+          if (!deliveryDays[tomorrow]) continue;
+          gap = 1;
+          for (j = 1; j <= 7; j++) {
+            if (deliveryDays[(tomorrow + j) % 7]) { gap = j; break; }
+          }
+          mults[i] = gap;
+        }
+        return mults;
+      }
+      function inferDeliveryFromMults(mults) {
+        var deliveryDays = [false,false,false,false,false,false,false];
+        var i;
+        for (i = 0; i < 7; i++) {
+          if (mults[i] && mults[i] > 0) deliveryDays[(i + 1) % 7] = true;
+        }
+        return deliveryDays;
+      }
+
+      // ── Current mults strip ───────────────────────────────────────────────────
+      function renderCurrentMultsStrip() {
+        var strip = byId('current-mults-strip');
+        if (!strip) return;
+        var names = LANG === 'es' ? DAY_NAMES_ES : DAY_NAMES_EN;
+        var html = '';
+        for (var i = 0; i < 7; i++) {
+          var v = currentMults[i];
+          var cls = 'mult-cell' + (v ? '' : ' zero');
+          html += '<div class="' + cls + '">' +
+            '<span class="mult-day">' + names[i] + '</span>' +
+            (v === 0 ? '—' : fmtMult(v)) +
+          '</div>';
+        }
+        strip.innerHTML = html;
+
+        var sum = 0;
+        for (var k = 0; k < 7; k++) sum += Number(currentMults[k]) || 0;
+        byId('current-mults-summary').textContent =
+          t('currentMultsSum') + fmtMult(sum);
+      }
+
+      // ── Day picker ────────────────────────────────────────────────────────────
+      function renderDayPicker() {
+        var picker = byId('day-picker');
+        if (!picker) return;
+        var names = LANG === 'es' ? DAY_NAMES_ES : DAY_NAMES_EN;
+        var html = '';
+        for (var i = 0; i < 7; i++) {
+          html += '<label class="day-cb' + (newSchedule[i] ? ' checked' : '') + '">' +
+            '<input type="checkbox" data-day="' + i + '"' + (newSchedule[i] ? ' checked' : '') + '>' +
+            names[i] +
+          '</label>';
+        }
+        picker.innerHTML = html;
+        var cbs = picker.querySelectorAll('input[type="checkbox"]');
+        for (var j = 0; j < cbs.length; j++) {
+          cbs[j].onchange = onDayToggle;
+        }
+      }
+
+      function onDayToggle(e) {
+        var idx = Number(e.target.getAttribute('data-day'));
+        newSchedule[idx] = e.target.checked;
+        e.target.parentNode.classList.toggle('checked', e.target.checked);
+        newMults = computeMultsFromDelivery(newSchedule);
+        renderNewMultsStrip();
+        renderFramingValues();
+        renderItemsPreview();
+        markDirty();
+        updateSaveButton();
+      }
+
+      // ── New mults strip ───────────────────────────────────────────────────────
+      function renderNewMultsStrip() {
+        var strip = byId('new-mults-strip');
+        if (!strip) return;
+        var names = LANG === 'es' ? DAY_NAMES_ES : DAY_NAMES_EN;
+        var html = '';
+        for (var i = 0; i < 7; i++) {
+          var v = newMults[i];
+          var cls = 'mult-cell' + (v ? ' new' : ' zero');
+          html += '<div class="' + cls + '">' +
+            '<span class="mult-day">' + names[i] + '</span>' +
+            (v === 0 ? '—' : String(v)) +
+          '</div>';
+        }
+        strip.innerHTML = html;
+
+        var sum = 0;
+        for (var k = 0; k < 7; k++) sum += Number(newMults[k]) || 0;
+        var summary = byId('new-mults-summary');
+        var anyDay = false;
+        for (var d = 0; d < 7; d++) if (newSchedule[d]) { anyDay = true; break; }
+        summary.textContent = anyDay
+          ? (t('newMultsSum') + String(sum))
+          : t('noDelivery');
+      }
+
+      // ── Divisor framings ──────────────────────────────────────────────────────
+      function computeFramingValues() {
+        var sumOld = 0;
+        for (var i = 0; i < 7; i++) sumOld += Number(currentMults[i]) || 0;
+        var deliveryCount = 0;
+        for (var j = 0; j < 7; j++) if (newSchedule[j]) deliveryCount++;
+        return {
+          f1: sumOld > 0 ? round2(7 / sumOld) : null,
+          f2: deliveryCount > 0 ? deliveryCount : null,
+          f3: deliveryCount > 0 ? round2(7 / deliveryCount) : null
+        };
+      }
+
+      function renderFramingValues() {
+        var fv = computeFramingValues();
+        var cells = [
+          { id: 'framing-1', valueId: 'framing-1-value', value: fv.f1 },
+          { id: 'framing-2', valueId: 'framing-2-value', value: fv.f2 },
+          { id: 'framing-3', valueId: 'framing-3-value', value: fv.f3 }
+        ];
+        for (var i = 0; i < cells.length; i++) {
+          var el = byId(cells[i].id);
+          var ve = byId(cells[i].valueId);
+          if (cells[i].value === null) {
+            el.classList.add('disabled');
+            ve.textContent = '—';
+          } else {
+            el.classList.remove('disabled');
+            ve.textContent = String(cells[i].value);
+          }
+        }
+        // Refresh selected styling.
+        document.querySelectorAll('.framing').forEach(function(el) {
+          el.classList.toggle('selected', el.getAttribute('id') === framingElId(selectedFraming));
+        });
+        var radios = document.querySelectorAll('input[name="framing"]');
+        for (var k = 0; k < radios.length; k++) {
+          radios[k].checked = (radios[k].value === String(selectedFraming || ''));
+        }
+      }
+
+      function framingElId(f) {
+        if (f === 1)        return 'framing-1';
+        if (f === 2)        return 'framing-2';
+        if (f === 3)        return 'framing-3';
+        if (f === 'custom') return 'framing-custom';
+        return null;
+      }
+
+      function selectFraming(f) {
+        // Don't allow selecting a disabled built-in framing.
+        if (f === 1 || f === 2 || f === 3) {
+          var fv = computeFramingValues();
+          if ((f === 1 && fv.f1 === null) ||
+              (f === 2 && fv.f2 === null) ||
+              (f === 3 && fv.f3 === null)) return;
+        }
+        selectedFraming = f;
+        markDirty();
+        renderFramingValues();
+        renderItemsPreview();
+        updateSaveButton();
+      }
+
+      function onCustomDivisorInput() {
+        var v = parseFloat(byId('custom-divisor').value);
+        customDivisor = isFinite(v) && v > 0 ? v : null;
+        if (selectedFraming !== 'custom') selectedFraming = 'custom';
+        markDirty();
+        renderFramingValues();
+        renderItemsPreview();
+        updateSaveButton();
+      }
+
+      function getActiveDivisor() {
+        var fv = computeFramingValues();
+        if (selectedFraming === 1)        return fv.f1;
+        if (selectedFraming === 2)        return fv.f2;
+        if (selectedFraming === 3)        return fv.f3;
+        if (selectedFraming === 'custom') return customDivisor;
+        return null;
+      }
+
+      // ── Items preview ─────────────────────────────────────────────────────────
+      function renderItemsPreview() {
+        var container = byId('items-table-container');
+        var count     = byId('items-count');
+        if (!container) return;
+
+        if (!currentItems.length) {
+          container.innerHTML = '<div class="items-empty">' + t('itemsNone') + '</div>';
+          count.textContent = '';
+          return;
+        }
+        var divisor = getActiveDivisor();
+        var html = '<table class="items-table"><thead><tr>' +
+          '<th>' + t('itemsHeaderItem') + '</th>' +
+          '<th class="num">' + t('itemsHeaderOld') + '</th>' +
+          '<th class="num">' + t('itemsHeaderNew') + '</th>' +
+        '</tr></thead><tbody>';
+        var willUpdate = 0;
+        for (var i = 0; i < currentItems.length; i++) {
+          var it = currentItems[i];
+          var oldStr, newStr;
+          if (it.par === null || it.par === undefined) {
+            oldStr = '<span class="par-blank">' + t('itemsBlank') + '</span>';
+            newStr = '<span class="par-blank">' + t('itemsBlank') + '</span>';
+          } else {
+            oldStr = fmtMult(it.par);
+            if (divisor === null || divisor <= 0) {
+              newStr = '<span class="par-blank">—</span>';
+            } else {
+              // Round UP to the nearest 0.5 increment so the recalibration
+              // biases toward slight over-ordering rather than risking
+              // under-orders (e.g. 2.33 -> 2.5, 2.51 -> 3.0, 4.5 -> 4.5).
+              var n = Math.ceil((it.par / divisor) * 2) / 2;
+              newStr = '<span class="par-new">' + fmtMult(n) + '</span>';
+              willUpdate++;
+            }
+          }
+          html += '<tr>' +
+            '<td>' + escapeHtml(it.name) + '</td>' +
+            '<td class="num">' + oldStr + '</td>' +
+            '<td class="num">' + newStr + '</td>' +
+          '</tr>';
+        }
+        html += '</tbody></table>';
+        container.innerHTML = html;
+
+        if (divisor === null || divisor <= 0) {
+          count.textContent = t('chooseDivisor');
+        } else if (willUpdate === 1) {
+          count.textContent = t('itemsCountOne');
+        } else {
+          count.textContent = String(willUpdate) + t('itemsCountFmt');
+        }
+      }
+
+      // ── Save ──────────────────────────────────────────────────────────────────
+      function canSave() {
+        if (!currentVendor) return false;
+        var anyDay = false;
+        for (var i = 0; i < 7; i++) if (newSchedule[i]) { anyDay = true; break; }
+        if (!anyDay) return false;
+        var div = getActiveDivisor();
+        if (div === null || !isFinite(div) || div <= 0) return false;
+        return true;
+      }
+
+      function updateSaveButton() {
+        byId('save-btn').disabled = !canSave();
+      }
+
+      function doSave() {
+        if (!canSave()) return;
+        var divisor = getActiveDivisor();
+        if (!window.confirm(t('confirmSave') + currentVendor + t('confirmSaveEnd'))) return;
+        setSaving(true);
+        setStatus(t('saving'), 'info');
+        byId('save-btn').disabled = true;
+        google.script.run
+          .withSuccessHandler(function(res) {
+            setSaving(false);
+            isDirty = false;
+            setStatus(t('saved'), 'ok');
+            // Reload the vendor to refresh the displayed pars and mults.
+            loadVendor(currentVendor);
+          })
+          .withFailureHandler(function(err) {
+            setSaving(false);
+            setStatus(err.message || String(err), 'warn');
+            updateSaveButton();
+          })
+          .commitVendorRecalibration({
+            vendor:     currentVendor,
+            newMults:   newMults,
+            parDivisor: divisor
+          });
+      }
+
+      function doClose() {
+        if (isDirty && !window.confirm(t('unsavedClose'))) return;
+        google.script.host.close();
+      }
+
+      // ── Utilities ─────────────────────────────────────────────────────────────
+      function fmtMult(v) {
+        if (typeof v !== 'number') v = Number(v);
+        if (!isFinite(v)) return '—';
+        return v % 1 === 0 ? String(v) : String(Math.round(v * 100) / 100);
+      }
+      function round2(v) {
+        return Math.round(v * 100) / 100;
+      }
+      function escapeHtml(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      // ── Init ──────────────────────────────────────────────────────────────────
+      setLang('en');
+    </script>
+  </body>
+</html>
