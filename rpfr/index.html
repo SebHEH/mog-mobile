@@ -3874,7 +3874,7 @@
         '</div>' +
         '<div class="stepper">' +
           '<button class="step-btn" data-step="-1">&minus;</button>' +
-          '<input class="step-val" type="number" inputmode="numeric" placeholder="—" value="' + valStr + '">' +
+          '<input class="step-val" type="number" inputmode="decimal" step="any" placeholder="—" value="' + valStr + '">' +
           '<button class="step-btn" data-step="1">+</button>' +
         '</div>' +
         '<span class="' + pillCls + '">' + pillTxt + '</span>' +
@@ -3913,7 +3913,7 @@
       if (delta > 0) next = 1;
       else return; // negative from blank: no-op
     } else {
-      const cur = parseInt(raw, 10) || 0;
+      const cur = parseFloat(raw) || 0;
       next = Math.max(0, cur + delta);
     }
     input.value = next;
@@ -3924,7 +3924,7 @@
     const itemRow = input.closest('.item');
     const id = itemRow.getAttribute('data-id');
     const raw = input.value;
-    const val = (raw === '' || raw === null) ? null : parseInt(raw, 10);
+    const val = (raw === '' || raw === null) ? null : parseFloat(raw);
     updateItem(id, isNaN(val) ? null : val);
   }
 
