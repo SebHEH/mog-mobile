@@ -165,8 +165,10 @@ function doPost(e) {
       case 'getRecapData':     data = api_getRecapData_(payload);       break;
       case 'getRecipients':    data = api_getRecipients_();             break;
       case 'saveRecipients':   data = api_saveRecipients_(payload);     break;
-      case 'getHistory':       data = api_getHistory_(payload);         break;
-      case 'getHistoryDetail': data = api_getHistoryDetail_(payload);   break;
+      case 'getHistory':        data = api_getHistory_(payload);          break;
+      case 'getHistoryDates':   data = api_getHistoryDates_(payload);     break;
+      case 'getHistoryVendors': data = api_getHistoryVendors_(payload);   break;
+      case 'getHistoryDetail':  data = api_getHistoryDetail_(payload);    break;
       default:
         return jsonResponse_({ ok: false, error: 'Unknown action: ' + action });
     }
@@ -915,6 +917,109 @@ function api_getHistoryDetail_(payload) {
     itemCount: items.length
   };
 }
+
+// ── History — chunked endpoints ──────────────────────────────────────────────
+// The PWA's Order History tab loads progressively:
+//   1. dates list       (api_getHistoryDates_)
+//   2. vendors per date (api_getHistoryVendors_)
+//   3. items per vendor (api_getHistoryDetail_, pre-existing)
+// Each step is a separate, cheap network round-trip with its own CacheService
+// entry, so a repeat tap inside the 5-min TTL skips the LOG_ORDERS scan
+// entirely. Cache invalidation is keyed on getServerMutationTs_ — bumped by
+// recap-send + reset + anything that mutates LOG_ORDERS — so the new caches
+// share the eviction story with the dashboard cache.
+//
+// api_getHistory_ above remains for backwards-compat (internal callers like
+// the daily-recap auto-send still use it); the PWA stops calling it.
+function api_getHistoryDates_(payload) {
+  payload = payload || {};
+  const dateFrom = String(payload.dateFrom || '');
+  const dateTo   = String(payload.dateTo   || '');
+  const ts = getServerMutationTs_();
+  const cacheKey = 'historyDates_v1_' + dateFrom + '_' + dateTo + '_' + ts;
+
+  let cache = null;
+  try { cache = CacheService.getDocumentCache(); } catch (e) { cache = null; }
+  if (cache) {
+    try {
+      const hit = cache.get(cacheKey);
+      if (hit) return JSON.parse(hit);
+    } catch (e) { /* bad cached content — fall through */ }
+  }
+
+  const flat = getOrderHistory({ vendorFilter: 'ALL', dateFrom: dateFrom, dateTo: dateTo });
+
+  // Group by date → set of unique vendors. The set's size becomes the
+  // "N vendors" badge on the dates-view card; the vendor list itself
+  // ships separately via getHistoryVendors so this payload stays tiny.
+  const vendorsByDate = new Map();
+  for (const r of flat) {
+    if (!vendorsByDate.has(r.orderDate)) vendorsByDate.set(r.orderDate, new Set());
+    vendorsByDate.get(r.orderDate).add(r.vendor);
+  }
+  const dates = Array.from(vendorsByDate.keys())
+    .sort()
+    .reverse()
+    .map(d => ({ date: d, vendorCount: vendorsByDate.get(d).size }));
+
+  const payloadOut = { dates: dates };
+
+  if (cache) {
+    try {
+      const json = JSON.stringify(payloadOut);
+      if (json.length < 95000) cache.put(cacheKey, json, 300);
+    } catch (e) { /* non-fatal */ }
+  }
+  return payloadOut;
+}
+
+
+function api_getHistoryVendors_(payload) {
+  payload = payload || {};
+  const date = String(payload.date || '');
+  if (!date) throw new Error('date is required.');
+
+  const ts = getServerMutationTs_();
+  const cacheKey = 'historyVendors_v1_' + date + '_' + ts;
+
+  let cache = null;
+  try { cache = CacheService.getDocumentCache(); } catch (e) { cache = null; }
+  if (cache) {
+    try {
+      const hit = cache.get(cacheKey);
+      if (hit) return JSON.parse(hit);
+    } catch (e) { /* fall through */ }
+  }
+
+  const flat = getOrderHistory({ vendorFilter: 'ALL', dateFrom: date, dateTo: date });
+
+  // Group by vendor — itemCount + the vendor's order timestamp.
+  const byVendor = new Map();
+  for (const r of flat) {
+    if (!byVendor.has(r.vendor)) {
+      byVendor.set(r.vendor, {
+        vendor:    r.vendor,
+        itemCount: 0,
+        timestamp: r.timestamp,
+        reference: generateReferenceFromDateStr_(r.vendor, date)
+      });
+    }
+    byVendor.get(r.vendor).itemCount++;
+  }
+  const vendors = Array.from(byVendor.values())
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+  const payloadOut = { date: date, vendors: vendors };
+
+  if (cache) {
+    try {
+      const json = JSON.stringify(payloadOut);
+      if (json.length < 95000) cache.put(cacheKey, json, 300);
+    } catch (e) { /* non-fatal */ }
+  }
+  return payloadOut;
+}
+
 
 function buildPackByIdMap_() {
   const master = getSheet_(SHEET_MASTER);

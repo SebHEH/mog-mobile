@@ -1568,6 +1568,7 @@
       <div class="screen" id="view-review" style="display:none"></div>
       <div class="screen" id="view-recap" style="display:none"></div>
       <div class="screen" id="view-history" style="display:none"></div>
+      <div class="screen" id="view-history-vendors" style="display:none"></div>
       <div class="screen" id="view-history-detail" style="display:none"></div>
       <div class="screen" id="view-settings" style="display:none"></div>
       <div class="screen" id="view-recipients" style="display:none"></div>
@@ -1668,11 +1669,17 @@
     // Loaded lazily into state.cache.recipients when the Recipients view opens.
     currentTab: 'today',
     currentView: 'today',
+    historyVendorsContext: null, // { date } — set when drilling from dates → vendors
     historyDetailContext: null, // { vendor, date }
     countContext: null, // { vendor, items, dirty: { itemId: value } }
     cache: {
       dashboard: null,
-      history: null,
+      // Order History is loaded in two cheap chunks (dates, then vendors-per-date).
+      // historyDates is the list of dates with vendor counts; historyVendors maps
+      // dateStr → that date's vendor list. Both invalidate together on the same
+      // events the old `history` cache did (signOut, reset, recap-send, etc.).
+      historyDates: null,
+      historyVendors: {},
       recap: null,
       // Vendor items keyed by vendor name. Populated by the background
       // prefetch that runs after the dashboard loads, and by openCount
@@ -1919,7 +1926,7 @@
       // data, fresh data swapped in within a couple seconds.
     }
     const hist = readOfflineCache_(OFFLINE_SLOTS.HISTORY, isFreshHistory_);
-    if (hist) state.cache.history = hist;
+    if (hist) state.cache.historyDates = hist;
     const recap = readOfflineCache_(OFFLINE_SLOTS.RECAP, isFreshRecap_);
     if (recap) state.cache.recap = recap;
     // Vendor caches are loaded lazily in fetchVendorItems_ rather than
@@ -2172,10 +2179,11 @@
   // ============================================================
   const T = {
     titles: {
-      today:           { en: "Today's orders",  es: 'Pedidos de hoy' },
-      'history-detail':{ en: 'Order details',   es: 'Detalles' },
-      settings:        { en: 'Settings',        es: 'Ajustes' },
-      recipients:      { en: 'Email recipients', es: 'Destinatarios' }
+      today:            { en: "Today's orders",  es: 'Pedidos de hoy' },
+      'history-vendors':{ en: 'Order history',    es: 'Historial' },
+      'history-detail': { en: 'Order details',   es: 'Detalles' },
+      settings:         { en: 'Settings',        es: 'Ajustes' },
+      recipients:       { en: 'Email recipients', es: 'Destinatarios' }
     },
     msg: {
       noVendors:        { en: 'No vendors today', es: 'No hay proveedores hoy' },
@@ -2193,6 +2201,7 @@
       itemsToOrder:     { en: 'to order', es: 'por pedir' },
       entered:          { en: 'entered', es: 'ingresados' },
       items:            { en: 'items', es: 'artículos' },
+      vendors:          { en: 'vendors', es: 'proveedores' },
       cutoff:           { en: 'cutoff', es: 'corte' },
       orderByLabel:     { en: 'Order by', es: 'Ordenar antes de' },
       cutoffApproaching:{ en: 'cutoff approaching', es: 'corte próximo' },
@@ -2681,7 +2690,8 @@
       await api('commitReset');
       state.cache.dashboard = null;
       setDashboardFetchedAt_(null);
-      state.cache.history = null;
+      state.cache.historyDates = null;
+      state.cache.historyVendors = {};
       state.cache.recap = null;
       state.cache.vendorItems = {};
       clearAllPerCycleLocalState_();
@@ -2806,7 +2816,8 @@
     localStorage.removeItem('mog_loc_abbr');
     state.cache.dashboard = null;
     setDashboardFetchedAt_(null);
-    state.cache.history = null;
+    state.cache.historyDates = null;
+    state.cache.historyVendors = {};
     state.cache.recap = null;
     state.cache.vendorItems = {};
     state.cache.recipients = null;
@@ -4488,9 +4499,18 @@
   // ============================================================
   // HISTORY
   // ============================================================
-  function renderHistory(data) {
+  // History loads in three progressive chunks, each its own API round-trip
+  // with both server-side (CacheService) and client-side caching:
+  //   1. renderHistoryDates  — date cards (loadHistory → getHistoryDates)
+  //   2. renderHistoryVendors — that date's vendors (openHistoryDateCard
+  //                              → getHistoryVendors)
+  //   3. renderHistoryDetail  — that vendor's items (openHistoryDetail
+  //                              → getHistoryDetail, pre-existing)
+  // Each tier is a small payload, so the tab opens fast and drill-ins
+  // feel instant. Repeated visits hit the local caches with no network.
+  function renderHistoryDates(data) {
     const view = $('view-history');
-    if (!data || !data.groups || !data.groups.length) {
+    if (!data || !data.dates || !data.dates.length) {
       view.innerHTML =
         '<p class="hero-day">' + escapeHtml(t('orderHistory')) + '</p>' +
         '<div class="empty-state">' +
@@ -4502,19 +4522,100 @@
     }
 
     let html = '<p class="hero-day" style="margin-bottom:18px">' + escapeHtml(t('orderHistory')) + '</p>';
-    for (const g of data.groups) {
-      html += '<div class="history-group">';
-      html += '<div class="history-group-header">' + formatHistoryDate(g.date) + '</div>';
-      for (const v of g.vendors) {
-        html += '<div class="history-row" data-vendor="' + escapeHtml(v.vendor) + '" data-date="' + escapeHtml(g.date) + '">' +
-          '<div>' +
-            '<div class="history-vendor">' + escapeHtml(v.vendor) + '</div>' +
-            '<div class="history-meta">' + v.itemCount + ' ' + t('items') + ' &middot; ' + escapeHtml(fmtTimestamp12h(v.timestamp)) + '</div>' +
-          '</div>' +
-          '<i class="ti ti-chevron-right history-arrow" aria-hidden="true"></i>' +
+    for (const d of data.dates) {
+      const meta = d.vendorCount + ' ' + t('vendors');
+      html += '<div class="history-row" data-date="' + escapeHtml(d.date) + '">' +
+        '<div>' +
+          '<div class="history-vendor">' + formatHistoryDate(d.date) + '</div>' +
+          '<div class="history-meta">' + escapeHtml(meta) + '</div>' +
+        '</div>' +
+        '<i class="ti ti-chevron-right history-arrow" aria-hidden="true"></i>' +
+      '</div>';
+    }
+    view.innerHTML = html;
+
+    view.querySelectorAll('.history-row').forEach(row => {
+      row.addEventListener('click', () => openHistoryDateCard(row.getAttribute('data-date')));
+    });
+  }
+
+  async function loadHistory() {
+    const view = $('view-history');
+    // Fast path: dates list is cached. Invalidated on the same events as
+    // the old single-fetch history cache (recap-send / reset / signOut /
+    // stale-reset). On a cache hit the list renders instantly.
+    if (state.cache.historyDates) {
+      renderHistoryDates(state.cache.historyDates);
+      return;
+    }
+    renderLoading(view);
+    try {
+      const today    = new Date();
+      const fromDate = new Date(today.getTime() - 30 * 86400000);
+      const data = await api('getHistoryDates', {
+        dateFrom: fromDate.toISOString().slice(0, 10),
+        dateTo:   today.toISOString().slice(0, 10)
+      });
+      state.cache.historyDates = data;
+      writeOfflineCache_(OFFLINE_SLOTS.HISTORY, data, { date: todayStr_() });
+      renderHistoryDates(data);
+    } catch (err) {
+      console.error('loadHistory error:', err);
+      if (isNetworkError_(err)) showToast(t('offlineRetry'), 'error');
+      renderError(view, loadHistory);
+    }
+  }
+
+  // Tap a date card → middle tier: that date's vendors. Sets the
+  // historyVendorsContext so goBack from history-detail can return here
+  // (rather than skipping back to the dates list).
+  async function openHistoryDateCard(date) {
+    state.historyVendorsContext = { date: date };
+    showView('history-vendors');
+    setTitle('history-vendors', formatHistoryDate(date));
+    const view = $('view-history-vendors');
+
+    const cached = state.cache.historyVendors[date];
+    if (cached) {
+      renderHistoryVendors(cached, { date: date });
+      return;
+    }
+    renderLoading(view);
+    try {
+      const data = await api('getHistoryVendors', { date: date });
+      state.cache.historyVendors[date] = data;
+      renderHistoryVendors(data, { date: date });
+    } catch (err) {
+      console.error('historyVendors error:', err);
+      if (isNetworkError_(err)) showToast(t('offlineRetry'), 'error');
+      renderError(view, () => openHistoryDateCard(date));
+    }
+  }
+
+  function renderHistoryVendors(data, ctx) {
+    const view = $('view-history-vendors');
+    let html = '<div class="section-label" style="margin-bottom:14px">' +
+      escapeHtml(formatHistoryDate(ctx.date)) +
+      '</div>';
+    if (!data || !data.vendors || !data.vendors.length) {
+      html +=
+        '<div class="empty-state">' +
+          '<div class="empty-icon"><i class="ti ti-clock" aria-hidden="true"></i></div>' +
+          '<p class="empty-title">' + escapeHtml(t('noHistory')) + '</p>' +
         '</div>';
-      }
-      html += '</div>';
+      view.innerHTML = html;
+      return;
+    }
+    for (const v of data.vendors) {
+      html += '<div class="history-row" data-vendor="' + escapeHtml(v.vendor) + '" data-date="' + escapeHtml(ctx.date) + '">' +
+        '<div>' +
+          '<div class="history-vendor">' + escapeHtml(v.vendor) + '</div>' +
+          '<div class="history-meta">' + v.itemCount + ' ' + t('items') +
+            (v.timestamp ? ' &middot; ' + escapeHtml(fmtTimestamp12h(v.timestamp)) : '') +
+          '</div>' +
+        '</div>' +
+        '<i class="ti ti-chevron-right history-arrow" aria-hidden="true"></i>' +
+      '</div>';
     }
     view.innerHTML = html;
 
@@ -4526,35 +4627,6 @@
         });
       });
     });
-  }
-
-  async function loadHistory() {
-    const view = $('view-history');
-    // Fast path: same pattern as loadToday. History is invalidated when
-    // an action could change it — sending the daily recap (writes to
-    // LOG_ORDERS), resetting on hand (logs current counts then clears),
-    // stale-reset on launch, signing out. On a cache hit the list
-    // renders instantly with no network round-trip.
-    if (state.cache.history) {
-      renderHistory(state.cache.history);
-      return;
-    }
-    renderLoading(view);
-    try {
-      const today = new Date();
-      const fromDate = new Date(today.getTime() - 30 * 86400000);
-      const data = await api('getHistory', {
-        dateFrom: fromDate.toISOString().slice(0, 10),
-        dateTo:   today.toISOString().slice(0, 10)
-      });
-      state.cache.history = data;
-      writeOfflineCache_(OFFLINE_SLOTS.HISTORY, data, { date: todayStr_() });
-      renderHistory(data);
-    } catch (err) {
-      console.error('loadHistory error:', err);
-      if (isNetworkError_(err)) showToast(t('offlineRetry'), 'error');
-      renderError(view, loadHistory);
-    }
   }
 
   function renderHistoryDetail(data, ctx) {
@@ -5283,7 +5355,7 @@
       setLang(state.lang === 'en' ? 'es' : 'en');
       renderSettings();
       if (state.cache.dashboard) renderToday(state.cache.dashboard);
-      if (state.cache.history) renderHistory(state.cache.history);
+      if (state.cache.historyDates) renderHistoryDates(state.cache.historyDates);
     });
     $('settings-recipients').addEventListener('click', openRecipients);
     $('settings-summary').addEventListener('click', onDailySummaryClick);
@@ -5513,7 +5585,8 @@
       // Recap may have committed today's orders to LOG_ORDERS — drop the
       // history cache so the next History open shows the new entry
       // instead of stale data.
-      state.cache.history = null;
+      state.cache.historyDates = null;
+      state.cache.historyVendors = {};
       return {
         ok:           true,
         vendorCount:  result.vendorCount,
@@ -5607,9 +5680,10 @@
 
       // Wipe caches and per-cycle localStorage BEFORE the reload so the
       // self-heal in loadToday has the cleanest possible starting state.
-      state.cache.dashboard = null;
-      state.cache.history   = null;
-      state.cache.recap     = null;
+      state.cache.dashboard       = null;
+      state.cache.historyDates    = null;
+      state.cache.historyVendors  = {};
+      state.cache.recap           = null;
       state.cache.vendorItems = {};
       clearAllPerCycleLocalState_();
       clearAllOfflineState_();
@@ -5692,7 +5766,7 @@
   }
 
   function showView(viewName) {
-    ['today','count','review','recap','history','history-detail','settings','recipients'].forEach(v => {
+    ['today','count','review','recap','history','history-vendors','history-detail','settings','recipients'].forEach(v => {
       $('view-' + v).style.display = v === viewName ? 'block' : 'none';
     });
     state.currentView = viewName;
@@ -5817,8 +5891,22 @@
   async function goBack() {
     const v = state.currentView;
 
-    // History detail → history list (no save needed)
+    // History detail → vendors list for the same date (no save needed).
+    // The vendor list was already fetched + cached when we drilled in, so
+    // re-showing is instant — no re-render needed (the view's DOM is intact).
     if (v === 'history-detail') {
+      const ctx = state.historyVendorsContext || state.historyDetailContext;
+      if (ctx && ctx.date) {
+        showView('history-vendors');
+        setTitle('history-vendors', formatHistoryDate(ctx.date));
+      } else {
+        showView('history');
+      }
+      return;
+    }
+
+    // History vendors → dates list (no save needed).
+    if (v === 'history-vendors') {
       showView('history');
       return;
     }
@@ -5934,7 +6022,7 @@
   $('lang-btn').addEventListener('click', () => {
     setLang(state.lang === 'en' ? 'es' : 'en');
     if (state.cache.dashboard) renderToday(state.cache.dashboard);
-    if (state.cache.history) renderHistory(state.cache.history);
+    if (state.cache.historyDates) renderHistoryDates(state.cache.historyDates);
     if (state.currentView === 'settings') renderSettings();
     if (state.currentView === 'count') renderCount();
     if (state.currentView === 'review') renderReview();
