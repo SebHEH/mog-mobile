@@ -52,6 +52,7 @@
       --text-3: #8a8a85;
       --border: rgba(0,0,0,0.10);
       --border-2: rgba(0,0,0,0.20);
+      --r-sm: 6px;
       --r-md: 10px;
       --r-lg: 14px;
       /* Typography stack — shared across all concept themes. Display
@@ -1961,6 +1962,12 @@
 
   function isNetworkError_(err) {
     if (!err) return false;
+    // AbortError fires when we abort the fetch ourselves on the
+    // API_TIMEOUT_MS guard in api(). From the user's POV, a request we
+    // killed because the network hung is the same as one that failed
+    // because the network was down — both should engage the offline
+    // banner + save queue path.
+    if (err.name === 'AbortError') return true;
     const m = String(err.message || err);
     // Browsers throw TypeError 'Failed to fetch' on network errors.
     // Some engines use 'NetworkError' or 'Load failed' (Safari).
@@ -2500,17 +2507,28 @@
   // ============================================================
   // API client
   // ============================================================
+  // Hung-network safety net for api(). Apps Script /exec is usually
+  // 1-3s and ~10s on a cold start, so 15s rescues a true hang while
+  // leaving plenty of headroom. The AbortError thrown on timeout is
+  // recognized by isNetworkError_ so the offline banner + save queue
+  // engage exactly as on any other network failure.
+  const API_TIMEOUT_MS = 15000;
+
   async function api(action, payload) {
     if (!state.apiUrl || state.apiUrl.indexOf('PASTE_YOUR') === 0) {
       throw new Error('CONFIG_MISSING');
     }
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(function() { controller.abort(); }, API_TIMEOUT_MS);
     try {
       const resp = await fetch(state.apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ pin: state.pin, action: action, payload: payload || {} }),
-        redirect: 'follow'
+        redirect: 'follow',
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       const text = await resp.text();
       let json;
       try { json = JSON.parse(text); }
@@ -2535,10 +2553,13 @@
       else if (readSaveQueue_().length) drainSaveQueue_();
       return json.data;
     } catch (err) {
+      clearTimeout(timeoutId);
       // Treat network-class errors as a signal to flip the banner on.
       // Server errors (BAD_JSON, application errors) are NOT offline
       // signals — those mean we reached the server, it just answered
-      // unhappily.
+      // unhappily. AbortError (our API_TIMEOUT_MS abort) is recognized
+      // as a network error by isNetworkError_, so a hung request also
+      // flips the banner here instead of stranding the user.
       if (isNetworkError_(err)) setOffline_();
       throw err;
     }
