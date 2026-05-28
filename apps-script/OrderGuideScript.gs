@@ -372,6 +372,7 @@ function onOpen(e) {
       .addSeparator()
       .addItem("    Migrate Item Vendors",   "migrateItemVendorsColumn")
       .addItem("    Recalibrate Vendor Pars","showRecalibrateVendorSidebar")
+      .addItem("    Audit Vendor Cadence",   "showVendorCadenceAuditSidebar")
       .addItem("    Clear Config",           "clearMobileApiConfig"))
     .addToUi();
 }
@@ -1215,6 +1216,89 @@ function commitVendorRecalibration(payload) {
   setup.getRange(vendorRow, VENDOR_TABLE.MULT_COL, 1, 7).setValues([newMults]);
 
   return { ok: true, vendor: name, itemCount: itemCount, divisor: divisor };
+}
+
+
+// Read-only diagnostic. For every vendor, runs the same round-trip the
+// ManageVendors Edit form's delivery picker would perform if it were
+// authoritative: inferDeliveryFromMults -> computeMultsFromDelivery. If the
+// recomputed mults differ from what's stored, the picker (when later promoted
+// to the source of truth) would silently rewrite this vendor's mults — flag it
+// for manual review via Recalibrate Vendor Pars before that change ships.
+//
+// Status values returned per vendor:
+//   'canonical' — round-trip is lossless; safe.
+//   'mismatch'  — round-trip differs; recalibrate before promoting the picker.
+//   'everyday'  — canonical but every day has a delivery and every mult is 1
+//                 (the rpr-style "treat every day as 1-day par" pattern). Worth
+//                 confirming the vendor actually delivers daily.
+function auditVendorCadence() {
+  const vendors = getVendorTableData(); // [{name, mults, cutoffTime}, ...]
+  const out = [];
+  for (let i = 0; i < vendors.length; i++) {
+    const v        = vendors[i];
+    const mults    = v.mults.slice(0, 7).map(m => Number(m) || 0);
+    const delivery = inferDeliveryFromMults_(mults);
+    const canon    = computeMultsFromDelivery_(delivery);
+    let status     = 'canonical';
+    for (let j = 0; j < 7; j++) {
+      if (mults[j] !== canon[j]) { status = 'mismatch'; break; }
+    }
+    if (status === 'canonical') {
+      const allOnes = mults.every(m => m === 1);
+      const everyDay = delivery.every(d => d === true);
+      if (allOnes && everyDay) status = 'everyday';
+    }
+    out.push({
+      name:              v.name,
+      mults:             mults,
+      inferredDelivery:  delivery,
+      canonicalMults:    canon,
+      status:            status
+    });
+  }
+  return out;
+}
+
+
+// Server-side twin of ManageVendors.html's computeMultsFromDelivery. Given a
+// 7-element boolean delivery-day array (Mon..Sun), returns the 7 order-day
+// multipliers under the 1-day-lead assumption: an order placed on day i
+// arrives the next day and must cover the gap until the following delivery.
+function computeMultsFromDelivery_(deliveryDays) {
+  const mults = [0, 0, 0, 0, 0, 0, 0];
+  for (let i = 0; i < 7; i++) {
+    const tomorrow = (i + 1) % 7;
+    if (!deliveryDays[tomorrow]) continue;
+    let gap = 1;
+    for (let j = 1; j <= 7; j++) {
+      if (deliveryDays[(tomorrow + j) % 7]) { gap = j; break; }
+    }
+    mults[i] = gap;
+  }
+  return mults;
+}
+
+
+// Server-side twin of ManageVendors.html's inferDeliveryFromMults — display-
+// only seed. A vendor is assumed to deliver on the day after any order-day
+// with a non-zero multiplier.
+function inferDeliveryFromMults_(mults) {
+  const deliveryDays = [false, false, false, false, false, false, false];
+  for (let i = 0; i < 7; i++) {
+    if (mults[i] && mults[i] > 0) deliveryDays[(i + 1) % 7] = true;
+  }
+  return deliveryDays;
+}
+
+
+function showVendorCadenceAuditSidebar() {
+  const tmpl = HtmlService.createTemplateFromFile("VendorCadenceAudit");
+  tmpl.auditJson = JSON.stringify(auditVendorCadence());
+  SpreadsheetApp.getUi().showModalDialog(
+    tmpl.evaluate().setWidth(720).setHeight(640),
+    "Audit Vendor Cadence"
+  );
 }
 
 

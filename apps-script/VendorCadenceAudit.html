@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <script>
+      var AUDIT = <?!= auditJson ?>;
+    </script>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 13px;
+        background: #f4f5f7;
+        color: #222;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── Header ── */
+      .header {
+        background: #1a1a2e;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 14px;
+        height: 44px;
+        flex-shrink: 0;
+      }
+      .header-title { font-size: 13px; font-weight: bold; letter-spacing: 0.03em; }
+      .lang-group { display: flex; gap: 4px; }
+      .lang-btn {
+        padding: 3px 9px; font-size: 10px; font-weight: bold; cursor: pointer;
+        color: rgba(255,255,255,0.45); background: transparent;
+        border: 1px solid rgba(255,255,255,0.2); border-radius: 3px;
+      }
+      .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
+      .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
+
+      /* ── Body ── */
+      .body {
+        flex: 1; min-height: 0; overflow-y: auto;
+        padding: 14px; display: flex; flex-direction: column; gap: 12px;
+      }
+      .body > * { flex-shrink: 0; }
+      .body::-webkit-scrollbar { width: 6px; }
+      .body::-webkit-scrollbar-thumb { background: #c8ccd2; border-radius: 3px; }
+
+      /* ── Intro / hint ── */
+      .intro {
+        background: #fff; border: 1px solid #e0e3e8; border-radius: 6px;
+        padding: 10px 12px; font-size: 11px; color: #444; line-height: 1.5;
+      }
+
+      /* ── Summary chips ── */
+      .summary { display: flex; gap: 8px; flex-wrap: wrap; }
+      .chip {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 4px 10px; border-radius: 12px;
+        font-size: 11px; font-weight: bold;
+        background: #fff; border: 1px solid #d8dbe0; color: #444;
+      }
+      .chip-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+      .chip-dot.canonical { background: #1a6b2e; }
+      .chip-dot.mismatch  { background: #c0392b; }
+      .chip-dot.everyday  { background: #b36b00; }
+
+      /* ── Legend ── */
+      .legend {
+        background: #fff; border: 1px solid #e0e3e8; border-radius: 6px;
+        padding: 10px 12px; font-size: 11px; color: #555; line-height: 1.5;
+      }
+      .legend-row { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; }
+      .legend-badge {
+        flex-shrink: 0; font-weight: bold;
+        padding: 2px 8px; border-radius: 4px; font-size: 10px;
+        min-width: 78px; text-align: center;
+      }
+      .legend-badge.canonical { background: #e8f5e9; color: #1a6b2e; }
+      .legend-badge.mismatch  { background: #fde8e6; color: #c0392b; }
+      .legend-badge.everyday  { background: #fff3e0; color: #b36b00; }
+
+      /* ── Table ── */
+      .table-card {
+        background: #fff; border: 1px solid #e0e3e8; border-radius: 6px;
+        overflow: hidden;
+      }
+      table { width: 100%; border-collapse: collapse; font-size: 11px; }
+      thead th {
+        background: #f8f9fa; border-bottom: 1px solid #e8eaed;
+        padding: 8px 10px; font-size: 10px; font-weight: bold;
+        text-transform: uppercase; letter-spacing: 0.05em; color: #555;
+        text-align: left; white-space: nowrap;
+      }
+      tbody td {
+        padding: 8px 10px; border-bottom: 1px solid #f0f2f4;
+        vertical-align: top;
+      }
+      tbody tr:last-child td { border-bottom: none; }
+      tbody tr.row-mismatch { background: #fff8f7; }
+      tbody tr.row-everyday { background: #fffaf2; }
+
+      .vendor-name { font-weight: bold; color: #1a3a2e; }
+      .mults-row {
+        display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+        min-width: 168px;
+      }
+      .mult-cell {
+        text-align: center; padding: 2px 0;
+        border-radius: 3px; font-weight: bold; font-size: 10px;
+        background: #f5f5f5; color: #ccc;
+      }
+      .mult-cell.one  { background: #f0f7f4; color: #1a3a2e; }
+      .mult-cell.high { background: #fff8e6; color: #b36b00; }
+      .mult-cell.diff { outline: 2px solid #c0392b; outline-offset: -1px; }
+
+      .delivery-list { color: #444; font-size: 11px; }
+      .delivery-list.none { color: #aaa; font-style: italic; }
+
+      .status-badge {
+        display: inline-block; font-weight: bold;
+        padding: 3px 9px; border-radius: 4px; font-size: 10px;
+        text-transform: uppercase; letter-spacing: 0.04em;
+        white-space: nowrap;
+      }
+      .status-badge.canonical { background: #e8f5e9; color: #1a6b2e; }
+      .status-badge.mismatch  { background: #fde8e6; color: #c0392b; }
+      .status-badge.everyday  { background: #fff3e0; color: #b36b00; }
+
+      .empty-state {
+        padding: 30px 20px; text-align: center;
+        color: #999; font-size: 12px; font-style: italic;
+      }
+
+      /* ── Footer ── */
+      .footer {
+        flex: 0 0 auto;
+        background: #fff; border-top: 1px solid #e8eaed;
+        padding: 6px 12px;
+        display: flex; justify-content: flex-end;
+      }
+      button.btn-close {
+        padding: 7px 24px;
+        background: #e0e0e0; color: #333;
+        border: none; border-radius: 4px;
+        font-size: 12px; font-weight: bold; cursor: pointer;
+      }
+      button.btn-close:hover { opacity: 0.85; }
+
+      /* ── i18n ── */
+      .es { display: none; }
+      .en { display: inline; }
+    </style>
+  </head>
+  <body class="lang-en">
+
+    <div class="header">
+      <div class="header-title">
+        <span class="en">Audit Vendor Cadence</span>
+        <span class="es">Auditar Cadencia de Proveedores</span>
+      </div>
+      <div class="lang-group">
+        <button class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button class="lang-btn"        onclick="setLang('es')">ES</button>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <div class="intro" id="intro"></div>
+
+      <div class="summary" id="summary"></div>
+
+      <div class="legend">
+        <div class="legend-row">
+          <span class="legend-badge canonical" id="lg-can-badge"></span>
+          <span id="lg-can-desc"></span>
+        </div>
+        <div class="legend-row">
+          <span class="legend-badge mismatch" id="lg-mis-badge"></span>
+          <span id="lg-mis-desc"></span>
+        </div>
+        <div class="legend-row">
+          <span class="legend-badge everyday" id="lg-eve-badge"></span>
+          <span id="lg-eve-desc"></span>
+        </div>
+      </div>
+
+      <div class="table-card" id="table-card"></div>
+
+    </div><!-- /body -->
+
+    <div class="footer">
+      <button class="btn-close" onclick="google.script.host.close()">
+        <span class="en">Close</span>
+        <span class="es">Cerrar</span>
+      </button>
+    </div>
+
+    <script>
+      var DAY_SHORT_EN = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+      var DAY_SHORT_ES = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+      var DAY_NAMES_EN = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+      var DAY_NAMES_ES = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+
+      var LANG = 'en';
+
+      var T = {
+        en: {
+          intro:            'Reads each vendor’s stored multipliers and checks whether they round-trip cleanly through the delivery-day picker. Mismatches mean the picker would silently rewrite stored values if it ever became the source of truth — recalibrate those vendors first.',
+          summaryTotal:     'vendors',
+          summaryCanonical: 'canonical',
+          summaryMismatch:  'mismatch',
+          summaryEveryday:  'every-day',
+          lgCanBadge:       'Canonical',
+          lgCanDesc:        'Stored mults match what the picker would produce. Safe.',
+          lgMisBadge:       'Mismatch',
+          lgMisDesc:        'Picker would rewrite the stored mults on save. Recalibrate this vendor before promoting the picker.',
+          lgEveBadge:       'Every-day',
+          lgEveDesc:        'Round-trips cleanly, but every day is a delivery and every mult is 1. Confirm this vendor actually delivers daily.',
+          colVendor:        'Vendor',
+          colStored:        'Stored mults',
+          colInferred:      'Inferred delivery',
+          colCanonical:     'Canonical mults',
+          colStatus:        'Status',
+          statusCanonical:  'Canonical',
+          statusMismatch:   'Mismatch',
+          statusEveryday:   'Every-day',
+          noVendors:        'No vendors found.',
+          noneInferred:     '(none)'
+        },
+        es: {
+          intro:            'Lee los multiplicadores almacenados de cada proveedor y verifica si pueden reconstruirse limpiamente con el selector de días de entrega. Una discrepancia significa que el selector sobrescribiría los valores guardados si se volviera la fuente de verdad — recalibra esos proveedores primero.',
+          summaryTotal:     'proveedores',
+          summaryCanonical: 'canónicos',
+          summaryMismatch:  'discrepancia',
+          summaryEveryday:  'diario',
+          lgCanBadge:       'Canónico',
+          lgCanDesc:        'Los multiplicadores almacenados coinciden con lo que produciría el selector. Seguro.',
+          lgMisBadge:       'Discrepancia',
+          lgMisDesc:        'El selector reescribiría los multiplicadores al guardar. Recalibra este proveedor antes de promover el selector.',
+          lgEveBadge:       'Diario',
+          lgEveDesc:        'Reconstruye limpiamente, pero entrega todos los días con multiplicador 1. Confirma que este proveedor realmente entrega a diario.',
+          colVendor:        'Proveedor',
+          colStored:        'Multiplicadores',
+          colInferred:      'Entrega inferida',
+          colCanonical:     'Mult. canónicos',
+          colStatus:        'Estado',
+          statusCanonical:  'Canónico',
+          statusMismatch:   'Discrepancia',
+          statusEveryday:   'Diario',
+          noVendors:        'No se encontraron proveedores.',
+          noneInferred:     '(ninguno)'
+        }
+      };
+
+      function t(k) { return T[LANG][k] || T.en[k] || k; }
+
+      function byId(id) { return document.getElementById(id); }
+
+      function setLang(lang) {
+        LANG = lang;
+        document.body.className = 'lang-' + lang;
+        var btns = document.querySelectorAll('.lang-btn');
+        for (var i = 0; i < btns.length; i++) {
+          btns[i].classList.toggle('active', ['en','es'][i] === lang);
+        }
+        var els = document.querySelectorAll('.en,.es');
+        for (var j = 0; j < els.length; j++) {
+          els[j].style.display = els[j].classList.contains(lang) ? 'inline' : 'none';
+        }
+        render();
+      }
+
+      function multClass(v) { return v === 0 ? '' : v === 1 ? 'one' : 'high'; }
+      function fmtMult(v)   { return v % 1 === 0 ? String(v) : v.toFixed(1); }
+
+      function renderMultsRow(mults, diffMults) {
+        var shorts = LANG === 'es' ? DAY_SHORT_ES : DAY_SHORT_EN;
+        var html = '<div class="mults-row" title="' + shorts.join(' ') + '">';
+        for (var i = 0; i < 7; i++) {
+          var cls = 'mult-cell ' + multClass(mults[i]);
+          if (diffMults && mults[i] !== diffMults[i]) cls += ' diff';
+          html += '<div class="' + cls + '">' + fmtMult(mults[i]) + '</div>';
+        }
+        html += '</div>';
+        return html;
+      }
+
+      function renderDeliveryList(delivery) {
+        var names = LANG === 'es' ? DAY_NAMES_ES : DAY_NAMES_EN;
+        var parts = [];
+        for (var i = 0; i < 7; i++) {
+          if (delivery[i]) parts.push(names[i]);
+        }
+        if (!parts.length) {
+          return '<div class="delivery-list none">' + t('noneInferred') + '</div>';
+        }
+        return '<div class="delivery-list">' + parts.join(', ') + '</div>';
+      }
+
+      function escapeHtml_(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function render() {
+        // Intro
+        byId('intro').textContent = t('intro');
+
+        // Legend badges/descriptions
+        byId('lg-can-badge').textContent = t('lgCanBadge');
+        byId('lg-can-desc').textContent  = t('lgCanDesc');
+        byId('lg-mis-badge').textContent = t('lgMisBadge');
+        byId('lg-mis-desc').textContent  = t('lgMisDesc');
+        byId('lg-eve-badge').textContent = t('lgEveBadge');
+        byId('lg-eve-desc').textContent  = t('lgEveDesc');
+
+        // Summary counts
+        var counts = { canonical: 0, mismatch: 0, everyday: 0 };
+        for (var i = 0; i < AUDIT.length; i++) {
+          counts[AUDIT[i].status] = (counts[AUDIT[i].status] || 0) + 1;
+        }
+        var summaryHtml =
+          '<span class="chip"><b>' + AUDIT.length + '</b> ' + t('summaryTotal') + '</span>' +
+          '<span class="chip"><span class="chip-dot canonical"></span><b>' + counts.canonical + '</b> ' + t('summaryCanonical') + '</span>' +
+          '<span class="chip"><span class="chip-dot mismatch"></span><b>' + counts.mismatch  + '</b> ' + t('summaryMismatch')  + '</span>' +
+          '<span class="chip"><span class="chip-dot everyday"></span><b>' + counts.everyday  + '</b> ' + t('summaryEveryday')  + '</span>';
+        byId('summary').innerHTML = summaryHtml;
+
+        // Table
+        var card = byId('table-card');
+        if (!AUDIT.length) {
+          card.innerHTML = '<div class="empty-state">' + t('noVendors') + '</div>';
+          return;
+        }
+
+        // Sort: mismatch first, then everyday, then canonical (alpha within each).
+        var rank = { mismatch: 0, everyday: 1, canonical: 2 };
+        var rows = AUDIT.slice().sort(function(a, b) {
+          var ra = rank[a.status], rb = rank[b.status];
+          if (ra !== rb) return ra - rb;
+          return a.name.localeCompare(b.name);
+        });
+
+        var html =
+          '<table><thead><tr>' +
+            '<th>' + t('colVendor')    + '</th>' +
+            '<th>' + t('colStored')    + '</th>' +
+            '<th>' + t('colInferred')  + '</th>' +
+            '<th>' + t('colCanonical') + '</th>' +
+            '<th>' + t('colStatus')    + '</th>' +
+          '</tr></thead><tbody>';
+        for (var k = 0; k < rows.length; k++) {
+          var r = rows[k];
+          var rowCls = '';
+          if (r.status === 'mismatch') rowCls = 'row-mismatch';
+          else if (r.status === 'everyday') rowCls = 'row-everyday';
+          var statusKey;
+          if (r.status === 'mismatch') statusKey = 'statusMismatch';
+          else if (r.status === 'everyday') statusKey = 'statusEveryday';
+          else statusKey = 'statusCanonical';
+
+          html +=
+            '<tr class="' + rowCls + '">' +
+              '<td class="vendor-name">' + escapeHtml_(r.name) + '</td>' +
+              '<td>' + renderMultsRow(r.mults, r.status === 'mismatch' ? r.canonicalMults : null) + '</td>' +
+              '<td>' + renderDeliveryList(r.inferredDelivery) + '</td>' +
+              '<td>' + renderMultsRow(r.canonicalMults, r.status === 'mismatch' ? r.mults : null) + '</td>' +
+              '<td><span class="status-badge ' + r.status + '">' + t(statusKey) + '</span></td>' +
+            '</tr>';
+        }
+        html += '</tbody></table>';
+        card.innerHTML = html;
+      }
+
+      // Init
+      setLang('en');
+    </script>
+  </body>
+</html>
