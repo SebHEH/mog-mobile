@@ -4396,8 +4396,16 @@
       // local-only operations (cache patches, no network round-trip), so
       // the bar's job is just to confirm "yes, this is happening" and
       // get out of the way. Total animation time is roughly
-      // MIN_DURATION_MS + 600ms.
-      const MIN_DURATION_MS = 1100;
+      // MIN_DURATION_MS + ~400ms outro.
+      //
+      // The floor used to be 1100ms; cut to 500ms (2026-05-28) because
+      // the audit measured ~1.85s on EVERY transition — far too long
+      // when the wrapped work is usually a local cache patch that
+      // finished in milliseconds. For genuinely slow work (PIN→
+      // getDashboard, review refetch), the breath-pulse still engages
+      // at MIN_DURATION_MS+100, so the bar continues to read as "still
+      // working" — just sooner.
+      const MIN_DURATION_MS = 500;
       const PRE_FILL_PCT    = 85;
 
       // Reset UI
@@ -4445,13 +4453,13 @@
         fill.style.transition = 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1)';
         fill.style.width = '100%';
 
-        setTimeout(() => check.classList.add('on'), 140);
+        setTimeout(() => check.classList.add('on'), 80);
 
-        setTimeout(() => overlay.classList.add('fade-out'), 480);
+        setTimeout(() => overlay.classList.add('fade-out'), 240);
         setTimeout(() => {
           overlay.classList.remove('open', 'fade-out');
           resolve();
-        }, 750);
+        }, 400);
       });
     });
   }
