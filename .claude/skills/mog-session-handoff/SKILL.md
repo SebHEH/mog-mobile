@@ -107,5 +107,10 @@ When a session bundled unrelated bodies of work (e.g., consolidation + scaffold 
 1. Confirm `CLAUDE.md`'s @-import line points at the new dated handoff (not the old one).
 2. Confirm `docs/MOG_CurrentState.md` has been updated.
 3. Suggest a commit. Recommended message: `docs: session handoff YYYY-MM-DD — <one-line topic>`.
-4. Provide a copy-pasteable chat name for Sebastian (the conversation often gets labeled by topic — match the handoff's topic). **Always present it in a fenced code block** so he can copy it directly, the same way suggested commits are presented — never inline prose.
+4. Provide a copy-pasteable chat name for Sebastian. **Match the established naming pattern of his existing MOG chat list:**
+    - Prefix: `MOG:` (sometimes `MOG —`, but `MOG:` is the dominant form).
+    - Length: short — **~4-6 words after the prefix**, no more. The sidebar truncates aggressively; a name that's already short reads well truncated. Date prefixes (e.g. `2026-05-28 —`), comma-joined lists of every shipped item, and "kitchen-sink summary" framings are wrong here — they read as foreign next to peers like `MOG: PWA fixes + ManageVendors picker` or `MOG: ManageVendors edit form`.
+    - Topic choice: pick the **dominant one or two themes** of the session (joined with `+` when two). On a multi-topic session, the rule is **biggest new feature** + (optionally) the second-biggest concrete deliverable — NOT every shipped item.
+    - Examples that fit the pattern (real ones from prior sessions): `MOG: chunked History`, `MOG: Recalibrate Vendor + StorageAreas draft`, `MOG: PWA audit + background-refresh gate`, `MOG: ManageItems multi-vendor`.
+    - **Always present it in a fenced code block** so Sebastian can copy it directly, the same way suggested commits are presented — never inline prose.
 5. Also surface the **"Opening prompt for next session"** block in the chat wrap-up as its own fenced code block (not just buried in the handoff doc), so Sebastian can copy it straight into the next session. Both the chat name and the opening prompt should be copy-pasteable code blocks in the final message.
