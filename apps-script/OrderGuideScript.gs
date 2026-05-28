@@ -2090,149 +2090,111 @@ function showStorageAreasSidebar() {
 
 
 
-// Shared skeleton for storage-area mutations that rewrite the whole list
-// (add / delete / reorder). The mutator receives (current, setup) and
-// returns { newList, payload? } — newList is what gets written; payload
-// merges into the return object. Rename doesn't fit this shape because
-// it edits the area block in place (no list rewrite), so it keeps its
-// own implementation.
-function commitAreaListMutation_(mutate) {
+// Single bulk commit for the Storage Areas modal's draft model. The modal
+// stages every add / rename / delete / reorder locally and sends the desired
+// final state here on Save. `finalList` is the ordered array the modal wants:
+//   [{ origName, name }, ...]
+//     - origName: the area's name at modal load (the stable identity handle),
+//       or null/"" for an area added during this draft.
+//     - name: the desired final name (differs from origName ⇒ rename).
+// Deletions are implicit: any current area whose name isn't referenced by some
+// entry's origName is being deleted. ALL validation runs before any write, so
+// a rejected payload leaves the sheet untouched. (No transactions exist in
+// Apps Script — if a later write throws mid-sequence the state can split; the
+// modal recovers by refetching server truth on failure.)
+function commitStorageAreasDraft(finalList) {
   bumpServerMutationTs_();
+  if (!Array.isArray(finalList)) throw new Error("No areas provided.");
+
+  const maxAreas = AREA_TABLE.END_ROW - AREA_TABLE.START_ROW + 1;
+  if (finalList.length > maxAreas) {
+    throw new Error("Too many areas — the maximum is " + maxAreas + ".");
+  }
+
   const setup   = getSheet_(SHEET_SETUP);
-  const current = getStorageAreaList();
-  const result  = mutate(current, setup);
-  writeAreaList_(setup, result.newList);
+  const current = getStorageAreaList();                       // [{name, order}]
+  const currentByLower = new Map(current.map(a => [a.name.toLowerCase(), a.name]));
+
+  // ── Validate the whole payload before touching the sheet ──
+  const seenNames     = new Set();   // final names (lowercased) — must be unique
+  const seenOrigNames = new Set();   // referenced origNames — no duplicate refs
+  const renameMap     = new Map();   // currentNameLower -> newName (changed only)
+  const keptOrigLower = new Set();   // current areas the payload keeps
+
+  finalList.forEach(entry => {
+    const name = String((entry && entry.name) || "").trim();
+    if (!name) throw new Error("Area name cannot be blank.");
+    const nameLower = name.toLowerCase();
+    if (seenNames.has(nameLower)) throw new Error("\"" + name + "\" is listed twice.");
+    seenNames.add(nameLower);
+
+    const orig = String((entry && entry.origName) || "").trim();
+    if (orig) {
+      const origLower = orig.toLowerCase();
+      if (!currentByLower.has(origLower)) {
+        throw new Error("\"" + orig + "\" no longer exists — reopen the editor and try again.");
+      }
+      if (seenOrigNames.has(origLower)) throw new Error("\"" + orig + "\" is referenced twice.");
+      seenOrigNames.add(origLower);
+      keptOrigLower.add(origLower);
+      if (origLower !== nameLower) renameMap.set(origLower, name);
+    }
+  });
+
+  // Deletions: current areas not referenced by any kept origName.
+  const deletedLower = new Set();
+  current.forEach(a => {
+    const low = a.name.toLowerCase();
+    if (!keptOrigLower.has(low)) deletedLower.add(low);
+  });
+
+  // ── Pick DB reconcile (single pass: drop deleted rows, remap renamed) ──
+  // Doing the remap via a map (not sequential renames) makes a name swap
+  // (A→B, B→A) safe — each row is rewritten exactly once.
+  const existingDb = readPickDb_(setup);
+  let inUseCount = 0;
+  const newDb = [];
+  existingDb.forEach(r => {
+    const areaLower = String(r[3] || "").trim().toLowerCase();
+    if (deletedLower.has(areaLower)) { inUseCount++; return; }   // item loses its area
+    if (renameMap.has(areaLower)) {
+      newDb.push([r[0], r[1], r[2], renameMap.get(areaLower), r[4], r[5]]);
+    } else {
+      newDb.push(r);
+    }
+  });
+  if (deletedLower.size > 0 || renameMap.size > 0) writePickDb_(setup, newDb);
+
+  // Remap the in-sheet Pick Path List area column (SETUP rows 21+, col B) for
+  // renames, so the live sheet view doesn't show a stale name before the next
+  // pick-path rebuild. Deletes are left for the rebuild to clean (matching the
+  // previous per-action delete behavior — the pick DB drop above is the
+  // source of truth).
+  if (renameMap.size > 0) {
+    const listLast = setup.getRange("D:D").getLastRow();
+    if (listLast >= SETUP_LIST_START_ROW) {
+      const areaRange = setup.getRange(SETUP_LIST_START_ROW, 2, listLast - SETUP_LIST_START_ROW + 1, 1);
+      areaRange.setValues(
+        areaRange.getValues().map(r => {
+          const v      = String(r[0] || "").trim();
+          const mapped = renameMap.get(v.toLowerCase());
+          return [mapped ? mapped : v];
+        })
+      );
+    }
+  }
+
+  // Write the area block in the payload's order (writeAreaList_ assigns
+  // order = (i+1)*10), then re-sync those orders into the pick DB.
+  writeAreaList_(setup, finalList.map(entry => ({ name: String(entry.name).trim() })));
   syncPickDbAreaOrders_(setup);
-  return Object.assign({ ok: true }, result.payload || {});
-}
 
-
-function commitAddStorageArea(name) {
-  return commitAreaListMutation_(function(current) {
-    const areaName = String(name || "").trim();
-    if (!areaName) throw new Error("Area name cannot be blank.");
-    if (current.some(a => a.name.toLowerCase() === areaName.toLowerCase())) {
-      throw new Error("\"" + areaName + "\" already exists.");
-    }
-    current.push({ name: areaName });
-    return { newList: current };
-  });
-}
-
-
-
-
-function commitRenameStorageArea(oldName, newName) {
-  bumpServerMutationTs_();
-  oldName = String(oldName || "").trim();
-  newName = String(newName || "").trim();
-  if (!oldName) throw new Error("Old name is required.");
-  if (!newName) throw new Error("New name cannot be blank.");
-  if (oldName.toLowerCase() === newName.toLowerCase()) throw new Error("New name is the same as the current name.");
-
-
-
-
-  const setup   = getSheet_(SHEET_SETUP);
-  const current = getStorageAreaList();
-
-
-
-
-  if (!current.some(a => a.name.toLowerCase() === oldName.toLowerCase())) {
-    throw new Error("\"" + oldName + "\" was not found.");
-  }
-  if (current.some(a => a.name.toLowerCase() === newName.toLowerCase())) {
-    throw new Error("\"" + newName + "\" already exists.");
-  }
-
-
-
-
-  const { range, block } = readAreaBlock_(setup);
-  const idx = block.findIndex(r => String(r[0] || "").trim().toLowerCase() === oldName.toLowerCase());
-  if (idx !== -1) {
-    block[idx][0] = newName;
-    range.setValues(block);
-  }
-
-
-
-
-  const listLast = setup.getRange("D:D").getLastRow();
-  if (listLast >= SETUP_LIST_START_ROW) {
-    const areaRange = setup.getRange(SETUP_LIST_START_ROW, 2, listLast - SETUP_LIST_START_ROW + 1, 1);
-    areaRange.setValues(
-      areaRange.getValues().map(r => {
-        const v = String(r[0] || "").trim();
-        return [v.toLowerCase() === oldName.toLowerCase() ? newName : v];
-      })
-    );
-  }
-
-
-
-
-  const existing = readPickDb_(setup);
-  if (existing.length) {
-    writePickDb_(setup,
-      existing.map(r => {
-        const area = String(r[3] || "").trim();
-        return area.toLowerCase() === oldName.toLowerCase()
-          ? [r[0], r[1], r[2], newName, r[4], r[5]]
-          : r;
-      })
-    );
-  }
-
-
-
-
-  return { ok: true };
-}
-
-
-
-
-function commitDeleteStorageArea(name) {
-  return commitAreaListMutation_(function(current, setup) {
-    const target = String(name || "").trim();
-    if (!target) throw new Error("Area name is required.");
-    if (!current.some(a => a.name.toLowerCase() === target.toLowerCase())) {
-      throw new Error("\"" + target + "\" was not found.");
-    }
-    // Remove pick path DB entries for items assigned to this area.
-    // Items are NOT deactivated — they remain active in MASTER_ITEMS
-    // and will appear as unassigned in the Pick Path sidebar.
-    const existingDb = readPickDb_(setup);
-    const cleanedDb  = existingDb.filter(r => String(r[3] || "").trim().toLowerCase() !== target.toLowerCase());
-    const inUseCount = existingDb.length - cleanedDb.length;
-    writePickDb_(setup, cleanedDb);
-    return {
-      newList: current.filter(a => a.name.toLowerCase() !== target.toLowerCase()),
-      payload: { inUseCount: inUseCount }
-    };
-  });
-}
-
-
-
-
-function commitReorderStorageAreas(orderedNames) {
-  if (!Array.isArray(orderedNames) || !orderedNames.length) throw new Error("No areas provided.");
-  return commitAreaListMutation_(function(current) {
-    const currentNames = new Set(current.map(a => a.name.toLowerCase()));
-    const cleaned = orderedNames
-      .map(n => String(n || "").trim())
-      .filter(n => n && currentNames.has(n.toLowerCase()));
-    if (!cleaned.length) throw new Error("No valid area names received.");
-    const inSidebar = new Set(cleaned.map(n => n.toLowerCase()));
-    const extras    = current.filter(a => !inSidebar.has(a.name.toLowerCase()));
-    return {
-      newList: [...cleaned.map(n => ({ name: n })), ...extras],
-      payload: { count: cleaned.length }
-    };
-  });
+  return {
+    ok:           true,
+    inUseCount:   inUseCount,
+    deletedCount: deletedLower.size,
+    savedCount:   finalList.length
+  };
 }
 
 

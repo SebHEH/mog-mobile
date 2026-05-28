@@ -68,21 +68,30 @@
       .area-item {
         display: flex; align-items: center; gap: 8px;
         padding: 8px 12px; border-bottom: 1px solid #f0f2f5;
-        cursor: grab; user-select: none; transition: background 0.1s;
+        user-select: none; transition: background 0.1s;
       }
       .area-item:last-child { border-bottom: none; }
       .area-item:hover { background: #f7f9fb; }
-      .area-item.dragging { opacity: 0.4; }
-      .area-item.drag-over { border-top: 2px solid #1a3a2e; background: #f0f7f4; }
 
-      .drag-handle { color: #ccc; font-size: 14px; cursor: grab; flex-shrink: 0; }
+      /* Stacked ▲▼ reorder column — matches the button-based reordering used
+         in the Pick Path modal (drag-and-drop was removed for consistency). */
+      .move-col { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+      .btn-move {
+        background: #fff; border: 1px solid #ccc; border-radius: 3px;
+        cursor: pointer; font-size: 10px; line-height: 1; padding: 2px 6px;
+        color: #555; min-width: 24px;
+      }
+      .btn-move:hover    { background: #e8e8e8; }
+      .btn-move:active   { background: #d0d0d0; }
+      .btn-move:disabled { opacity: 0.3; cursor: not-allowed; background: #f5f5f5; }
+
       .order-badge {
         min-width: 30px; text-align: center; font-size: 10px; font-weight: bold;
         color: #aaa; background: #f0f0f0; border-radius: 3px; padding: 2px 5px; flex-shrink: 0;
       }
       .name-col { flex: 1; min-width: 0; }
       .area-name { font-size: 12px; font-weight: bold; color: #1a3a2e; }
-      .area-actions { display: flex; gap: 4px; flex-shrink: 0; }
+      .area-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
       .btn-icon {
         background: none; border: 1px solid #ddd; border-radius: 3px;
         cursor: pointer; font-size: 11px; padding: 3px 7px; color: #666; line-height: 1.4;
@@ -180,7 +189,7 @@
         flex: 0 0 auto;
         background: #fff; border-top: 1px solid #e8eaed;
         padding: 6px 12px;
-        display: flex; justify-content: flex-end;
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
       }
       button.btn-close {
         padding: 7px 24px;
@@ -188,7 +197,18 @@
         border: none; border-radius: 4px;
         font-size: 12px; font-weight: bold; cursor: pointer;
       }
-      button.btn-close:hover { opacity: 0.85; }
+      button.btn-save {
+        padding: 7px 24px;
+        background: #1a6b2e; color: #fff;
+        border: none; border-radius: 4px;
+        font-size: 12px; font-weight: bold; cursor: pointer;
+      }
+      button.btn-close:hover, button.btn-save:hover { opacity: 0.85; }
+      button.btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
+      /* Footer-row status sits left of the buttons; drop the default top
+         margin so it baselines with them. Targeted by id because setStatus()
+         rewrites the element's className (which would drop a utility class). */
+      #save-status { margin-top: 0; flex: 1; min-width: 0; text-align: center; }
 
       /* ── Saving overlay (card-level feedback during in-flight commits).
          Applied to whichever card initiated the action: list-card for
@@ -276,16 +296,21 @@
 
       <!-- Footer hint -->
       <div class="hint-footer">
-        <span class="en">Drag ⠿ to reorder · ✎ to rename · 🗑 to delete from list</span>
-        <span class="es">Arrastra ⠿ para reordenar · ✎ renombrar · 🗑 eliminar desde la lista</span>
+        <span class="en">▲▼ to reorder · ✎ to rename · 🗑 to delete — then Save Areas to apply</span>
+        <span class="es">▲▼ para reordenar · ✎ renombrar · 🗑 eliminar — luego Guardar Áreas para aplicar</span>
       </div>
 
     </div>
 
     <div class="modal-footer">
-      <button class="btn-close" onclick="google.script.host.close()">
+      <button class="btn-close" onclick="doClose()">
         <span class="en">Close</span>
         <span class="es">Cerrar</span>
+      </button>
+      <span id="save-status" class="status footer-status"></span>
+      <button class="btn-save" id="save-btn" onclick="doSave()">
+        <span class="en">Save Areas</span>
+        <span class="es">Guardar Áreas</span>
       </button>
     </div>
 
@@ -296,22 +321,22 @@
         en: {
           addPlaceholder:'e.g., Walk-In Cooler',
           blankName:'Area name cannot be blank.', alreadyExists:'" already exists.',
-          adding:'Adding…', added:'Added "', addedEnd:'".',
           itemsLost:' item(s) unassigned — reassign them in Manage Pick Path.',
-          renamed:'Renamed.', orderSaved:'Order saved.',
           renamePh:'New name…', save:'Save', cancel:'Cancel',
           confirmDelete:'Delete "', confirmDeleteEnd:'"? Assigned items will lose their area.',
-          noAreas:'No areas yet — add one below.'
+          noAreas:'No areas yet — add one below.',
+          unsavedChanges:'Unsaved changes.', saving:'Saving…', saved:'Saved.',
+          unsavedClose:'You have unsaved changes. Close anyway?'
         },
         es: {
           addPlaceholder:'ej. Cámara Fría',
           blankName:'El nombre no puede estar vacío.', alreadyExists:'" ya existe.',
-          adding:'Agregando…', added:'Agregada "', addedEnd:'".',
           itemsLost:' artículo(s) sin área — reasígnalos en Gestionar Ruta de Picking.',
-          renamed:'Renombrado.', orderSaved:'Orden guardado.',
           renamePh:'Nuevo nombre…', save:'Guardar', cancel:'Cancelar',
           confirmDelete:'¿Eliminar "', confirmDeleteEnd:'"? Los artículos asignados perderán su área.',
-          noAreas:'Sin áreas — agrega una abajo.'
+          noAreas:'Sin áreas — agrega una abajo.',
+          unsavedChanges:'Cambios sin guardar.', saving:'Guardando…', saved:'Guardado.',
+          unsavedClose:'Tienes cambios sin guardar. ¿Cerrar de todos modos?'
         }
       };
 
@@ -330,9 +355,15 @@
         renderList();
       }
 
-      var areas      = AREA_LIST.slice();
-      var dragSrcIdx = null;
+      // Each area carries origName — its name at load (or as of the last save) —
+      // as a stable identity handle so the bulk save can tell a rename apart
+      // from a delete+add. Areas added in this draft get origName:null; on a
+      // successful save, every origName is reset to the current name.
+      var areas = AREA_LIST.map(function(a) {
+        return { name: a.name, order: a.order, origName: a.name };
+      });
       var renamingIdx = null;
+      var isDirty     = false;
 
       function byId(id) { return document.getElementById(id); }
 
@@ -401,11 +432,6 @@
         areas.forEach(function(area, i) {
           var li       = document.createElement('li');
           li.className = 'area-item';
-          li.draggable = true;
-
-          var handle       = document.createElement('span');
-          handle.className = 'drag-handle';
-          handle.textContent = '⠿';
 
           var badge       = document.createElement('span');
           badge.className = 'order-badge';
@@ -451,9 +477,29 @@
           nameCol.appendChild(nameEl);
           nameCol.appendChild(renameForm);
 
-          // Action buttons
+          // Action buttons: stacked ▲▼ reorder + rename + delete
           var actions       = document.createElement('div');
           actions.className = 'area-actions';
+
+          var moveCol       = document.createElement('div');
+          moveCol.className = 'move-col';
+
+          var upBtn         = document.createElement('button');
+          upBtn.className   = 'btn-move';
+          upBtn.textContent = '▲';
+          upBtn.title       = LANG === 'es' ? 'Subir' : 'Move up';
+          upBtn.disabled    = (i === 0);
+          upBtn.onclick     = (function(idx) { return function(e) { e.stopPropagation(); moveArea(idx, -1); }; })(i);
+
+          var downBtn         = document.createElement('button');
+          downBtn.className   = 'btn-move';
+          downBtn.textContent = '▼';
+          downBtn.title       = LANG === 'es' ? 'Bajar' : 'Move down';
+          downBtn.disabled    = (i === areas.length - 1);
+          downBtn.onclick     = (function(idx) { return function(e) { e.stopPropagation(); moveArea(idx, +1); }; })(i);
+
+          moveCol.appendChild(upBtn);
+          moveCol.appendChild(downBtn);
 
           var renBtn       = document.createElement('button');
           renBtn.className = 'btn-icon';
@@ -467,53 +513,26 @@
           delBtn.title     = LANG === 'es' ? 'Eliminar' : 'Delete';
           delBtn.onclick   = (function(idx) { return function(e) { e.stopPropagation(); quickDelete(idx); }; })(i);
 
+          actions.appendChild(moveCol);
           actions.appendChild(renBtn);
           actions.appendChild(delBtn);
 
-          li.appendChild(handle);
           li.appendChild(badge);
           li.appendChild(nameCol);
           li.appendChild(actions);
 
-          // Drag events
-          li.addEventListener('dragstart', (function(idx, el) {
-            return function(e) {
-              dragSrcIdx = idx;
-              el.classList.add('dragging');
-              e.dataTransfer.effectAllowed = 'move';
-            };
-          })(i, li));
-
-          li.addEventListener('dragend', function() {
-            li.classList.remove('dragging');
-            document.querySelectorAll('.area-item').forEach(function(el) {
-              el.classList.remove('drag-over');
-            });
-          });
-
-          li.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            document.querySelectorAll('.area-item').forEach(function(el) {
-              el.classList.remove('drag-over');
-            });
-            li.classList.add('drag-over');
-          });
-
-          li.addEventListener('drop', (function(idx) {
-            return function(e) {
-              e.preventDefault();
-              li.classList.remove('drag-over');
-              if (dragSrcIdx === null || dragSrcIdx === idx) return;
-              var moved = areas.splice(dragSrcIdx, 1)[0];
-              areas.splice(idx, 0, moved);
-              dragSrcIdx = null;
-              saveOrder();
-            };
-          })(i));
-
           ul.appendChild(li);
         });
+      }
+
+      // ── Reorder via ▲▼ (draft) ────────────────────────────────────────────────
+      function moveArea(idx, dir) {
+        var target = idx + dir;
+        if (target < 0 || target >= areas.length) return;
+        var moved = areas.splice(idx, 1)[0];
+        areas.splice(target, 0, moved);
+        renderList();
+        markDirty();
       }
 
       // ── Rename ────────────────────────────────────────────────────────────────
@@ -548,98 +567,96 @@
           if (input) { input.style.borderColor = '#e8a0a0'; setTimeout(function() { input.style.borderColor = ''; }, 1500); }
           return;
         }
-        // Optimistic: update local state + UI immediately, refetch only on error.
+        // Draft: update local state only. origName is preserved as the identity
+        // handle so the bulk save can reconcile the rename against server truth.
         areas[idx].name = newName;
         cancelRename(idx);
         renderList();
-        setStatus('add', t('renamed'), 'ok');
-        setTimeout(function() { setStatus('add',''); }, 2000);
-        bumpMutationTs_();
-        google.script.run
-          .withFailureHandler(function(err) {
-            setStatus('add', err.message || String(err), 'warn');
-            // Snap back to server truth on failure.
-            refreshAreas();
-          })
-          .commitRenameStorageArea(oldName, newName);
+        markDirty();
       }
 
-      // ── Quick delete from list ────────────────────────────────────────────────
-      // Feedback model: optimistic visual (row disappears immediately) is the
-      // primary confirmation. On server error, refreshAreas() snaps the row
-      // back AND alert() makes the failure visible. inUseCount messaging is
-      // surfaced via alert too — too important to hide if items lost their
-      // area assignment.
+      // ── Quick delete from list (draft) ────────────────────────────────────────
+      // Removes the row from local state only. The count of items that lose
+      // their area is computed by the server and surfaced in the Save result
+      // (not per-delete), since the actual pick-DB cleanup happens on Save.
       function quickDelete(idx) {
         var name = areas[idx].name;
         if (!window.confirm(t('confirmDelete') + name + t('confirmDeleteEnd'))) return;
         areas.splice(idx, 1);
         renderList();
-        bumpMutationTs_();
-        google.script.run
-          .withSuccessHandler(function(res) {
-            if (res.inUseCount > 0) {
-              window.alert(res.inUseCount + t('itemsLost'));
-            }
-          })
-          .withFailureHandler(function(err) {
-            window.alert(err.message || String(err));
-            refreshAreas();  // snap back
-          })
-          .commitDeleteStorageArea(name);
+        markDirty();
       }
 
-      // ── Save order (after drag) ───────────────────────────────────────────────
-      function saveOrder() {
-        // Local areas array was already reordered in the drop handler. Just
-        // re-render with new badges and confirm with the server. On failure,
-        // snap back to server truth.
-        renderList();
-        var names = areas.map(function(a) { return a.name; });
-        setStatus('add', t('orderSaved'), 'ok');
-        setTimeout(function() { setStatus('add',''); }, 2000);
-        bumpMutationTs_();
-        google.script.run
-          .withFailureHandler(function(err) {
-            setStatus('add', err.message || String(err), 'warn');
-            refreshAreas();
-          })
-          .commitReorderStorageAreas(names);
-      }
-
-      // ── Add ───────────────────────────────────────────────────────────────────
+      // ── Add (draft) ─────────────────────────────────────────────────────────--
       function doAdd() {
         var name = byId('add-name').value.trim();
         if (!name) return setStatus('add', t('blankName'), 'warn');
         if (areas.some(function(a) { return a.name.toLowerCase() === name.toLowerCase(); })) {
           return setStatus('add', '"' + name + t('alreadyExists'), 'warn');
         }
-        // Optimistic: append locally + render. New area gets order = (length+1)*10
-        // which matches what the server will assign.
-        areas.push({ name: name, order: (areas.length + 1) * 10 });
+        // Draft: append locally only. origName:null marks it as new so the bulk
+        // save creates it. order here is display-only (server assigns the final
+        // order = position*10 on save).
+        areas.push({ name: name, order: (areas.length + 1) * 10, origName: null });
         renderList();
         byId('add-name').value = '';
-        byId('add-btn').disabled = true;
-        setStatus('add', t('adding'), 'info');
-        bumpMutationTs_();
-        google.script.run
-          .withSuccessHandler(function() {
-            byId('add-btn').disabled = false;
-            setStatus('add', t('added') + name + t('addedEnd'), 'ok');
-          })
-          .withFailureHandler(function(err) {
-            byId('add-btn').disabled = false;
-            setStatus('add', err.message || String(err), 'warn');
-            refreshAreas();  // snap back if server rejected
-          })
-          .commitAddStorageArea(name);
+        setStatus('add', '');
+        markDirty();
       }
 
-      // ── Refresh from server ───────────────────────────────────────────────────
+      // ── Draft dirty-tracking ────────────────────────────────────────────────--
+      function markDirty() {
+        isDirty = true;
+        setStatus('save', t('unsavedChanges'), 'info');
+      }
+
+      // ── Save (bulk commit of the whole draft) ─────────────────────────────────
+      function doSave() {
+        // Send the desired final state. Each entry carries origName (identity)
+        // + name; the server reconciles renames/adds/deletes/reorder in one pass.
+        var payload = areas.map(function(a) {
+          return { origName: a.origName, name: a.name };
+        });
+        byId('save-btn').disabled = true;
+        setSavingCard_('list-card', true);
+        setStatus('save', t('saving'), 'info');
+        google.script.run
+          .withSuccessHandler(function(res) {
+            setSavingCard_('list-card', false);
+            byId('save-btn').disabled = false;
+            // The saved state becomes the new baseline: clear new-area flags by
+            // resetting origName to the current name on every row.
+            areas.forEach(function(a) { a.origName = a.name; });
+            isDirty = false;
+            bumpMutationTs_();
+            var msg = t('saved');
+            if (res && res.inUseCount > 0) msg += ' ' + res.inUseCount + t('itemsLost');
+            setStatus('save', msg, 'ok');
+            setTimeout(function() { if (!isDirty) setStatus('save', ''); }, 3000);
+          })
+          .withFailureHandler(function(err) {
+            setSavingCard_('list-card', false);
+            byId('save-btn').disabled = false;
+            setStatus('save', err.message || String(err), 'warn');
+            refreshAreas();  // snap back to server truth
+          })
+          .commitStorageAreasDraft(payload);
+      }
+
+      // ── Close (guards unsaved changes) ────────────────────────────────────────
+      function doClose() {
+        if (isDirty && !window.confirm(t('unsavedClose'))) return;
+        google.script.host.close();
+      }
+
+      // ── Refresh from server (recovery after a failed save) ────────────────────
       function refreshAreas(callback) {
         google.script.run
           .withSuccessHandler(function(list) {
-            areas = list;
+            areas = list.map(function(a) {
+              return { name: a.name, order: a.order, origName: a.name };
+            });
+            isDirty = false;
             renderList();
             if (callback) callback();
           })
