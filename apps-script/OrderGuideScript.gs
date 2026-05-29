@@ -367,12 +367,14 @@ function onOpen(e) {
       .addItem("    Setup / Re-run Setup",   "setupMobileApi")
       .addItem("    Set GM Email",           "setGmEmail")
       .addItem("    Set Master PIN",         "setMasterPin")
+      .addItem("    Set Store Concept",      "setStoreConcept")
       .addItem("    Status",                 "showMobileApiStatus")
       .addItem("    Clear PIN Lockout",      "clearPinLockout")
       .addSeparator()
       .addItem("    Migrate Item Vendors",   "migrateItemVendorsColumn")
       .addItem("    Recalibrate Vendor Pars","showRecalibrateVendorSidebar")
       .addItem("    Audit Vendor Cadence",   "showVendorCadenceAuditSidebar")
+      .addItem("    Audit Vendor Tab Structure","auditVendorTabStructure")
       .addItem("    Clear Config",           "clearMobileApiConfig"))
     .addToUi();
 }
@@ -1299,6 +1301,95 @@ function showVendorCadenceAuditSidebar() {
     tmpl.evaluate().setWidth(720).setHeight(640),
     "Audit Vendor Cadence"
   );
+}
+
+
+// ── READ-ONLY: vendor-tab structure audit ────────────────────────────────
+// Pre-flight safety check before ANY vendor-tab migration. Compares every
+// vendor tab against the LIVE VENDOR_TEMPLATE (the clone source — the real
+// source of truth, NOT the exported xlsx) and flags drift on the load-
+// bearing cells: the M spine, the A-D/F spill + order math, H multiplier,
+// and the I/K order block. Also confirms the N:P dead zone is empty and the
+// Q:T duplicate block matches (so the migration knows it's safe to strip).
+// Writes NOTHING — pure read. Run from Ordering Guide → Mobile API → Audit
+// Vendor Tab Structure before running the migration on a store.
+function auditVendorTabStructure() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Anchor cells whose formula must match the reference for a tab to be safe
+  // to migrate. These are the spill anchors + order math + order block; the
+  // formula TEXT is identical across tabs (they reference $B$1 / $M / the
+  // SETUP & MASTER_ITEMS sheets — no per-tab literals), so exact-string
+  // comparison is a precise drift detector.
+  const FORMULA_CELLS = ["A3","B3","C3","D3","F3","H2","I4","K4","M3","Q3","R3","S3","T3"];
+
+  // Reference = the live VENDOR_TEMPLATE when present. If it was deleted on
+  // this store, fall back to the FIRST vendor tab (all tabs are clones, so
+  // mutual consistency is what we can verify) and flag the missing template
+  // loudly — re-establishing it is a migration prerequisite.
+  const vendors = getVendorList();
+  const tmpl = ss.getSheetByName("VENDOR_TEMPLATE");
+  let refSheet, refLabel, templateMissing = false;
+  if (tmpl) {
+    refSheet = tmpl; refLabel = "VENDOR_TEMPLATE";
+  } else if (vendors.length) {
+    templateMissing = true;
+    refSheet = ss.getSheetByName(vendors[0]);
+    refLabel = 'vendor tab "' + vendors[0] + '"  (⚠ VENDOR_TEMPLATE MISSING)';
+  } else {
+    ui.alert("No VENDOR_TEMPLATE and no vendor tabs found — nothing to audit.");
+    return;
+  }
+
+  const ref = {};
+  FORMULA_CELLS.forEach(function (a) { ref[a] = refSheet.getRange(a).getFormula(); });
+
+  const drift = [];
+  let okCount = 0;
+
+  vendors.forEach(function (v) {
+    const sh = ss.getSheetByName(v);
+    if (!sh) { drift.push('⚠ "' + v + '": tab not found'); return; }
+
+    const notes = [];
+    FORMULA_CELLS.forEach(function (a) {
+      if (sh.getRange(a).getFormula() !== ref[a]) notes.push(a + " formula differs");
+    });
+
+    // N:P (cols 14-16) should be empty in the data region (rows 3+).
+    const lastRow = sh.getLastRow();
+    if (lastRow >= 3) {
+      const np = sh.getRange(3, 14, lastRow - 2, 3).getValues();
+      const npFilled = np.some(function (r) {
+        return r.some(function (c) { return c !== "" && c !== null; });
+      });
+      if (npFilled) notes.push("N:P dead zone not empty");
+    }
+
+    if (notes.length === 0) okCount++;
+    else drift.push('⚠ "' + v + '":\n     - ' + notes.join("\n     - "));
+    Logger.log("[VendorTabAudit] " + v + ": " + (notes.length ? notes.join("; ") : "OK"));
+  });
+
+  const total = vendors.length;
+  const summary =
+    "Vendor Tab Structure Audit\n" +
+    "Reference: " + refLabel + "\n\n" +
+    (templateMissing
+      ? "⚠ VENDOR_TEMPLATE is MISSING on this store. Add-vendor falls back\n" +
+        "to ss.getSheets()[3] (the 4th sheet) — fragile. Re-establishing the\n" +
+        "template is required before migrating. Audit below is tab-vs-tab\n" +
+        "consistency only.\n\n"
+      : "") +
+    "Tabs audited: " + total + "\n" +
+    "✓ Match reference: " + okCount + "\n" +
+    (drift.length
+      ? "⚠ Drift: " + drift.length + "\n\n" + drift.join("\n\n") +
+        "\n\nDo NOT migrate the flagged tab(s) until reviewed."
+      : "\nAll tabs match the reference — structurally consistent.") +
+    "\n\n(Full per-tab detail in Extensions → Apps Script → Executions.)";
+  ui.alert("Vendor Tab Structure Audit", summary, ui.ButtonSet.OK);
 }
 
 
@@ -4540,6 +4631,33 @@ const DASH_COLORS = {
 };
 
 
+// Per-concept dashboard branding. `accent` is the background fill that
+// replaces DASH_COLORS.NAVY on the banner + tiles (chosen dark enough for
+// white text); `bannerFont` is applied to the banner text only (tiles keep
+// white text for legibility). Colors mirror the PWA's concept themes so the
+// Sheet dashboard matches what KMs see in the app. Static table — identical
+// across all stores; the per-store choice comes from the MOG_CONCEPT property.
+const CONCEPT_THEMES = {
+  'roll-play': { accent: "#2d8c6b", bannerFont: "#ffffff" },  // RP teal-dark + white
+  'teasnyou':  { accent: "#1a1a1a", bannerFont: "#D4A574" },  // TNY charcoal + Kintsugi gold
+  'default':   { accent: DASH_COLORS.NAVY, bannerFont: DASH_COLORS.WHITE }
+};
+
+// Resolves this store's dashboard theme from the MOG_CONCEPT script property
+// (set via setupMobileApi / Set Store Concept). Falls back to the default
+// navy when unset or unrecognized, so a store with no concept configured
+// renders exactly as before. Memoized for the life of one execution.
+var _dashThemeCache = null;
+function dashTheme_() {
+  if (_dashThemeCache) return _dashThemeCache;
+  var concept = String(
+    PropertiesService.getScriptProperties().getProperty(PROP_CONCEPT) || ""
+  ).trim().toLowerCase();
+  _dashThemeCache = CONCEPT_THEMES[concept] || CONCEPT_THEMES['default'];
+  return _dashThemeCache;
+}
+
+
 
 
 // ── PUBLIC ENTRY POINT ───────────────────────────────────────────────────
@@ -4848,11 +4966,20 @@ function buildHomeDashboard() {
 
 // ── ROW 1: BANNER ────────────────────────────────────────────────────────
 function buildHomeBanner_(sh) {
+  // Store name comes from the per-store MOG_LOCATION_NAME property (set via
+  // setupMobileApi), uppercased. Falls back to a neutral title if unset so a
+  // freshly-copied store never stamps the wrong name. Colors come from the
+  // concept theme (default navy when no concept is configured).
+  const location = String(
+    PropertiesService.getScriptProperties().getProperty(PROP_LOCATION) || ""
+  ).trim();
+  const title = location ? "ORDERING GUIDE  ·  " + location.toUpperCase() : "ORDERING GUIDE";
+  const theme = dashTheme_();
   const banner = sh.getRange("A1:AD1");
   banner.merge()
-    .setValue("ORDERING GUIDE  ·  ROSSLYN")
-    .setBackground(DASH_COLORS.NAVY)
-    .setFontColor(DASH_COLORS.WHITE)
+    .setValue(title)
+    .setBackground(theme.accent)
+    .setFontColor(theme.bannerFont)
     .setFontFamily("Arial")
     .setFontSize(15)
     .setFontWeight("bold")
@@ -4931,7 +5058,7 @@ function buildHomeQuickActions_(sh, layout) {
     { range: "U"+tilesRow+":Y"+tilesRow,   en: "Order History",     es: "Historial"        },
     { range: "Z"+tilesRow+":AD"+tilesRow,  en: "How To Use",        es: "Cómo Usar"        }
   ];
-  tileSpec.forEach(t => buildHomeTile_(sh, t.range, t.en, t.es, DASH_COLORS.NAVY));
+  tileSpec.forEach(t => buildHomeTile_(sh, t.range, t.en, t.es, dashTheme_().accent));
 
   // Six checkbox cells matching tile widths. Each merged range contains a
   // single checkbox at its top-left cell. Top-left col letters match
@@ -5075,7 +5202,7 @@ function buildHomeResetTile_(sh, layout) {
         ')' +
       ')'
     )
-    .setBackground(DASH_COLORS.NAVY)
+    .setBackground(dashTheme_().accent)
     .setFontColor(DASH_COLORS.WHITE)
     .setFontFamily("Arial")
     .setFontSize(11)
@@ -5296,7 +5423,7 @@ function buildHomeConditionalFormatting_(sh, layout) {
   // the section header band so empty tile-pairs disappear into the frame.
   const vendorPopulatedRule = SpreadsheetApp.newConditionalFormatRule()
     .whenCellNotEmpty()
-    .setBackground(DASH_COLORS.NAVY)
+    .setBackground(dashTheme_().accent)
     .setFontColor(DASH_COLORS.WHITE)
     .setRanges([vendorRange])
     .build();

@@ -39,6 +39,7 @@ const PROP_MASTER_PIN     = 'MOG_API_MASTER_PIN';  // multi-unit manager bypass
 const PROP_GM_EMAIL       = 'MOG_GM_EMAIL';        // legacy: seed for recipients list on first read
 const PROP_LOCATION       = 'MOG_LOCATION_NAME';
 const PROP_LOCATION_ABBR  = 'MOG_LOCATION_ABBR';
+const PROP_CONCEPT        = 'MOG_CONCEPT';        // dashboard branding: 'roll-play' | 'teasnyou' (unset → default navy)
 
 // Cycle-date of the most recent successful recap send. Gates auto-send
 // paths (PWA pre-reset, sheet-reset, bulk-mark) so the same cycle's
@@ -1629,7 +1630,7 @@ function setupMobileApi() {
   const props = PropertiesService.getScriptProperties();
 
   const pinResp = ui.prompt(
-    'Mobile API Setup — 1 of 5',
+    'Mobile API Setup — 1 of 6',
     'Enter a 4–8 digit PIN for this location.\n\n' +
     'KMs and managers will use this PIN to access the mobile app for this location only.',
     ui.ButtonSet.OK_CANCEL);
@@ -1638,7 +1639,7 @@ function setupMobileApi() {
   if (!/^\d{4,8}$/.test(pin)) { ui.alert('PIN must be 4–8 digits.'); return; }
 
   const locResp = ui.prompt(
-    'Mobile API Setup — 2 of 5',
+    'Mobile API Setup — 2 of 6',
     'Enter the location name (shown in the app).\n\nExample: Roll Play Rosslyn',
     ui.ButtonSet.OK_CANCEL);
   if (locResp.getSelectedButton() !== ui.Button.OK) return;
@@ -1646,15 +1647,29 @@ function setupMobileApi() {
   if (!location) { ui.alert('Location name is required.'); return; }
 
   const abbrResp = ui.prompt(
-    'Mobile API Setup — 3 of 5',
+    'Mobile API Setup — 3 of 6',
     'Enter a 2–5 letter abbreviation (used in order references).\n\nExample: RPR for Roll Play Rosslyn',
     ui.ButtonSet.OK_CANCEL);
   if (abbrResp.getSelectedButton() !== ui.Button.OK) return;
   const abbr = abbrResp.getResponseText().trim().toUpperCase();
   if (!/^[A-Z]{2,5}$/.test(abbr)) { ui.alert('Abbreviation must be 2–5 letters.'); return; }
 
+  const conceptResp = ui.prompt(
+    'Mobile API Setup — 4 of 6',
+    'Enter this store\'s concept for home-dashboard branding:\n\n' +
+    '  1 = Roll Play\n' +
+    '  2 = Teas\'n You\n\n' +
+    'Leave blank to skip (dashboard stays the default navy).',
+    ui.ButtonSet.OK_CANCEL);
+  if (conceptResp.getSelectedButton() !== ui.Button.OK) return;
+  const conceptInput = conceptResp.getResponseText().trim();
+  const concept = conceptInput === '1' ? 'roll-play'
+                : conceptInput === '2' ? 'teasnyou'
+                : '';
+  if (conceptInput && !concept) { ui.alert('Enter 1, 2, or leave blank.'); return; }
+
   const gmResp = ui.prompt(
-    'Mobile API Setup — 4 of 5',
+    'Mobile API Setup — 5 of 6',
     'Enter the GM email — seeded as the first locked recipient on the daily order email list.\n\n' +
     'You can add more recipients later via the app (Settings → Recipients) or directly in SETUP columns AB-AE.\n\n' +
     'Leave blank to skip.',
@@ -1663,7 +1678,7 @@ function setupMobileApi() {
   const gmEmail = gmResp.getResponseText().trim();
 
   const masterResp = ui.prompt(
-    'Mobile API Setup — 5 of 5',
+    'Mobile API Setup — 6 of 6',
     'Optional: enter the multi-unit manager master PIN (4–8 digits).\n\n' +
     'Managers who know this code can access this location through the\n' +
     'hub in "manager mode" without typing the store PIN.\n\n' +
@@ -1679,6 +1694,8 @@ function setupMobileApi() {
   props.setProperty(PROP_LOCATION, location);
   props.setProperty(PROP_LOCATION_ABBR, abbr);
   props.setProperty(PROP_GM_EMAIL, gmEmail);
+  if (concept) props.setProperty(PROP_CONCEPT, concept);
+  else         props.deleteProperty(PROP_CONCEPT);
   if (masterPin) props.setProperty(PROP_MASTER_PIN, masterPin);
   else           props.deleteProperty(PROP_MASTER_PIN);
 
@@ -1687,6 +1704,7 @@ function setupMobileApi() {
     'PIN:          ' + pin + '\n' +
     'Master PIN:   ' + (masterPin ? '****' + masterPin.slice(-1) : '(none)') + '\n' +
     'Location:     ' + location + ' (' + abbr + ')\n' +
+    'Concept:      ' + (concept || '(none — default navy)') + '\n' +
     'GM email:     ' + (gmEmail || '(none)') + '\n\n' +
     'NEXT STEPS:\n' +
     '1. Add vendor cutoff times via Ordering Guide menu →\n' +
@@ -1709,6 +1727,7 @@ function setupMobileApi() {
     'TO UPDATE INDIVIDUAL FIELDS LATER:\n' +
     '• GM email →   Ordering Guide → Mobile API → Set GM Email\n' +
     '• Master PIN → Ordering Guide → Mobile API → Set Master PIN\n' +
+    '• Concept →    Ordering Guide → Mobile API → Set Store Concept\n' +
     '• Full re-run → Ordering Guide → Mobile API → Setup',
     ui.ButtonSet.OK
   );
@@ -1743,6 +1762,37 @@ function setMasterPin() {
     props.deleteProperty(PROP_MASTER_PIN);
     ui.alert('Master PIN removed.');
   }
+}
+
+
+function setStoreConcept() {
+  // Set or clear this store's concept for home-dashboard branding without
+  // re-running the full setup wizard. The dashboard reads PROP_CONCEPT on
+  // rebuild (buildHomeDashboard → dashTheme_); unset → default navy palette.
+  const ui = SpreadsheetApp.getUi();
+  const props = PropertiesService.getScriptProperties();
+  const current = props.getProperty(PROP_CONCEPT) || '(none — default navy)';
+
+  const resp = ui.prompt(
+    'Set Store Concept',
+    'Current: ' + current + '\n\n' +
+    'Enter this store\'s concept for home-dashboard branding:\n\n' +
+    '  1 = Roll Play\n' +
+    '  2 = Teas\'n You\n\n' +
+    'Leave blank to clear (dashboard reverts to the default navy).',
+    ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  const input = resp.getResponseText().trim();
+  const concept = input === '1' ? 'roll-play'
+                : input === '2' ? 'teasnyou'
+                : '';
+  if (input && !concept) { ui.alert('Enter 1, 2, or leave blank.'); return; }
+
+  if (concept) props.setProperty(PROP_CONCEPT, concept);
+  else         props.deleteProperty(PROP_CONCEPT);
+  ui.alert(
+    'Store concept ' + (concept ? 'set to "' + concept + '"' : 'cleared') + '.\n\n' +
+    'Run Ordering Guide → 🏠 Rebuild Home Dashboard to apply the branding.');
 }
 
 
