@@ -142,6 +142,14 @@
       .mult-input.is-zero { background: #f5f5f5; color: #ccc; font-weight: normal; border-color: #e8e8e8; }
       .mult-input.is-one  { background: #f0f7f4; color: #1a3a2e; border-color: #c8ddd5; }
       .mult-input.is-high { background: #fff8e6; color: #b36b00; border-color: #f0d080; }
+      /* Caption under an active multiplier: "→ <delivery day>" the order feeds.
+         Display-only; hidden (but space reserved) for 0-value cells. */
+      .mult-feeds { font-size: 8px; font-weight: bold; color: #b36b00; line-height: 1; min-height: 9px; text-align: center; white-space: nowrap; }
+      /* Worked example shown at the top of the inline edit form. Display-only. */
+      .mult-example { background: #f0f7f4; border: 1px solid #c8ddd5; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; font-size: 10px; line-height: 1.45; color: #2a4a3e; }
+      .mult-example b { color: #1a3a2e; }
+      .mult-example .ex-row { display: block; }
+      .mult-example .ex-num { color: #b36b00; font-weight: bold; }
 
       /* ── Action panels ── */
       .action-panels { padding: 12px; }
@@ -345,6 +353,10 @@
             <span class="en">0 = no order. 1 = standard par. Higher = covers multiple days.</span>
             <span class="es">0 = sin pedido. 1 = par estándar. Mayor = cubre más días.</span>
           </div>
+          <div class="hint">
+            <span class="en">Each number is the order you place that day — the arrow shows the delivery it covers (orders arrive next day).</span>
+            <span class="es">Cada número es el pedido que haces ese día — la flecha muestra la entrega que cubre (los pedidos llegan al día siguiente).</span>
+          </div>
 
           <div class="mult-grid" id="mult-input-grid"></div>
 
@@ -453,7 +465,8 @@
           noCutoff:         'No cutoff',
           cutoffPlaceholder:'HH:MM',
           deliveryDaysLabel:'Delivery Days',
-          deliveryDaysHint: 'Adjusting these recalculates the multipliers below.'
+          deliveryDaysHint: 'Adjusting these recalculates the multipliers below.',
+          multExample:      '<b>How multipliers work</b><br>You order the day <b>before</b> each delivery, sized to last until the next one. The arrow under each number shows the delivery it covers.<span class="ex-row" style="margin-top:4px">Example — delivers Mon, Thu, Sat:</span><span class="ex-row"><span class="ex-num">Wed 2</span> → arrives Thu, lasts until Sat</span><span class="ex-row"><span class="ex-num">Fri 2</span> → arrives Sat, lasts until Mon</span><span class="ex-row"><span class="ex-num">Sun 3</span> → arrives Mon, lasts until Thu</span><span class="ex-row" style="margin-top:4px">Adjust any number up or down if you\'re over- or under-ordering.</span>'
         },
         es: {
           vendorRequired:   'El nombre del proveedor es obligatorio.',
@@ -477,7 +490,8 @@
           noCutoff:         'Sin corte',
           cutoffPlaceholder:'HH:MM',
           deliveryDaysLabel:'Días de Entrega',
-          deliveryDaysHint: 'Ajustarlos recalcula los multiplicadores de abajo.'
+          deliveryDaysHint: 'Ajustarlos recalcula los multiplicadores de abajo.',
+          multExample:      '<b>Cómo funcionan los multiplicadores</b><br>Haces el pedido el día <b>antes</b> de cada entrega, calculado para durar hasta la siguiente. La flecha bajo cada número muestra la entrega que cubre.<span class="ex-row" style="margin-top:4px">Ejemplo — entrega Lun, Jue, Sáb:</span><span class="ex-row"><span class="ex-num">Mié 2</span> → llega Jue, dura hasta Sáb</span><span class="ex-row"><span class="ex-num">Vie 2</span> → llega Sáb, dura hasta Lun</span><span class="ex-row"><span class="ex-num">Dom 3</span> → llega Lun, dura hasta Jue</span><span class="ex-row" style="margin-top:4px">Ajusta cualquier número si pides de más o de menos.</span>'
         }
       };
 
@@ -496,6 +510,7 @@
         recalcMultipliers();
         populateRemoveSelect();
         rebuildDayGrids();
+        rerenderVendorCards_();
       }
 
       function byId(id) { return document.getElementById(id); }
@@ -579,7 +594,9 @@
           cell.innerHTML =
             '<div class="mult-label">' + shorts[i] + '</div>' +
             '<input type="number" class="mult-input is-zero" id="mult-' + d +
-            '" step="0.1" min="0" value="' + oldVals[i] + '" oninput="styleMultInput(this)">';
+            '" step="0.1" min="0" value="' + oldVals[i] + '" data-day="' + i +
+            '" oninput="styleMultInput(this)">' +
+            '<div class="mult-feeds"></div>';
           multGrid.appendChild(cell);
           styleMultInput(cell.querySelector('input'));
         });
@@ -604,6 +621,33 @@
         if (v === 0)      inp.classList.add('is-zero');
         else if (v === 1) inp.classList.add('is-one');
         else              inp.classList.add('is-high');
+        updateMultFeeds_(inp);
+      }
+
+      // Refreshes the "→ <delivery day>" caption beneath a multiplier input.
+      // An order placed on day i arrives the next day (1-day lead), so a
+      // non-zero mult on day i feeds the delivery on day (i+1). Caption is
+      // blank for 0-value cells (no order that day). Reads data-day off the
+      // input and the .mult-feeds sibling in the same cell. Display-only —
+      // never touches the stored value or the save path. No-ops if either
+      // the data-day attribute or the caption element is missing.
+      function updateMultFeeds_(inp) {
+        const cell = inp.parentNode;
+        if (!cell) return;
+        const cap = cell.querySelector('.mult-feeds');
+        if (!cap) return;
+        const dayAttr = inp.getAttribute('data-day');
+        if (dayAttr === null) return;
+        const i      = parseInt(dayAttr, 10);
+        const v      = parseFloat(inp.value) || 0;
+        const shorts = LANG === 'es' ? DAY_SHORT_ES : DAY_SHORT_EN;
+        if (v > 0) {
+          cap.textContent      = '→ ' + shorts[(i + 1) % 7];
+          cap.style.visibility = 'visible';
+        } else {
+          cap.textContent      = '';
+          cap.style.visibility = 'hidden';
+        }
       }
 
       function multClass(v) { return v === 0 ? 'zero' : v === 1 ? 'one' : 'high'; }
@@ -761,6 +805,21 @@
           .getVendorTableData();
       }
 
+      // Rebuilds every vendor card from the current in-memory vendorData
+      // (no server round-trip). Called on language toggle so the t()-built
+      // card chrome — the example box, cutoff/delivery labels, day names —
+      // re-renders in the new language. Cards are otherwise built once at
+      // initial render and keep their build-time language. No-ops before the
+      // first render (vendorData empty) so the init setLang('en') is free.
+      // Collapses any open edit area, which is fine: language is normally
+      // chosen before editing.
+      function rerenderVendorCards_() {
+        const container = byId('vendor-cards');
+        if (!container || !vendorData || !vendorData.length) return;
+        container.innerHTML = '';
+        vendorData.forEach(function(v, vIdx) { container.appendChild(buildVendorCard(v, vIdx)); });
+      }
+
       function buildVendorCard(v, vIdx) {
         const shorts = LANG === 'es' ? DAY_SHORT_ES : DAY_SHORT_EN;
         const card = document.createElement('div');
@@ -810,6 +869,15 @@
         const editArea = document.createElement('div');
         editArea.className = 'inline-edit-area';
         editArea.id        = 'iedit-' + vIdx;
+
+        // Worked example of the order-day → delivery-day relationship, shown
+        // at the top of the edit form so the KM sees how multipliers map to
+        // deliveries before touching the grid. Static illustration (trusted
+        // constant string) — display-only, never reflects this vendor's data.
+        const exampleBox = document.createElement('div');
+        exampleBox.className = 'mult-example';
+        exampleBox.innerHTML = t('multExample');
+        editArea.appendChild(exampleBox);
 
         // Cutoff edit input — sits above the multiplier grid so the KM
         // sees the more "logical" piece of vendor info (when do I have
@@ -874,10 +942,15 @@
           const inp = document.createElement('input');
           inp.type      = 'number'; inp.step = '0.1'; inp.min = '0';
           inp.className = 'mult-input'; inp.id = 'ie-' + vIdx + '-' + i;
+          inp.setAttribute('data-day', i);
           inp.value     = fmtMult(v.mults[i]);
+          const feeds = document.createElement('div');
+          feeds.className = 'mult-feeds';
+          // Append input + caption into the cell BEFORE styleMultInput so the
+          // .mult-feeds sibling exists when updateMultFeeds_ first paints it.
+          cell.appendChild(lbl); cell.appendChild(inp); cell.appendChild(feeds);
           styleMultInput(inp);
           inp.oninput = function() { styleMultInput(inp); };
-          cell.appendChild(lbl); cell.appendChild(inp);
           grid.appendChild(cell);
         });
 
