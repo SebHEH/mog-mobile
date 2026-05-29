@@ -96,6 +96,107 @@ Build + push: `python build.py` regenerated all 8 `<slug>/` dirs; `git push` tri
 daf354f feat(pwa): accept decimal On Hand input (.4, 1.5, etc)
 ```
 
+---
+
+# Later session — Manage Vendors multiplier clarity + Dashboard branding + #4 scoping
+
+**Session focus:** Started from Sebastian's worry that the ManageVendors multiplier-tuning system was fragile; shipped two UX/branding features; then worked his backlog (PWA-perf question, an assign-after-reset bug, the Excel template) and ended scoping #4 (vendor-tab redesign + migration).
+**Outcome:** Two features shipped to all 9 (deployed via clasp; **commits PENDING — Sebastian owns the commit**). The #2 bug was parked. #4 was scoped + de-risked, with a read-only audit tool now live on all 9 and a real safety finding (VENDOR_TEMPLATE was deleted on rprfo).
+**Next session focus:** Build the #4 migration — re-establish VENDOR_TEMPLATE, harden add-vendor, dead-column strip + header branding, `migrateVendorTabs()` — after running the new audit across all 9 stores.
+
+## What shipped (deployed all 9 — commits PENDING)
+
+1. **ManageVendors multiplier→delivery clarity** (`ManageVendors.html`, bound-sidebar, no `--redeploy`).
+   - Per-cell **"→ <delivery day>" arrows** under each active multiplier (Add + Edit) — `updateMultFeeds_` folded into `styleMultInput`, `data-day` attr on each input.
+   - **Worked-example callout** at top of the Edit form (`multExample` glossary key, EN/ES) using the Mon/Thu/Sat case.
+   - **Latent bug fixed:** `setLang` never re-rendered vendor cards, so the EN/ES toggle left card chrome (example box, cutoff/day labels) in the build-time language. Added `rerenderVendorCards_()` called from `setLang`. i18n parity 26/26. Canary rprfo → all 9.
+
+2. **Dashboard per-store name + concept branding** (`MOGApi.gs` + `OrderGuideScript.gs`, `--redeploy`).
+   - Root issue: `buildHomeBanner_` hardcoded `"ORDERING GUIDE · ROSSLYN"` — every store's rebuild stamped "ROSSLYN".
+   - Banner now reads `MOG_LOCATION_NAME` (uppercased; neutral "ORDERING GUIDE" fallback). New `MOG_CONCEPT` property → `CONCEPT_THEMES` + memoized `dashTheme_()`; accent on banner + tiles + reset strip. RP = teal-dark `#2d8c6b`/white; TNY = charcoal `#1a1a1a`/gold `#D4A574` (mirror PWA themes). Unset → navy (graceful).
+   - Set via extended `setupMobileApi()` (now 6 steps) **and** new standalone `setStoreConcept()` (Mobile API menu) for existing stores.
+   - Canary rprfo (RP) + tnyt (TNY), both verified by Sebastian; fanned out all 9.
+
+3. **#4 read-only audit tool** — `auditVendorTabStructure()` (Mobile API menu, all 9). Compares each vendor tab's load-bearing formulas (M spine, A-D/F spill, H mult, I/K order block, Q-T dead block) + N:P dead zone against the live VENDOR_TEMPLATE, or the first vendor tab if the template is gone (tab-vs-tab consistency). Pure read. **rprfo result: 5 tabs all consistent, but VENDOR_TEMPLATE MISSING.**
+
+## #4 — scope + findings (next-session build)
+
+Confirmed vendor-tab anatomy: **A–F** count grid (F = order math) · **H** multiplier (hidden) · **I–L** order block (**human-facing only** — recap email + daily log build server-side from A/B/E/F/M, never read I–L) · **M** spine (hidden, `SORT(FILTER(pick-DB))`) · **N–T = dead zone** (N–P empty; Q–T = unreferenced duplicate of A–D — order block reads `$A$3`/`$B$3`/`$F$3`, confirmed via I4/K4).
+
+Locked: **keep** the order-block content (Sebastian copies it into emails / screenshots it) — only brand/polish it. Leave the A–F grid as-is.
+
+Findings:
+- **The uploaded xlsx is STALE vs live** — live uses unbounded ranges (`SETUP!$L$2:$L`); the xlsx is bounded (`…$L1000`) with `ARRAYFORMULA` wrappers stripped. **The live VENDOR_TEMPLATE is the source of truth, not the xlsx.**
+- **VENDOR_TEMPLATE was deleted on rprfo.** Add-vendor doesn't *recreate* it — it *copies* it ([`OrderGuideScript.gs:887`](apps-script/OrderGuideScript.gs)), falling back to `ss.getSheets()[3]` (the 4th sheet) when missing — fragile. ⚠ **Do NOT Add Vendor on any template-missing store until hardened.**
+
+**#4 deliverables (next session):** (A) re-establish a canonical hidden VENDOR_TEMPLATE per store from a healthy tab; (B) harden add-vendor to fail-safe when the template is missing; (C) dead-column strip (clear `Q3:T3`, hide `N:T`) + concept header branding, in template + all tabs; (D) `migrateVendorTabs()` — idempotent, defensive (per-tab structure check), On-Hand-safe. **Gate:** run the new audit on all 9 + a `mog-sheet-formula-verify` pass.
+
+## Parked / answered (no code)
+
+- **#2 assign-after-reset bug** — model fully confirmed (live spill keyed on M; On Hand E is position-pinned). Couldn't reproduce a hard failure on retest (likely recalc latency); parked "watch for recurrence." Real latent bug found regardless: `commitUpsertItem` **silently swallows** area-assignment failures (`catch` logs, returns `ok:true`) so the item just vanishes — small safe fix worth doing later (surface the error). Note: only the SETUP-col-B path is On-Hand-gated; the modal paths (`commitPickPathAreaAssignment`, `commitReorderPickPath`) write unconditionally.
+- **PWA slower than the Sheet** — architectural, not a bug: `/exec` pays cold-start + HTTPS + redirect + re-auth + re-bind vs. warm in-Sheet `google.script.run`, plus the ~900ms animation floor. Levers: bootstrap/batch RPCs, more caching, trim the floor. No action taken.
+
+## Outstanding (carry forward)
+
+1. **Set concept + Rebuild Home Dashboard** on the 6 stores not yet done — RP: `rpr, rpt, rptfo, rpfr, rpfrf`; TNY: `tnytf` (rprfo + tnyt done). Rebuild preserves AE9 (no false-stale). At Sebastian's pace.
+2. **Run `Audit Vendor Tab Structure`** on the other 8 stores → which lost VENDOR_TEMPLATE + any drift. Feeds the #4 migration.
+3. **Build the #4 migration** (A–D above) — next-session main event. CANARY rprfo. `mog-sheet-formula-verify` gate.
+4. **Commit this session's work** — 3 dirty files (below). Sebastian owns the commit.
+5. Pre-existing: ManageVendors "Advanced" disclosure (still gated on cadence-audit cleanup); the silent-swallow fix; Recalibrate Vendor runs; parallelize `deploy.py`; reconcile the Rhino-ES5 invariant; retire `api_getHistory_`.
+
+## Files touched this later session
+
+**Apps Script source (deployed all 9, commits PENDING):**
+- `apps-script/ManageVendors.html` — per-cell arrows + example callout + `rerenderVendorCards_` setLang fix.
+- `apps-script/MOGApi.gs` — `PROP_CONCEPT`, `setupMobileApi` concept step, `setStoreConcept()`.
+- `apps-script/OrderGuideScript.gs` — `CONCEPT_THEMES` + `dashTheme_()`, branded `buildHomeBanner_` / tiles / reset / vendor-CF, `auditVendorTabStructure()`, 2 menu items.
+
+**Deployed to:** all 9 clasp targets. ManageVendors + audit = push only; branding = `--redeploy` (MOGApi.gs touched).
+
+## Commits landed this later session
+
+```
+(none yet — all work deployed via clasp but uncommitted; Sebastian owns the commit decision)
+```
+
+## Opening prompt for next session
+
+```
+Resume MOG work. 2026-05-29 (later session) shipped two features to all 9
+(deployed via clasp, COMMITS STILL PENDING — commit when ready):
+  1. ManageVendors multiplier→delivery clarity — per-cell "→ <day>" arrows +
+     worked-example callout in the Edit form + a setLang fix that re-renders
+     vendor cards so EN/ES applies to card chrome.
+  2. Dashboard per-store branding — buildHomeBanner_ reads MOG_LOCATION_NAME
+     (was hardcoded ROSSLYN); new MOG_CONCEPT drives accent (Roll Play teal /
+     Teas'n You charcoal+gold). Set via setStoreConcept() / setupMobileApi.
+
+MAIN EVENT NEXT: build the #4 vendor-tab migration. Scope is locked:
+  (A) re-establish a canonical hidden VENDOR_TEMPLATE per store (it was
+      DELETED on rprfo — add-vendor copies it, doesn't recreate it, and
+      falls back to ss.getSheets()[3] when missing → fragile);
+  (B) harden add-vendor to fail-safe when the template is missing;
+  (C) strip the dead zone (clear Q3:T3, hide N:T) + concept header branding,
+      in the template + every vendor tab;
+  (D) migrateVendorTabs() — idempotent, defensive (per-tab structure check),
+      On-Hand-safe (never touches column E).
+GATE before D: run "Mobile API → Audit Vendor Tab Structure" on all 9 (it's
+deployed) to map which stores lost the template + any drift, then a
+mog-sheet-formula-verify pass. The uploaded xlsx is STALE — trust the LIVE
+VENDOR_TEMPLATE, not the file.
+
+Order block (I–L) is human-facing only (recap/log build from A/B/E/F/M) — safe
+to restyle; keep its content. A–F grid stays as-is. Q–T are an unreferenced
+duplicate of A–D (order block reads A/B/F) — safe to strip.
+
+Also carry: set concept + rebuild dashboard on the other 6 stores; the
+commitUpsertItem silent-swallow fix (#2 carry); the #2 bug is parked
+(watch for recurrence).
+
+CANARY IS rprfo. Read docs/MOG_CurrentState.md for invariants. Deploy routing:
+python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
+```
+
 A third commit will follow for the docs (this handoff + CurrentState + CLAUDE.md @-import update).
 
 ---
