@@ -235,3 +235,82 @@ CANARY IS rprfo (route.py still prints rpr — override).
 Read docs/MOG_CurrentState.md for invariants. Deploy routing source of
 truth: python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
 ```
+
+---
+
+# Later session (evening) — #4 build → vendor-template H2 root-cause fix
+
+**Session focus:** Build the #4 vendor-tab migration as scoped — then, when it started to sprawl, step back and find the *actual* fragility instead of shipping cosmetics.
+**Outcome:** Shipped the #4 scaffolding, then **pivoted to the real root cause**: the hidden `VENDOR_TEMPLATE`'s multiplier formula (`H2`) was stale on **6 of 7 templates incl. the master** — pointing at the dead legacy `ORDER_ENTRY!$B$4`/`$D$2` cells, so every vendor cloned via Add Vendor was born with a 0 multiplier (nothing orderable). Fixed by making the existing H2-sync also repair the template + a non-destructive **Sync Vendor Multiplier Formulas** menu action. **Verified clean across all 9 + master from fresh xlsx exports** (every store has a template, all `H2` = `AD2`/`AE3`, zero stale tabs). The cosmetic branding/strip work was consciously **dropped**.
+**Next session focus:** Optional cleanup only — delete the shelved cosmetic functions; otherwise the vendor-multiplier fragility is resolved.
+
+## What shipped
+
+1. **`#4` scaffolding (built, then mostly shelved)** — `reestablishVendorTemplate_()` (clone a healthy tab → clean hidden template), fail-safe `commitAddVendor` (dropped the dangerous `ss.getSheets()[3]` fallback → clear error), `brandAndStripVendorTab_()` + `migrateVendorTabs()` + a config guard. All deployed all 9 mid-session.
+
+2. **Ground-truthing from real exports (the turning point).** Sebastian exported all 9 stores to `.xlsx`; read with `openpyxl`. Findings:
+   - **Tabs are structurally identical clones.** The `M3`/`I4`/`K4` "variants" the audit flagged were a **false alarm** — Google exports `SORT`/`FILTER`/array formulas as `=IFERROR(__xludf.DUMMYFUNCTION("<real formula>","<last cached value>"),…)`; the real formula text is identical across tabs, only the cached-value tail differs. (Record this — it will fool any future xlsx diff.)
+   - **`ORDER_ENTRY` canonical layout is uniform:** `AD2` = emergency override, `AE3` = day-of-week; the legacy `B4`/`D2` are empty/dead everywhere.
+   - **The one real bug:** `VENDOR_TEMPLATE!H2` was stale (`B4`/`D2`) on rpr, rpt, rpfr, tnyt, tnytf **and the master `_template`**; rptfo + rpfrf had **no template at all**. Root cause: `updateVendorTabHeader2Formulas_()` loops `getVendorList()` (live tabs only) — it never touched the template, so every dashboard rebuild fixed the live tabs and left the hidden template behind.
+
+3. **The fix (the only code that matters long-term)** — in `OrderGuideScript.gs`:
+   - `vendorTabH2Formula_()` — extracted the canonical `H2` string as the single source of truth.
+   - `updateVendorTabHeader2Formulas_()` now **also rewrites `VENDOR_TEMPLATE!H2`** after the vendor loop (returns `templateUpdated`). Root cause closed — future rebuilds keep the template current; new clones born correct.
+   - New menu **📱 Mobile API → Sync Vendor Multiplier Formulas** (`syncVendorMultiplierFormulasMenu_`) — non-destructive H2 repair across all tabs + template, **no dashboard rebuild**.
+   - `migrateVendorTabs` / `brandAndStripVendorTab_` **shelved** — marked `SHELVED` in-file, unwired from the menu (replaced the "Migrate Vendor Tabs" item with the Sync item). Kept `Re-establish Vendor Template`.
+   - Deployed all 9 + `_template`, **push only** (menu-driven; not hit by the PWA `/exec`).
+
+4. **Verified end-to-end.** Sebastian ran **Sync** on every store (+ **Re-establish Vendor Template** on rptfo & rpfrf), re-exported all 9; confirmed: template present on all 9, `H2` = `AD2`/`AE3` on every template + every live tab, **no stale tabs remain**. tnytf **Setup re-run** restored its script properties (PIN/concept/location) — the missing-config issue was from its 2026-05-26 move to a new script project (script properties are project-scoped and don't carry over); verified by Sebastian.
+
+## Outstanding (carry forward)
+
+- **Optional:** delete the shelved `migrateVendorTabs` + `brandAndStripVendorTab_` (cosmetic, dormant, unwired). No urgency.
+- **Note for future xlsx analysis:** Google exports unbounded ranges as bounded (`$L$2:$L` → `$L$2:$L1000`) and strips `ARRAYFORMULA` wrappers, and wraps unsupported functions in `__xludf.DUMMYFUNCTION(...,"<cached value>")`. Compare *formula text inside the wrapper*, ignore the cached tail.
+- **Can't read script properties from the repo/xlsx** — they live in each project's `PropertiesService`, only visible via in-sheet **Mobile API → Status** (clasp here is push/deploy only, not `clasp run`).
+- Pre-existing (still deferred): ManageVendors "Advanced" disclosure (gated on cadence-audit cleanup); `commitUpsertItem` silent-swallow fix; parallelize `deploy.py`; reconcile the Rhino-ES5 invariant; retire `api_getHistory_`.
+
+## Files touched this later session
+
+**Apps Script source (deployed all 9 push-only):**
+- `apps-script/OrderGuideScript.gs` — `vendorTabH2Formula_`, template repair in `updateVendorTabHeader2Formulas_`, `syncVendorMultiplierFormulasMenu_` + menu item, fail-safe `commitAddVendor`, `reestablishVendorTemplate_` + menu, shelved `migrateVendorTabs`/`brandAndStripVendorTab_`.
+
+**Docs:** this handoff; `docs/MOG_CurrentState.md`; `CLAUDE.md` @-import already points here.
+
+## Commits landed this later session
+
+```
+(committed at session close — see git log; OrderGuideScript.gs fix + docs)
+```
+
+## Opening prompt for next session
+
+```
+Resume MOG work. 2026-05-29 (evening) closed out the vendor-multiplier
+fragility for good:
+
+  - Root cause found + fixed: VENDOR_TEMPLATE's H2 multiplier formula was
+    stale (dead ORDER_ENTRY!$B$4/$D$2 refs) on 6 of 7 templates incl. the
+    master, because updateVendorTabHeader2Formulas_ only looped the live
+    vendor list and never touched the hidden template. New vendors cloned
+    from it got multiplier=0 (nothing orderable).
+  - Fix: vendorTabH2Formula_() canonical helper; updateVendorTabHeader2Formulas_
+    now also repairs VENDOR_TEMPLATE; new non-destructive menu "Sync Vendor
+    Multiplier Formulas". Add Vendor is fail-safe. Re-establish Vendor
+    Template tool for templateless stores. Deployed all 9 (push only).
+  - VERIFIED clean across all 9 + master from fresh xlsx exports: template
+    present everywhere, all H2 = AD2/AE3, zero stale tabs. tnytf Setup re-run.
+  - Cosmetic #4 (branding/dead-zone strip) consciously DROPPED; the
+    migrateVendorTabs/brandAndStripVendorTab_ functions are shelved in-file
+    (unwired from the menu) — safe to delete whenever.
+
+Sheets are healthy (proven from exports — tabs are identical clones; the
+M3/I4/K4 "variants" were just __xludf.DUMMYFUNCTION cached-value tails).
+No rebuild needed. Nothing left in a broken state.
+
+Pre-existing carries: ManageVendors "Advanced" disclosure (gated),
+commitUpsertItem silent-swallow fix, parallelize deploy.py, reconcile the
+Rhino-ES5 invariant, retire api_getHistory_.
+
+CANARY IS rprfo. Read docs/MOG_CurrentState.md for invariants. Deploy
+routing: python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
+```
