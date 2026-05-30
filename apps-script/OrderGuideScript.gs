@@ -375,6 +375,8 @@ function onOpen(e) {
       .addItem("    Recalibrate Vendor Pars","showRecalibrateVendorSidebar")
       .addItem("    Audit Vendor Cadence",   "showVendorCadenceAuditSidebar")
       .addItem("    Audit Vendor Tab Structure","auditVendorTabStructure")
+      .addItem("    Re-establish Vendor Template","reestablishVendorTemplateMenu_")
+      .addItem("    Sync Vendor Multiplier Formulas","syncVendorMultiplierFormulasMenu_")
       .addItem("    Clear Config",           "clearMobileApiConfig"))
     .addToUi();
 }
@@ -884,9 +886,15 @@ function commitAddVendor(vendorName, mults, cutoffTime) {
 
 
   // 5. Copy VENDOR_TEMPLATE, rename, move to end.
-  //    Look up by name first; fall back to index 3 if not found.
-  const templateSheet = ss.getSheetByName("VENDOR_TEMPLATE") || ss.getSheets()[3];
-  if (!templateSheet) throw new Error("VENDOR_TEMPLATE tab not found. Check the tab name.");
+  //    Strict lookup — FAIL-SAFE. The old code fell back to ss.getSheets()[3]
+  //    (the 4th sheet) when the template was missing, which could clone an
+  //    arbitrary sheet (SETUP, MASTER_ITEMS, the wrong vendor) and corrupt the
+  //    new tab. If the template is gone, refuse and point at the recovery tool.
+  const templateSheet = ss.getSheetByName("VENDOR_TEMPLATE");
+  if (!templateSheet) throw new Error(
+    "VENDOR_TEMPLATE tab is missing on this store. Run Ordering Guide → " +
+    "📱 Mobile API → Re-establish Vendor Template before adding a vendor."
+  );
 
 
 
@@ -1390,6 +1398,220 @@ function auditVendorTabStructure() {
       : "\nAll tabs match the reference — structurally consistent.") +
     "\n\n(Full per-tab detail in Extensions → Apps Script → Executions.)";
   ui.alert("Vendor Tab Structure Audit", summary, ui.ButtonSet.OK);
+}
+
+
+// ── Re-establish a clean hidden VENDOR_TEMPLATE from a healthy vendor tab ──
+// The template is the clone source for Add Vendor. On some stores (e.g. rprfo)
+// it was deleted, leaving Add Vendor to guess at ss.getSheets()[3] (now removed
+// — see commitAddVendor). This rebuilds it STRUCTURALLY rather than from
+// hardcoded formulas: clone the first structurally-healthy vendor tab, blank its
+// vendor-specific inputs (B1 header → empties the M-spine FILTER spill; E On
+// Hand), and hide it. NO-OP when VENDOR_TEMPLATE already exists.
+// Returns { created:Boolean, source:String|null }.
+function reestablishVendorTemplate_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName("VENDOR_TEMPLATE")) {
+    return { created: false, source: null };
+  }
+
+  // Pick a healthy clone source: a vendor tab with formulas intact in the
+  // load-bearing cells (spill anchor A3, spine M3, order math F3, multiplier H2).
+  const vendors = getVendorList();
+  let source = null;
+  for (let i = 0; i < vendors.length; i++) {
+    const sh = ss.getSheetByName(vendors[i]);
+    if (!sh) continue;
+    if (sh.getRange("A3").getFormula() &&
+        sh.getRange("M3").getFormula() &&
+        sh.getRange("F3").getFormula() &&
+        sh.getRange("H2").getFormula()) {
+      source = sh;
+      break;
+    }
+  }
+  if (!source) {
+    throw new Error(
+      "No structurally-healthy vendor tab found to clone. Run Audit Vendor " +
+      "Tab Structure first."
+    );
+  }
+
+  const tmpl = source.copyTo(ss);
+  tmpl.setName("VENDOR_TEMPLATE");
+
+  // Blank the vendor-specific inputs. B1 drives the M-spine FILTER, so clearing
+  // it empties the A–D/F spill and the I–L order block (which read $A$3/$B$3/$F$3).
+  // E (On Hand) is cleared so no counts bleed into future cloned tabs.
+  tmpl.getRange("B1").clearContent();
+  const lastRow = tmpl.getLastRow();
+  if (lastRow >= VENDOR_TAB.DATA_START_ROW) {
+    tmpl.getRange(VENDOR_TAB.DATA_START_ROW, VENDOR_TAB.ON_HAND_COL,
+                  lastRow - VENDOR_TAB.DATA_START_ROW + 1, 1).clearContent();
+  }
+
+  tmpl.hideSheet();
+
+  // copyTo() leaves the new sheet active; re-pin ORDER_ENTRY to position 1.
+  const orderEntry = ss.getSheetByName(SHEET_ORDER_ENTRY);
+  if (orderEntry) { ss.setActiveSheet(orderEntry); ss.moveActiveSheet(1); }
+
+  return { created: true, source: source.getName() };
+}
+
+
+// Menu wrapper for the standalone recovery action (referenced by the Add Vendor
+// fail-safe error). Low blast radius — only re-creates the template, no strip.
+function reestablishVendorTemplateMenu_() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const r = reestablishVendorTemplate_();
+    ui.alert("Re-establish Vendor Template",
+      r.created
+        ? "Done — hidden VENDOR_TEMPLATE re-created from \"" + r.source + "\"."
+        : "No action needed — VENDOR_TEMPLATE already exists.",
+      ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert("Re-establish Vendor Template", "Failed: " + String(e.message || e), ui.ButtonSet.OK);
+  }
+}
+
+
+// ── Strip the dead zone + apply concept-header branding to one vendor tab ──
+// Idempotent and On-Hand-SAFE (never reads or writes column E). Clears the
+// unreferenced Q:T duplicate block (Q3:T3 anchor the spill), hides the N:T dead
+// columns, and brands the A1:F1 header strip with the store's concept accent +
+// location name. Caller must confirm the tab is structurally sound first.
+function brandAndStripVendorTab_(sheet) {
+  // 1. Dead-zone strip. Q3:T3 are the column-anchored duplicate of A–D; clearing
+  //    row 3 empties the whole block. N:P are already empty by design.
+  sheet.getRange("Q3:T3").clearContent();
+  sheet.hideColumns(14, 7); // N(14) … T(20)
+
+  // 2. Concept branding on the A1:F1 header strip (mirrors the dashboard banner).
+  const theme = dashTheme_();
+  const header = sheet.getRange("A1:F1");
+  header.setBackground(theme.accent);
+  header.setFontColor(theme.bannerFont);
+  header.setFontWeight("bold");
+
+  // 3. Location-name stamp in A1 (left of the merged B1:F1 vendor-name cell).
+  //    B1 is load-bearing (the M-spine FILTER keys off it) so we NEVER write it.
+  //    Guarded: stamp A1 only if it's free or already holds our stamp, so the
+  //    pass stays idempotent and can't clobber unexpected content.
+  const location = String(
+    PropertiesService.getScriptProperties().getProperty(PROP_LOCATION) || ""
+  ).trim();
+  if (location) {
+    const a1 = sheet.getRange("A1");
+    if (!a1.isPartOfMerge()) {
+      const cur = String(a1.getValue() || "").trim();
+      if (cur === "" || cur === location) {
+        a1.setValue(location);
+      } else {
+        Logger.log("[MigrateVendorTabs] " + sheet.getName() +
+                   ": A1 occupied ('" + cur + "') — skipped location stamp.");
+      }
+    }
+  }
+}
+
+
+// ── #4 migration entry point: re-establish template, strip dead zone, brand ──
+// Idempotent, defensive (skips + reports any tab whose PRESERVED structure
+// doesn't match VENDOR_TEMPLATE), and On-Hand-safe. Run AFTER Audit Vendor Tab
+// Structure passes on this store. Menu: 📱 Mobile API → Migrate Vendor Tabs.
+// SHELVED (2026-05-29): cosmetic dead-zone strip + header branding. NOT wired to
+// any menu — the real fix is syncVendorMultiplierFormulasMenu_ (template H2 repair).
+// Kept dormant; safe to delete along with its only helper, brandAndStripVendorTab_.
+function migrateVendorTabs() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Config gate — branding reads MOG_LOCATION_NAME + MOG_CONCEPT. If either is
+  // unset (e.g. a store whose script properties were never configured, like a
+  // freshly-migrated script project), REFUSE rather than half-brand the tabs
+  // navy with no location stamp. The standalone "Re-establish Vendor Template"
+  // action is intentionally NOT gated — it's a config-independent recovery path.
+  const props = PropertiesService.getScriptProperties();
+  const missing = [];
+  if (!String(props.getProperty(PROP_LOCATION) || "").trim()) missing.push("MOG_LOCATION_NAME");
+  if (!String(props.getProperty(PROP_CONCEPT)  || "").trim()) missing.push("MOG_CONCEPT");
+  if (missing.length) {
+    ui.alert(
+      "Migration blocked — store not configured",
+      "Missing script propert" + (missing.length > 1 ? "ies" : "y") + ": " +
+      missing.join(", ") + ".\n\n" +
+      "Run Ordering Guide → 📱 Mobile API → Setup / Re-run Setup first so the " +
+      "vendor-tab headers brand correctly, then re-run the migration.",
+      ui.ButtonSet.OK
+    );
+    return;
+  }
+
+  const confirm = ui.alert(
+    "Migrate Vendor Tabs?",
+    "On THIS store this will:\n" +
+    "  • Re-establish a hidden VENDOR_TEMPLATE if missing.\n" +
+    "  • Clear the unused Q:T block and hide the N:T dead columns.\n" +
+    "  • Brand each header with the store concept + location name.\n\n" +
+    "On Hand (column E) is never touched. Tabs that don't match the template\n" +
+    "are skipped and reported. Reversible via File → Version History.\n\n" +
+    "Run Audit Vendor Tab Structure first if you haven't. Continue?",
+    ui.ButtonSet.YES_NO
+  );
+  if (confirm !== ui.Button.YES) return;
+
+  // 1. Ensure the template exists.
+  let templateNote;
+  try {
+    const r = reestablishVendorTemplate_();
+    templateNote = r.created
+      ? "VENDOR_TEMPLATE re-established (cloned from \"" + r.source + "\")."
+      : "VENDOR_TEMPLATE already present.";
+  } catch (e) {
+    ui.alert("Migration aborted", String(e.message || e), ui.ButtonSet.OK);
+    return;
+  }
+
+  // 2. Reference signature from the template — PRESERVED cells only. Q:T are
+  //    excluded on purpose: they're what we strip, so their presence (unmigrated
+  //    tab) vs absence (already-migrated tab, or the freshly-stripped template)
+  //    must NOT gate migration, or a second run would skip every pending tab.
+  const CHECK_CELLS = ["A3","B3","C3","D3","F3","H2","I4","K4","M3"];
+  const tmpl = ss.getSheetByName("VENDOR_TEMPLATE");
+  const ref = {};
+  CHECK_CELLS.forEach(function (a) { ref[a] = tmpl.getRange(a).getFormula(); });
+
+  // 3. Brand + strip the template itself, then each structurally-matching tab.
+  brandAndStripVendorTab_(tmpl);
+
+  const migrated = [];
+  const skipped  = [];
+  getVendorList().forEach(function (v) {
+    const sh = ss.getSheetByName(v);
+    if (!sh) { skipped.push('"' + v + '" — tab not found'); return; }
+    const diffs = CHECK_CELLS.filter(function (a) {
+      return sh.getRange(a).getFormula() !== ref[a];
+    });
+    if (diffs.length) {
+      skipped.push('"' + v + '" — structure differs (' + diffs.join(", ") + ')');
+      return;
+    }
+    brandAndStripVendorTab_(sh);
+    migrated.push(v);
+  });
+
+  const summary =
+    templateNote + "\n\n" +
+    "✓ Migrated: " + migrated.length + " tab(s)" +
+    (migrated.length ? "\n   " + migrated.join(", ") : "") + "\n\n" +
+    (skipped.length
+      ? "⚠ Skipped: " + skipped.length + "\n   - " + skipped.join("\n   - ") +
+        "\n\nSkipped tabs were NOT modified — review structure before re-running."
+      : "No tabs skipped — all structurally consistent.") +
+    "\n\n(Per-tab detail in Extensions → Apps Script → Executions.)";
+  ui.alert("Vendor Tab Migration", summary, ui.ButtonSet.OK);
 }
 
 
@@ -5467,6 +5689,39 @@ function countMasterVendors_() {
 //                                     the day the order is PLACED)
 //
 // Returns a summary object: { updated, skipped, errors }.
+// Canonical vendor-tab H2 multiplier formula — single source of truth, shared
+// by the per-tab sync and the VENDOR_TEMPLATE repair. References the LIVE
+// dashboard cells (AD2 override, AE3 day-of-week), never the dead legacy B4/D2.
+function vendorTabH2Formula_() {
+  const overrideRef = 'ORDER_ENTRY!' + toAbsoluteA1_(DASH.EMERGENCY_OVERRIDE);
+  const dayRef      = 'ORDER_ENTRY!' + toAbsoluteA1_(DASH.ORDER_DAY);
+  return '=IF(' + overrideRef + '=TRUE, 1, ' +
+      'IFERROR(' +
+        'INDEX(SETUP!$S$2:$Y, ' +
+          'MATCH(TRIM($B$1), ARRAYFORMULA(TRIM(SETUP!$R$2:$R)), 0), ' +
+          'MATCH(' + dayRef + ', ARRAYFORMULA(TRIM(SETUP!$S$1:$Y$1)), 0)' +
+        '), 0)' +
+    ')';
+}
+
+
+// Menu: Mobile API -> Sync Vendor Multiplier Formulas. Non-destructive repair
+// that rewrites every vendor tab's H2 AND the VENDOR_TEMPLATE's H2 to the
+// canonical multiplier formula — fixes anything left on the dead legacy B4/D2
+// refs, without a full dashboard rebuild.
+function syncVendorMultiplierFormulasMenu_() {
+  const ui = SpreadsheetApp.getUi();
+  const r  = updateVendorTabHeader2Formulas_();
+  const msg =
+    "Vendor multiplier formulas synced to the current layout.\n\n" +
+    "Vendor tabs updated: " + r.updated + "\n" +
+    "Template repaired:   " + (r.templateUpdated ? "yes" : "no template found") +
+    (r.skipped ? "\nSkipped (no sheet):  " + r.skipped : "") +
+    ((r.errors && r.errors.length) ? "\n\nErrors:\n  " + r.errors.join("\n  ") : "");
+  ui.alert("Sync Vendor Multiplier Formulas", msg, ui.ButtonSet.OK);
+}
+
+
 function updateVendorTabHeader2Formulas_() {
   const ss      = SpreadsheetApp.getActive();
   const setupSh = ss.getSheetByName(SHEET_SETUP);
@@ -5482,16 +5737,7 @@ function updateVendorTabHeader2Formulas_() {
     .filter(v => v && String(v).trim() !== "")
     .map(v => String(v).trim());
 
-  const overrideRef = 'ORDER_ENTRY!' + toAbsoluteA1_(DASH.EMERGENCY_OVERRIDE);
-  const dayRef      = 'ORDER_ENTRY!' + toAbsoluteA1_(DASH.ORDER_DAY);
-  const newFormula  =
-    '=IF(' + overrideRef + '=TRUE, 1, ' +
-      'IFERROR(' +
-        'INDEX(SETUP!$S$2:$Y, ' +
-          'MATCH(TRIM($B$1), ARRAYFORMULA(TRIM(SETUP!$R$2:$R)), 0), ' +
-          'MATCH(' + dayRef + ', ARRAYFORMULA(TRIM(SETUP!$S$1:$Y$1)), 0)' +
-        '), 0)' +
-    ')';
+  const newFormula = vendorTabH2Formula_();
 
   vendors.forEach(name => {
     const sh = ss.getSheetByName(name);
@@ -5503,6 +5749,20 @@ function updateVendorTabHeader2Formulas_() {
       result.errors.push(name + ': ' + e.message);
     }
   });
+
+  // Also repair VENDOR_TEMPLATE — the clone source for Add Vendor. It lives
+  // OUTSIDE the vendor list, so the loop above never reaches it. That gap is
+  // exactly why new-vendor clones inherited the dead legacy B4/D2 formula.
+  // Keeping it synced means every newly-added vendor is born correct.
+  const tmplSh = ss.getSheetByName("VENDOR_TEMPLATE");
+  if (tmplSh) {
+    try {
+      tmplSh.getRange("H2").setFormula(newFormula);
+      result.templateUpdated = true;
+    } catch (e) {
+      result.errors.push("VENDOR_TEMPLATE: " + e.message);
+    }
+  }
 
   return result;
 }
