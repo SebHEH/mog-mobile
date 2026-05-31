@@ -202,6 +202,33 @@
     .back-btn i { font-size: 22px; margin-right: -2px; }
     .back-btn:active { opacity: 0.5; }
 
+    /* History drill-down breadcrumb. Sits directly under the topbar on the
+       two History sub-views so a KM can see (and jump to) where "Back" goes.
+       Brand-neutral chrome — navigation, not brand, so it stays gray across
+       all concepts (per the "chrome stays constant, brand re-themes" rule). */
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border-2);
+      flex-shrink: 0;
+    }
+    .breadcrumb .crumb-link {
+      background: transparent;
+      border: none;
+      padding: 0;
+      font: inherit;
+      color: var(--text-2);
+    }
+    .breadcrumb .crumb-link:active { opacity: 0.5; }
+    .breadcrumb .crumb-current { color: var(--text); font-weight: 600; }
+    .breadcrumb .crumb-sep { color: var(--text-3); }
+
     .lang-btn {
       font-size: 12px;
       font-weight: 600;
@@ -1562,6 +1589,8 @@
         </button>
       </div>
     </div>
+
+    <div class="breadcrumb" id="breadcrumb" style="display:none"></div>
 
     <div class="scroll-area" id="scroll-area">
       <div class="screen" id="view-today" style="display:none"></div>
@@ -4573,7 +4602,10 @@
   async function openHistoryDateCard(date) {
     state.historyVendorsContext = { date: date };
     showView('history-vendors');
-    setTitle('history-vendors', formatHistoryDate(date));
+    setBreadcrumb_([
+      { html: escapeHtml(t('orderHistory')), onClick: goToHistoryRoot_ },
+      { html: formatHistoryDate(date) }
+    ]);
     const view = $('view-history-vendors');
 
     const cached = state.cache.historyVendors[date];
@@ -4595,9 +4627,8 @@
 
   function renderHistoryVendors(data, ctx) {
     const view = $('view-history-vendors');
-    let html = '<div class="section-label" style="margin-bottom:14px">' +
-      escapeHtml(formatHistoryDate(ctx.date)) +
-      '</div>';
+    // Date no longer repeated here — it's in the breadcrumb above the topbar.
+    let html = '';
     if (!data || !data.vendors || !data.vendors.length) {
       html +=
         '<div class="empty-state">' +
@@ -4632,10 +4663,13 @@
 
   function renderHistoryDetail(data, ctx) {
     const view = $('view-history-detail');
-    let html = '<div class="section-label" style="margin-bottom:14px">' +
-      escapeHtml(ctx.vendor) + ' &middot; ' + formatHistoryDate(ctx.date) +
-      (data.timestamp ? ' &middot; ' + escapeHtml(fmtTimestamp12h(data.timestamp)) : '') +
-      '</div>';
+    // Vendor + date now live in the breadcrumb above the topbar; this header
+    // keeps only the order timestamp (which the breadcrumb doesn't carry).
+    let html = data.timestamp
+      ? '<div class="section-label" style="margin-bottom:14px">' +
+          escapeHtml(fmtTimestamp12h(data.timestamp)) +
+        '</div>'
+      : '';
     for (const it of data.items) {
       const pack = it.pack || '';
       html += '<div class="review-row">' +
@@ -4661,6 +4695,11 @@
   async function openHistoryDetail(ctx) {
     state.historyDetailContext = ctx;
     showView('history-detail');
+    setBreadcrumb_([
+      { html: escapeHtml(t('orderHistory')), onClick: goToHistoryRoot_ },
+      { html: formatHistoryDate(ctx.date), onClick: () => openHistoryDateCard(ctx.date) },
+      { html: escapeHtml(ctx.vendor) }
+    ]);
     const view = $('view-history-detail');
     renderLoading(view);
     try {
@@ -5766,12 +5805,53 @@
       '<span class="lang-en">' + escapeHtml(en) + '</span><span class="lang-es">' + escapeHtml(es) + '</span>';
   }
 
+  // Render the History drill-down breadcrumb. `segments` is an ordered array
+  // of { html, onClick? }; each segment's `html` is already-safe markup (the
+  // caller decides escaping — date labels carry an HTML entity, vendor names
+  // must be escaped). The last segment is the current level (bold, static);
+  // earlier ones render as tappable links that jump to that level. Pass a
+  // falsy/empty value to hide the strip.
+  function setBreadcrumb_(segments) {
+    const el = $('breadcrumb');
+    if (!segments || !segments.length) {
+      el.style.display = 'none';
+      el.innerHTML = '';
+      return;
+    }
+    let html = '';
+    segments.forEach((seg, i) => {
+      if (i > 0) html += '<span class="crumb-sep" aria-hidden="true">&rsaquo;</span>';
+      if (i === segments.length - 1) {
+        html += '<span class="crumb-current">' + seg.html + '</span>';
+      } else {
+        html += '<button type="button" class="crumb-link" data-crumb="' + i + '">' + seg.html + '</button>';
+      }
+    });
+    el.innerHTML = html;
+    el.style.display = 'flex';
+    el.querySelectorAll('.crumb-link').forEach(btn => {
+      const idx = Number(btn.getAttribute('data-crumb'));
+      btn.addEventListener('click', segments[idx].onClick);
+    });
+  }
+
+  // Breadcrumb "Order history" crumb target: back to the dates list (cached,
+  // so it re-renders instantly). Mirrors goBack's history-vendors → history.
+  function goToHistoryRoot_() {
+    showView('history');
+    loadHistory();
+  }
+
   function showView(viewName) {
     ['today','count','review','recap','history','history-vendors','history-detail','settings','recipients'].forEach(v => {
       $('view-' + v).style.display = v === viewName ? 'block' : 'none';
     });
     state.currentView = viewName;
     if (!['count','review'].includes(viewName)) setTitle(viewName);
+    // The breadcrumb belongs only to the two History sub-views; the openers
+    // set it after this call. Leaving for any other view (incl. the dates
+    // root) clears it.
+    if (viewName !== 'history-vendors' && viewName !== 'history-detail') setBreadcrumb_(null);
     // Back button: show whenever current view isn't a tab root
     const tabRoots = { today:'today', history:'history', settings:'settings' };
     const isTabRoot = (viewName === tabRoots[state.currentTab]);
@@ -5899,7 +5979,10 @@
       const ctx = state.historyVendorsContext || state.historyDetailContext;
       if (ctx && ctx.date) {
         showView('history-vendors');
-        setTitle('history-vendors', formatHistoryDate(ctx.date));
+        setBreadcrumb_([
+          { html: escapeHtml(t('orderHistory')), onClick: goToHistoryRoot_ },
+          { html: formatHistoryDate(ctx.date) }
+        ]);
       } else {
         showView('history');
       }
