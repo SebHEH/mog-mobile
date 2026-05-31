@@ -23,10 +23,10 @@
     *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, sans-serif;
+      font-family: var(--font-body);
       font-size: 15px;
-      color: #1f1e1b;
-      background: #ebe9e0;
+      color: var(--text);
+      background: var(--bg-mute);
       -webkit-font-smoothing: antialiased;
       -webkit-tap-highlight-color: transparent;
       overscroll-behavior: none;
@@ -38,6 +38,7 @@
       --teal: #0f6e56;
       --teal-light: #e1f5ee;
       --teal-dark: #04342c;
+      --teal-border: rgba(15,110,86,0.30);
       --amber-light: #faeeda;
       --amber-mid: #BA7517;
       --amber-dark: #412402;
@@ -62,9 +63,6 @@
       --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
 
-    body {
-      font-family: var(--font-body);
-    }
     .pin-title, .stale-title, .topbar-title,
     .vendor-card .vendor-name, .alldone-title,
     h1, h2, h3 {
@@ -86,6 +84,7 @@
       --teal:       #53D3A5;
       --teal-light: #dcf5ea;
       --teal-dark:  #2d8c6b;
+      --teal-border: rgba(45,140,107,0.35);
       --red:        #F0532F;
       --red-light:  #fce4dc;
       --red-dark:   #a83a20;
@@ -96,6 +95,7 @@
       --teal:       #E91E9E;
       --teal-light: #fbe3f1;
       --teal-dark:  #b51579;
+      --teal-border: rgba(181,21,121,0.30);
       --bg-soft:    #C7E8DD;
       --bg-mute:    #aed9c9;
     }
@@ -107,6 +107,7 @@
       --teal:       #D4A574;
       --teal-light: #f5ead8;
       --teal-dark:  #a17a4d;
+      --teal-border: rgba(161,122,77,0.35);
       --text:       #1a1a1a;
       --text-2:     #4a4a4a;
       --bg-soft:    #f5f3ef;
@@ -305,7 +306,7 @@
        vendor on today's list has been reviewed. Celebratory + email CTA. */
     .alldone-panel {
       background: var(--teal-light);
-      border: 0.5px solid #b8dccd;
+      border: 0.5px solid var(--teal-border);
       border-radius: var(--r-lg);
       padding: 18px;
       margin-bottom: 18px;
@@ -452,9 +453,9 @@
     }
     .recipient-toggle:active { filter: brightness(0.97); }
     .recipient-toggle.on {
-      background: #d8efe1;
-      border-color: #b8dccd;
-      color: #1a6b2e;
+      background: var(--teal-light);
+      border-color: var(--teal-border);
+      color: var(--teal-dark);
     }
     .recipient-toggle.off {
       background: var(--bg-soft);
@@ -479,7 +480,7 @@
        when the user taps the Add button. */
     .recipient-add-form {
       background: var(--teal-light);
-      border: 0.5px solid #b8dccd;
+      border: 0.5px solid var(--teal-border);
       border-radius: var(--r-lg);
       padding: 14px;
       margin-bottom: 10px;
@@ -570,7 +571,7 @@
     }
     .vendor-card.status-reviewed {
       background: var(--teal-light);
-      border-color: #b8dccd;
+      border-color: var(--teal-border);
     }
     .vendor-card.status-sent {
       /* Already-submitted state — neutral grey, visually de-emphasized */
@@ -640,7 +641,7 @@
     .pill-done {
       background: white;
       color: var(--teal-dark);
-      border-color: rgba(15,110,86,0.35);
+      border-color: var(--teal-border);
     }
     .pill-progress {
       background: white;
@@ -1384,7 +1385,7 @@
       font-size: 13px;
       font-weight: 600;
       line-height: 1.35;
-      border-bottom: 1px solid rgba(15, 110, 86, 0.25);
+      border-bottom: 1px solid var(--teal-border);
       align-items: center;
       gap: 8px;
     }
@@ -1393,7 +1394,7 @@
     .manager-banner .label .ti { vertical-align: -2px; margin-right: 4px; font-size: 14px; }
     .manager-banner .exit-btn {
       background: transparent;
-      border: 1px solid rgba(15, 110, 86, 0.35);
+      border: 1px solid var(--teal-border);
       color: var(--teal-dark);
       font-size: 12px;
       font-weight: 600;
@@ -1420,7 +1421,7 @@
       pointer-events: none;
     }
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
-    .toast.success { background: #0e554a; }
+    .toast.success { background: var(--teal-dark); }
     .toast.error   { background: var(--red-dark); }
 
     .es .lang-en { display: none; }
