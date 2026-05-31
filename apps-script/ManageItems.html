@@ -1410,8 +1410,10 @@
           if (area && res.assignedArea) {
             setStatus('add', t('added') + res.id + t('assignedTo') + res.assignedArea + t('assignedEnd'), 'ok');
           } else if (area) {
-            // areaName was sent but server didn't echo an assignedArea — partial success.
-            setStatus('add', t('added') + res.id + ' — ' + t('addedNoArea'), 'warn');
+            // areaName was sent but server didn't echo an assignedArea — partial
+            // success. Surface the server's reason when it sent one.
+            setStatus('add', t('added') + res.id + ' — ' + t('addedNoArea') +
+              (res.areaError ? ' (' + res.areaError + ')' : ''), 'warn');
           } else {
             setStatus('add', t('added') + res.id + t('addedNoArea'), 'ok');
           }
@@ -1448,7 +1450,8 @@
             byId('edit-area-current').value = res.assignedArea;
             byId('edit-area-new').value = '';
           } else if (newArea) {
-            setStatus('edit', t('saved') + res.id + t('savedFail'), 'warn');
+            setStatus('edit', t('saved') + res.id + t('savedFail') +
+              (res.areaError ? ' (' + res.areaError + ')' : ''), 'warn');
           } else {
             setStatus('edit', t('saved') + res.id, 'ok');
           }

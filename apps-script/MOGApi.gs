@@ -166,7 +166,6 @@ function doPost(e) {
       case 'getRecapData':     data = api_getRecapData_(payload);       break;
       case 'getRecipients':    data = api_getRecipients_();             break;
       case 'saveRecipients':   data = api_saveRecipients_(payload);     break;
-      case 'getHistory':        data = api_getHistory_(payload);          break;
       case 'getHistoryDates':   data = api_getHistoryDates_(payload);     break;
       case 'getHistoryVendors': data = api_getHistoryVendors_(payload);   break;
       case 'getHistoryDetail':  data = api_getHistoryDetail_(payload);    break;
@@ -854,42 +853,6 @@ function buildRecapSections_(requestedVendors) {
 
 
 
-function api_getHistory_(payload) {
-  payload = payload || {};
-  const filters = {
-    vendorFilter: payload.vendor   || 'ALL',
-    dateFrom:     payload.dateFrom || '',
-    dateTo:       payload.dateTo   || ''
-  };
-  const flat = getOrderHistory(filters);
-
-  // Group by date → vendor → { vendor, itemCount, timestamp, reference }
-  const grouped = new Map();
-  for (const row of flat) {
-    if (!grouped.has(row.orderDate)) grouped.set(row.orderDate, new Map());
-    const byVendor = grouped.get(row.orderDate);
-    if (!byVendor.has(row.vendor)) {
-      byVendor.set(row.vendor, {
-        vendor:    row.vendor,
-        itemCount: 0,
-        timestamp: row.timestamp,
-        reference: generateReferenceFromDateStr_(row.vendor, row.orderDate)
-      });
-    }
-    byVendor.get(row.vendor).itemCount++;
-  }
-
-  const out = [];
-  Array.from(grouped.keys()).sort().reverse().forEach(date => {
-    const vendors = Array.from(grouped.get(date).values())
-      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-    out.push({ date: date, vendors: vendors });
-  });
-
-  return { groups: out };
-}
-
-
 function api_getHistoryDetail_(payload) {
   const date   = String(payload.date   || '');
   const vendor = String(payload.vendor || '');
@@ -929,9 +892,6 @@ function api_getHistoryDetail_(payload) {
 // entirely. Cache invalidation is keyed on getServerMutationTs_ — bumped by
 // recap-send + reset + anything that mutates LOG_ORDERS — so the new caches
 // share the eviction story with the dashboard cache.
-//
-// api_getHistory_ above remains for backwards-compat (internal callers like
-// the daily-recap auto-send still use it); the PWA stops calling it.
 function api_getHistoryDates_(payload) {
   payload = payload || {};
   const dateFrom = String(payload.dateFrom || '');
@@ -2012,29 +1972,6 @@ function test_getVendorItems() {
         ' — on hand: ' + (it.onHand === null ? 'blank' : it.onHand) +
         ' — suggested: ' + (it.suggestedQty === null ? '—' : it.suggestedQty)
       );
-    }
-  } catch (err) {
-    Logger.log('ERROR: ' + (err.stack || err));
-  }
-}
-
-
-function test_getHistory() {
-  Logger.log('--- test_getHistory (last 7 days) ---');
-  try {
-    const tz = Session.getScriptTimeZone();
-    const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const result = api_getHistory_({
-      dateFrom: Utilities.formatDate(weekAgo, tz, 'yyyy-MM-dd'),
-      dateTo:   Utilities.formatDate(today, tz, 'yyyy-MM-dd')
-    });
-    Logger.log('Groups: ' + result.groups.length);
-    for (const g of result.groups) {
-      Logger.log('  ' + g.date + ':');
-      for (const v of g.vendors) {
-        Logger.log('    ' + v.vendor + ' — ' + v.itemCount + ' items at ' + v.timestamp);
-      }
     }
   } catch (err) {
     Logger.log('ERROR: ' + (err.stack || err));

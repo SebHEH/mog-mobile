@@ -2169,19 +2169,22 @@ function commitUpsertItem(payload) {
     // Optional inline area assignment — client passes areaName instead of
     // making a second commitPickPathAreaAssignment roundtrip.
     let assignedArea = "";
+    let areaError    = "";
     if (payload.areaName) {
       try {
         commitPickPathAreaAssignment(itemId, vendor, String(payload.areaName).trim());
         assignedArea = String(payload.areaName).trim();
       } catch (err) {
-        // Don't fail the add if area assignment fails — return a flag so the
-        // client can show a partial-success status.
+        // Don't fail the add — the item row IS created. But surface the reason
+        // the area step failed so the client can show it; without an area the
+        // item won't appear on the vendor tab and otherwise looks "vanished".
+        areaError = (err && err.message) ? err.message : String(err);
         console.error('inline area assignment failed:', err);
       }
     } else {
       reloadSetupIfVendorMatches_(vendor);
     }
-    return { ok: true, mode: "add", row: newRow, id: itemId, assignedArea };
+    return { ok: true, mode: "add", row: newRow, id: itemId, assignedArea, areaError };
   }
 
 
@@ -2237,17 +2240,21 @@ function commitUpsertItem(payload) {
 
   // Optional inline area reassignment — same as Add path.
   let assignedArea = "";
+  let areaError    = "";
   if (active && payload.areaName) {
     try {
       commitPickPathAreaAssignment(existing.id, vendor, String(payload.areaName).trim());
       assignedArea = String(payload.areaName).trim();
     } catch (err) {
+      // The item edits ARE saved; only the area reassignment failed. Surface
+      // the reason instead of swallowing it into the log.
+      areaError = (err && err.message) ? err.message : String(err);
       console.error('inline area reassignment failed:', err);
     }
   } else {
     reloadSetupIfVendorMatches_(vendor);
   }
-  return { ok: true, mode: "edit", row, id: existing.id, assignedArea };
+  return { ok: true, mode: "edit", row, id: existing.id, assignedArea, areaError };
 }
 
 

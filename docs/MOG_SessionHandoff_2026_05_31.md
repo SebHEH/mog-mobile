@@ -56,7 +56,7 @@ Several teal-tinted borders/toasts were hardcoded to the **default HEH teal**, s
 2. **Batch D** (strategic, deferred): brand fonts (Brother 1816 / Avenir for RP, Campaign Serif / Filson Pro for TNY — currently Archivo Black + Inter in PWA, Arial in modals); brand SVG concept marks on the hub; concept-aware modal theming (modals are fixed navy/green across all 9).
 3. **Teas'n You apostrophe** (low): displayed concept name uses straight `U+0027` vs brand-standard curly `U+2019`. Coupled — `stores.json` registry string and the `CONCEPT_VISUALS` key must change together or the icon lookup falls back.
 4. **`audit_modals.py` blind spots** (housekeeping): only checks 3 substrings on 5 modals; misses color/font/glyph drift and omits `RecalibrateVendor.html` (which exists) + the 3 read-only modals. Consider widening its coverage.
-5. **Pre-existing carries** (still open): ManageVendors "Advanced" disclosure (gated on cadence-audit cleanup); `commitUpsertItem` silent-swallow fix; parallelize `deploy.py`; reconcile the Rhino-ES5 invariant in CLAUDE.md (modals run in the browser and already use ES6 `const`/arrows); retire `api_getHistory_`.
+5. **Pre-existing carries** (still open): ManageVendors "Advanced" disclosure (gated on cadence-audit cleanup). *(Resolved 2026-05-31 housekeeping batch: `commitUpsertItem` silent-swallow fix, retired `api_getHistory_`, reconciled the Rhino-ES5 invariant. Parallelize `deploy.py` was dropped — not a backlog item; see `MOG_CurrentState.md` architecture notes.)*
 
 **Canary reminder:** canary is **rprfo** (route.py still prints rpr — override). Any future modal change: `python deploy.py --target rprfo`, smoke-test in the Sheet, then `python deploy.py`.
 
