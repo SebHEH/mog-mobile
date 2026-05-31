@@ -142,7 +142,7 @@
     .back-btn {
       background: transparent;
       border: none;
-      color: var(--heh-red-dark);
+      color: var(--concept-dark, var(--heh-red-dark));
       font-size: 15px;
       font-weight: 500;
       padding: 6px 10px 6px 0;
@@ -199,8 +199,12 @@
       width: 40px;
       height: 40px;
       border-radius: 10px;
-      background: var(--heh-red-light);
-      color: var(--heh-red-dark);
+      /* --concept-light/-dark are set on #app when the user drills into a
+         concept (setActiveConceptTheme_); unset on the concept picker, so
+         these fall back to the HEH-red master look. Concept-picker chips
+         override these inline per-card with each concept's own tint. */
+      background: var(--concept-light, var(--heh-red-light));
+      color: var(--concept-dark, var(--heh-red-dark));
       display: flex;
       align-items: center;
       justify-content: center;
@@ -371,7 +375,7 @@
      manually unless you understand build.py's injection logic.
      ============================================================ -->
 <script>
-  const STORE_REGISTRY = [{"slug": "rpr", "concept": "Roll Play", "location": "Rosslyn BOH"}, {"slug": "rprfo", "concept": "Roll Play", "location": "Rosslyn FOH"}, {"slug": "rpt", "concept": "Roll Play", "location": "Tysons BOH"}, {"slug": "rptfo", "concept": "Roll Play", "location": "Tysons FOH"}, {"slug": "rpfr", "concept": "Roll Play", "location": "Founders BOH"}, {"slug": "rpfrf", "concept": "Roll Play", "location": "Founders FOH"}, {"slug": "tnytf", "concept": "Teas'n You", "location": "Tysons FOH"}, {"slug": "tnyt", "concept": "Teas'n You", "location": "Tysons BOH"}];  // __STORE_REGISTRY__ build-injected
+  const STORE_REGISTRY = [{"slug": "rpr", "concept": "Roll Play", "location": "Rosslyn BOH"}, {"slug": "rprfo", "concept": "Roll Play", "location": "Rosslyn FOH"}, {"slug": "rpt", "concept": "Roll Play", "location": "Tysons BOH"}, {"slug": "rptfo", "concept": "Roll Play", "location": "Tysons FOH"}, {"slug": "rpfr", "concept": "Roll Play", "location": "Founders BOH"}, {"slug": "rpfrf", "concept": "Roll Play", "location": "Founders FOH"}, {"slug": "tnytf", "concept": "Teas’n You", "location": "Tysons FOH"}, {"slug": "tnyt", "concept": "Teas’n You", "location": "Tysons BOH"}];  // __STORE_REGISTRY__ build-injected
 
   // ============================================================
   // CONCEPT VISUAL REGISTRY
@@ -397,9 +401,15 @@
   //      the .ti-icon class.
   //   3. No other changes needed — conceptIconHtml_ picks svg over
   //      icon automatically.
+  //
+  // `tint` / `tintDark` / `tintLight` (optional): per-concept brand color.
+  // tintLight washes the concept-card icon chip; tintDark colors the glyph
+  // and is carried into the site/area sub-screens (back button, chips) via
+  // the --concept-* CSS vars (see setActiveConceptTheme_). A concept that
+  // omits these falls back to the HEH-red master look.
   const CONCEPT_VISUALS = {
-    'Roll Play':       { icon: 'soup' },        // pho / bowls
-    'Teas\'n You':     { icon: 'cup' },         // bubble tea
+    'Roll Play':       { icon: 'soup',  tint: '#53D3A5', tintDark: '#2d8c6b', tintLight: '#e4f7f0' },  // basil green
+    'Teas’n You':      { icon: 'cup',   tint: '#D4A574', tintDark: '#8a6d3b', tintLight: '#f7efe2' },  // gold (curly U+2019)
     'Lei\'d Poke':     { icon: 'fish' },        // poke bowls
     '\u0102N':         { icon: 'leaf' },        // wellness-forward; Ă = U+0102
     'Chasin\' Tails':  { icon: 'flame' },       // cajun heat
@@ -486,6 +496,36 @@
     <div class="cards" id="location-cards"></div>
   </div>
 
+  <!-- AREA PICKER (after a site is tapped, when the site has >1 area) -->
+  <div class="screen" id="screen-area">
+    <div class="back-row">
+      <button class="back-btn" id="area-back-btn" type="button">
+        <i class="ti ti-chevron-left" aria-hidden="true"></i>
+        <span class="lang-en">Back</span>
+        <span class="lang-es">Atr&aacute;s</span>
+      </button>
+    </div>
+    <div class="mgr-banner" id="mgr-banner-area" style="display:none">
+      <i class="ti ti-id-badge-2 mgr-icon" aria-hidden="true"></i>
+      <span class="mgr-text">
+        <span class="lang-en">Manager mode &mdash; tap any area to sign in</span>
+        <span class="lang-es">Modo gerente &mdash; toca cualquier &aacute;rea para iniciar</span>
+      </span>
+      <button class="mgr-exit" id="mgr-exit-area" type="button">
+        <span class="lang-en">Exit</span>
+        <span class="lang-es">Salir</span>
+      </button>
+    </div>
+    <div class="header">
+      <h1 id="area-title">&nbsp;</h1>
+      <p class="sub">
+        <span class="lang-en">Choose your area</span>
+        <span class="lang-es">Elige tu &aacute;rea</span>
+      </p>
+    </div>
+    <div class="cards" id="area-cards"></div>
+  </div>
+
   <!-- MANAGER CODE ENTRY -->
   <div class="screen" id="screen-mgr-code">
     <div class="back-row">
@@ -538,6 +578,12 @@
     currentLang = (currentLang === 'en') ? 'es' : 'en';
     localStorage.setItem('mog_lang', currentLang);
     document.body.className = currentLang;
+    // Most hub strings are static bilingual spans (handled by the class
+    // flip), but the concept cards' "N locations" meta is built in the
+    // active language at render time — rebuild it so the toggle takes.
+    // (Site/area card text is language-neutral — site names and BOH/FOH
+    // codes — so those screens need no re-render.)
+    renderConceptPicker_();
   }
   document.getElementById('hub-lang-btn').addEventListener('click', toggleHubLang_);
 
@@ -585,8 +631,11 @@
   // ============================================================
   // SCREEN MANAGEMENT
   // ============================================================
-  const SCREENS = ['screen-concept', 'screen-location', 'screen-mgr-code'];
+  const SCREENS = ['screen-concept', 'screen-location', 'screen-area', 'screen-mgr-code'];
   function showScreen(id) {
+    // Returning to the concept picker drops back to the HEH-red master
+    // look (the picker shows all concepts, each tinted inline per-card).
+    if (id === 'screen-concept') setActiveConceptTheme_(null);
     for (const s of SCREENS) {
       const el = document.getElementById(s);
       if (!el) continue;
@@ -651,10 +700,12 @@
       const card = document.createElement('button');
       card.className = 'card';
       card.type = 'button';
-      const locCount = group.stores.length;
+      // Meta counts SITES (Rosslyn/Tysons/Founders), not individual
+      // BOH/FOH stores \u2014 that's what the next screen lists.
+      const siteCount = buildSiteGroups_(group).length;
       const meta = (currentLang === 'en')
-        ? (locCount === 1 ? '1 location' : locCount + ' locations')
-        : (locCount === 1 ? '1 ubicaci\u00f3n' : locCount + ' ubicaciones');
+        ? (siteCount === 1 ? '1 location' : siteCount + ' locations')
+        : (siteCount === 1 ? '1 ubicaci\u00f3n' : siteCount + ' ubicaciones');
       card.innerHTML =
         '<span class="ti-icon">' + conceptIconHtml_(group.concept) + '</span>' +
         '<span class="content">' +
@@ -664,19 +715,134 @@
         '<span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>';
       card.querySelector('.title').textContent = group.concept;
       card.querySelector('.meta').textContent = meta;
+      // Per-concept chip tint (inline so each card shows its own brand
+      // color; overrides the --concept-* fallback in the CSS rule).
+      const vis = CONCEPT_VISUALS[group.concept] || {};
+      if (vis.tint) {
+        const chip = card.querySelector('.ti-icon');
+        chip.style.background = vis.tintLight || 'var(--heh-red-light)';
+        chip.style.color      = vis.tintDark  || vis.tint;
+      }
       card.addEventListener('click', () => onConceptTap_(group));
       container.appendChild(card);
     }
   }
 
   // ============================================================
-  // RENDER — LOCATION PICKER
+  // SITE / AREA DERIVATION  (Option A — derived from `location`)
+  // ============================================================
+  //
+  // The hub navigation is Concept → Site → Area. stores.json carries only
+  // the combined `location` string ("Rosslyn BOH"), so we split it here
+  // rather than add explicit fields. The area is the trailing all-caps
+  // token (BOH/FOH); the site is everything before it. A location with no
+  // such suffix yields area '' and is treated as its own single-area site
+  // (the area screen is skipped — see onSiteTap_).
+  function parseLocation_(location) {
+    const m = /^(.*\S)\s+([A-Z]{2,4})$/.exec(location || '');
+    if (m) return { site: m[1], area: m[2] };
+    return { site: (location || '').trim(), area: '' };
+  }
+
+  // Group a concept's stores by site. Stashes the parsed _site/_area on
+  // each store for downstream rendering. Sites sorted alphabetically;
+  // stores within a site keep the concept group's location sort (so BOH
+  // precedes FOH).
+  function buildSiteGroups_(conceptGroup) {
+    const sites = {};
+    const order = [];
+    for (const store of conceptGroup.stores) {
+      const parsed = parseLocation_(store.location);
+      store._site = parsed.site;
+      store._area = parsed.area;
+      if (!sites[parsed.site]) { sites[parsed.site] = []; order.push(parsed.site); }
+      sites[parsed.site].push(store);
+    }
+    order.sort((a, b) => a.localeCompare(b));
+    return order.map(site => ({ site: site, stores: sites[site] }));
+  }
+
+  // Push the active concept's brand tint onto #app as CSS custom
+  // properties so the site/area screens (back button + icon chips)
+  // inherit it. Pass null to clear (back to the HEH-red master look).
+  function setActiveConceptTheme_(concept) {
+    const vis = (concept && CONCEPT_VISUALS[concept]) || null;
+    const app = document.getElementById('app');
+    if (vis && vis.tint) {
+      app.style.setProperty('--concept-dark',  vis.tintDark  || vis.tint);
+      app.style.setProperty('--concept-light', vis.tintLight || 'var(--heh-red-light)');
+    } else {
+      app.style.removeProperty('--concept-dark');
+      app.style.removeProperty('--concept-light');
+    }
+  }
+
+  // Where the area screen's Back button returns to: the site screen
+  // normally, or straight to the concept picker when the site screen was
+  // collapsed (single-site concept).
+  let areaBackTarget = 'screen-location';
+
+  // ============================================================
+  // RENDER — SITE PICKER (screen-location)
   // ============================================================
   function onConceptTap_(group) {
+    setActiveConceptTheme_(group.concept);
+    const sites = buildSiteGroups_(group);
+
+    // Collapse: a concept with a single site skips the site screen and
+    // drops the user straight onto that site's area picker (or store).
+    if (sites.length === 1) {
+      areaBackTarget = 'screen-concept';
+      onSiteTap_(sites[0]);
+      return;
+    }
+    areaBackTarget = 'screen-location';
+
     document.getElementById('location-title').textContent = group.concept;
     const container = document.getElementById('location-cards');
     container.innerHTML = '';
-    for (const store of group.stores) {
+    for (const siteGroup of sites) {
+      const card = document.createElement('button');
+      card.className = 'card';
+      card.type = 'button';
+      card.innerHTML =
+        '<span class="ti-icon"><i class="ti ti-map-pin" aria-hidden="true"></i></span>' +
+        '<span class="content">' +
+          '<span class="title"></span>' +
+          '<span class="meta"></span>' +
+        '</span>' +
+        '<span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>';
+      card.querySelector('.title').textContent = siteGroup.site;
+      // Area count, shown only when the site splits (>1 area). A single-
+      // area site has no sub-level, so the count would be noise.
+      const metaEl = card.querySelector('.meta');
+      if (siteGroup.stores.length > 1) {
+        const n = siteGroup.stores.length;
+        metaEl.textContent = (currentLang === 'en')
+          ? n + ' areas'
+          : n + ' áreas';
+      } else {
+        metaEl.style.display = 'none';
+      }
+      card.addEventListener('click', () => onSiteTap_(siteGroup));
+      container.appendChild(card);
+    }
+    showScreen('screen-location');
+  }
+
+  // ============================================================
+  // RENDER — AREA PICKER (screen-area)
+  // ============================================================
+  function onSiteTap_(siteGroup) {
+    // Single-area site: nothing to choose — go straight to the store.
+    if (siteGroup.stores.length === 1) {
+      onLocationTap_(siteGroup.stores[0]);
+      return;
+    }
+    document.getElementById('area-title').textContent = siteGroup.site;
+    const container = document.getElementById('area-cards');
+    container.innerHTML = '';
+    for (const store of siteGroup.stores) {
       const card = document.createElement('button');
       card.className = 'card';
       card.type = 'button';
@@ -686,11 +852,13 @@
           '<span class="title"></span>' +
         '</span>' +
         '<span class="chev"><i class="ti ti-chevron-right" aria-hidden="true"></i></span>';
-      card.querySelector('.title').textContent = store.location;
+      // Leaf label: the area code (BOH/FOH); falls back to the full
+      // location string if the location had no recognizable area suffix.
+      card.querySelector('.title').textContent = store._area || store.location;
       card.addEventListener('click', () => onLocationTap_(store));
       container.appendChild(card);
     }
-    showScreen('screen-location');
+    showScreen('screen-area');
   }
 
   // ============================================================
@@ -793,8 +961,10 @@
     const active = isManagerActive_();
     const concept  = document.getElementById('mgr-banner-concept');
     const location = document.getElementById('mgr-banner-location');
+    const area     = document.getElementById('mgr-banner-area');
     if (concept)  concept.style.display  = active ? 'flex' : 'none';
     if (location) location.style.display = active ? 'flex' : 'none';
+    if (area)     area.style.display     = active ? 'flex' : 'none';
   }
 
   // Exit manager mode from the banner. Clears sessionStorage and
@@ -828,6 +998,10 @@
   // ============================================================
   document.getElementById('open-mgr-btn').addEventListener('click', onOpenManagerCode_);
   document.getElementById('loc-back-btn').addEventListener('click', () => showScreen('screen-concept'));
+  // Area back returns to the site screen, or to the concept picker when
+  // the site screen was collapsed (single-site concept).
+  document.getElementById('area-back-btn').addEventListener('click', () => showScreen(areaBackTarget));
+  document.getElementById('mgr-exit-area').addEventListener('click', exitManagerMode_);
   document.getElementById('mgr-code-back-btn').addEventListener('click', () => showScreen('screen-concept'));
   document.getElementById('mgr-code-submit').addEventListener('click', onMgrCodeSubmit_);
   document.getElementById('mgr-code-input').addEventListener('keydown', (e) => {

@@ -123,3 +123,66 @@ Nothing is broken or half-finished. Optional next directions:
 CANARY IS rprfo. Read docs/MOG_CurrentState.md for invariants. Deploy
 routing: python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
 ```
+
+---
+
+# Later session — Hub 3-level nav + per-concept tile theming
+
+**Session focus:** Took two of the three "optional next directions" above and one new ask: give the hub a 3-level picker (Concept → **Site** → BOH/FOH area), theme the concept tiles per concept, and the housekeeping pair (widen `audit_modals.py`, TNY curly apostrophe).
+**Outcome:** Hub-only + tooling change, all verified in a live local preview. Concept → Site → Area navigation with auto-collapse, basil/gold per-concept theming carried into the sub-screens, curly TNY apostrophe synced across 3 files, and `audit_modals.py` rebuilt to auto-discover (now covers `RecalibrateVendor.html`). **No store rebuild / no clasp deploy** — the 8 generated dirs came out byte-identical. Hub `sw.js` CACHE **v6→v7**.
+**Next session focus:** Optional — Batch D (brand fonts / SVG concept marks / concept-aware modal theming), or wire real per-concept brand SVGs into `CONCEPT_VISUALS` (currently generic Tabler icons + tints).
+
+## What shipped (later session)
+
+- **3-level hub navigation** (`index.html`). Was Concept → flat location list. Now Concept → **Site** (Rosslyn/Tysons/Founders) → **Area** (BOH/FOH). Site/area are **derived from the `location` string** (Option A — `parseLocation_` splits the trailing all-caps token; no `stores.json` schema change, no `build.py` change, no `mog-add-store` ripple). New `screen-area`, `buildSiteGroups_`, `onSiteTap_`; 3-level back-nav with `areaBackTarget`; manager banner added to the area screen (`refreshMgrBanners_`). **Collapse rules:** a single-site concept (Teas'n You) skips the site screen straight to its area picker (back → concept); a single-area site skips the area screen straight to the store. Why Option A: the `"<Site> BOH/FOH"` naming is 100% regular and `location` is already the downstream display string — explicit `site`/`area` fields would duplicate it and invite drift.
+- **Per-concept tile theming** (`index.html`). `CONCEPT_VISUALS` gained `tint`/`tintDark`/`tintLight` (RP basil `#53D3A5`/`#2d8c6b`/`#e4f7f0`, TNY gold `#D4A574`/`#8a6d3b`/`#f7efe2`). Concept-card chips are tinted inline per-card; the tapped concept's tint is pushed onto `#app` as `--concept-dark`/`--concept-light` (`setActiveConceptTheme_`) so the site/area chips + back button inherit it, cleared back to HEH-red when returning to the picker. Principle held from Batch A: brand re-themes, the HEH-red master/manager chrome stays constant.
+- **TNY curly apostrophe** — `Teas'n You` → `Teas’n You` (U+2019), synced across the **3 coupled spots** so the theme/icon lookup can't fall back: `stores.json` concept, hub `CONCEPT_VISUALS` key, `build.py` `CONCEPT_TO_THEME` key. Verified post-build: registry has curly, `tnyt`/`tnytf` still resolve to `data-theme="teasnyou"`.
+- **`audit_modals.py` widened** (`.claude/skills/mog-modal-ux-sweep/scripts/`). Replaced the stale hardcoded 5-modal list with **auto-discovery** (the same `looks_save_capable` heuristic the global copy already uses, scoped to `apps-script/`). Now covers all 6 save-capable modals incl. `RecalibrateVendor.html`, auto-excludes the 3 read-only ones, and never goes stale again. Run clean: 6/6 consistent, exit 0. Per `checker-script-sync`, the global canonical was already ahead (it had `--all`) so no global edit needed — the fork just adopted its approach + kept the `apps-script/` path.
+- **Latent bug fixed**: the concept-card "N locations" meta is built text, not static bilingual spans, so the EN/ES toggle never switched it. `toggleHubLang_` now re-renders the picker.
+- **Skill ordering encoded**: added a "Run this BEFORE the feature commit" rule to `mog-session-handoff/SKILL.md` so the handoff's doc edits ride in the same commit as the code (no double-commit).
+
+## Verification (later session)
+
+Drove the hub in a local static preview (`python -m http.server`): RP "3 locations" → Founders/Rosslyn/Tysons → Rosslyn → BOH/FOH; basil `--concept-*` on sub-screens; back-nav at every level; TNY single-site collapse → its area screen with gold tint and correct back-to-concept; tint clears on return to picker. `node --check` on the extracted hub JS = clean; `audit_modals.py` = 6/6 green; no console errors. (The screenshot tool hung — renderer-side; colors confirmed via direct CSS inspection.)
+
+## Files touched (later session)
+
+**Hub source (`git push` → GitHub Pages):**
+- `index.html` — 3-level nav (`parseLocation_`, `buildSiteGroups_`, `onSiteTap_`, `setActiveConceptTheme_`, `areaBackTarget`, `screen-area` markup + mgr banner), per-concept tints in `CONCEPT_VISUALS`, `--concept-*` CSS vars on `.ti-icon`/`.back-btn`, curly TNY key, `toggleHubLang_` re-render.
+- `sw.js` — hub CACHE v6→v7.
+
+**Build + config:**
+- `stores.json` — TNY concept → curly U+2019 (both entries).
+- `build.py` — `CONCEPT_TO_THEME` TNY key → curly.
+
+**Tooling / skills:**
+- `.claude/skills/mog-modal-ux-sweep/scripts/audit_modals.py` — auto-discovery rewrite.
+- `.claude/skills/mog-session-handoff/SKILL.md` — handoff-before-commit ordering rule.
+
+**Generated dirs:** `build.py` ran; all 8 `<slug>/` dirs came out byte-identical (no diff) — no redeploy.
+
+## Opening prompt for next session
+
+```
+Resume MOG work. 2026-05-31 (later session) reworked the HUB: it's now a
+3-level picker — Concept → Site (Rosslyn/Tysons/Founders) → Area (BOH/FOH),
+with single-site/single-area screens auto-collapsing. Site/area are derived
+from the location string in index.html (Option A — no stores.json schema
+change). Concept tiles are now themed per concept (RP basil, TNY gold) and
+the tint carries into the site/area sub-screens. TNY display name is now a
+curly apostrophe (U+2019), synced across stores.json + hub CONCEPT_VISUALS +
+build.py CONCEPT_TO_THEME. audit_modals.py was rebuilt to auto-discover
+save-capable modals (now covers RecalibrateVendor.html). Hub CACHE v7.
+
+This was a HUB-ONLY + tooling change: no clasp deploy, the 8 store dirs are
+byte-identical. Deploys via git push (GitHub Pages) — no per-store canary.
+
+Nothing is broken or half-finished. Optional next directions:
+  1. Wire real per-concept brand SVGs into CONCEPT_VISUALS (currently
+     generic Tabler icons + color tints).
+  2. Batch D (strategic): brand fonts, brand SVG concept marks, concept-
+     aware modal theming (modals are fixed navy/green across all 9).
+
+Read docs/MOG_CurrentState.md for invariants. Deploy routing:
+python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
+```

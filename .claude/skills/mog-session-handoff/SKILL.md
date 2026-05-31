@@ -17,6 +17,17 @@ End of any session that produced material changes:
 
 Skip when the session was pure exploration (read-only, no commits) or when the work was a single-line typo fix with no architectural implication.
 
+## Run the handoff BEFORE the session's commit — not after
+
+Write the handoff (all three files) **before** committing and pushing the session's actual work, so the doc edits — the new/updated `docs/MOG_SessionHandoff_<today>.md`, the `CLAUDE.md` @-import bump, and the `docs/MOG_CurrentState.md` row — **ride in the same commit** as the code/config. Running it after means a second `docs:` commit (and a second push) for work that was already done — double the ceremony for one session.
+
+So the close-out order is:
+1. Verify the session's work (build/deploy/preview as applicable).
+2. **Run this skill** — produce the handoff + update `CLAUDE.md` + `CurrentState`.
+3. Suggest ONE commit covering code + docs together, then push.
+
+The exception is when the session **already** committed + pushed mid-way (e.g. a canary that had to go out before the work was done). Then the handoff is necessarily a follow-up `docs:` commit — that's fine; the rule is "don't commit the *final* work without the handoff," not "never commit twice." When in doubt, hold the commit until the handoff is written.
+
 ## Gather the facts deterministically first
 
 Before naming the file or assembling the commit list, run the fact-gather — it removes the two mechanical lookups (today's date + whether today's file exists) and the recurring future-date mistake along with them:
@@ -106,7 +117,7 @@ When a session bundled unrelated bodies of work (e.g., consolidation + scaffold 
 
 1. Confirm `CLAUDE.md`'s @-import line points at the new dated handoff (not the old one).
 2. Confirm `docs/MOG_CurrentState.md` has been updated.
-3. Suggest a commit. Recommended message: `docs: session handoff YYYY-MM-DD — <one-line topic>`.
+3. Suggest a commit. **If the session's code/config is still uncommitted (the normal case — see "Run the handoff BEFORE the session's commit"), suggest ONE commit covering code + docs together**, using the feature's message (e.g. `feat(hub): …`); the handoff docs ride along, no separate `docs:` commit. Only when the work was already committed/pushed mid-session does the handoff get its own follow-up commit: `docs: session handoff YYYY-MM-DD — <one-line topic>`.
 4. Provide a copy-pasteable chat name for Sebastian. **Match the established naming pattern of his existing MOG chat list:**
     - Prefix: `MOG:` (sometimes `MOG —`, but `MOG:` is the dominant form).
     - Length: short — **~4-6 words after the prefix**, no more. The sidebar truncates aggressively; a name that's already short reads well truncated. Date prefixes (e.g. `2026-05-28 —`), comma-joined lists of every shipped item, and "kitchen-sink summary" framings are wrong here — they read as foreign next to peers like `MOG: PWA fixes + ManageVendors picker` or `MOG: ManageVendors edit form`.

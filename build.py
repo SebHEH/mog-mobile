@@ -55,7 +55,7 @@ REGISTRY_MARKER     = '// __STORE_REGISTRY__ build-injected'
 CONCEPT_TO_THEME = {
     "Roll Play":  "roll-play",
     "Lei'd":      "leid",
-    "Teas'n You": "teasnyou",
+    "Teas’n You": "teasnyou",  # curly U+2019 — must match stores.json + hub CONCEPT_VISUALS
     "ĂN":    "an",   # ĂN (with combining breve) — escaped for clarity
     "AN":         "an",   # alternate ASCII spelling
 }
