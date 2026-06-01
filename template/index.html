@@ -3952,10 +3952,10 @@
     html += '<button class="cta" id="review-btn" style="margin-top:8px">' + escapeHtml(t('reviewOrder')) + '</button>';
 
     view.innerHTML = html;
-    // Topbar stays a stable section label; the vendor name lives in the
-    // breadcrumb's current crumb (set in openCount). Mirrors the History
-    // dedup where date/vendor moved off the topbar into the breadcrumb.
-    setTitle('count');
+    // Topbar shows the vendor name for at-a-glance clarity of which vendor
+    // is being counted; the breadcrumb above also carries it as the current
+    // crumb (set in openCount). Falls back to titles.count if vendor empty.
+    setTitle('count', ctx.vendor);
 
     // Wire stepper events
     view.querySelectorAll('.step-val').forEach(input => {
@@ -4239,7 +4239,10 @@
   function openReview() {
     const ctx = state.countContext;
     showView('review');
-    setTitle('review');
+    // Topbar shows the vendor name (matches the count screen); the "Review
+    // order" step is the breadcrumb's current crumb. Falls back to
+    // titles.review if vendor empty.
+    setTitle('review', ctx.vendor);
     // Drill-down breadcrumb: Today's orders › <vendor> › Review. Counts are
     // already flushed to the server on review entry, so both jumps are safe
     // with no dirty guard — the vendor crumb re-opens the count screen, the
