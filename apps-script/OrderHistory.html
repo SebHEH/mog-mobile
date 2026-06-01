@@ -76,6 +76,39 @@
     .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
     .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
 
+    /* ── Help [?] button + panel ── (shared pattern across modals) */
+    .help-btn {
+      width: 22px; height: 22px; padding: 0; flex-shrink: 0;
+      border: 1px solid currentColor; border-radius: 50%;
+      background: transparent; color: inherit; opacity: 0.7;
+      font-size: 12px; font-weight: bold; line-height: 1; cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .help-btn:hover { opacity: 1; }
+    .help-overlay {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.45);
+      align-items: flex-start; justify-content: center; padding: 14px;
+    }
+    .help-overlay.open { display: flex; }
+    .help-card {
+      background: #fff; border-radius: 8px; width: 100%; max-width: 460px;
+      max-height: 100%; display: flex; flex-direction: column;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.32); overflow: hidden;
+    }
+    .help-head {
+      background: #1a1a2e; color: #fff; padding: 10px 14px;
+      font-size: 13px; font-weight: bold; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .help-x { cursor: pointer; font-size: 15px; opacity: 0.8; padding: 0 4px; }
+    .help-x:hover { opacity: 1; }
+    .help-body { padding: 14px 16px; overflow-y: auto; font-size: 12px; line-height: 1.65; color: #333; }
+    .help-lead { margin-bottom: 10px; }
+    .help-step { margin-bottom: 7px; }
+    .help-tip { background: #f0f7f4; border-left: 3px solid #1a3a2e; border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 10px; font-size: 11px; color: #1a3a2e; }
+    .help-warn { background: #fff8e6; border-left: 3px solid #f0a500; border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 8px; font-size: 11px; color: #7a5000; }
+
     /* ── Filter bar ── */
     .filter-bar {
       background: #fff;
@@ -336,8 +369,30 @@
       </div>
     </div>
     <div class="lang-group">
+      <button class="help-btn" onclick="toggleHelp(true)" title="Help" aria-label="Help">?</button>
       <button class="lang-btn active" onclick="setLang('en')">EN</button>
       <button class="lang-btn"        onclick="setLang('es')">ES</button>
+    </div>
+  </div>
+
+  <!-- ── Help panel (toggled by the [?] header button) ── -->
+  <div id="help-overlay" class="help-overlay" onclick="if(event.target===this)toggleHelp(false)">
+    <div class="help-card">
+      <div class="help-head">
+        <span><span class="en">Order History — how it works</span><span class="es">Historial de Pedidos — cómo funciona</span></span>
+        <span class="help-x" onclick="toggleHelp(false)">✕</span>
+      </div>
+      <div class="help-body">
+        <div class="help-lead">
+          <span class="en">Every time someone taps <strong>Reset On Hand</strong>, that day's order is logged here automatically.</span>
+          <span class="es">Cada vez que alguien toca <strong>Restablecer En Stock</strong>, el pedido de ese día se registra aquí automáticamente.</span>
+        </div>
+        <div class="help-step"><span class="en"><strong>Recent Orders</strong> — date-grouped vendor cards; click a card to see that order's detail.</span><span class="es"><strong>Pedidos Recientes</strong> — tarjetas por proveedor agrupadas por fecha; toca una para ver el detalle.</span></div>
+        <div class="help-step"><span class="en"><strong>Item History</strong> — search an item to see every order entry for it.</span><span class="es"><strong>Historial por Artículo</strong> — busca un artículo para ver cada pedido suyo.</span></div>
+        <div class="help-step"><span class="en"><strong>Vendor Summary</strong> — totals per item; use <strong>🖨 Print</strong> to print or export.</span><span class="es"><strong>Resumen por Proveedor</strong> — totales por artículo; usa <strong>🖨 Imprimir</strong> para imprimir o exportar.</span></div>
+        <div class="help-step"><span class="en">Filter by vendor or date range (7 / 30 / 90 days, All Time, or Custom) at the top.</span><span class="es">Filtra por proveedor o rango de fechas (7 / 30 / 90 días, Todo, o Personalizado) arriba.</span></div>
+        <div class="help-tip"><span class="en">💡 History starts the day logging began — there's no data for orders before that.</span><span class="es">💡 El historial empieza el día en que comenzó el registro — no hay datos de pedidos anteriores.</span></div>
+      </div>
     </div>
   </div>
 
@@ -528,6 +583,14 @@
     // Re-render from cached data — no server call needed for a language switch
     rerenderCurrentTab();
   }
+
+  /* ══ Help panel ══ */
+  function toggleHelp(show) {
+    document.getElementById('help-overlay').classList.toggle('open', show);
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') toggleHelp(false);
+  });
 
   /* ══ STATE ══ */
   var currentTab  = 'recent';
@@ -871,9 +934,9 @@
       renderSummary(aggregateSummary(rawHistory));
       return;
     }
-    // Cache miss — fetch raw history once and aggregate client-side. Avoids
-    // the server-side getOrderSummary which re-reads LOG_ORDERS on top of
-    // what Recent/Item already loaded.
+    // Cache miss — fetch raw history once and aggregate client-side (see
+    // aggregateSummary). Avoids a second server round-trip that would re-read
+    // LOG_ORDERS on top of what Recent/Item already loaded.
     showLoading('summary');
     google.script.run
       .withSuccessHandler(function(rows){
@@ -885,7 +948,7 @@
       .getOrderHistory(f);
   }
 
-  // Mirrors server-side getOrderSummary aggregation. Keeps Summary in sync
+  // Vendor Summary aggregation, done client-side. Keeps Summary in sync
   // with whatever rawHistory currently holds.
   function aggregateSummary(rows) {
     if (!rows || !rows.length) return [];

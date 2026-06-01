@@ -39,6 +39,39 @@
       .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
       .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
 
+      /* ── Help [?] button + panel ── (shared pattern across modals) */
+      .help-btn {
+        width: 22px; height: 22px; padding: 0; flex-shrink: 0;
+        border: 1px solid currentColor; border-radius: 50%;
+        background: transparent; color: inherit; opacity: 0.7;
+        font-size: 12px; font-weight: bold; line-height: 1; cursor: pointer;
+        transition: opacity 0.15s;
+      }
+      .help-btn:hover { opacity: 1; }
+      .help-overlay {
+        display: none; position: fixed; inset: 0; z-index: 100;
+        background: rgba(0,0,0,0.45);
+        align-items: flex-start; justify-content: center; padding: 14px;
+      }
+      .help-overlay.open { display: flex; }
+      .help-card {
+        background: #fff; border-radius: 8px; width: 100%; max-width: 460px;
+        max-height: 100%; display: flex; flex-direction: column;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.32); overflow: hidden;
+      }
+      .help-head {
+        background: #1a1a2e; color: #fff; padding: 10px 14px;
+        font-size: 13px; font-weight: bold; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: space-between;
+      }
+      .help-x { cursor: pointer; font-size: 15px; opacity: 0.8; padding: 0 4px; }
+      .help-x:hover { opacity: 1; }
+      .help-body { padding: 14px 16px; overflow-y: auto; font-size: 12px; line-height: 1.65; color: #333; }
+      .help-lead { margin-bottom: 10px; }
+      .help-step { margin-bottom: 7px; }
+      .help-tip { background: #f0f7f4; border-left: 3px solid #1a3a2e; border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 10px; font-size: 11px; color: #1a3a2e; }
+      .help-warn { background: #fff8e6; border-left: 3px solid #f0a500; border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 8px; font-size: 11px; color: #7a5000; }
+
       /* ── Sticky header ── */
       .header {
         background: #fff;
@@ -427,8 +460,31 @@
 
     <!-- Language toggle -->
     <div class="lang-bar">
+      <button class="help-btn" onclick="toggleHelp(true)" title="Help" aria-label="Help">?</button>
       <button class="lang-btn active" onclick="setLang('en')">EN</button>
       <button class="lang-btn"        onclick="setLang('es')">ES</button>
+    </div>
+
+    <!-- ── Help panel (toggled by the [?] header button) ── -->
+    <div id="help-overlay" class="help-overlay" onclick="if(event.target===this)toggleHelp(false)">
+      <div class="help-card">
+        <div class="help-head">
+          <span><span class="en">Manage Pick Path — how it works</span><span class="es">Administrar Ruta — cómo funciona</span></span>
+          <span class="help-x" onclick="toggleHelp(false)">✕</span>
+        </div>
+        <div class="help-body">
+          <div class="help-lead">
+            <span class="en">The <strong>pick path</strong> sets the order items appear on a vendor's order sheet — grouped by storage area, then shelf order. The goal: count the kitchen in one walk.</span>
+            <span class="es">La <strong>ruta</strong> define el orden en que los artículos aparecen en la hoja de un proveedor — por área de almacén y luego por orden de estante. La meta: contar la cocina en un solo recorrido.</span>
+          </div>
+          <div class="help-step"><span class="en"><strong>1.</strong> Pick a vendor at the top.</span><span class="es"><strong>1.</strong> Elige un proveedor arriba.</span></div>
+          <div class="help-step"><span class="en"><strong>2. ▲▼</strong> reorder an item within its area (shelf order).</span><span class="es"><strong>2. ▲▼</strong> reordena un artículo dentro de su área (orden de estante).</span></div>
+          <div class="help-step"><span class="en"><strong>3. ⇆</strong> move an item to a different area.</span><span class="es"><strong>3. ⇆</strong> mueve un artículo a otra área.</span></div>
+          <div class="help-step"><span class="en"><strong>4. +</strong> on an area header adds an unassigned item to that area.</span><span class="es"><strong>4. +</strong> en el encabezado de un área agrega un artículo sin asignar.</span></div>
+          <div class="help-step"><span class="en"><strong>5.</strong> Tap <strong>Save Pick Path</strong> — the vendor tab updates immediately.</span><span class="es"><strong>5.</strong> Toca <strong>Guardar Ruta</strong> — la pestaña del proveedor se actualiza al instante.</span></div>
+          <div class="help-warn"><span class="en">⚠ Switching vendors with unsaved changes will prompt you to save or discard first.</span><span class="es">⚠ Cambiar de proveedor con cambios sin guardar te pedirá guardar o descartar primero.</span></div>
+        </div>
+      </div>
     </div>
 
     <!-- Sticky header -->
@@ -548,6 +604,14 @@
       let isDirty       = false;
 
       function byId(id) { return document.getElementById(id); }
+
+      // ── Help panel ──
+      function toggleHelp(show) {
+        byId('help-overlay').classList.toggle('open', show);
+      }
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') toggleHelp(false);
+      });
 
       function bumpMutationTs_() {
         // Signals to other modals' caches that data has changed and they

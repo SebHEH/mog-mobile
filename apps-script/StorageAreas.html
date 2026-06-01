@@ -42,6 +42,40 @@
       .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
       .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
 
+      /* ── Help [?] button + panel ── (shared pattern across modals) */
+      .header-right { display: flex; align-items: center; gap: 8px; }
+      .help-btn {
+        width: 22px; height: 22px; padding: 0; flex-shrink: 0;
+        border: 1px solid currentColor; border-radius: 50%;
+        background: transparent; color: inherit; opacity: 0.7;
+        font-size: 12px; font-weight: bold; line-height: 1; cursor: pointer;
+        transition: opacity 0.15s;
+      }
+      .help-btn:hover { opacity: 1; }
+      .help-overlay {
+        display: none; position: fixed; inset: 0; z-index: 100;
+        background: rgba(0,0,0,0.45);
+        align-items: flex-start; justify-content: center; padding: 14px;
+      }
+      .help-overlay.open { display: flex; }
+      .help-card {
+        background: #fff; border-radius: 8px; width: 100%; max-width: 460px;
+        max-height: 100%; display: flex; flex-direction: column;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.32); overflow: hidden;
+      }
+      .help-head {
+        background: #1a1a2e; color: #fff; padding: 10px 14px;
+        font-size: 13px; font-weight: bold; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: space-between;
+      }
+      .help-x { cursor: pointer; font-size: 15px; opacity: 0.8; padding: 0 4px; }
+      .help-x:hover { opacity: 1; }
+      .help-body { padding: 14px 16px; overflow-y: auto; font-size: 12px; line-height: 1.65; color: #333; }
+      .help-lead { margin-bottom: 10px; }
+      .help-step { margin-bottom: 7px; }
+      .help-tip { background: #f0f7f4; border-left: 3px solid #1a3a2e; border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 10px; font-size: 11px; color: #1a3a2e; }
+      .help-warn { background: #fff8e6; border-left: 3px solid #f0a500; border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 8px; font-size: 11px; color: #7a5000; }
+
       /* ── Body padding ── */
       .body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
       /* Without this, .body's flex children (list-card, action-cards) shrink
@@ -247,9 +281,34 @@
         <span class="en">Storage Areas</span>
         <span class="es">Áreas de Almacén</span>
       </div>
-      <div class="lang-group">
-        <button class="lang-btn active" onclick="setLang('en')">EN</button>
-        <button class="lang-btn"        onclick="setLang('es')">ES</button>
+      <div class="header-right">
+        <button class="help-btn" onclick="toggleHelp(true)" title="Help" aria-label="Help">?</button>
+        <div class="lang-group">
+          <button class="lang-btn active" onclick="setLang('en')">EN</button>
+          <button class="lang-btn"        onclick="setLang('es')">ES</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Help panel (toggled by the [?] header button) ── -->
+    <div id="help-overlay" class="help-overlay" onclick="if(event.target===this)toggleHelp(false)">
+      <div class="help-card">
+        <div class="help-head">
+          <span><span class="en">Storage Areas — how it works</span><span class="es">Áreas de Almacén — cómo funciona</span></span>
+          <span class="help-x" onclick="toggleHelp(false)">✕</span>
+        </div>
+        <div class="help-body">
+          <div class="help-lead">
+            <span class="en"><strong>Storage Areas</strong> are the physical places you keep product — Walk-In, Dry Storage, Freezer, Bar. An item must live in an area to appear on an order sheet.</span>
+            <span class="es"><strong>Las Áreas de Almacén</strong> son los lugares físicos donde guardas el producto — Cámara fría, Almacén seco, Congelador, Bar. Un artículo debe estar en un área para aparecer en una hoja de pedido.</span>
+          </div>
+          <div class="help-step"><span class="en"><strong>1.</strong> Open <strong>➕ Add Area</strong>, type a name, tap <strong>Add</strong>.</span><span class="es"><strong>1.</strong> Abre <strong>➕ Agregar Área</strong>, escribe un nombre y toca <strong>Agregar</strong>.</span></div>
+          <div class="help-step"><span class="en"><strong>2.</strong> Use the <strong>▲▼</strong> buttons to order areas the way you walk the kitchen.</span><span class="es"><strong>2.</strong> Usa los botones <strong>▲▼</strong> para ordenar las áreas según recorres la cocina.</span></div>
+          <div class="help-step"><span class="en"><strong>3.</strong> <strong>✎</strong> renames an area · <strong>🗑</strong> deletes it.</span><span class="es"><strong>3.</strong> <strong>✎</strong> renombra un área · <strong>🗑</strong> la elimina.</span></div>
+          <div class="help-step"><span class="en"><strong>4.</strong> Tap <strong>Save Areas</strong> to apply — your changes are a draft until you save.</span><span class="es"><strong>4.</strong> Toca <strong>Guardar Áreas</strong> para aplicar — tus cambios son un borrador hasta que guardas.</span></div>
+          <div class="help-tip"><span class="en">💡 The area order sets the order items appear on <strong>every</strong> vendor's order sheet.</span><span class="es">💡 El orden de las áreas define el orden en que aparecen los artículos en la hoja de <strong>cada</strong> proveedor.</span></div>
+          <div class="help-warn"><span class="en">⚠ Deleting an area unassigns its items — they vanish from vendor tabs until you reassign them in <strong>Manage Pick Path</strong>.</span><span class="es">⚠ Eliminar un área desasigna sus artículos — desaparecen de las pestañas hasta reasignarlos en <strong>Administrar Ruta</strong>.</span></div>
+        </div>
       </div>
     </div>
 
@@ -663,6 +722,14 @@
           .withFailureHandler(function(err) { console.error(err); })
           .getStorageAreaList();
       }
+
+      // ── Help panel ──────────────────────────────────────────────────────────
+      function toggleHelp(show) {
+        byId('help-overlay').classList.toggle('open', show);
+      }
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') toggleHelp(false);
+      });
 
       // ── Init ──────────────────────────────────────────────────────────────────
       setLang('en');

@@ -418,7 +418,7 @@ function api_getDashboard_compute_() {
       toOrderCount = log.itemCount;
       enteredCount = itemCount; // a sent vendor implicitly has all items "entered"
     } else {
-      const inProgress = vendorOnHandSnapshot_(vendorName, dayOfWeek, vendorMults);
+      const inProgress = vendorOnHandSnapshot_(vendorName);
       enteredCount = inProgress.enteredCount;
       if (inProgress.any) {
         status       = 'in_progress';
@@ -1197,7 +1197,7 @@ function countActiveItemsByVendor_() {
 }
 
 
-function vendorOnHandSnapshot_(vendor /* signature kept for back-compat; args ignored */) {
+function vendorOnHandSnapshot_(vendor) {
   // Returns { any, toOrder, enteredCount } for the dashboard's per-vendor
   // status detection.
   //   any          — at least one On Hand value entered for this vendor today

@@ -151,3 +151,80 @@ concept-aware modal theming).
 CANARY IS rprfo. Read docs/MOG_CurrentState.md for invariants. Deploy
 routing: python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
 ```
+
+---
+
+## Later session — Backend cleanup + per-modal [?] help
+
+**Session focus:** Clean up the codebase (dead code, menu clutter, logic inconsistencies) and make the system simpler to learn — add a contextual [?] help button to each modal and fix the stale in-Sheet How-To-Use guide.
+**Outcome:** All shipped to all 9 + master. A read-only `appsscript-codebase-audit` produced a punch-list; the low-risk items were applied this session, the god-object split deferred. The 6 main modals now each have a [?] help button, and the How-To-Use guide's stale sections are corrected. Canary rprfo smoke-tested on both deploys before fan-out.
+**Next session focus:** Optional — the `OrderGuideScript.gs` 7-file split (walkthrough first), or the deferred guide additions (PWA pointer, multi-vendor/Recalibrate docs).
+
+### Section A — Backend cleanup (`deploy.py --redeploy`, all 9 + master)
+
+Grounded in a read-only `appsscript-codebase-audit` pass. **Low-risk items applied; bigger refactors deferred (see Outstanding).**
+
+- **Dead code deleted** (`OrderGuideScript.gs`): `migrateVendorTabs` + its only helper `brandAndStripVendorTab_` (shelved cosmetic #4 work, in no menu — the in-file comment already said "safe to delete"); `getOrderSummary` and `getOrderHistoryVendorList` (no callers — OrderHistory.html aggregates Vendor Summary client-side and the bootstrap returns the vendor list inline). ~230 lines gone; file 5783 → ~5550. Tombstone comments left in place.
+- **Mobile API submenu decluttered** (`OrderGuideScript.gs` `onOpen`): removed three menu entries — **Migrate Item Vendors** (spent one-time backfill — `migrateItemVendorsColumn` seeds MASTER_ITEMS col O "Eligible Vendors" from the active vendor; reads self-heal so it's done everywhere), **Audit Vendor Tab Structure**, **Re-establish Vendor Template** (diagnostics from the resolved vendor-template work). **The functions are kept** — still runnable from the Apps Script editor; only the menu clutter was removed. `Sync Vendor Multiplier Formulas` stays in the menu (it's the live non-destructive fix).
+- **`vendorOnHandSnapshot_` signature fix** (`MOGApi.gs`): the def carried a "back-compat, args ignored" comment but the caller still passed `dayOfWeek, vendorMults`. Trimmed the call to `vendorOnHandSnapshot_(vendorName)` and dropped the comment. Verified both vars are still used elsewhere in `api_getVendorItems_`.
+- **3 stale comments** referencing the deleted functions fixed (`OrderHistory.html` ×2, `OrderGuideScript.gs` ×1).
+- **`purgeInactiveFromPickPath` deliberately KEPT** — looked like dead code but its header documents it as an intentional editor-run maintenance tool (purges inactive items from the pick-path DB + rebuilds tabs). Not menu-wired by design, not by accident.
+
+### Section B — Per-modal [?] help button (push-only, all 9 + master)
+
+A round **[?]** button in each modal header (inside the lang toggle group, styled with `currentColor` so it adapts to dark/light headers) opens a lightweight **inline help overlay** — `position:fixed` dim backdrop + white card, ✕ / tap-outside / **Esc** to close. Content is short, bilingual (paired `.en/.es` spans that ride the modal's existing `setLang` toggle — no new glossary keys, parity untouched), and scoped to that modal. Identical CSS/JS block across all 6 (the `mog-modal-ux-sweep` pattern); only the help *content* differs.
+
+- **Built canary-first**: StorageAreas first → deployed to rprfo → Sebastian approved the look → swept to the other 5.
+- **6 modals**: `StorageAreas`, `ManageVendors`, `ManageItems`, `AdminReset`, `ReorderPickPath`, `OrderHistory`. (The 2 manager-only diagnostics + HowToUse itself were skipped.)
+- **Content reflects the CURRENT modals** (verified against live source, not the stale guide): ManageItems help = row → **Edit This Item** (no Edit tab); Pick Path help = **▲▼ / ⇆ / +** (not drag); StorageAreas = **▲▼ + Save Areas** draft model.
+- JS is ES5-safe; `toggleHelp(show)` uses each modal's `byId` (or `document.getElementById` in OrderHistory, which has no `byId`). All 6 parse clean (vm.Script).
+
+### Section C — How-To-Use guide de-stale (`HowToUse.html`, push-only, all 9 + master)
+
+The in-Sheet guide had drifted from the 2026-05-27/28 modal changes. Corrected every confirmed-stale spot (EN + ES):
+- **Manage Items**: "Go to the Edit tab, select vendor then item" → click a row → **Edit This Item →** (the Edit tab was removed); Deactivate/Delete cards now say "edit form" not "Edit tab".
+- **Storage Areas**: drag ⠿ + auto-save → **▲▼** reorder + **Save Areas** draft model (both the panel description and the First-Time-Setup step).
+- **Order History**: Vendor Summary **📋 Copy → 🖨 Print**; dropped the "average On Hand" mention (the revamp removed it).
+- **Pick Path**: every "drag" → **▲▼ / ⇆ / +** (the "How to Reorder" card, the Unassigned-fix instructions, both Troubleshoot entries, and the First-Time-Setup steps).
+
+### Outstanding (carry forward)
+
+1. **`OrderGuideScript.gs` god-object split** (HIGH, deferred — needs a walkthrough). Audit mapped a clean 7-file seam: `Core` / `Vendors` / `Items` / `PickPath` / `ResetLog` / `History` / `Dashboard`. All `.gs` share global scope so a split is runtime-safe; `deploy.py` pushes all files. Its own dedicated session.
+2. **New-day / last-reset-date detection consolidation** (MED). The "is it a new order day" rule (`AE2`/`AE9` read + compare) is reimplemented in ~5 sites across `MOGApi.gs` + `OrderGuideScript.gs` — extract one helper. Naturally rides along with the split (touches both files).
+3. **Optional How-To-Use additions** (LOW, deliberately deferred to keep it simple): a "your team counts in the **PWA** on their phones" pointer in Daily Ordering; docs for **multi-vendor items / active-vendor switch**; a **Recalibrate Vendor Pars** entry; a note that **Reset On Hand now emails the recap**.
+4. Carried from earlier: per-concept hub brand SVGs; Batch D; reconcile global `rhino-safe-html` cross-repo; ManageVendors "Advanced" disclosure (gated on Vendor Cadence Audit run).
+
+### Files touched (later session)
+
+**Apps Script source — all deployed to 9 + master:**
+- `apps-script/OrderGuideScript.gs` — deleted 3 dead fns; decluttered `onOpen` submenu; 1 comment fix.
+- `apps-script/MOGApi.gs` — `vendorOnHandSnapshot_` arg trim (call + def).
+- `apps-script/StorageAreas.html`, `ManageVendors.html`, `ManageItems.html`, `AdminReset.html`, `ReorderPickPath.html`, `OrderHistory.html` — [?] help button + overlay + CSS/JS (StorageAreas also got the canonical-block retrofit to `currentColor`).
+- `apps-script/HowToUse.html` — stale-section corrections (Items / Areas / Order History / Pick Path).
+
+Section A deployed `--redeploy` (MOGApi.gs changed); Sections B+C deployed push-only (modal HTML). Canary rprfo on both.
+
+### Opening prompt for next session
+
+```
+Resume MOG work. 2026-06-01 (cleanup + help session) shipped to all 9 + master:
+  - Backend cleanup (deploy.py --redeploy, canary rprfo): deleted dead
+    migrateVendorTabs/brandAndStripVendorTab_, getOrderSummary,
+    getOrderHistoryVendorList; decluttered the Mobile API submenu (removed
+    Migrate Item Vendors + the 2 vendor-template diagnostics — functions kept,
+    editor-runnable); trimmed dead args off vendorOnHandSnapshot_.
+  - Per-modal [?] help button (push-only): inline bilingual help overlay on
+    6 modals (StorageAreas, ManageVendors, ManageItems, AdminReset,
+    ReorderPickPath, OrderHistory). Identical CSS/JS block, content per modal.
+  - How-To-Use guide de-staled: Items Edit-tab→row+Edit This Item, Areas
+    drag→▲▼+Save Areas, Order History Copy→Print, Pick Path drag→▲▼/⇆/+.
+
+Top deferred item: split the 5550-line OrderGuideScript.gs into 7 files
+(Core/Vendors/Items/PickPath/ResetLog/History/Dashboard) — walkthrough FIRST,
+its own session. Also deferred: new-day-detection consolidation (~5 sites,
+rides with the split); optional guide additions (PWA pointer, multi-vendor
+switch, Recalibrate, recap-email).
+
+CANARY IS rprfo. Read docs/MOG_CurrentState.md for invariants. Deploy routing:
+python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
+```

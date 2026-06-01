@@ -37,6 +37,39 @@
       .lang-btn.active { background: #7a1a1a; color: #fff; border-color: #7a1a1a; }
       .lang-btn:hover:not(.active) { background: #f5f5f5; }
 
+      /* ── Help [?] button + panel ── (shared pattern across modals) */
+      .help-btn {
+        width: 22px; height: 22px; padding: 0; flex-shrink: 0;
+        border: 1px solid currentColor; border-radius: 50%;
+        background: transparent; color: inherit; opacity: 0.7;
+        font-size: 12px; font-weight: bold; line-height: 1; cursor: pointer;
+        transition: opacity 0.15s;
+      }
+      .help-btn:hover { opacity: 1; }
+      .help-overlay {
+        display: none; position: fixed; inset: 0; z-index: 100;
+        background: rgba(0,0,0,0.45);
+        align-items: flex-start; justify-content: center; padding: 14px;
+      }
+      .help-overlay.open { display: flex; }
+      .help-card {
+        background: #fff; border-radius: 8px; width: 100%; max-width: 460px;
+        max-height: 100%; display: flex; flex-direction: column;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.32); overflow: hidden;
+      }
+      .help-head {
+        background: #1a1a2e; color: #fff; padding: 10px 14px;
+        font-size: 13px; font-weight: bold; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: space-between;
+      }
+      .help-x { cursor: pointer; font-size: 15px; opacity: 0.8; padding: 0 4px; }
+      .help-x:hover { opacity: 1; }
+      .help-body { padding: 14px 16px; overflow-y: auto; font-size: 12px; line-height: 1.65; color: #333; }
+      .help-lead { margin-bottom: 10px; }
+      .help-step { margin-bottom: 7px; }
+      .help-tip { background: #f0f7f4; border-left: 3px solid #1a3a2e; border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 10px; font-size: 11px; color: #1a3a2e; }
+      .help-warn { background: #fff8e6; border-left: 3px solid #f0a500; border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 8px; font-size: 11px; color: #7a5000; }
+
       /* ── Scrollable body ── */
       .body { flex: 1; overflow-y: auto; padding: 14px 14px 0; }
       .body::-webkit-scrollbar { width: 5px; }
@@ -123,8 +156,29 @@
         </p>
       </div>
       <div class="lang-group">
+        <button class="help-btn" onclick="toggleHelp(true)" title="Help" aria-label="Help">?</button>
         <button class="lang-btn active" onclick="setLang('en')">EN</button>
         <button class="lang-btn"        onclick="setLang('es')">ES</button>
+      </div>
+    </div>
+
+    <!-- ── Help panel (toggled by the [?] header button) ── -->
+    <div id="help-overlay" class="help-overlay" onclick="if(event.target===this)toggleHelp(false)">
+      <div class="help-card">
+        <div class="help-head">
+          <span><span class="en">Admin Reset — how it works</span><span class="es">Restablecimiento Admin — cómo funciona</span></span>
+          <span class="help-x" onclick="toggleHelp(false)">✕</span>
+        </div>
+        <div class="help-body">
+          <div class="help-lead">
+            <span class="en">Selectively clear parts of the system. Each option is independent — anything you don't check stays untouched.</span>
+            <span class="es">Limpia selectivamente partes del sistema. Cada opción es independiente — lo que no marques queda intacto.</span>
+          </div>
+          <div class="help-step"><span class="en"><strong>Pick Path DB</strong> (safe) · <strong>Pick Path List</strong> (caution) · <strong>Order Log</strong> (caution) · <strong>Vendors / Areas</strong> (destructive).</span><span class="es"><strong>BD de Ruta</strong> (seguro) · <strong>Lista de Ruta</strong> (precaución) · <strong>Registro de Pedidos</strong> (precaución) · <strong>Proveedores / Áreas</strong> (destructivo).</span></div>
+          <div class="help-step"><span class="en"><strong>1.</strong> Check only what you want to clear.</span><span class="es"><strong>1.</strong> Marca solo lo que quieres limpiar.</span></div>
+          <div class="help-step"><span class="en"><strong>2.</strong> Type <strong>RESET</strong> to confirm, then run the reset.</span><span class="es"><strong>2.</strong> Escribe <strong>RESET</strong> para confirmar, luego ejecuta.</span></div>
+          <div class="help-warn"><span class="en">⚠ Resets cannot be undone. Clearing Vendors / Areas means re-entering all that data by hand.</span><span class="es">⚠ Los restablecimientos no se pueden deshacer. Limpiar Proveedores / Áreas implica reingresar todos esos datos a mano.</span></div>
+        </div>
       </div>
     </div>
 
@@ -357,6 +411,14 @@
       }
 
       function byId(id) { return document.getElementById(id); }
+
+      // ── Help panel ──
+      function toggleHelp(show) {
+        byId('help-overlay').classList.toggle('open', show);
+      }
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') toggleHelp(false);
+      });
 
       function bumpMutationTs_() {
         // Signals to other modals' caches that data has changed and they

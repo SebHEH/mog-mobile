@@ -371,11 +371,13 @@ function onOpen(e) {
       .addItem("    Status",                 "showMobileApiStatus")
       .addItem("    Clear PIN Lockout",      "clearPinLockout")
       .addSeparator()
-      .addItem("    Migrate Item Vendors",   "migrateItemVendorsColumn")
+      // Decluttered 2026-06-01: removed spent one-time/diagnostic entries —
+      // Migrate Item Vendors (backfill, run everywhere), Audit Vendor Tab
+      // Structure + Re-establish Vendor Template (diagnostics from the resolved
+      // #4 vendor-template work). The functions remain in OrderGuideScript.gs
+      // and are still runnable from the Apps Script editor if ever needed.
       .addItem("    Recalibrate Vendor Pars","showRecalibrateVendorSidebar")
       .addItem("    Audit Vendor Cadence",   "showVendorCadenceAuditSidebar")
-      .addItem("    Audit Vendor Tab Structure","auditVendorTabStructure")
-      .addItem("    Re-establish Vendor Template","reestablishVendorTemplateMenu_")
       .addItem("    Sync Vendor Multiplier Formulas","syncVendorMultiplierFormulasMenu_")
       .addItem("    Clear Config",           "clearMobileApiConfig"))
     .addToUi();
@@ -1477,142 +1479,11 @@ function reestablishVendorTemplateMenu_() {
 }
 
 
-// ── Strip the dead zone + apply concept-header branding to one vendor tab ──
-// Idempotent and On-Hand-SAFE (never reads or writes column E). Clears the
-// unreferenced Q:T duplicate block (Q3:T3 anchor the spill), hides the N:T dead
-// columns, and brands the A1:F1 header strip with the store's concept accent +
-// location name. Caller must confirm the tab is structurally sound first.
-function brandAndStripVendorTab_(sheet) {
-  // 1. Dead-zone strip. Q3:T3 are the column-anchored duplicate of A–D; clearing
-  //    row 3 empties the whole block. N:P are already empty by design.
-  sheet.getRange("Q3:T3").clearContent();
-  sheet.hideColumns(14, 7); // N(14) … T(20)
-
-  // 2. Concept branding on the A1:F1 header strip (mirrors the dashboard banner).
-  const theme = dashTheme_();
-  const header = sheet.getRange("A1:F1");
-  header.setBackground(theme.accent);
-  header.setFontColor(theme.bannerFont);
-  header.setFontWeight("bold");
-
-  // 3. Location-name stamp in A1 (left of the merged B1:F1 vendor-name cell).
-  //    B1 is load-bearing (the M-spine FILTER keys off it) so we NEVER write it.
-  //    Guarded: stamp A1 only if it's free or already holds our stamp, so the
-  //    pass stays idempotent and can't clobber unexpected content.
-  const location = String(
-    PropertiesService.getScriptProperties().getProperty(PROP_LOCATION) || ""
-  ).trim();
-  if (location) {
-    const a1 = sheet.getRange("A1");
-    if (!a1.isPartOfMerge()) {
-      const cur = String(a1.getValue() || "").trim();
-      if (cur === "" || cur === location) {
-        a1.setValue(location);
-      } else {
-        Logger.log("[MigrateVendorTabs] " + sheet.getName() +
-                   ": A1 occupied ('" + cur + "') — skipped location stamp.");
-      }
-    }
-  }
-}
-
-
-// ── #4 migration entry point: re-establish template, strip dead zone, brand ──
-// Idempotent, defensive (skips + reports any tab whose PRESERVED structure
-// doesn't match VENDOR_TEMPLATE), and On-Hand-safe. Run AFTER Audit Vendor Tab
-// Structure passes on this store. Menu: 📱 Mobile API → Migrate Vendor Tabs.
-// SHELVED (2026-05-29): cosmetic dead-zone strip + header branding. NOT wired to
-// any menu — the real fix is syncVendorMultiplierFormulasMenu_ (template H2 repair).
-// Kept dormant; safe to delete along with its only helper, brandAndStripVendorTab_.
-function migrateVendorTabs() {
-  const ui = SpreadsheetApp.getUi();
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  // Config gate — branding reads MOG_LOCATION_NAME + MOG_CONCEPT. If either is
-  // unset (e.g. a store whose script properties were never configured, like a
-  // freshly-migrated script project), REFUSE rather than half-brand the tabs
-  // navy with no location stamp. The standalone "Re-establish Vendor Template"
-  // action is intentionally NOT gated — it's a config-independent recovery path.
-  const props = PropertiesService.getScriptProperties();
-  const missing = [];
-  if (!String(props.getProperty(PROP_LOCATION) || "").trim()) missing.push("MOG_LOCATION_NAME");
-  if (!String(props.getProperty(PROP_CONCEPT)  || "").trim()) missing.push("MOG_CONCEPT");
-  if (missing.length) {
-    ui.alert(
-      "Migration blocked — store not configured",
-      "Missing script propert" + (missing.length > 1 ? "ies" : "y") + ": " +
-      missing.join(", ") + ".\n\n" +
-      "Run Ordering Guide → 📱 Mobile API → Setup / Re-run Setup first so the " +
-      "vendor-tab headers brand correctly, then re-run the migration.",
-      ui.ButtonSet.OK
-    );
-    return;
-  }
-
-  const confirm = ui.alert(
-    "Migrate Vendor Tabs?",
-    "On THIS store this will:\n" +
-    "  • Re-establish a hidden VENDOR_TEMPLATE if missing.\n" +
-    "  • Clear the unused Q:T block and hide the N:T dead columns.\n" +
-    "  • Brand each header with the store concept + location name.\n\n" +
-    "On Hand (column E) is never touched. Tabs that don't match the template\n" +
-    "are skipped and reported. Reversible via File → Version History.\n\n" +
-    "Run Audit Vendor Tab Structure first if you haven't. Continue?",
-    ui.ButtonSet.YES_NO
-  );
-  if (confirm !== ui.Button.YES) return;
-
-  // 1. Ensure the template exists.
-  let templateNote;
-  try {
-    const r = reestablishVendorTemplate_();
-    templateNote = r.created
-      ? "VENDOR_TEMPLATE re-established (cloned from \"" + r.source + "\")."
-      : "VENDOR_TEMPLATE already present.";
-  } catch (e) {
-    ui.alert("Migration aborted", String(e.message || e), ui.ButtonSet.OK);
-    return;
-  }
-
-  // 2. Reference signature from the template — PRESERVED cells only. Q:T are
-  //    excluded on purpose: they're what we strip, so their presence (unmigrated
-  //    tab) vs absence (already-migrated tab, or the freshly-stripped template)
-  //    must NOT gate migration, or a second run would skip every pending tab.
-  const CHECK_CELLS = ["A3","B3","C3","D3","F3","H2","I4","K4","M3"];
-  const tmpl = ss.getSheetByName("VENDOR_TEMPLATE");
-  const ref = {};
-  CHECK_CELLS.forEach(function (a) { ref[a] = tmpl.getRange(a).getFormula(); });
-
-  // 3. Brand + strip the template itself, then each structurally-matching tab.
-  brandAndStripVendorTab_(tmpl);
-
-  const migrated = [];
-  const skipped  = [];
-  getVendorList().forEach(function (v) {
-    const sh = ss.getSheetByName(v);
-    if (!sh) { skipped.push('"' + v + '" — tab not found'); return; }
-    const diffs = CHECK_CELLS.filter(function (a) {
-      return sh.getRange(a).getFormula() !== ref[a];
-    });
-    if (diffs.length) {
-      skipped.push('"' + v + '" — structure differs (' + diffs.join(", ") + ')');
-      return;
-    }
-    brandAndStripVendorTab_(sh);
-    migrated.push(v);
-  });
-
-  const summary =
-    templateNote + "\n\n" +
-    "✓ Migrated: " + migrated.length + " tab(s)" +
-    (migrated.length ? "\n   " + migrated.join(", ") : "") + "\n\n" +
-    (skipped.length
-      ? "⚠ Skipped: " + skipped.length + "\n   - " + skipped.join("\n   - ") +
-        "\n\nSkipped tabs were NOT modified — review structure before re-running."
-      : "No tabs skipped — all structurally consistent.") +
-    "\n\n(Per-tab detail in Extensions → Apps Script → Executions.)";
-  ui.alert("Vendor Tab Migration", summary, ui.ButtonSet.OK);
-}
+// ── (removed 2026-06-01) brandAndStripVendorTab_ + migrateVendorTabs ──
+// Shelved cosmetic vendor-tab dead-zone strip + concept-header branding from
+// the 2026-05-29 #4 work. Never wired to a menu; the real fix shipped instead
+// as syncVendorMultiplierFormulasMenu_ (template H2 repair). Deleted as dead
+// code — recoverable via git history if the branding pass is ever revived.
 
 
 // Called by ManageVendors sidebar - Remove tab.
@@ -4121,8 +3992,8 @@ function showOrderHistoryModal() {
 
 
 // Single-RPC modal-open path. Returns { vendors, rows } in one pass so the
-// client doesn't need a separate getOrderHistoryVendorList() round-trip and
-// the server doesn't read LOG_ORDERS twice. Vendor list is derived from the
+// client doesn't need a separate vendor-list round-trip and the server
+// doesn't read LOG_ORDERS twice. Vendor list is derived from the
 // unfiltered log (the dropdown must show every vendor regardless of filter);
 // rows are the filtered set, same shape getOrderHistory returns.
 function getOrderHistoryBootstrap(filters) {
@@ -4291,105 +4162,11 @@ function getOrderHistory(filters) {
 
 
 
-// Serves Tab 3 (Vendor Summary) — pre-aggregated data.
-function getOrderSummary(filters) {
-  const raw = getOrderHistory(filters);
-  if (!raw.length) return [];
-
-
-
-
-  const vendorMap = new Map();
-
-
-
-
-  raw.forEach(row => {
-    if (!vendorMap.has(row.vendor)) vendorMap.set(row.vendor, new Map());
-    const itemMap = vendorMap.get(row.vendor);
-
-
-
-
-    if (!itemMap.has(row.itemId)) {
-      itemMap.set(row.itemId, {
-        itemId:       row.itemId,
-        itemName:     row.itemName,
-        timesOrdered: 0,
-        totalQty:     0,
-        totalOnHand:  0
-      });
-    }
-
-
-
-
-    const agg = itemMap.get(row.itemId);
-    agg.timesOrdered++;
-    agg.totalQty    += row.qtyOrdered;
-    agg.totalOnHand += row.onHandPrev;
-  });
-
-
-
-
-  const out = [];
-  Array.from(vendorMap.keys()).sort().forEach(vendor => {
-    const itemMap = vendorMap.get(vendor);
-    const items   = Array.from(itemMap.values())
-      .map(a => ({
-        itemId:       a.itemId,
-        itemName:     a.itemName,
-        timesOrdered: a.timesOrdered,
-        totalQty:     a.totalQty,
-        avgQty:       Math.round((a.totalQty    / a.timesOrdered) * 10) / 10,
-        avgOnHand:    Math.round((a.totalOnHand / a.timesOrdered) * 10) / 10
-      }))
-      .sort((a, b) => b.timesOrdered - a.timesOrdered);
-
-
-
-
-    out.push({ vendor, items });
-  });
-
-
-
-
-  return out;
-}
-
-
-
-
-// Populates the vendor dropdown in the Order History modal.
-function getOrderHistoryVendorList() {
-  const logSheet = ensureLogSheet_();
-  const lastRow  = logSheet.getLastRow();
-
-
-
-
-  if (lastRow < 2) return getVendorList();
-
-
-
-
-  const vendors = logSheet
-    .getRange(2, LOG_COL.VENDOR, lastRow - 1, 1)
-    .getValues()
-    .flat()
-    .map(v => String(v || "").trim())
-    .filter(Boolean);
-
-
-
-
-  const unique = Array.from(new Set(vendors)).sort();
-  return unique.length ? unique : getVendorList();
-}
-
-
+// ── (removed 2026-06-01) getOrderSummary + getOrderHistoryVendorList ──
+// Both dead. OrderHistory.html builds the Vendor Summary aggregation
+// client-side from getOrderHistory, and the vendor dropdown is populated
+// inline by getOrderHistoryBootstrap — neither server fn had a caller.
+// Recoverable via git history.
 
 
 // Clears all data rows in LOG_ORDERS (header row preserved).
