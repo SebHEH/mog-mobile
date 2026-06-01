@@ -86,3 +86,68 @@ concept-aware modal theming).
 CANARY IS rprfo. Read docs/MOG_CurrentState.md for invariants. Deploy
 routing: python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
 ```
+
+---
+
+## Later session — PWA ordering-flow breadcrumb + vendor-name topbar
+
+**Session focus:** Extend the History drill-down breadcrumb (shipped earlier today) to the ordering flow, after confirming the History breadcrumb works live on rprfo.
+**Outcome:** Two commits, both pushed to `main` (GitHub Pages). The History breadcrumb's open gate is **closed** — Sebastian confirmed it works live on rprfo. The ordering flow (count + review) now has the same breadcrumb, plus the vendor name in the topbar. CACHE **v14→v15→v16**.
+**Next session focus:** Optional brand-expression work — per-concept hub brand SVGs, or Batch D.
+
+### What shipped
+
+- **Ordering-flow drill-down breadcrumb** (`a0ca5b6`'s sibling, commit `3631927`; `template/index.html` + `sw.js`, `build.py` + `git push`). Same gray-chrome breadcrumb the History views got, now under the topbar on the two ordering sub-views:
+  - count: `Today's orders › <vendor>`
+  - review: `Today's orders › <vendor> › Review order`
+  - Ancestor crumbs tappable (root → today via `goBack`/`switchTab`, vendor → count). Reused the already-generic `setBreadcrumb_`; added `setCountBreadcrumb_(vendor)` (shared by the fresh drill-in and the return-from-review path so they can't drift), extended `showView`'s breadcrumb keep-list to include `count`/`review`.
+  - **Back button on review now steps review → count** (was review → today) to match the breadcrumb's "up". The count root crumb routes through `goBack` so a KM tapping it mid-count still hits the save/discard/cancel guard.
+  - **The key bug the walkthrough caught:** `onReviewClick` flushes with no-refetch, which `clearDraft`s **and deletes the in-memory vendor cache** (`delete state.cache.vendorItems[vendor]`, OrderGuide line ~4135). So routing review→count through `openCount` would have re-fetched a *stale localStorage snapshot* and shown the just-entered counts as reverted. Fix: new `reopenCountFromContext_()` re-renders count from the live in-memory `ctx.items` (no fetch); both the review vendor-crumb and the review back button use it.
+  - Initially also deduped the topbar (count/review topbar → stable "Today's orders"/"Review order", vendor moved into the crumb) mirroring the History dedup — see next item for the follow-up.
+- **Vendor name in the count/review topbar** (commit `74529c0`; `template/index.html` + `sw.js`). Sebastian's call after seeing it live: revert just the topbar-dedup half so the big topbar title shows the **vendor name** again (at-a-glance clarity of which vendor is being counted), while the breadcrumb underneath stays. `setTitle('count', ctx.vendor)` / `setTitle('review', ctx.vendor)` restored; the new `titles.count`/`titles.review` keys remain as the empty-vendor fallback. The redundant vendor `section-label` at the top of the review list stays removed (vendor is now in both topbar + crumb). Also resolves the "Review order shows twice" concern (review topbar is the vendor now, not the duplicate label).
+
+### Outstanding (carry forward)
+
+1. **Per-concept hub brand SVGs** (optional). `CONCEPT_VISUALS`/`conceptIconHtml_` accept an `svg:` field; concept icons are still generic Tabler glyphs. Hub `git push` + cache bump.
+2. **Batch D** (strategic): brand fonts (Brother 1816/Avenir for RP, Campaign Serif/Filson Pro for TNY); brand SVG concept marks; concept-aware modal theming (modals fixed navy/green across all 9).
+3. **Reconcile the global `rhino-safe-html` skill cross-repo** (carried from earlier today; left untouched — MOG docs treat it as optional style).
+4. **ManageVendors "Advanced" disclosure** (still gated on Sebastian running Vendor Cadence Audit across all 9 + recalibrating flagged vendors).
+
+### Files touched (later session)
+
+- `template/index.html` — ordering breadcrumb markup reuse; `setCountBreadcrumb_` / `reopenCountFromContext_`; `showView` keep-list; breadcrumb wiring in `openCount` / `openReview`; `goBack` review branch (→ count) ; review `section-label` removal; `setTitle('count'/'review', ctx.vendor)`; new `todaysOrders` msg key + `count`/`review` title keys.
+- `template/sw.js` — CACHE v14→v15→v16.
+- 8 generated `<slug>/` dirs (index.html + sw.js) refreshed by `build.py` (PWA fan-out = the single `git push`; no clasp this session).
+
+### Commits landed (later session)
+
+```
+74529c0 feat(pwa): show vendor name in count/review topbar (breadcrumb stays)
+3631927 feat(pwa): extend drill-down breadcrumb to the ordering flow (count/review)
+```
+(Plus a follow-up `docs:` commit for this handoff — both feature commits were pushed mid-session.)
+
+### Opening prompt for next session (supersedes the block above)
+
+```
+Resume MOG work. 2026-06-01 (later session) shipped two PWA commits, both
+pushed to main (GitHub Pages, CACHE v16):
+  - 3631927: ordering-flow drill-down breadcrumb — count shows
+    "Today's orders > <vendor>", review shows
+    "Today's orders > <vendor> > Review order". Ancestor crumbs tappable;
+    back button on review now steps review->count; review->count re-shows
+    from in-memory context (NO refetch — openReview's flush drops the
+    vendor cache, so a refetch would revert the just-entered counts).
+  - 74529c0: count/review topbar shows the vendor name again (clarity),
+    breadcrumb stays underneath.
+Earlier today: backend housekeeping (4d5a05e) + History breadcrumb
+(a0ca5b6) — the History breadcrumb's live smoke-test on rprfo is CONFIRMED
+working (gate closed).
+
+Optional next directions: per-concept hub brand SVGs (CONCEPT_VISUALS
+accepts an svg: field), or Batch D (brand fonts / SVG concept marks /
+concept-aware modal theming).
+
+CANARY IS rprfo. Read docs/MOG_CurrentState.md for invariants. Deploy
+routing: python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
+```
