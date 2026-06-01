@@ -2210,6 +2210,8 @@
   const T = {
     titles: {
       today:            { en: "Today's orders",  es: 'Pedidos de hoy' },
+      count:            { en: "Today's orders",  es: 'Pedidos de hoy' },
+      review:           { en: 'Review order',    es: 'Revisar pedido' },
       'history-vendors':{ en: 'Order history',    es: 'Historial' },
       'history-detail': { en: 'Order details',   es: 'Detalles' },
       settings:         { en: 'Settings',        es: 'Ajustes' },
@@ -2239,6 +2241,7 @@
       vendorsToday:     { en: 'Vendors today', es: 'Proveedores hoy' },
       today:            { en: 'Today', es: 'Hoy' },
       orderHistory:     { en: 'Order history', es: 'Historial' },
+      todaysOrders:     { en: "Today's orders", es: 'Pedidos de hoy' },
       itemsOrdered:     { en: 'Items ordered', es: 'Artículos pedidos' },
       reference:        { en: 'Reference', es: 'Referencia' },
       onHand:           { en: 'on hand', es: 'stock' },
@@ -3762,9 +3765,41 @@
     }
   }
 
+  // Drill-down breadcrumb for the count screen: Today's orders › <vendor>.
+  // The root crumb routes through goBack so a KM tapping it mid-count still
+  // hits the save/discard/cancel guard (goBack's count branch). Shared by
+  // openCount (fresh drill-in) and reopenCountFromContext_ (return from
+  // review) so the two can't drift.
+  function setCountBreadcrumb_(vendor) {
+    setBreadcrumb_([
+      { html: escapeHtml(t('todaysOrders')), onClick: goBack },
+      { html: escapeHtml(vendor) }
+    ]);
+  }
+
+  // Re-show the count screen for the current vendor from the in-memory
+  // count context — NO refetch. Used when returning from review (vendor
+  // crumb + back button). openReview's flush clears the saved draft and
+  // drops the in-memory vendor cache, so re-fetching here would read a
+  // stale localStorage snapshot and the counts the KM just entered would
+  // appear reverted. ctx.items still holds the live values, so we render
+  // straight from it. Falls back to a fresh openCount only if the context
+  // was somehow lost.
+  function reopenCountFromContext_() {
+    const ctx = state.countContext;
+    if (!ctx || !ctx.vendor) { switchTab('today'); return; }
+    if (!ctx.items || !ctx.items.length) { openCount(ctx.vendor); return; }
+    showView('count');
+    setCountBreadcrumb_(ctx.vendor);
+    renderCount();
+  }
+
   async function openCount(vendor) {
     state.countContext = { vendor: vendor, items: [], dirty: {} };
     showView('count');
+    // Drill-down breadcrumb set synchronously (vendor is known before the
+    // items fetch) so it's present even while the loading bar shows.
+    setCountBreadcrumb_(vendor);
     // Only show the loading bar if we don't already have vendor items
     // cached. The post-dashboard prefetch (prefetchTodaysVendors_) warms
     // this cache for every today vendor, so by the time the KM taps a
@@ -3917,7 +3952,10 @@
     html += '<button class="cta" id="review-btn" style="margin-top:8px">' + escapeHtml(t('reviewOrder')) + '</button>';
 
     view.innerHTML = html;
-    setTitle('count', ctx.vendor);
+    // Topbar stays a stable section label; the vendor name lives in the
+    // breadcrumb's current crumb (set in openCount). Mirrors the History
+    // dedup where date/vendor moved off the topbar into the breadcrumb.
+    setTitle('count');
 
     // Wire stepper events
     view.querySelectorAll('.step-val').forEach(input => {
@@ -4201,7 +4239,16 @@
   function openReview() {
     const ctx = state.countContext;
     showView('review');
-    setTitle('review', ctx.vendor);
+    setTitle('review');
+    // Drill-down breadcrumb: Today's orders › <vendor> › Review. Counts are
+    // already flushed to the server on review entry, so both jumps are safe
+    // with no dirty guard — the vendor crumb re-opens the count screen, the
+    // root crumb returns straight to today.
+    setBreadcrumb_([
+      { html: escapeHtml(t('todaysOrders')), onClick: function () { switchTab('today'); } },
+      { html: escapeHtml(ctx.vendor), onClick: reopenCountFromContext_ },
+      { html: escapeHtml(t('reviewOrder')) }
+    ]);
     renderReview();
   }
 
@@ -4216,9 +4263,9 @@
       return s != null && s > 0;
     });
 
+    // Vendor name no longer repeated here — it's the breadcrumb's middle
+    // crumb above the topbar (set in openReview). Mirrors the History dedup.
     let html = '';
-    html += '<div class="section-label" style="margin-bottom:14px">' +
-      escapeHtml(ctx.vendor) + '</div>';
 
     if (!toOrder.length) {
       html += '<div class="empty-state" style="padding:32px 24px">' +
@@ -5848,10 +5895,12 @@
     });
     state.currentView = viewName;
     if (!['count','review'].includes(viewName)) setTitle(viewName);
-    // The breadcrumb belongs only to the two History sub-views; the openers
-    // set it after this call. Leaving for any other view (incl. the dates
-    // root) clears it.
-    if (viewName !== 'history-vendors' && viewName !== 'history-detail') setBreadcrumb_(null);
+    // The breadcrumb belongs to the History sub-views and the ordering
+    // drill-down (count/review); each opener sets it right after this call.
+    // Leaving for any other view (incl. the History dates root and the
+    // today vendor list) clears it.
+    const breadcrumbViews = ['history-vendors', 'history-detail', 'count', 'review'];
+    if (!breadcrumbViews.includes(viewName)) setBreadcrumb_(null);
     // Back button: show whenever current view isn't a tab root
     const tabRoots = { today:'today', history:'history', settings:'settings' };
     const isTabRoot = (viewName === tabRoots[state.currentTab]);
@@ -6020,9 +6069,12 @@
       return;
     }
 
-    // Review → today (no save needed; counts already saved on entry)
+    // Review → count for the same vendor, re-shown from the in-memory
+    // count context (no refetch — see reopenCountFromContext_). Stepwise
+    // back matches the breadcrumb's "up" (Today's orders › vendor ›
+    // Review); the breadcrumb root crumb is the 1-tap shortcut to today.
     if (v === 'review') {
-      switchTab('today');
+      reopenCountFromContext_();
       return;
     }
 
