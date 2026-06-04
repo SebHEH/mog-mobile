@@ -1294,8 +1294,10 @@ function sendRecapEmail_(recipient, sections, cycleDate, totalItems) {
   const subject  = '[' + location + '] Daily order recap — ' + cycleDate +
                    ' (' + sections.length + ' vendors, ' + totalItems + ' items)';
 
-  // Plain text — copy/paste-friendly, easy to scan from a phone
-  let body = 'DAILY ORDER RECAP\n=================\n\n';
+  // Plain text — copy/paste-friendly, easy to scan from a phone. Mirrors the HTML:
+  // "suggested" framing + the "Item × qty (pack)" line order, On Hand trailing.
+  let body = 'SUGGESTED DAILY ORDER\n=====================\n\n';
+  body += 'Suggested amounts based on today\'s On Hand — review before placing each order.\n\n';
   body += 'Location: ' + location + '\n';
   body += 'Date:     ' + cycleDate + '\n';
   body += 'Vendors:  ' + sections.length + '\n';
@@ -1305,40 +1307,70 @@ function sendRecapEmail_(recipient, sections, cycleDate, totalItems) {
     body += '-- ' + sec.vendor.toUpperCase() + ' --\n';
     for (const line of sec.lines) {
       const onHand = (line.onHand === null || line.onHand === '') ? '—' : line.onHand;
-      body += '  ' + line.qty + ' × ' + line.name + ' (' + line.pack + ')';
+      body += '  ' + line.name + ' × ' + line.qty + (line.pack ? ' (' + line.pack + ')' : '');
       body += '   [on hand: ' + onHand + ']\n';
     }
     body += '\n';
   }
 
-  // HTML — light branding, scannable per-vendor sections
-  let html = '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:640px;color:#1f1e1b">';
-  html += '<h2 style="color:#0f6e56;margin:0 0 4px;font-size:22px">Daily order recap</h2>';
-  html += '<p style="color:#5f5e5a;font-size:13px;margin:0 0 4px">' + escapeHtml_(location) + ' &middot; ' + cycleDate + '</p>';
-  html += '<p style="color:#8a8a85;font-size:12px;margin:0 0 22px">' + sections.length + ' vendors &middot; ' + totalItems + ' items</p>';
+  // HTML — brand-aligned recap. Email clients strip <style>/:root/var(), so all
+  // colors are inlined as LITERAL hexes. The header band + accents are themed
+  // PER STORE CONCEPT via dashTheme_() (MOG_CONCEPT property — same palette as the
+  // Sheet dashboard, so email and dashboard stay coordinated):
+  //   roll-play → teal-dark #2d8c6b + white · teasnyou → charcoal #1a1a1a + gold
+  //   #D4A574 · unset/unknown → navy #1a1a2e + white (matches the modal --brand).
+  // dashTheme_() lives in OrderGuideScript.gs but shares global scope at runtime.
+  const theme    = (typeof dashTheme_ === 'function')
+                     ? dashTheme_()
+                     : { accent: '#1a1a2e', bannerFont: '#ffffff' };
+  const bandBg   = theme.accent;        // header band background (concept color)
+  const bandText = theme.bannerFont;    // band title (white, or TNY gold)
+  const bandSub  = (String(bandText).toLowerCase() === '#ffffff') ? '#dcdce6' : '#cfcfcf';
+  const headInk  = theme.accent;        // vendor headers + the "× qty" action number
+
+  let html = '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:640px;margin:0 auto;color:#1f2937">';
+
+  // Header band (store + date + counts) — concept-themed. Single-cell table for
+  // client safety (Gmail/iOS render a table-cell background more reliably than a div).
+  html += '<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 14px">';
+  html += '<tr><td style="background:' + bandBg + ';padding:18px 20px;border-radius:8px">';
+  html += '<div style="color:' + bandText + ';font-size:22px;font-weight:700;line-height:1.2">' + escapeHtml_(location) + '</div>';
+  html += '<div style="color:' + bandText + ';font-size:15px;font-weight:600;margin-top:4px">Suggested daily order</div>';
+  html += '<div style="color:' + bandSub + ';font-size:12px;margin-top:6px">' + cycleDate + ' &middot; ' + sections.length + ' vendors &middot; ' + totalItems + ' items</div>';
+  html += '</td></tr></table>';
+
+  // Clarity caption — these are SUGGESTED amounts, not a placed order.
+  html += '<p style="color:#444;font-size:13px;margin:0 0 18px;line-height:1.45">';
+  html += 'Suggested order amounts based on today’s On Hand counts. ';
+  html += 'Review each before placing the order through the vendor’s normal channel.';
+  html += '</p>';
 
   for (const sec of sections) {
-    html += '<h3 style="color:#1f1e1b;margin:18px 0 8px;font-size:16px;border-bottom:1px solid #e1e1da;padding-bottom:6px">' + escapeHtml_(sec.vendor) + '</h3>';
+    html += '<h3 style="color:' + headInk + ';margin:20px 0 6px;font-size:16px;border-bottom:2px solid ' + headInk + ';padding-bottom:6px">' + escapeHtml_(sec.vendor) + '</h3>';
     html += '<table style="width:100%;border-collapse:collapse;font-size:14px">';
-    html += '<tr style="background:#f5f4ed">';
-    html += '<th style="padding:8px;text-align:left;font-size:12px;color:#5f5e5a">Qty</th>';
-    html += '<th style="padding:8px;text-align:left;font-size:12px;color:#5f5e5a">Item</th>';
-    html += '<th style="padding:8px;text-align:left;font-size:12px;color:#5f5e5a">Pack</th>';
-    html += '<th style="padding:8px;text-align:right;font-size:12px;color:#5f5e5a">On hand</th>';
+    html += '<tr style="background:#f4f5f7">';
+    html += '<th style="padding:7px 8px;text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#888">Suggested order</th>';
+    html += '<th style="padding:7px 8px;text-align:right;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#aab0b6">On hand</th>';
     html += '</tr>';
     for (const line of sec.lines) {
       const onHand = (line.onHand === null || line.onHand === '') ? '—' : line.onHand;
+      // One readable line: "Item Name × 3 (Pack)" — name in body ink, the × qty
+      // bold in the concept accent (the action number), pack muted in parens.
       html += '<tr>';
-      html += '<td style="padding:8px;border-bottom:1px solid #eee"><strong>' + line.qty + '</strong></td>';
-      html += '<td style="padding:8px;border-bottom:1px solid #eee">' + escapeHtml_(line.name) + '</td>';
-      html += '<td style="padding:8px;border-bottom:1px solid #eee;color:#5f5e5a">' + escapeHtml_(line.pack) + '</td>';
-      html += '<td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#5f5e5a">' + onHand + '</td>';
+      html += '<td style="padding:9px 8px;border-bottom:1px solid #eef0f2;line-height:1.4">';
+      html += '<span style="color:#1f2937">' + escapeHtml_(line.name) + '</span>';
+      html += '<strong style="color:' + headInk + ';white-space:nowrap;font-size:15px">&nbsp;&times; ' + line.qty + '</strong>';
+      if (line.pack) {
+        html += '<span style="color:#9aa0a6;font-size:13px">&nbsp;(' + escapeHtml_(line.pack) + ')</span>';
+      }
+      html += '</td>';
+      html += '<td style="padding:9px 8px;border-bottom:1px solid #eef0f2;text-align:right;color:#aab0b6;font-size:12px;white-space:nowrap">' + onHand + '</td>';
       html += '</tr>';
     }
     html += '</table>';
   }
 
-  html += '<p style="color:#8a8a85;font-size:12px;margin-top:22px;border-top:1px solid #e1e1da;padding-top:12px">';
+  html += '<p style="color:#888;font-size:12px;margin-top:22px;border-top:1px solid #e5e7eb;padding-top:12px">';
   html += 'This is a recap of suggested orders. Place each vendor\'s order through their normal channel ';
   html += '(portal, app, phone, email). Order History will populate when reset runs tomorrow.';
   html += '</p>';
@@ -1354,6 +1386,25 @@ function sendRecapEmail_(recipient, sections, cycleDate, totalItems) {
     htmlBody: html,
     name:     'Master Ordering Guide'
   });
+}
+
+
+// Editor-run only (NOT menu-wired): sends the current cycle's recap to whoever
+// runs it — Session.getActiveUser() — bypassing the configured recipient list,
+// the once-per-day dedupe flag, and the On-Hand clear. Use it to preview the
+// email design without emailing the real recipients. Throws a clear message if
+// there's nothing to recap (no vendor has items to order right now).
+function test_recapEmailToSelf() {
+  const me = Session.getActiveUser().getEmail();
+  if (!me) throw new Error('Could not resolve your email from Session.getActiveUser().');
+  const recap = buildRecapSections_(null);
+  if (!recap.sections.length) {
+    throw new Error('Nothing to recap — no vendor has items to order right now. ' +
+                    'Enter some On Hand counts first, then re-run.');
+  }
+  sendRecapEmail_(me, recap.sections, recap.cycleDate, recap.totalItems);
+  Logger.log('Test recap sent to ' + me + ' — ' + recap.sections.length +
+             ' vendors, ' + recap.totalItems + ' items (' + recap.cycleDate + ').');
 }
 
 

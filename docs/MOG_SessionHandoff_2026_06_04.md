@@ -86,3 +86,59 @@ and HowToUse tier). After fan-out: Phase 2 = recap-email rebrand
 CANARY IS rprfo. Read docs/MOG_CurrentState.md for invariants. Deploy
 routing: python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
 ```
+
+---
+
+# Later session — Modal sweep fan-out + recap-email rebrand (Phase 2)
+
+**Session focus:** Close the modal design-system canary gate (fan out to all 9), then do Phase 2 — rebrand the daily recap email to the brand.
+**Outcome:** Modal sweep fanned out to all 9 + master (push-only). Recap email fully redesigned + per-concept themed and fanned out to all 9 + master (`--redeploy`). Sebastian smoke-tested the recap on rprfo via a new editor-only `test_recapEmailToSelf` helper and approved the final look.
+**Next session focus:** Optional — per-concept hub brand SVGs, or Batch D (brand fonts / concept-aware modal theming, now easy via the token layer).
+
+## What shipped
+
+### A. Modal design-system unification — FANNED OUT
+- After Sebastian confirmed the rprfo canary, ran `python deploy.py` (push-only, no `--redeploy` — bound-sidebar modal + `.gs` changes) to all 9 + master. All targets `PUSH OK`, 13 files each incl. the new `Styles.html`. The 2026-06-04 modal sweep (shared `Styles.html` tokens, two-tier sizing, `[?]` fixes) is now live everywhere. **The open gate from the earlier block is CLOSED.**
+
+### B. Recap-email rebrand (Phase 2) — `MOGApi.gs` `sendRecapEmail_`, FANNED OUT via `--redeploy`
+The daily recap email (built in `sendRecapEmail_`, sent per-recipient by `api_emailRecap_` and as a reset side-effect via `sendRecapIfUnsent_`) was on an old "warm" palette unrelated to the brand. Redesigned the HTML body (plain-text body lightly aligned too):
+- **Per-concept header band** — themed via the existing `dashTheme_()` (reads `MOG_CONCEPT`; same palette as the Sheet dashboard, so email + dashboard stay coordinated): roll-play → teal-dark `#2d8c6b` + white, teasnyou → charcoal `#1a1a1a` + gold `#D4A574`, unset/unknown → navy `#1a1a2e` + white. `dashTheme_()` lives in `OrderGuideScript.gs` but is callable from `MOGApi.gs` (shared global scope); guarded with a `typeof` fallback. Band layout (Sebastian's final call): **location name bold on top**, "Suggested daily order" semi-bold below it, then `date · N vendors · M items` faint meta.
+- **Careful "suggested" wording** — band title implies suggestion; new caption "Suggested order amounts based on today's On Hand counts. Review each before placing…"; table column header `Qty` → **"Suggested order."**
+- **Each line reads left-to-right as a sentence** — `Item Name × 3 (Pack)`: name in body ink, the **× qty bold in the concept accent** (the action number pops), pack muted in parens. Replaces the old 4-column Qty/Item/Pack/On-hand grid.
+- **On Hand isolated + de-emphasized** — its own right-hand column, right-aligned, smaller (12px) + faint grey `#aab0b6`, faint "On hand" header. Clearly secondary to the suggested amount.
+- **Email-safe**: all colors literal hexes (email strips `:root`/`var()`); header band is a single-cell `<table>` (Gmail/iOS render table-cell bg reliably).
+
+### C. `test_recapEmailToSelf()` — NEW editor-only helper in `MOGApi.gs`
+Sends the current cycle's recap **only to whoever runs it** (`Session.getActiveUser().getEmail()`), bypassing the recipient list, the once-per-day dedupe flag, and the On-Hand clear. NOT menu-wired (KMs never see it). Throws a clear message if there's nothing to recap. This is the test path for the email design — Sebastian ran it on rprfo to approve the look.
+
+### No-reauthorization guarantee
+Verified against `apps-script/appsscript.json`: `userinfo.email`, `script.send_mail`, `spreadsheets` (+ scriptapp/container.ui/external_request) are **all already declared**. The recap rebrand + per-concept theming + the test helper use only `MailApp`, `PropertiesService`, and `Session.getActiveUser()` — **zero new OAuth scopes**, so the fan-out's `--redeploy` does not re-prompt anyone to authorize. **Do not add scopes to `appsscript.json`** (it's unified across all 9; a scope change = forced reauth for every menu user).
+
+## Outstanding (carry forward)
+1. **Recap literal-hex sync caveat** — the email can't read CSS vars, so its colors are literal. The brand colors flow from `dashTheme_()`/`CONCEPT_THEMES` (in `OrderGuideScript.gs`); the email's neutral greys are inline literals. If the concept palette ever changes, the email picks it up automatically via `dashTheme_()`; only the neutral chrome would need a manual touch.
+2. **Two modal-sizing judgment calls** still nudgeable (720×680 / 1400×900, HowToUse tier) — now live on all 9, easy to change later (two constant pairs in `OrderGuideScript.gs`).
+3. Carried from before: per-concept hub brand SVGs; Batch D (brand fonts / concept-aware modal theming — easier now that the token layer exists); reconcile global `rhino-safe-html` cross-repo; ManageVendors "Advanced" disclosure (gated on Vendor Cadence Audit run); `OrderGuideScript.gs` 7-file split + new-day-detection consolidation.
+
+## Opening prompt for next session
+
+```
+Resume MOG work. 2026-06-04 (later session) shipped:
+  - Modal design-system unification FANNED OUT to all 9 + master (push-only).
+    The earlier canary gate is closed.
+  - Recap-email rebrand (Phase 2), MOGApi.gs sendRecapEmail_, FANNED OUT to
+    all 9 + master (--redeploy): per-concept header band via dashTheme_()
+    (RP teal / TNY charcoal+gold / unset navy), location bold on top +
+    "Suggested daily order" below, "suggested"-framed wording, each line
+    reads "Item x qty (pack)" with the qty bold in the concept accent, and
+    On Hand isolated in a faint right column. New editor-only helper
+    test_recapEmailToSelf() sends a preview to whoever runs it (bypasses the
+    recipient list) — that's the email test path.
+  - NO new OAuth scopes were added; nobody needs to reauthorize.
+
+Everything is committed, pushed, and deployed. Optional next: per-concept hub
+brand SVGs, Batch D (brand fonts / concept-aware modal theming — easy now via
+the :root token layer), or the OrderGuideScript.gs 7-file split.
+
+CANARY IS rprfo. Read docs/MOG_CurrentState.md for invariants. Deploy routing:
+python .claude/skills/mog-deploy-workflow/scripts/route.py <file>.
+```
