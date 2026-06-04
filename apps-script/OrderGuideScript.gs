@@ -687,11 +687,24 @@ function autoSavePickPathIfSafe_() {
 
 
 
+// Pulls a shared HTML partial (e.g. Styles.html) into a templated modal via
+// <?!= include('Styles'); ?>. Single source of truth for the modal design tokens
+// + universal chrome (lang toggle, [?] help overlay).
+function include(name) {
+  return HtmlService.createHtmlOutputFromFile(name).getContent();
+}
+
+// ── Modal sizing tiers ── keep modals visually consistent at two sizes.
+// SMALL = forms / lists / audits;  LARGE = wide data tables (Items, Order
+// History) + the How-To guide. Resize a whole tier by editing one pair here.
+const MODAL_SM_W = 720, MODAL_SM_H = 680;
+const MODAL_LG_W = 1400, MODAL_LG_H = 900;
+
 function showHowToUseSidebar() {
   SpreadsheetApp.getUi().showModalDialog(
-    HtmlService.createHtmlOutputFromFile("HowToUse")
-      .setWidth(880)
-      .setHeight(620),
+    HtmlService.createTemplateFromFile("HowToUse").evaluate()
+      .setWidth(MODAL_LG_W)
+      .setHeight(MODAL_LG_H),
     "Ordering Guide — How To Use"
   );
 }
@@ -713,7 +726,7 @@ function showManageVendorsSidebar() {
   tmpl.vendorListJson  = JSON.stringify(getVendorList());
   tmpl.vendorTableJson = JSON.stringify(getVendorTableData());
   SpreadsheetApp.getUi().showModalDialog(
-    tmpl.evaluate().setWidth(620).setHeight(600),
+    tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Manage Vendors"
   );
 }
@@ -1090,7 +1103,7 @@ function showRecalibrateVendorSidebar() {
   const tmpl = HtmlService.createTemplateFromFile("RecalibrateVendor");
   tmpl.vendorListJson = JSON.stringify(getVendorList());
   SpreadsheetApp.getUi().showModalDialog(
-    tmpl.evaluate().setWidth(720).setHeight(640),
+    tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Recalibrate Vendor Pars"
   );
 }
@@ -1308,7 +1321,7 @@ function showVendorCadenceAuditSidebar() {
   const tmpl = HtmlService.createTemplateFromFile("VendorCadenceAudit");
   tmpl.auditJson = JSON.stringify(auditVendorCadence());
   SpreadsheetApp.getUi().showModalDialog(
-    tmpl.evaluate().setWidth(720).setHeight(640),
+    tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Audit Vendor Cadence"
   );
 }
@@ -1700,7 +1713,7 @@ function showManageItemsSidebar() {
   const tmpl = HtmlService.createTemplateFromFile("ManageItems");
   tmpl.vendorListJson = JSON.stringify(getVendorList());
   SpreadsheetApp.getUi().showModalDialog(
-    tmpl.evaluate().setWidth(1400).setHeight(900),
+    tmpl.evaluate().setWidth(MODAL_LG_W).setHeight(MODAL_LG_H),
     "Manage Items"
   );
 }
@@ -2523,7 +2536,7 @@ function showStorageAreasSidebar() {
   const tmpl = HtmlService.createTemplateFromFile("StorageAreas");
   tmpl.areaListJson = JSON.stringify(getStorageAreaList());
   SpreadsheetApp.getUi().showModalDialog(
-    tmpl.evaluate().setWidth(500).setHeight(580),
+    tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Storage Areas"
   );
 }
@@ -3146,7 +3159,7 @@ function showReorderPickPathSidebar() {
   tmpl.pickDataJson   = JSON.stringify(data);
   tmpl.vendorListJson = JSON.stringify(vendors);
   SpreadsheetApp.getUi().showModalDialog(
-    tmpl.evaluate().setWidth(520).setHeight(640),
+    tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Pick Path"
   );
 }
@@ -3343,8 +3356,8 @@ function toggleMasterItemsTabVisibility() {
 
 function showAdminResetSidebar() {
   SpreadsheetApp.getUi().showModalDialog(
-    HtmlService.createHtmlOutputFromFile("AdminReset")
-      .setWidth(480).setHeight(540),
+    HtmlService.createTemplateFromFile("AdminReset").evaluate()
+      .setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Admin Reset"
   );
 }
@@ -3981,9 +3994,9 @@ function deleteLogEntriesForDate_(logSheet, orderDate) {
 function showOrderHistoryModal() {
   ensureLogSheet_();
   SpreadsheetApp.getUi().showModalDialog(
-    HtmlService.createHtmlOutputFromFile("OrderHistory")
-      .setWidth(960)
-      .setHeight(640),
+    HtmlService.createTemplateFromFile("OrderHistory").evaluate()
+      .setWidth(MODAL_LG_W)
+      .setHeight(MODAL_LG_H),
     "Order History"
   );
 }

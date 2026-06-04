@@ -2,13 +2,13 @@
 <html>
   <head>
     <base target="_top">
+    <?!= include('Styles'); ?>
     <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
 
       body {
         font-family: Arial, sans-serif;
         font-size: 13px;
-        background: #f4f5f7;
+        background: var(--page);
         color: #222;
         height: 100vh;
         display: flex;
@@ -19,7 +19,7 @@
       /* ── Header ── */
       .header {
         background: #fff;
-        border-bottom: 2px solid #7a1a1a;
+        border-bottom: 2px solid var(--brand);
         padding: 10px 14px;
         display: flex;
         align-items: flex-start;
@@ -27,48 +27,9 @@
         flex-shrink: 0;
       }
       .header-text { flex: 1; }
-      .header h3 { font-size: 13px; font-weight: bold; color: #7a1a1a; }
+      .header h3 { font-size: 13px; font-weight: bold; color: var(--brand); }
       .header p  { font-size: 10px; color: #888; margin-top: 4px; line-height: 1.4; }
-      .lang-group { display: flex; gap: 4px; margin-top: 2px; }
-      .lang-btn {
-        padding: 3px 9px; font-size: 10px; font-weight: bold; cursor: pointer;
-        color: #888; background: transparent; border: 1px solid #ccc; border-radius: 3px;
-      }
-      .lang-btn.active { background: #7a1a1a; color: #fff; border-color: #7a1a1a; }
-      .lang-btn:hover:not(.active) { background: #f5f5f5; }
 
-      /* ── Help [?] button + panel ── (shared pattern across modals) */
-      .help-btn {
-        width: 22px; height: 22px; padding: 0; flex-shrink: 0;
-        border: 1px solid currentColor; border-radius: 50%;
-        background: transparent; color: inherit; opacity: 0.7;
-        font-size: 12px; font-weight: bold; line-height: 1; cursor: pointer;
-        transition: opacity 0.15s;
-      }
-      .help-btn:hover { opacity: 1; }
-      .help-overlay {
-        display: none; position: fixed; inset: 0; z-index: 100;
-        background: rgba(0,0,0,0.45);
-        align-items: flex-start; justify-content: center; padding: 14px;
-      }
-      .help-overlay.open { display: flex; }
-      .help-card {
-        background: #fff; border-radius: 8px; width: 100%; max-width: 460px;
-        max-height: 100%; display: flex; flex-direction: column;
-        box-shadow: 0 8px 30px rgba(0,0,0,0.32); overflow: hidden;
-      }
-      .help-head {
-        background: #1a1a2e; color: #fff; padding: 10px 14px;
-        font-size: 13px; font-weight: bold; flex-shrink: 0;
-        display: flex; align-items: center; justify-content: space-between;
-      }
-      .help-x { cursor: pointer; font-size: 15px; opacity: 0.8; padding: 0 4px; }
-      .help-x:hover { opacity: 1; }
-      .help-body { padding: 14px 16px; overflow-y: auto; font-size: 12px; line-height: 1.65; color: #333; }
-      .help-lead { margin-bottom: 10px; }
-      .help-step { margin-bottom: 7px; }
-      .help-tip { background: #f0f7f4; border-left: 3px solid #1a3a2e; border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 10px; font-size: 11px; color: #1a3a2e; }
-      .help-warn { background: #fff8e6; border-left: 3px solid #f0a500; border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 8px; font-size: 11px; color: #7a5000; }
 
       /* ── Scrollable body ── */
       .body { flex: 1; overflow-y: auto; padding: 14px 14px 0; }
@@ -83,7 +44,7 @@
       }
       .section-header:hover { background: #ececec; }
       .section-header input[type="checkbox"] {
-        width: 16px; height: 16px; accent-color: #7a1a1a; flex-shrink: 0; cursor: pointer;
+        width: 16px; height: 16px; accent-color: var(--danger); flex-shrink: 0; cursor: pointer;
       }
       .section-title { font-size: 12px; font-weight: bold; color: #222; flex: 1; }
       .section-badge {
@@ -91,14 +52,14 @@
       }
       .badge-safe    { background: #d4edda; color: #1f6d2a; }
       .badge-caution { background: #fff3cd; color: #856404; }
-      .badge-danger  { background: #f8d7da; color: #7a1a1a; }
+      .badge-danger  { background: var(--danger-bg); color: var(--danger); }
       .section-desc { padding: 9px 12px 10px 38px; font-size: 11px; color: #555; line-height: 1.6; border-top: 1px solid #f0f0f0; }
       .section-desc.hidden { display: none; }
 
       /* ── Warning ── */
       .warning-banner {
         background: #fff3f3; border: 1px solid #e8a0a0; border-radius: 5px;
-        padding: 10px 12px; font-size: 11px; color: #7a1a1a; margin-bottom: 14px; line-height: 1.6;
+        padding: 10px 12px; font-size: 11px; color: var(--danger); margin-bottom: 14px; line-height: 1.6;
       }
       .warning-banner strong { font-size: 12px; }
 
@@ -112,7 +73,7 @@
         width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px;
         font-size: 12px; font-family: monospace; letter-spacing: 0.05em;
       }
-      .confirm-area input[type="text"]:focus { outline: none; border-color: #7a1a1a; }
+      .confirm-area input[type="text"]:focus { outline: none; border-color: var(--danger); }
       .confirm-area .hint { font-size: 10px; color: #888; margin-top: 5px; }
 
       /* ── Summary chip ── */
@@ -120,14 +81,14 @@
         font-size: 10px; color: #555; background: #f0f0f0; border-radius: 4px;
         padding: 5px 10px; margin-bottom: 12px; text-align: center; font-style: italic;
       }
-      #selectionSummary.has-selection { background: #fff3f3; color: #7a1a1a; font-style: normal; font-weight: bold; }
+      #selectionSummary.has-selection { background: #fff3f3; color: var(--danger); font-style: normal; font-weight: bold; }
 
       /* ── Footer ── */
       .footer { position: sticky; bottom: 0; background: #f9f9f9; border-top: 1px solid #ddd; padding: 10px 14px 12px; flex-shrink: 0; }
       .btn-row { display: flex; gap: 8px; }
       button { padding: 9px 12px; cursor: pointer; border: none; border-radius: 4px; font-size: 12px; font-weight: bold; }
       .btn-close  { background: #e0e0e0; color: #333; flex: 1; }
-      .btn-reset  { background: #7a1a1a; color: #fff; flex: 2; }
+      .btn-reset  { background: var(--danger); color: #fff; flex: 2; }
       button:hover    { opacity: 0.85; }
       button:disabled { opacity: 0.4; cursor: not-allowed; }
       .status { font-size: 11px; margin-top: 8px; min-height: 16px; text-align: center; }

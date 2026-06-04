@@ -1,0 +1,86 @@
+<!-- ===================================================================
+     Shared modal styles — SINGLE SOURCE OF TRUTH for the MOG modal set.
+     Pulled into every modal <head> via  <?!= include('Styles'); ?>
+     Holds: design tokens (:root), the base reset, and the universal
+     chrome (language toggle + [?] help overlay). Per-modal layout stays
+     in each modal's own <style>; it may reference these var(--*) tokens.
+     Edit colors / radii / label sizes HERE — never re-hardcode in a modal.
+     ==================================================================== -->
+<style>
+  :root {
+    /* ── Surfaces ── */
+    --page:        #f4f5f7;   /* modal page background */
+    --card:        #fff;      /* card / panel surface */
+    --ink:         #222;      /* body text */
+    --ink-soft:    #555;      /* secondary text */
+    --ink-mute:    #888;      /* hints / muted */
+    --ink-faint:   #aaa;      /* faint labels */
+    --line:        #e0e3e8;   /* card borders */
+    --line-soft:   #eee;      /* hairline dividers */
+
+    /* ── Brand ── */
+    --brand:       #1a1a2e;   /* navy — modal header (uniform across all modals) */
+    --brand-green: #1a3a2e;   /* deep green — interior section / list-card headers */
+    --accent:      #7eb8a4;   /* light teal — active-tab underline / accents */
+    --success:     #1a6b2e;   /* ok / new */
+    --success-bg:  #e6f3ec;
+
+    /* ── Semantic ── */
+    --danger:      #c0392b;   /* all destructive actions + validation errors */
+    --danger-bg:   #fde8e6;
+    --warn:        #f0a500;   /* warnings */
+    --warn-ink:    #7a5000;
+    --warn-bg:     #fff8e6;
+
+    /* ── Shape + type ── */
+    --r-control:   6px;       /* inputs + buttons */
+    --r-card:      8px;       /* cards + modal/help cards */
+    --fs-label:    10px;      /* caps micro-labels */
+    --fs-body:     12px;      /* body copy */
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* ── Language toggle ── */
+  .lang-group { display: flex; gap: 4px; align-items: center; }
+  .lang-btn {
+    padding: 3px 9px; font-size: var(--fs-label); font-weight: bold; cursor: pointer;
+    color: rgba(255,255,255,0.45); background: transparent;
+    border: 1px solid rgba(255,255,255,0.2); border-radius: var(--r-control);
+  }
+  .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
+  .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
+
+  /* ── Help [?] button + overlay (shared across modals) ── */
+  .help-btn {
+    width: 22px; height: 22px; padding: 0; flex-shrink: 0;
+    border: 1px solid currentColor; border-radius: 50%;
+    background: transparent; color: inherit; opacity: 0.7;
+    font-size: 12px; font-weight: bold; line-height: 1; cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .help-btn:hover { opacity: 1; }
+  .help-overlay {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.45);
+    align-items: flex-start; justify-content: center; padding: 14px;
+  }
+  .help-overlay.open { display: flex; }
+  .help-card {
+    background: var(--card); border-radius: var(--r-card); width: 100%; max-width: 460px;
+    max-height: 100%; display: flex; flex-direction: column;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.32); overflow: hidden;
+  }
+  .help-head {
+    background: var(--brand); color: #fff; padding: 10px 14px;
+    font-size: 13px; font-weight: bold; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .help-x { cursor: pointer; font-size: 15px; opacity: 0.8; padding: 0 4px; }
+  .help-x:hover { opacity: 1; }
+  .help-body { padding: 14px 16px; overflow-y: auto; font-size: var(--fs-body); line-height: 1.65; color: #333; }
+  .help-lead { margin-bottom: 10px; }
+  .help-step { margin-bottom: 7px; }
+  .help-tip  { background: #f0f7f4; border-left: 3px solid var(--brand-green); border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 10px; font-size: 11px; color: var(--brand-green); }
+  .help-warn { background: var(--warn-bg); border-left: 3px solid var(--warn); border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 8px; font-size: 11px; color: var(--warn-ink); }
+</style>

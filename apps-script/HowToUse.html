@@ -2,13 +2,13 @@
 <html>
   <head>
     <base target="_top">
+    <?!= include('Styles'); ?>
     <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
 
       body {
         font-family: Arial, sans-serif;
         font-size: 13px;
-        background: #f4f5f7;
+        background: var(--page);
         color: #222;
         height: 100vh;
         display: flex;
@@ -18,7 +18,7 @@
 
       /* ── Header ── */
       .header {
-        background: #1a1a2e;
+        background: var(--brand);
         color: #fff;
         padding: 10px 16px;
         display: flex;
@@ -30,7 +30,6 @@
       .header h2 { font-size: 14px; font-weight: bold; letter-spacing: 0.03em; }
       .header p  { font-size: 10px; color: #a8c8b8; margin-top: 2px; }
 
-      /* ── Language toggle ── */
       .lang-toggle {
         display: flex;
         border: 1px solid rgba(255,255,255,0.3);
@@ -38,18 +37,6 @@
         overflow: hidden;
         flex-shrink: 0;
       }
-      .lang-btn {
-        padding: 5px 14px;
-        font-size: 12px;
-        font-weight: bold;
-        cursor: pointer;
-        color: rgba(255,255,255,0.55);
-        background: transparent;
-        border: none;
-        transition: background 0.15s, color 0.15s;
-      }
-      .lang-btn.active { background: rgba(255,255,255,0.2); color: #fff; }
-      .lang-btn:hover:not(.active) { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.85); }
 
       /* ── Body ── */
       .body-wrap { display: flex; flex: 1; overflow: hidden; }
@@ -73,8 +60,8 @@
         line-height: 1.3;
         transition: color 0.15s, background 0.15s;
       }
-      .nav-item:hover { background: #f5f5f5; color: #1a3a2e; }
-      .nav-item.active { color: #1a3a2e; border-left-color: #1a3a2e; background: #f0f5f2; }
+      .nav-item:hover { background: #f5f5f5; color: var(--brand-green); }
+      .nav-item.active { color: var(--brand-green); border-left-color: var(--brand-green); background: #f0f5f2; }
       .nav-divider { height: 1px; background: #eee; margin: 5px 10px; }
 
       /* ── Content ── */
@@ -85,8 +72,8 @@
       .section-title {
         font-size: 15px;
         font-weight: bold;
-        color: #1a3a2e;
-        border-bottom: 2px solid #1a3a2e;
+        color: var(--brand-green);
+        border-bottom: 2px solid var(--brand-green);
         padding-bottom: 6px;
         margin-bottom: 14px;
       }
@@ -125,7 +112,7 @@
       }
       .step::before {
         content: counter(step);
-        background: #1a3a2e;
+        background: var(--brand-green);
         color: #fff;
         font-size: 10px;
         font-weight: bold;
@@ -140,9 +127,9 @@
       }
 
       /* ── Callouts ── */
-      .tip  { background:#f0f7f4; border-left:3px solid #1a3a2e; border-radius:0 4px 4px 0; padding:8px 12px; font-size:11px; color:#1a3a2e; margin-top:10px; line-height:1.65; }
-      .warn { background:#fff8e6; border-left:3px solid #f0a500; border-radius:0 4px 4px 0; padding:8px 12px; font-size:11px; color:#7a5000; margin-top:10px; line-height:1.65; }
-      .new-tag { display:inline-block; background:#1a3a2e; color:#fff; border-radius:4px; padding:1px 6px; font-size:9px; font-weight:bold; letter-spacing:0.05em; vertical-align:middle; margin-left:6px; }
+      .tip  { background:#f0f7f4; border-left:3px solid var(--brand-green); border-radius:0 4px 4px 0; padding:8px 12px; font-size:11px; color:var(--brand-green); margin-top:10px; line-height:1.65; }
+      .warn { background:var(--warn-bg); border-left:3px solid var(--warn); border-radius:0 4px 4px 0; padding:8px 12px; font-size:11px; color:var(--warn-ink); margin-top:10px; line-height:1.65; }
+      .new-tag { display:inline-block; background:var(--brand-green); color:#fff; border-radius:4px; padding:1px 6px; font-size:9px; font-weight:bold; letter-spacing:0.05em; vertical-align:middle; margin-left:6px; }
 
       /* ── Badges ── */
       .badge-green  { display:inline-block; background:#d4edda; color:#1f6d2a; border-radius:10px; padding:1px 7px; font-size:10px; font-weight:bold; }
@@ -152,8 +139,8 @@
 
       /* ── Flow ── */
       .flow { display:flex; flex-direction:column; gap:4px; margin:12px 0; }
-      .flow-box { background:#1a3a2e; color:#fff; border-radius:6px; padding:9px 14px; font-size:12px; font-weight:bold; text-align:center; }
-      .flow-box.light { background:#e8f2ec; color:#1a3a2e; }
+      .flow-box { background:var(--brand-green); color:#fff; border-radius:6px; padding:9px 14px; font-size:12px; font-weight:bold; text-align:center; }
+      .flow-box.light { background:#e8f2ec; color:var(--brand-green); }
       .flow-arrow { text-align:center; color:#aaa; font-size:16px; line-height:1; }
 
       /* ── Rule rows ── */
