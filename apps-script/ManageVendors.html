@@ -399,6 +399,85 @@
           <div id="add-status" class="status"></div>
         </div>
 
+        <!-- IMPORT -->
+        <div class="collapsible-header" onclick="toggleSection('import')">
+          <span class="collapsible-title">
+            <span class="en">⬆ Import Vendor</span>
+            <span class="es">⬆ Importar Proveedor</span>
+          </span>
+          <span class="collapsible-arrow" id="arrow-import">▼</span>
+        </div>
+        <div class="collapsible-body" id="body-import">
+
+          <div class="hint">
+            <span class="en">Create a vendor and load its whole item list at once from a CSV file. Items come in <b>without pars and without storage areas</b> — set those later in Manage Items.</span>
+            <span class="es">Crea un proveedor y carga toda su lista de artículos de una vez desde un archivo CSV. Los artículos entran <b>sin pares y sin áreas de almacenamiento</b> — define eso luego en Administrar Artículos.</span>
+          </div>
+
+          <div class="section-label">
+            <span class="en">1. Download the template</span>
+            <span class="es">1. Descarga la plantilla</span>
+          </div>
+          <div class="hint">
+            <span class="en">Two columns: <b>Item Name</b> and <b>Pack Size</b>. One item per row. Fill it in, save as CSV, upload below.</span>
+            <span class="es">Dos columnas: <b>Nombre del Artículo</b> y <b>Tamaño de Paquete</b>. Un artículo por fila. Complétala, guarda como CSV, súbela abajo.</span>
+          </div>
+          <div class="btn-row">
+            <button class="btn-secondary" onclick="downloadImportTemplate()">
+              <span class="en">⬇ Download CSV template</span>
+              <span class="es">⬇ Descargar plantilla CSV</span>
+            </button>
+          </div>
+
+          <div class="section-label">
+            <span class="en">2. Vendor name</span>
+            <span class="es">2. Nombre del proveedor</span>
+          </div>
+          <div class="row">
+            <input type="text" id="imp-vendor-name" />
+          </div>
+
+          <div class="section-label">
+            <span class="en">3. Delivery days</span>
+            <span class="es">3. Días de entrega</span>
+          </div>
+          <div class="hint">
+            <span class="en">Check the days this vendor delivers. Multipliers are auto-calculated.</span>
+            <span class="es">Marca los días en que entrega este proveedor. Los multiplicadores se calculan automáticamente.</span>
+          </div>
+          <div class="day-grid" id="imp-day-check-grid"></div>
+          <div id="imp-delivery-summary" class="delivery-summary empty"></div>
+
+          <div class="section-label">
+            <span class="en">Cutoff time (optional)</span>
+            <span class="es">Hora de corte (opcional)</span>
+          </div>
+          <div class="row">
+            <input type="time" id="imp-vendor-cutoff" />
+          </div>
+
+          <div class="section-label">
+            <span class="en">4. Upload the filled-in CSV</span>
+            <span class="es">4. Sube el CSV completado</span>
+          </div>
+          <div class="row">
+            <input type="file" id="imp-file" accept=".csv,text/csv" onchange="onImportFilePicked()" />
+          </div>
+          <div id="imp-preview" class="hint"></div>
+
+          <div class="btn-row">
+            <button class="btn-secondary" onclick="resetImportForm()">
+              <span class="en">Reset</span>
+              <span class="es">Restablecer</span>
+            </button>
+            <button class="btn-primary" id="imp-btn" onclick="doImportVendor()" disabled>
+              <span class="en">Import Vendor + Items</span>
+              <span class="es">Importar Proveedor + Artículos</span>
+            </button>
+          </div>
+          <div id="import-status" class="status"></div>
+        </div>
+
         <!-- REMOVE -->
         <div class="collapsible-header" onclick="toggleSection('remove')">
           <span class="collapsible-title danger">
@@ -463,6 +542,12 @@
           selectDelivery:   'Select at least one delivery day.',
           creating:         'Creating vendor and tab… this may take a moment.',
           added:            'Added "', addedEnd: '" and created tab successfully.',
+          importing:        'Importing vendor and items… this may take a moment.',
+          imported:         'Imported "', importedMid: '" with ', importedEnd: ' items.',
+          importedSkipped:  ' skipped',
+          impItemsFound:    'items found — ready to import.',
+          impNoItems:       'No items found in this file. Each row needs a name in the first column.',
+          impReadErr:       'Could not read that file. Make sure it is a .csv.',
           noVendors:        'No vendors found.',
           saving:           'Saving…', saved: 'Saved!',
           removing:         'Removing…',
@@ -488,6 +573,12 @@
           selectDelivery:   'Selecciona al menos un día de entrega.',
           creating:         'Creando proveedor y pestaña… puede tomar un momento.',
           added:            'Agregado "', addedEnd: '" y pestaña creada correctamente.',
+          importing:        'Importando proveedor y artículos… puede tomar un momento.',
+          imported:         'Importado "', importedMid: '" con ', importedEnd: ' artículos.',
+          importedSkipped:  ' omitidos',
+          impItemsFound:    'artículos encontrados — listo para importar.',
+          impNoItems:       'No se encontraron artículos en el archivo. Cada fila necesita un nombre en la primera columna.',
+          impReadErr:       'No se pudo leer el archivo. Asegúrate de que sea un .csv.',
           noVendors:        'No se encontraron proveedores.',
           saving:           'Guardando…', saved: '¡Guardado!',
           removing:         'Eliminando…',
@@ -622,6 +713,24 @@
           multGrid.appendChild(cell);
           styleMultInput(cell.querySelector('input'));
         });
+
+        // Import check grid (delivery days only — no editable mult inputs;
+        // multipliers are derived at submit time via computeMultsFromDelivery).
+        const impGrid = byId('imp-day-check-grid');
+        if (impGrid) {
+          impGrid.innerHTML = '';
+          DAYS.forEach(function(d, i) {
+            const wasChecked = byId('impdel-' + d) ? byId('impdel-' + d).checked : false;
+            const cell = document.createElement('div');
+            cell.className = 'day-cell';
+            cell.innerHTML =
+              '<div class="day-label">' + shorts[i] + '</div>' +
+              '<input type="checkbox" class="day-check" id="impdel-' + d + '"' +
+              (wasChecked ? ' checked' : '') + ' onchange="recalcImportSummary()">';
+            impGrid.appendChild(cell);
+          });
+          recalcImportSummary();
+        }
 
         recalcMultipliers();
       }
@@ -1127,6 +1236,144 @@
         byId('delivery-summary').textContent = t('noDelivery');
         byId('delivery-summary').className   = 'delivery-summary empty';
         setStatus('add', '');
+      }
+
+      // ── IMPORT ─────────────────────────────────────────────────────────────
+      var importCsvText = '';   // cached text of the picked CSV file
+
+      // Live "Delivers: …" summary for the import delivery picker (no mult
+      // inputs to fill — they're computed at submit time).
+      function recalcImportSummary() {
+        const names        = LANG === 'es' ? DAY_NAMES_ES : DAY_NAMES_EN;
+        const deliveryDays = DAYS.map(d => byId('impdel-' + d) ? byId('impdel-' + d).checked : false);
+        const summaryEl    = byId('imp-delivery-summary');
+        if (!summaryEl) return;
+        if (!deliveryDays.filter(Boolean).length) {
+          summaryEl.textContent = t('noDelivery');
+          summaryEl.className   = 'delivery-summary empty';
+          return;
+        }
+        summaryEl.innerHTML = '<b>' + t('delivers') + '</b>' + names.filter((_, i) => deliveryDays[i]).join(', ');
+        summaryEl.className = 'delivery-summary';
+      }
+
+      // Build + download the blank CSV template client-side (a Blob), so no
+      // server roundtrip and no extra OAuth scope. Two data columns; the
+      // #-prefixed lines are skipped by the server parser.
+      function downloadImportTemplate() {
+        const lines = [
+          'Item Name,Pack Size',
+          '# One item per row. First column = name (required), second = pack size (optional).',
+          '# Pars and storage areas are NOT set here — assign them later in Manage Items.',
+          '# Delete these # comment lines or leave them; the importer ignores them.',
+          'Example Item A,1 case (24 ct)',
+          'Example Item B,5 lb bag',
+          ''
+        ];
+        const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href = url;
+        a.download = 'vendor-import-template.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      // Read the picked file as text, count parseable item rows, show a preview.
+      function onImportFilePicked() {
+        const input = byId('imp-file');
+        importCsvText = '';
+        byId('imp-btn').disabled = true;
+        if (!input || !input.files || !input.files.length) {
+          byId('imp-preview').textContent = '';
+          return;
+        }
+        const file   = input.files[0];
+        const reader  = new FileReader();
+        reader.onload = function(e) {
+          importCsvText = String(e.target.result || '');
+          const count = countImportItems_(importCsvText);
+          const prev  = byId('imp-preview');
+          if (!count) {
+            prev.innerHTML = '<span style="color:#c0392b">' + t('impNoItems') + '</span>';
+            byId('imp-btn').disabled = true;
+          } else {
+            prev.innerHTML = '<b>' + count + '</b> ' + t('impItemsFound');
+            byId('imp-btn').disabled = false;
+          }
+        };
+        reader.onerror = function() {
+          byId('imp-preview').innerHTML = '<span style="color:#c0392b">' + t('impReadErr') + '</span>';
+        };
+        reader.readAsText(file);
+      }
+
+      // Client-side row counter for the preview — mirrors the server's skip
+      // rules (blank / #-comment / header rows) so the count matches.
+      function countImportItems_(text) {
+        const lines = String(text).split(/\r\n|\r|\n/);
+        let n = 0;
+        for (let i = 0; i < lines.length; i++) {
+          const first = String(lines[i].split(',')[0] || '').trim();
+          if (!first) continue;
+          if (first.charAt(0) === '#') continue;
+          const low = first.toLowerCase();
+          if (low === 'item name' || low === 'name') continue;
+          n++;
+        }
+        return n;
+      }
+
+      function doImportVendor() {
+        const name = byId('imp-vendor-name').value.trim();
+        if (!name) return setStatus('import', t('vendorRequired'), 'warn');
+        if (VENDOR_LIST.some(v => v.toLowerCase() === name.toLowerCase()))
+          return setStatus('import', '"' + name + t('alreadyExists'), 'warn');
+        const deliveryDays = DAYS.map(d => byId('impdel-' + d) && byId('impdel-' + d).checked);
+        if (!deliveryDays.some(Boolean))
+          return setStatus('import', t('selectDelivery'), 'warn');
+        if (!importCsvText || !countImportItems_(importCsvText))
+          return setStatus('import', t('impNoItems'), 'warn');
+
+        const mults  = computeMultsFromDelivery(deliveryDays);
+        const cutoff = (byId('imp-vendor-cutoff') && byId('imp-vendor-cutoff').value) || '';
+
+        byId('imp-btn').disabled = true;
+        setStatus('import', t('importing'), 'info');
+        setSavingCard_('body-import', true);
+        bumpMutationTs_();
+
+        google.script.run
+          .withSuccessHandler(function(res) {
+            setSavingCard_('body-import', false);
+            byId('imp-btn').disabled = false;
+            let msg = t('imported') + name + t('importedMid') + res.itemsAdded + t('importedEnd');
+            if (res.skipped && res.skipped.length) msg += ' (' + res.skipped.length + t('importedSkipped') + ')';
+            setStatus('import', msg, 'ok');
+            VENDOR_LIST.push(name);
+            resetImportForm();
+            renderVendorCards();
+          })
+          .withFailureHandler(function(err) {
+            setSavingCard_('body-import', false);
+            setStatus('import', err.message || String(err), 'warn');
+            byId('imp-btn').disabled = false;
+          })
+          .commitImportVendor({ name: name, mults: mults, cutoff: cutoff, csvText: importCsvText });
+      }
+
+      function resetImportForm() {
+        byId('imp-vendor-name').value = '';
+        DAYS.forEach(function(d) { const c = byId('impdel-' + d); if (c) c.checked = false; });
+        if (byId('imp-vendor-cutoff')) byId('imp-vendor-cutoff').value = '';
+        if (byId('imp-file')) byId('imp-file').value = '';
+        importCsvText = '';
+        byId('imp-preview').textContent = '';
+        byId('imp-btn').disabled = true;
+        recalcImportSummary();
+        setStatus('import', '');
       }
 
       // ── REMOVE ───────────────────────────────────────────────────────────────

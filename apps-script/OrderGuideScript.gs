@@ -966,6 +966,102 @@ function commitAddVendor(vendorName, mults, cutoffTime) {
 }
 
 
+// Called by the ManageVendors "Import Vendor" panel. Creates a vendor (reusing
+// commitAddVendor, so the SETUP block + VENDOR_TEMPLATE clone + protections all
+// stay in one place) and then bulk-inserts every item from a pasted/uploaded
+// CSV into MASTER_ITEMS — par left BLANK and no storage-area assignment (the
+// items exist in the data model but stay off the vendor's ordering tab until
+// each is assigned an area via Manage Items / Pick Path).
+//
+// payload = { name, mults:[7], cutoff, csvText }
+// CSV shape: one item per row, col 0 = Item Name, col 1 = Pack Size. A header
+// row ("Item Name,Pack…") and #-comment / blank rows are skipped.
+function commitImportVendor(payload) {
+  bumpServerMutationTs_();
+  payload = payload || {};
+  const name    = String(payload.name || "").trim();
+  const mults   = payload.mults;
+  const cutoff  = payload.cutoff;
+  const csvText = String(payload.csvText || "");
+
+  if (!name) throw new Error("Vendor name is required.");
+  if (!Array.isArray(mults) || mults.length !== 7) throw new Error("7 multiplier values required.");
+
+  // 1. Parse the CSV into clean {name, pack} item rows.
+  let rows;
+  try {
+    rows = Utilities.parseCsv(csvText);
+  } catch (e) {
+    throw new Error("Could not read the CSV file. Re-download the template and try again.");
+  }
+
+  const items   = [];
+  const seen     = {};        // lowercased name -> true, to dedupe within the file
+  const skipped  = [];        // { name, reason } for the success report
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const itemName = String(row[0] || "").trim();
+    const pack     = String(row[1] || "").trim();
+
+    if (!itemName) continue;                                   // blank row
+    if (itemName.charAt(0) === "#") continue;                  // comment row
+    const low = itemName.toLowerCase();
+    if (low === "item name" || low === "name") continue;       // header row
+    if (seen[low]) { skipped.push({ name: itemName, reason: "duplicate in file" }); continue; }
+    seen[low] = true;
+    items.push({ name: itemName, pack: pack });
+  }
+
+  if (!items.length) throw new Error("No items found in the file. Each row needs an item name in the first column.");
+
+  // 2. Create the vendor first (throws on duplicate name — caught by the UI).
+  commitAddVendor(name, mults, cutoff);
+
+  // 3. Bulk-insert the items into MASTER_ITEMS. A new vendor has no rows yet,
+  //    so we append after the last item row. Build the blocks and write each
+  //    column-group in a single setValues (not per-item like commitUpsertItem,
+  //    which would be hundreds of I/O calls for a large catalog).
+  const sh = getSheet_(SHEET_MASTER);
+
+  // Next sequential ITEM-#### id.
+  const lastDataRow = getLastItemRow_(sh);
+  const existingIds = lastDataRow >= 2 ? sh.getRange(2, COL.ID, lastDataRow - 1, 1).getValues().flat() : [];
+  let maxN = 0;
+  existingIds.forEach(v => {
+    const m = /^ITEM-(\d+)$/i.exec(String(v || "").trim());
+    if (m) maxN = Math.max(maxN, Number(m[1]));
+  });
+
+  let insertAfterRow = getLastItemRow_(sh);
+  if (insertAfterRow < 1) insertAfterRow = 1;
+  const startRow = insertAfterRow + 1;
+  const n        = items.length;
+  sh.insertRowsAfter(insertAfterRow, n);
+
+  // Block A:G — [ID, NAME, VENDOR, SKU(''), PACK, CATEGORY(''), PAR('')].
+  // PAR is written as '' (blank) per the import contract — KMs set it later.
+  const agBlock = items.map((it, k) => {
+    const itemId = "ITEM-" + String(maxN + 1 + k).padStart(4, "0");
+    return [itemId, it.name, name, '', it.pack, '', ''];
+  });
+  sh.getRange(startRow, 1, n, 7).setValues(agBlock);
+
+  // Column O — eligible vendors; just this vendor for an imported catalog.
+  const eligibleStr = serializeEligibleVendors_(normalizeEligibleList_([], name));
+  const oBlock = items.map(() => [eligibleStr]);
+  sh.getRange(startRow, COL.ELIGIBLE_VENDORS, n, 1).setNumberFormat("@").setValues(oBlock);
+
+  // Block L:N — ACTIVE(true), USE_MULT(true), NOTES(''). Checkbox validation
+  // on L:M across the whole inserted span in one call.
+  applyCheckboxValidation_(sh.getRange(startRow, COL.ACTIVE, n, 2));
+  const lnBlock = items.map(() => [true, true, '']);
+  sh.getRange(startRow, COL.ACTIVE, n, 3).setValues(lnBlock);
+
+  reloadSetupIfVendorMatches_(name);
+  return { ok: true, vendor: name, itemsAdded: n, skipped: skipped };
+}
+
+
 // Called by ManageVendors sidebar - inline multiplier edit.
 // Finds the vendor's row in column Z and overwrites S:Y with the new multipliers.
 function commitUpdateVendorMults(vendorName, mults) {
