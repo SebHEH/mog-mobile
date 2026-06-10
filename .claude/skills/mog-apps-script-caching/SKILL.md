@@ -8,6 +8,11 @@ description: Recipe for adding `CacheService` + mutation-timestamp invalidation 
 
 The cache pattern crystallized across `getManageItemsBootstrap` and `api_getDashboard_` (audit item #3, shipped 2026-05-27). Reuse exactly — don't invent a new shape.
 
+> This is pattern A (mutation-timestamp-in-key) in the global `appsscript-caching` skill's
+> taxonomy, which owns the architecture decision (A vs MVS's two-tier pattern B) and the shared
+> rules. This specializer pins MOG's infrastructure: `getServerMutationTs_` /
+> `bumpServerMutationTs_`, the 300s TTL convention, and the MOGApi.gs `--redeploy` routing.
+
 ## The pattern
 
 ```javascript

@@ -36,9 +36,9 @@ Known-good baseline (2026-05-27): AdminReset 10, ManageVendors 25, ReorderPickPa
 - `WARNING: key order differs` — not fatal, but means a key was inserted in one block and appended in the other. Re-order so EN and ES read in the same sequence; makes future diffs reviewable.
 - Mode A `MISMATCH` is a heuristic — verify by eye before adding/removing a span; a stray non-content `class="en"` can skew the count.
 
-## The script is a fork — keep it in sync
+## The script is a thin wrapper — logic lives in the canonical
 
-`scripts/check_i18n_parity.py` is a per-repo fork of the canonical `~/.claude/skills/i18n-parity-checker/scripts/check_i18n_parity.py`. The **only** intentional divergence is the `--all` glob target (MOG modals live in `apps-script/`, not the repo root). All parsing logic is shared. If you fix a parser bug in one copy, port it to the other — that's the [[checker-script-sync]] discipline. Don't let the parsing rules drift between copies.
+`scripts/check_i18n_parity.py` is a logic-free wrapper over the canonical `~/.claude/skills/i18n-parity-checker/scripts/check_i18n_parity.py` (converted from a full fork on 2026-06-10 per the [[checker-script-sync]] push-toward-fewer-copies rule). The wrapper's only job is expanding `--all` to `apps-script/*.html` before delegating; all parsing logic, modes, and exit codes are the canonical's. Parser fixes land in the canonical copy, never here — if this wrapper ever grows parsing logic, that's drift.
 
 ## Composition with other skills
 

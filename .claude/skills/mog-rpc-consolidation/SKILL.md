@@ -8,6 +8,11 @@ description: Pattern for collapsing multiple `google.script.run` calls or duplic
 
 The Apps Script modal performance audit pattern. Three sessions in a row (2026-05-25, -26, -27) shipped variants of this — bootstrap on Order History, save consolidation on ManageVendors, dashboard cache + currentArea inline + getVendorTableData merge. Same recipe every time.
 
+> The generic pattern (read-bootstrap, write-commit with upfront validation, the additive-only
+> rule, count-the-actual-RPCs) now lives in the global `appsscript-rpc-bootstrap` skill — it was
+> promoted from this one on 2026-06-10. This specializer keeps MOG's canonical examples, repo
+> history, and deploy routing; if the recipes below ever disagree with the global, the global wins.
+
 ## The recipe
 
 1. **Count the actual RPCs in the file before proposing the consolidation.** The 5/25 audit overstated OrderHistory as "4 sequential RPCs" — it was actually 2 concurrent. The 5/27 audit overstated dashboard impact too. Read the modal's `window.onload`, save handler, or wherever the calls fire and count them in the real source. If the count is wrong, the impact estimate is wrong.

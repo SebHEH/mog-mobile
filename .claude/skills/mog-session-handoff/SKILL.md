@@ -1,11 +1,17 @@
 ---
 name: mog-session-handoff
-description: Produce the end-of-session handoff document for the MOG (Master Ordering Guide / mog-mobile) repo. Use at the natural close of any session that shipped material changes — code, config, docs, or deploy. Trigger on phrases like "close out the session", "session summary", "wrap up", "what should I bring to the next chat", "write the handoff", or any close variant. ALSO trigger automatically at the end of any session that produced commits or pushed deploys, even if Sebastian doesn't explicitly ask. Skip only when the session was purely exploratory and nothing was decided or shipped.
+description: Produce the end-of-session handoff document for the MOG (Master Ordering Guide / mog-mobile) repo. Trigger on phrases like "close out the session", "session summary", "wrap up", "what should I bring to the next chat", "write the handoff", or any close variant — but ONLY on an explicit wrap-up signal from Sebastian, never proactively just because commits or deploys happened (he often keeps building in the same chat; a premature handoff wastes the context runway — house rule, see the global session-handoff skill). Defers the three-artifact mechanics to the global session-handoff skill; this specializer pins MOG's file names, UPDATE-IN-PLACE same-day convention, and write-before-final-commit ordering. Skip when the session was purely exploratory and nothing was decided or shipped.
 ---
 
 # mog-session-handoff
 
 The artifact that bridges chat sessions for the MOG codebase. Produces `docs/MOG_SessionHandoff_YYYY_MM_DD.md` AND updates `CLAUDE.md`'s @-import line to point at the new file.
+
+> The generic mechanics (three artifacts, REQUIRED-PAIR chat-name + opening-prompt blocks,
+> outstanding-action escalation, the fact-gather script) live in the global `session-handoff`
+> skill. This specializer pins what's MOG-specific: the file names, the **UPDATE-IN-PLACE**
+> same-day convention (never a second file for the same date), and the
+> write-the-handoff-BEFORE-the-final-commit ordering below.
 
 ## When to use
 
@@ -36,7 +42,7 @@ Before naming the file or assembling the commit list, run the fact-gather — it
 python .claude/skills/mog-session-handoff/scripts/handoff_facts.py
 ```
 
-It prints today's date in filename form, the binary **UPDATE-IN-PLACE vs CREATE-NEW** decision (a script can't be tempted to bump the date to dodge a collision — that's the whole point), the commits not yet on `origin/main` (your "Commits landed this session" block), and any uncommitted changes (so the handoff doesn't claim work shipped that's still dirty). It's read-only and never commits. Use its output as the factual spine; spend your judgment on the prose.
+The script here is now a thin wrapper over the canonical `~/.claude/skills/session-handoff/scripts/handoff_facts.py` (this script was born in MOG and got promoted/genericized on 2026-06-10). It prints today's date in filename form, today's existing handoff file(s) with the two legal collision moves — **MOG always picks UPDATE-IN-PLACE** (a script can't be tempted to bump the date to dodge a collision — that's the whole point) — the commits not yet on `origin/main` (your "Commits landed this session" block), and any uncommitted changes (so the handoff doesn't claim work shipped that's still dirty). It's read-only and never commits. Use its output as the factual spine; spend your judgment on the prose.
 
 ## Date discipline (the script makes this call — this is the why)
 
