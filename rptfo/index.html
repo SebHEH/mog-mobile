@@ -2556,12 +2556,16 @@
   // engage exactly as on any other network failure.
   const API_TIMEOUT_MS = 15000;
 
-  async function api(action, payload) {
+  async function api(action, payload, timeoutMs) {
     if (!state.apiUrl || state.apiUrl.indexOf('PASTE_YOUR') === 0) {
       throw new Error('CONFIG_MISSING');
     }
     const controller = new AbortController();
-    const timeoutId  = setTimeout(function() { controller.abort(); }, API_TIMEOUT_MS);
+    // Most calls use the default API_TIMEOUT_MS. Known-slow writes (e.g.
+    // commitReset, which logs + clears On Hand + sends the recap email
+    // synchronously) pass a longer timeout so a cold /exec invocation
+    // isn't aborted mid-flight and mistaken for a network failure.
+    const timeoutId  = setTimeout(function() { controller.abort(); }, timeoutMs || API_TIMEOUT_MS);
     try {
       const resp = await fetch(state.apiUrl, {
         method: 'POST',
@@ -2711,6 +2715,12 @@
     await runStaleReset_(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
   }
 
+  // commitReset is the heaviest call in the app — server-side it logs On
+  // Hand to LOG_ORDERS, clears the columns, sends the recap email
+  // synchronously, then stamps AE9. On a cold /exec invocation that can run
+  // well past the default 15s API timeout, so give it generous headroom.
+  const RESET_TIMEOUT_MS = 45000;
+
   // Shared reset core for both the manual button and the new-day auto-reset.
   // busyLabel is shown on the full-screen overlay while the reset runs.
   async function runStaleReset_(busyLabel) {
@@ -2720,19 +2730,26 @@
     errEl.textContent = '';
     showBusy(busyLabel);
     try {
-      await api('commitReset');
-      state.cache.dashboard = null;
-      setDashboardFetchedAt_(null);
-      state.cache.historyDates = null;
-      state.cache.historyVendors = {};
-      state.cache.recap = null;
-      state.cache.vendorItems = {};
-      clearAllPerCycleLocalState_();
-      clearAllOfflineState_();
-      hideBusy();
-      showMainApp();
+      await api('commitReset', null, RESET_TIMEOUT_MS);
+      finishResetAndEnterApp_();
     } catch (err) {
       console.error('reset error:', err);
+      // The fetch may have been aborted (timeout) or failed mid-flight, but
+      // Apps Script does NOT stop server execution when the client gives up —
+      // the reset usually still completes server-side (AE9 gets stamped).
+      // Re-check status before stranding the user on this screen: if the day
+      // is no longer stale, the reset landed and we can just enter the app.
+      try {
+        const recheck = await api('getResetStatus');
+        if (recheck && !recheck.isStale) {
+          finishResetAndEnterApp_();
+          return;
+        }
+      } catch (recheckErr) {
+        // Re-poll itself failed (still offline) — fall through to the
+        // manual-retry fallback below.
+        console.error('reset re-check error:', recheckErr);
+      }
       hideBusy();
       btn.disabled = false;
       btn.querySelector('span.lang-en').textContent = 'Reset On Hand';
@@ -2742,6 +2759,21 @@
         ? (state.lang === 'en' ? "Couldn't reach the server. Try again." : 'Sin conexión. Intenta de nuevo.')
         : (m || (state.lang === 'en' ? 'Reset failed.' : 'Error al reiniciar.'));
     }
+  }
+
+  // Clear all cached/per-cycle state after a confirmed reset, then enter the
+  // home screen. Shared by the happy path and the re-check recovery path.
+  function finishResetAndEnterApp_() {
+    state.cache.dashboard = null;
+    setDashboardFetchedAt_(null);
+    state.cache.historyDates = null;
+    state.cache.historyVendors = {};
+    state.cache.recap = null;
+    state.cache.vendorItems = {};
+    clearAllPerCycleLocalState_();
+    clearAllOfflineState_();
+    hideBusy();
+    showMainApp();
   }
 
   // Wipes every piece of localStorage tied to the current ordering cycle.
