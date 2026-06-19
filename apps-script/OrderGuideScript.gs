@@ -386,9 +386,6 @@ function onOpen(e) {
 
 
 
-function menuHeader_() {}
-
-
 
 
 // Simple onEdit trigger — handles SETUP edits only.
@@ -1062,80 +1059,6 @@ function commitImportVendor(payload) {
 }
 
 
-// Called by ManageVendors sidebar - inline multiplier edit.
-// Finds the vendor's row in column Z and overwrites S:Y with the new multipliers.
-function commitUpdateVendorMults(vendorName, mults) {
-  bumpServerMutationTs_();
-  const name = String(vendorName || "").trim();
-  if (!name) throw new Error("Vendor name is required.");
-  if (!Array.isArray(mults) || mults.length !== 7) throw new Error("7 multiplier values required.");
-
-
-  const setup   = getSheet_(VENDOR_TABLE.SHEET);
-  const lastRow = setup.getLastRow();
-  if (lastRow < 2) throw new Error("No vendors found.");
-
-
-  // Find the matching row in column Z (source of truth for vendor names)
-  const zVals = setup.getRange(2, VENDOR_LIST_COL, lastRow - 1, 1).getValues();
-  let targetRow = -1;
-  for (let i = 0; i < zVals.length; i++) {
-    if (String(zVals[i][0] || "").trim().toLowerCase() === name.toLowerCase()) {
-      targetRow = i + 2; // +2: 1-based + header offset
-      break;
-    }
-  }
-
-
-  if (targetRow === -1) throw new Error('"' + name + '" not found in vendor list.');
-
-
-  // Write 7 multipliers to S:Y in the matched row
-  setup.getRange(targetRow, VENDOR_TABLE.MULT_COL, 1, 7).setValues([mults]);
-
-
-  return { ok: true };
-}
-
-
-// Called by ManageVendors sidebar - View All tab inline editor.
-// Writes only the cutoff time for a vendor; leaves multipliers untouched.
-// cutoffTime: "HH:MM" 24h, "H:MM AM/PM", null, or empty — all normalized.
-function commitUpdateVendorCutoff(vendorName, cutoffTime) {
-  bumpServerMutationTs_();
-  const name = String(vendorName || "").trim();
-  if (!name) throw new Error("Vendor name is required.");
-
-  const cutoffNorm = (cutoffTime === undefined || cutoffTime === null || cutoffTime === '')
-    ? null
-    : normalizeCutoffString_(cutoffTime);
-  // We accept null/empty as "clear the cutoff", but if the user typed
-  // something that didn't parse (e.g. "2pm-ish"), normalize returned
-  // null — surface that as an error instead of silently clearing.
-  if (cutoffTime && cutoffNorm === null) {
-    throw new Error('Cutoff time format not recognized. Use "HH:MM" (24h) or "H:MM AM/PM".');
-  }
-
-  const setup   = getSheet_(VENDOR_TABLE.SHEET);
-  const lastRow = setup.getLastRow();
-  if (lastRow < 2) throw new Error("No vendors found.");
-
-  // Find the matching row in column Z (source of truth for vendor names)
-  const zVals = setup.getRange(2, VENDOR_LIST_COL, lastRow - 1, 1).getValues();
-  let targetRow = -1;
-  for (let i = 0; i < zVals.length; i++) {
-    if (String(zVals[i][0] || "").trim().toLowerCase() === name.toLowerCase()) {
-      targetRow = i + 2;
-      break;
-    }
-  }
-  if (targetRow === -1) throw new Error('"' + name + '" not found in vendor list.');
-
-  setup.getRange(targetRow, VENDOR_CUTOFF_COL).setValue(cutoffNorm || '');
-  return { ok: true, cutoffTime: cutoffNorm };
-}
-
-
 // Called by ManageVendors sidebar - inline editor save.
 // Commits multipliers (S:Y) AND cutoff (AA) for a vendor in a single
 // RPC against one row lookup. Validates both inputs upfront so we fail
@@ -1571,23 +1494,6 @@ function reestablishVendorTemplate_() {
 }
 
 
-// Menu wrapper for the standalone recovery action (referenced by the Add Vendor
-// fail-safe error). Low blast radius — only re-creates the template, no strip.
-function reestablishVendorTemplateMenu_() {
-  const ui = SpreadsheetApp.getUi();
-  try {
-    const r = reestablishVendorTemplate_();
-    ui.alert("Re-establish Vendor Template",
-      r.created
-        ? "Done — hidden VENDOR_TEMPLATE re-created from \"" + r.source + "\"."
-        : "No action needed — VENDOR_TEMPLATE already exists.",
-      ui.ButtonSet.OK);
-  } catch (e) {
-    ui.alert("Re-establish Vendor Template", "Failed: " + String(e.message || e), ui.ButtonSet.OK);
-  }
-}
-
-
 // ── (removed 2026-06-01) brandAndStripVendorTab_ + migrateVendorTabs ──
 // Shelved cosmetic vendor-tab dead-zone strip + concept-header branding from
 // the 2026-05-29 #4 work. Never wired to a menu; the real fix shipped instead
@@ -1922,45 +1828,6 @@ function getManageItemsBootstrap() {
 
 
 
-
-
-function getItemsByVendor(vendor) {
-  const sh      = getSheet_(SHEET_MASTER);
-  const lastRow = sh.getLastRow();
-  if (lastRow < 2) return [];
-  const vLow = String(vendor || "").trim().toLowerCase();
-
-  // Build a Map<itemId, areaName> from the pick-path DB so each item can
-  // ship its currentArea inline — saves a follow-up getItemForEdit round
-  // trip after the user picks an item in the edit form.
-  const areaByItemId = new Map();
-  const pickDb = readPickDb_(getSheet_(SHEET_SETUP));
-  for (const r of pickDb) {
-    const id   = String(r[1] || "").trim();
-    const area = String(r[3] || "").trim();
-    if (id && area && !areaByItemId.has(id)) areaByItemId.set(id, area);
-  }
-
-  return sh
-    .getRange(2, 1, lastRow - 1, Math.max(COL.NOTES, COL.ACTIVE))
-    .getValues()
-    .filter(r => String(r[COL.VENDOR - 1] || "").trim().toLowerCase() === vLow
-              && String(r[COL.ID   - 1] || "").trim()
-              && String(r[COL.NAME - 1] || "").trim())
-    .map(r => {
-      const id = String(r[COL.ID - 1] || "").trim();
-      return {
-        id:          id,
-        name:        String(r[COL.NAME   - 1] || "").trim(),
-        vendor:      String(r[COL.VENDOR - 1] || "").trim(),
-        pack:        String(r[COL.PACK   - 1] || "").trim(),
-        par:         r[COL.PAR    - 1],
-        active:      r[COL.ACTIVE - 1] === true,
-        currentArea: areaByItemId.get(id) || ""
-      };
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
 
 
 
@@ -3652,46 +3519,6 @@ function getLogOrderDate_() {
 const LAST_LOG_DATE_PROP = "LAST_LOG_DATE";
 
 
-
-
-// Returns true if LOG_ORDERS already has an entry for orderDate (duplicate guard).
-// Fast path: check the LAST_LOG_DATE document property (O(1)).
-// Fallback: scan the date column if the property is missing/stale, then update it.
-function hasLogEntryForDate_(logSheet, orderDate) {
-  const props      = PropertiesService.getDocumentProperties();
-  const cachedDate = props.getProperty(LAST_LOG_DATE_PROP);
-  if (cachedDate && cachedDate === orderDate) return true;
-
-  const lastRow = logSheet.getLastRow();
-  if (lastRow < 2) return false;
-
-  const tz  = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-  const dates = logSheet
-    .getRange(2, LOG_COL.ORDER_DATE, lastRow - 1, 1)
-    .getValues()
-    .flat();
-
-  const fmt = (v) => {
-    if (!v) return "";
-    const d = (v instanceof Date) ? v : new Date(v);
-    return isNaN(d.getTime()) ? String(v).trim() : Utilities.formatDate(d, tz, "yyyy-MM-dd");
-  };
-
-  // Track newest date seen during the scan so we can refresh the cache.
-  let newest = "";
-  let found  = false;
-  for (let i = 0; i < dates.length; i++) {
-    const d = fmt(dates[i]);
-    if (d === orderDate) found = true;
-    if (d > newest) newest = d;
-  }
-  // Refresh the cache so future calls hit the fast path. If cache was stale
-  // (e.g. someone cleared the log manually) this rebuilds it.
-  if (newest && newest !== cachedDate) {
-    props.setProperty(LAST_LOG_DATE_PROP, newest);
-  }
-  return found;
-}
 
 
 

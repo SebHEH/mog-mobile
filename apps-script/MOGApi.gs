@@ -1269,14 +1269,6 @@ function getTodaysLogByVendor_(dateStr) {
 }
 
 
-function generateReference_(vendor, date) {
-  const tz   = Session.getScriptTimeZone();
-  const md   = Utilities.formatDate(date, tz, 'MMdd');
-  const abbr = (PropertiesService.getScriptProperties().getProperty(PROP_LOCATION_ABBR) || 'LOC').toUpperCase();
-  const v    = vendor.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase();
-  return abbr + '-' + md + '-' + v;
-}
-
 function generateReferenceFromDateStr_(vendor, dateStr) {
   // dateStr in 'yyyy-MM-dd' form
   const parts = String(dateStr).split('-');

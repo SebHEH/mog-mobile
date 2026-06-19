@@ -1892,9 +1892,6 @@
         }
       }
       localStorage.setItem('mog_migration_v1_done', '1');
-      if (toMigrate.length) {
-        console.log('[migrate] moved', toMigrate.length, 'legacy per-cycle keys to', deploymentNs_());
-      }
     } catch (e) {
       // Non-fatal — the app works without migration; users just see
       // fresh state for the namespaced store.
@@ -2244,6 +2241,7 @@
       today:            { en: "Today's orders",  es: 'Pedidos de hoy' },
       count:            { en: "Today's orders",  es: 'Pedidos de hoy' },
       review:           { en: 'Review order',    es: 'Revisar pedido' },
+      recap:            { en: 'Full order list', es: 'Lista completa' },
       'history-vendors':{ en: 'Order history',    es: 'Historial' },
       'history-detail': { en: 'Order details',   es: 'Detalles' },
       settings:         { en: 'Settings',        es: 'Ajustes' },
@@ -4370,7 +4368,7 @@
     view.innerHTML = html;
 
     if ($('markreview-btn'))    $('markreview-btn').addEventListener('click', onMarkReviewedClick);
-    if ($('back-count-btn'))    $('back-count-btn').addEventListener('click', () => openCount(ctx.vendor));
+    if ($('back-count-btn'))    $('back-count-btn').addEventListener('click', () => reopenCountFromContext_());
   }
 
   async function onMarkReviewedClick() {
@@ -5570,7 +5568,7 @@
           showToast(t('summarySent') + ' · ' + result.vendorCount + ' ' + (state.lang === 'en' ? 'vendors' : 'proveedores'), 'success');
         }
         if (state.cache.dashboard) renderToday(state.cache.dashboard);
-      } else if (result && !result.cancelled) {
+      } else if (result) {
         const m = String((result.error && result.error.message) || '');
         if (result.offline) showToast(t('offlineRetry'), 'error');
         else if (m.indexOf('Nothing to recap') >= 0) {
@@ -5890,11 +5888,6 @@
       escapeHtml(t('sendingSummary')) +
       '<span class="bar sm inline"><span class="bar-fill-indeterminate"></span></span>';
     const result = await sendDailyRecap();
-    if (result.cancelled) {
-      row.classList.remove('disabled');
-      labelEl.innerHTML = original;
-      return;
-    }
     if (result.ok) {
       showToast(t('summarySent') + ' · ' + result.vendorCount + ' ' + (state.lang === 'en' ? 'vendors' : 'proveedores'), 'success');
     } else {
