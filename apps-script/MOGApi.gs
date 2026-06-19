@@ -17,7 +17,7 @@
  *   5. Add the URL + PIN into the mobile app config for that location.
  *
  * NOTES:
- *   - Does not modify any existing functions in OrderGuideScript.gs.
+ *   - Does not modify any existing functions in the bound-script files.
  *   - Reads from MASTER_ITEMS, SETUP, LOG_ORDERS.
  *   - Writes only to MASTER_ITEMS.On_Hand (same column the existing system
  *     uses for in-progress counts) and LOG_ORDERS (append-only on submit).
@@ -70,7 +70,7 @@ const PIN_MAX_ATTEMPTS = 5;
 const PIN_LOCKOUT_MS   = 5 * 60 * 1000;  // 5 minutes
 
 // MOG-specific columns in MASTER_ITEMS not present in the existing COL object.
-// The existing OrderGuideScript.gs only references columns through NOTES (14)
+// The COL object (Core.gs) only references columns through NOTES (14)
 // because On Hand and the formula columns live on vendor tabs in that workflow.
 // The mobile API reads On Hand straight from MASTER_ITEMS, so we declare it here.
 const MOG_COL = {
@@ -78,7 +78,7 @@ const MOG_COL = {
 };
 
 // Optional fallback vendor metadata. Cutoff times are now read primarily
-// from SETUP column AA (see VENDOR_CUTOFF_COL in OrderGuideScript.gs) —
+// from SETUP column AA (see VENDOR_CUTOFF_COL in Core.gs) —
 // edit them through the ManageVendors sidebar's Add tab or View All
 // inline editor instead of touching this file.
 //
@@ -1033,7 +1033,7 @@ function readUseMultiplierMap_() {
 
 function readVendorMultipliers_(setup) {
   // SETUP: Z (col 26) = vendor name; S:Y (cols 19–25) = Mon–Sun multipliers.
-  // These match the column constants used in the existing OrderGuideScript.
+  // These match the column constants used in the bound scripts (Core.gs).
   const lastRow = setup.getLastRow();
   const map = new Map();
   if (lastRow < 2) return map;
@@ -1084,7 +1084,7 @@ function readVendorCutoffs_(setup) {
   return map;
 }
 
-// Sibling to OrderGuideScript's normalizeCutoffString_ but lives in the
+// Sibling to Vendors.gs's normalizeCutoffString_ but lives in the
 // API layer so MOGApi.gs has no compile-order dependency on the other
 // file. Slightly simpler: only validates the "HH:MM" 24h shape we store
 // after the sidebar normalizes input. Returns null on anything else.
@@ -1268,7 +1268,7 @@ function sendRecapEmail_(recipient, sections, cycleDate, totalItems) {
   // Sheet dashboard, so email and dashboard stay coordinated):
   //   roll-play → teal-dark #2d8c6b + white · teasnyou → charcoal #1a1a1a + gold
   //   #D4A574 · unset/unknown → navy #1a1a2e + white (matches the modal --brand).
-  // dashTheme_() lives in OrderGuideScript.gs but shares global scope at runtime.
+  // dashTheme_() lives in Dashboard.gs but shares global scope at runtime.
   const theme    = (typeof dashTheme_ === 'function')
                      ? dashTheme_()
                      : { accent: '#1a1a2e', bannerFont: '#ffffff' };
@@ -1869,7 +1869,7 @@ function showMobileApiStatus() {
 function clearPinLockout() {
   // Manual unlock — for when a legitimate manager gets locked out and
   // can't wait 5 minutes, or when testing. Wired into the Mobile API
-  // menu in OrderGuideScript.gs.
+  // menu in Core.gs.
   const ui = SpreadsheetApp.getUi();
   const props = PropertiesService.getScriptProperties();
   const had = props.getProperty(PROP_PIN_FAIL_COUNT) ||

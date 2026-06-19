@@ -43,7 +43,7 @@ function api_foo_compute_(input) {
 
 1. **Always reuse `getServerMutationTs_()`** — don't introduce a per-feature timestamp. The 2026-05-27 architectural decision: separate ts would have needed bumps at 11+ callsites (every write fn), reuse needs zero new bumps. Trade-off accepted: an admin storage-area edit also invalidates the dashboard cache, but those edits are rare and recompute is cheap. The reused-ts pattern is the project convention.
 
-2. **Bumps already exist for free.** `bumpServerMutationTs_()` is called from every write fn in `OrderGuideScript.gs` (add/delete/rename vendors, items, areas, pick paths, order saves, on-hand writes — currently 17 callsites). If your new cached read depends on data that any of those writes can change, you get invalidation for free. If it depends on data that *no* write fn touches, the read probably doesn't need caching.
+2. **Bumps already exist for free.** `bumpServerMutationTs_()` (defined in `Core.gs`) is called from every write fn across the bound-script `.gs` files (`Vendors.gs`/`Items.gs`/`PickPath.gs`/`ResetLog.gs` — add/delete/rename vendors, items, areas, pick paths, order saves, on-hand writes). If your new cached read depends on data that any of those writes can change, you get invalidation for free. If it depends on data that *no* write fn touches, the read probably doesn't need caching.
 
 3. **Split the function in two.** `api_foo_` is the cache wrapper. `api_foo_compute_` is the work. This keeps the cache layer trivially auditable and lets the compute fn be called directly when debugging in the editor (which bypasses cache).
 
@@ -55,7 +55,7 @@ function api_foo_compute_(input) {
 
 ## When you ADD a write fn
 
-If the new write affects data read by a cached endpoint, add `bumpServerMutationTs_();` to its end (after the write succeeds, before the return). Pattern matches every existing write fn in `OrderGuideScript.gs`. Skipping the bump is the bug that makes cached reads serve stale data — it's the most likely correctness failure of this pattern.
+If the new write affects data read by a cached endpoint, add `bumpServerMutationTs_();` to its end (after the write succeeds, before the return). Pattern matches every existing write fn across the bound-script `.gs` files. Skipping the bump is the bug that makes cached reads serve stale data — it's the most likely correctness failure of this pattern.
 
 ## Deploy
 
@@ -74,7 +74,7 @@ Skill-specific routing fact: cache wraps **always** live in `apps-script/MOGApi.
 
 - `apps-script/MOGApi.gs` → `getManageItemsBootstrap` (the original pattern; reads → vendor + item + area data).
 - `apps-script/MOGApi.gs` → `api_getDashboard_` + `api_getDashboard_compute_` (the split-fn shape; also see `countActiveItemsByVendor_` for loop-hoisting alongside caching).
-- `apps-script/OrderGuideScript.gs` → `getServerMutationTs_` and `bumpServerMutationTs_` (the timestamp source of truth; lines ~225–235).
+- `apps-script/Core.gs` → `getServerMutationTs_` and `bumpServerMutationTs_` (the timestamp source of truth; lines ~228–246).
 
 ## Composition with other skills
 

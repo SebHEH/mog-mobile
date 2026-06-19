@@ -437,8 +437,9 @@ function onOpen(e) {
       // Decluttered 2026-06-01: removed spent one-time/diagnostic entries —
       // Migrate Item Vendors (backfill, run everywhere), Audit Vendor Tab
       // Structure + Re-establish Vendor Template (diagnostics from the resolved
-      // #4 vendor-template work). The functions remain in OrderGuideScript.gs
-      // and are still runnable from the Apps Script editor if ever needed.
+      // #4 vendor-template work). The functions remain in the bound-script
+      // files (Items.gs / Vendors.gs) and are still runnable from the Apps
+      // Script editor if ever needed.
       .addItem("    Recalibrate Vendor Pars","showRecalibrateVendorSidebar")
       .addItem("    Audit Vendor Cadence",   "showVendorCadenceAuditSidebar")
       .addItem("    Sync Vendor Multiplier Formulas","syncVendorMultiplierFormulasMenu_")

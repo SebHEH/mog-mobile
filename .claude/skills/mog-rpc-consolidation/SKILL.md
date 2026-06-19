@@ -20,7 +20,7 @@ The Apps Script modal performance audit pattern. Three sessions in a row (2026-0
 2. **Pick the naming convention based on direction:**
    - **Read consolidation** → `get<Thing>Bootstrap(...)` returns one object with all the fields the client needs. Canonical examples: `getManageItemsBootstrap`, `getOrderHistoryBootstrap`.
    - **Write consolidation** → `commit<Thing>(...)` accepts all payloads and does the row lookup + writes once. Canonical example: `commitUpdateVendorMultsAndCutoff` (replaces a chained `commitUpdateVendorMults` → `commitUpdateVendorCutoff`).
-   - **Reorder / list-mutation helper** → `commit<Thing>Mutation_(mutate)` is a server-side higher-order helper that wraps the bump → read → mutate → write → sync skeleton. Canonical example: `commitAreaListMutation_` in `OrderGuideScript.gs`.
+   - **List mutation** → fold a set of granular per-row RPCs into one atomic reconciler that takes the final list and does delete/rename/add/reorder in a single pass. Canonical example: `commitStorageAreasDraft` in `PickPath.gs`.
 
 3. **Additive only — don't prune the old fns.** Add the new server function, rewire the client to call it, leave the old functions in `.gs` untouched even if they have no remaining callers. Sebastian's pattern across all three sessions: pruning is its own session, not bundled with the consolidation. The diff stays minimal and reviewable.
 
@@ -28,7 +28,7 @@ The Apps Script modal performance audit pattern. Three sessions in a row (2026-0
 
 5. **Rhino ES5 safety on the HTML side.** The client rewrite lives in `apps-script/*.html` `<script>` blocks — that's Rhino, not V8. No arrow functions, no `let`/`const`, no template literals, no destructuring. The `rhino-safe-html` user-global skill is the canonical reference and triggers automatically on those edits. The `.gs` server fn itself runs on V8 and can use modern syntax freely — the syntax barrier is one-sided.
 
-6. **Deploy.** Skill-specific routing fact: a new fn in `MOGApi.gs` needs `--redeploy` (PWA reads `/exec`); a new fn in `OrderGuideScript.gs` called only from bound sidebars needs plain push. For the exact command + canary discipline, defer to `mog-deploy-workflow` — run its router: `python .claude/skills/mog-deploy-workflow/scripts/route.py <the file you edited>`.
+6. **Deploy.** Skill-specific routing fact: a new fn in `MOGApi.gs` needs `--redeploy` (PWA reads `/exec`); a new fn in a bound-script `.gs` (`Core.gs`/`Vendors.gs`/`Items.gs`/`PickPath.gs`/`ResetLog.gs`/`History.gs`/`Dashboard.gs`) called only from bound sidebars needs plain push. (Caveat: if that bound-script fn is also reached from an `api_*` path the PWA calls, it needs `--redeploy` too — when unsure, `--redeploy`.) For the exact command + canary discipline, defer to `mog-deploy-workflow` — run its router: `python .claude/skills/mog-deploy-workflow/scripts/route.py <the file you edited>`.
 
 ## Anti-patterns (caught in past sessions)
 
@@ -40,9 +40,9 @@ The Apps Script modal performance audit pattern. Three sessions in a row (2026-0
 
 ## Canonical examples to read before writing
 
-- `apps-script/OrderGuideScript.gs` → `getOrderHistoryBootstrap` (read consolidation, vendor list derived from log rows).
-- `apps-script/OrderGuideScript.gs` → `commitUpdateVendorMultsAndCutoff` (write consolidation, upfront validation).
-- `apps-script/OrderGuideScript.gs` → `commitAreaListMutation_` (higher-order list-mutation helper).
+- `apps-script/History.gs` → `getOrderHistoryBootstrap` (read consolidation, vendor list derived from log rows).
+- `apps-script/Vendors.gs` → `commitUpdateVendorMultsAndCutoff` (write consolidation, upfront validation).
+- `apps-script/PickPath.gs` → `commitStorageAreasDraft` (atomic list-mutation reconciler).
 - `apps-script/MOGApi.gs` → `getManageItemsBootstrap` (read consolidation + cache wrap — see also [[mog-apps-script-caching]] if the new fn warrants caching).
 
 ## Composition with other skills

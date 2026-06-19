@@ -26,8 +26,9 @@ mog-mobile/
 │   ├── index.html          Built from template/index.html with deployment URL injected
 │   └── sw.js               Copy of template/sw.js
 ├── apps-script/            Apps Script backend (the .gs + HTML modals bound to each store Sheet)
-│   ├── MOGApi.gs
-│   ├── OrderGuideScript.gs
+│   ├── MOGApi.gs           doGet/doPost + api_* surface the PWA calls
+│   ├── Core.gs             Constants, helpers, menu/triggers, order-cycle date helpers
+│   ├── Vendors.gs Items.gs PickPath.gs ResetLog.gs History.gs Dashboard.gs   (domain modules)
 │   ├── *.html              (Manage*, OrderHistory, ReorderPickPath, StorageAreas, etc.)
 │   ├── .clasp-targets.json Slug → {scriptId, deploymentId} map consumed by deploy.py
 │   └── README.md           Apps Script workflow docs
@@ -68,7 +69,7 @@ The full sequence, end to end:
 
 In the new location's spreadsheet:
 
-1. Add `apps-script/MOGApi.gs` and `apps-script/OrderGuideScript.gs` plus all the HTML modal files from this repo's `apps-script/` folder. (After initial setup, append the new store's Script ID to `apps-script/.clasp-targets.json` and future updates push automatically — see `apps-script/README.md`.)
+1. Add all the `.gs` files (`MOGApi.gs`, `Core.gs`, `Vendors.gs`, `Items.gs`, `PickPath.gs`, `ResetLog.gs`, `History.gs`, `Dashboard.gs`) plus all the HTML modal files from this repo's `apps-script/` folder. (After initial setup, append the new store's Script ID to `apps-script/.clasp-targets.json` and future updates push automatically — see `apps-script/README.md`.)
 2. From the Apps Script editor, run `setupMobileApi()`. Five prompts:
    - 4–8 digit store PIN
    - Location name (e.g. "Roll Play Tysons")

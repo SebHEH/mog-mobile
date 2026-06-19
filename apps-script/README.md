@@ -11,7 +11,13 @@ The deploy script itself (`deploy.py`) lives at the repo root, alongside `build.
 | File | Purpose |
 |---|---|
 | `MOGApi.gs` | Core API for the PWA frontend to read/write order data (called via each Sheet's `/exec` URL) |
-| `OrderGuideScript.gs` | Main spreadsheet script: menus, modals, triggers, bound-sidebar handlers |
+| `Core.gs` | Global constants, generic helpers, menu/`onOpen`/`onEdit`/triggers, generic sidebar openers, order-cycle date helpers (`getActiveOrderDate_`/`getResetStaleness_`) |
+| `Vendors.gs` | Vendor add/import/remove/recalibrate, cadence audit, template repair |
+| `Items.gs` | Manage Items modal CRUD + active-vendor switch |
+| `PickPath.gs` | Storage areas + reorder pick path |
+| `ResetLog.gs` | Reset / order-log snapshot / daily recap |
+| `History.gs` | Order history modal + par-review flags |
+| `Dashboard.gs` | HOME dashboard builder + per-concept theming |
 | `AdminReset.html` | Admin-only reset/wipe modal |
 | `ManageItems.html` | Item editor modal |
 | `ManageVendors.html` | Vendor editor modal |

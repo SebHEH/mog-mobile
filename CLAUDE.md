@@ -127,8 +127,14 @@ mog-mobile/
 │   └── sw.js                    (6.9 KB — store SW).
 ├── apps-script/                 APPS SCRIPT SOURCE.
 │   ├── README.md                Apps Script workflow docs (setup + day-to-day).
-│   ├── MOGApi.gs                Core API surface for PWA ↔ Sheet.
-│   ├── OrderGuideScript.gs      Main bound script (menus, triggers, sheet logic).
+│   ├── MOGApi.gs                Core API surface for PWA ↔ Sheet (doGet/doPost, api_* fns).
+│   ├── Core.gs                  Global constants, generic helpers, menu/onOpen/onEdit/triggers, order-cycle date helpers.
+│   ├── Vendors.gs               Vendor add/import/remove/recalibrate, cadence, templates.
+│   ├── Items.gs                 Manage Items CRUD + active-vendor switch.
+│   ├── PickPath.gs              Storage areas + reorder pick path.
+│   ├── ResetLog.gs             Reset / order-log snapshot / daily recap.
+│   ├── History.gs               Order history modal + par-review flags.
+│   ├── Dashboard.gs             HOME dashboard builder + per-concept theming.
 │   ├── AdminReset.html          Admin reset modal.
 │   ├── ManageItems.html         Item editor modal.
 │   ├── ManageVendors.html       Vendor editor modal.
