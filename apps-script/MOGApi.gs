@@ -282,32 +282,10 @@ function api_ping_(authType) {
 
 
 function api_getResetStatus_() {
-  // Reads the same cells the existing dashboard reads:
-  //   AE2 = =TODAY()  (today's calendar date, set by sheet formula)
-  //   AE9 = last reset date (written by reset wrapper)
-  // isStale is true when AE9 is blank or before today.
-  const oe = getSheet_(SHEET_ORDER_ENTRY);
-  const tz = Session.getScriptTimeZone();
-
-  const todayDate = oe.getRange('AE2').getValue();
-  const resetDate = oe.getRange('AE9').getValue();
-
-  const todayStr  = (todayDate instanceof Date)
-    ? Utilities.formatDate(todayDate, tz, 'yyyy-MM-dd')
-    : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-
-  let lastResetStr = null;
-  let isStale = true;
-  if (resetDate instanceof Date && !isNaN(resetDate.getTime())) {
-    lastResetStr = Utilities.formatDate(resetDate, tz, 'yyyy-MM-dd');
-    isStale = (lastResetStr < todayStr);
-  }
-
-  return {
-    today:     todayStr,
-    lastReset: lastResetStr,
-    isStale:   isStale
-  };
+  // New-day detection lives in Core's getResetStaleness_ (the AE2/AE9 read +
+  // compare, single source of truth). Returns { today, lastReset, isStale } —
+  // the exact shape the PWA expects.
+  return getResetStaleness_();
 }
 
 
@@ -1008,29 +986,8 @@ function jsonResponse_(obj) {
 }
 
 
-function getActiveOrderDate_() {
-  // Returns the active cycle date as { date: Date, dateStr, dayOfWeek }.
-  // Reads AE9 (last reset date) first; falls back to AE2 / today if blank.
-  // This is the date the system treats as "the order being worked on."
-  // After a reset, AE9 = today, so this returns today.
-  // Before a reset, AE9 = the previous reset date, so this returns that —
-  // which is what every multiplier and snapshot should be locked to until
-  // reset happens.
-  const oe = getSheet_(SHEET_ORDER_ENTRY);
-  const tz = Session.getScriptTimeZone();
-  let d = oe.getRange('AE9').getValue();
-  if (!(d instanceof Date) || isNaN(d.getTime())) {
-    d = oe.getRange('AE2').getValue();
-  }
-  if (!(d instanceof Date) || isNaN(d.getTime())) {
-    d = new Date();
-  }
-  return {
-    date:      d,
-    dateStr:   Utilities.formatDate(d, tz, 'yyyy-MM-dd'),
-    dayOfWeek: Utilities.formatDate(d, tz, 'EEE')
-  };
-}
+// getActiveOrderDate_ is defined in Core.gs (single source of truth for the
+// AE2/AE9 order-cycle date). It stays globally callable from here.
 
 
 function readUseMultiplierMap_() {

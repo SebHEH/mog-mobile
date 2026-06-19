@@ -248,6 +248,69 @@ function bumpServerMutationTs_() {
 
 
 
+// =========================================================================
+// ORDER-CYCLE DATE — single source of truth for the AE2/AE9 logic
+// =========================================================================
+// The HOME dashboard keeps two hidden dates in ORDER_ENTRY:
+//   AE2 (DATE_FORMULA) = =TODAY()        — today's calendar date
+//   AE9 (RESET_DATE)   = last reset date — the cycle currently being worked
+// Both helpers below are the ONLY place that logic should live. Callers in
+// MOGApi.gs (api_getResetStatus_, getActiveOrderDate_ consumers) and the
+// reset/log path (dailyResetOnOpen_, getLogOrderDate_) all route through them.
+// Timezone is the spreadsheet's (every HEH store is US/Eastern), matching the
+// frame of reference of the AE2 =TODAY() formula itself.
+
+function getActiveOrderDate_() {
+  // The cycle date the system treats as "the order being worked on":
+  // AE9 (last reset) if set, else AE2 (=TODAY()), else now. After a reset
+  // AE9 = today; before one it's the previous reset date, which is what every
+  // multiplier and snapshot stays locked to until reset runs.
+  // Returns { date, dateStr (yyyy-MM-dd), dayOfWeek (EEE) }.
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const oe = ss.getSheetByName(SHEET_ORDER_ENTRY);
+  const tz = ss.getSpreadsheetTimeZone();
+  let d = oe ? oe.getRange(LAST_RESET_DATE_CELL).getValue() : null;   // AE9
+  if (!(d instanceof Date) || isNaN(d.getTime())) {
+    d = oe ? oe.getRange(ORDER_ENTRY_DATE_CELL).getValue() : null;    // AE2
+  }
+  if (!(d instanceof Date) || isNaN(d.getTime())) {
+    d = new Date();
+  }
+  return {
+    date:      d,
+    dateStr:   Utilities.formatDate(d, tz, 'yyyy-MM-dd'),
+    dayOfWeek: Utilities.formatDate(d, tz, 'EEE')
+  };
+}
+
+function getResetStaleness_() {
+  // New-day detection: does the current cycle need a reset?
+  // Stale = AE9 (last reset) is blank/invalid, or strictly before AE2 (today).
+  // Returns { today (yyyy-MM-dd), lastReset (yyyy-MM-dd|null), isStale }.
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const oe = ss.getSheetByName(SHEET_ORDER_ENTRY);
+  const tz = ss.getSpreadsheetTimeZone();
+
+  const todayRaw = oe ? oe.getRange(ORDER_ENTRY_DATE_CELL).getValue() : null;  // AE2
+  const resetRaw = oe ? oe.getRange(LAST_RESET_DATE_CELL).getValue() : null;   // AE9
+
+  const todayStr = (todayRaw instanceof Date && !isNaN(todayRaw.getTime()))
+    ? Utilities.formatDate(todayRaw, tz, 'yyyy-MM-dd')
+    : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  let lastResetStr = null;
+  let isStale = true;
+  if (resetRaw instanceof Date && !isNaN(resetRaw.getTime())) {
+    lastResetStr = Utilities.formatDate(resetRaw, tz, 'yyyy-MM-dd');
+    isStale = (lastResetStr < todayStr);
+  }
+
+  return { today: todayStr, lastReset: lastResetStr, isStale: isStale };
+}
+
+
+
+
 // --- Cell formula on every vendor tab (I1:K1): =UPPER(TABNAME())&" ORDER" ----
 function TABNAME() {
   return SpreadsheetApp.getActiveSheet().getName();
@@ -469,22 +532,10 @@ function dailyResetOnOpen_() {
     if (!oe) return;
     const tz = ss.getSpreadsheetTimeZone();
 
-    const todayRaw = oe.getRange(ORDER_ENTRY_DATE_CELL).getValue();  // AE2 =TODAY()
-    const resetRaw = oe.getRange(LAST_RESET_DATE_CELL).getValue();   // AE9 last reset
-
-    const todayStr = (todayRaw instanceof Date && !isNaN(todayRaw.getTime()))
-      ? Utilities.formatDate(todayRaw, tz, 'yyyy-MM-dd')
-      : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-
-    let lastResetStr = null;
-    if (resetRaw instanceof Date && !isNaN(resetRaw.getTime())) {
-      lastResetStr = Utilities.formatDate(resetRaw, tz, 'yyyy-MM-dd');
-    }
-
-    // Stale = never reset, or last reset is before today. If it's already
-    // been reset today, this cycle is finalized — no-op.
-    const isStale = (lastResetStr === null) || (lastResetStr < todayStr);
-    if (!isStale) return;
+    // New-day detection lives in getResetStaleness_ (Core). Stale = never
+    // reset, or last reset is before today. If already reset today, this
+    // cycle is finalized — no-op.
+    if (!getResetStaleness_().isStale) return;
 
     // Visible, non-blocking feedback — the Sheet equivalent of the PWA's
     // "Detected new day" overlay. toast() never blocks the open.

@@ -181,26 +181,10 @@ function ensureLogSheet_() {
 // second reset on the same calendar day (after AE9 has been advanced)
 // won't false-positive against the prior cycle's log entry.
 function getLogOrderDate_() {
-  const ss  = SpreadsheetApp.getActiveSpreadsheet();
-  const oe  = ss.getSheetByName(SHEET_ORDER_ENTRY);
-  const tz  = ss.getSpreadsheetTimeZone();
-
-  if (!oe) return Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
-
-  // Try AE9 (last reset date) first
-  const resetRaw = oe.getRange(LAST_RESET_DATE_CELL).getValue();
-  if (resetRaw instanceof Date && !isNaN(resetRaw.getTime())) {
-    return Utilities.formatDate(resetRaw, tz, "yyyy-MM-dd");
-  }
-
-  // Fall back to AE2 (=TODAY()) if AE9 is blank or invalid
-  const todayRaw = oe.getRange(ORDER_ENTRY_DATE_CELL).getValue();
-  if (!todayRaw) return Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
-
-  const d = (todayRaw instanceof Date) ? todayRaw : new Date(todayRaw);
-  return isNaN(d.getTime())
-    ? String(todayRaw).trim()
-    : Utilities.formatDate(d, tz, "yyyy-MM-dd");
+  // Single source of truth: Core's getActiveOrderDate_ (AE9 first, AE2/today
+  // fallback). This is the date stamped onto every LOG_ORDERS row and the key
+  // the duplicate guard uses.
+  return getActiveOrderDate_().dateStr;
 }
 
 
