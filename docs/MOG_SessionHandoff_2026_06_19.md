@@ -77,3 +77,56 @@ After #4/#5, the parked KM-editor feature is next (decisions locked: computer-on
 + PIN-gated; recommended progressive Option A — serve the existing modals via
 doGet?page=…, PIN-gate them, gate editing off on phones, rebuild incrementally).
 ```
+
+---
+---
+
+# Later session — God-object split (#4) + new-day-detection dedup (#5)
+
+**Session focus:** Execute the deferred #4 + #5 — split `OrderGuideScript.gs` along the mapped 7-file seam and extract the duplicated AE2/AE9 new-day logic — architectural walkthrough first, canary rpfrf.
+**Outcome:** Both shipped (3 commits) and deployed to all 9 + master via `deploy.py --redeploy`; canary rpfrf smoke-tested (menu, all modals, dashboard rebuild, reset, order history — all confirmed by Sebastian). Candidate **#1 and #5 are now DONE.**
+**Next session focus:** Start the PARKED **KM-editor feature** (decisions locked — computer-only + PIN-gated; progressive Option A via `doGet?page=…`).
+
+## What shipped (later session)
+
+**(A) Split `OrderGuideScript.gs` god-object → Core + 6 files (`38382db`).** Pure code-motion, zero logic change. The 5,497-line file became **`Core.gs`** (global constants, generic helpers, menu/`onOpen`/`onEdit`/triggers, generic sidebar openers, order-cycle date helpers) + **`Vendors.gs`** / **`Items.gs`** / **`PickPath.gs`** / **`ResetLog.gs`** / **`History.gs`** / **`Dashboard.gs`**. Done with a **deterministic Python slicer** (in scratchpad) that partitions the file by top-level declaration, routes each chunk by name, and **verifies byte-exact reassembly + 144/144 declaration parity** before writing — so the move couldn't silently drop or duplicate code. Design hinge: the *only* top-level cross-references in the file are inside the global-constants block, so **keeping all constants in Core means zero cross-file top-level dependency → load order is irrelevant** (no `filePushOrder` / `deploy.py` change needed). The 2-file project (OrderGuide + MOGApi) already proved multi-file global-scope sharing works; this just extends it to 8. Verified: `node --check` clean on all 7, zero duplicate symbols across all 8 `.gs` (144 + 74 MOGApi = 218). Renamed `OrderGuideScript.gs` → `Core.gs` (clasp `push -f` handles the rename atomically; functions are global regardless of filename).
+
+**(B) Dedup new-day detection into Core helpers (`a771767`).** The AE2(today)/AE9(last-reset) read-and-compare was reimplemented in 4 places. Extracted two canonical helpers in `Core.gs`: **`getActiveOrderDate_()`** → `{date, dateStr, dayOfWeek}` (AE9, else AE2, else now) and **`getResetStaleness_()`** → `{today, lastReset, isStale}`. Rewired: `api_getResetStatus_` (MOGApi) delegates; `getActiveOrderDate_` **removed from MOGApi** (now Core, still globally callable); `dailyResetOnOpen_` (Core) uses `getResetStaleness_().isStale`; `getLogOrderDate_` (ResetLog) returns `getActiveOrderDate_().dateStr`. **Timezone standardized on `getSpreadsheetTimeZone()`** (the two old paths split between Session-TZ and spreadsheet-TZ; all stores are US/Eastern so this is a no-op in practice, matching the `AE2 =TODAY()` frame). Net −8 lines.
+
+**(C) Doc/skill/comment reference updates (`15ec141`).** Repointed every live reference off the deleted `OrderGuideScript.gs`: `CLAUDE.md` + `README.md` + `apps-script/README.md` file inventories, the "all `.gs` peers" architecture note in `MOG_CurrentState.md`, and the two pattern skills (`mog-rpc-consolidation`, `mog-apps-script-caching`) whose canonical-example pointers named the old file — also retired a stale `commitAreaListMutation_` example (that fn was removed sessions ago) in favor of `commitStorageAreasDraft`. Fixed 8 inline cross-file pointer comments in `MOGApi.gs`/`Core.gs` (`dashTheme_` → Dashboard.gs, `VENDOR_CUTOFF_COL` → Core.gs, etc.); comment-only, synced to all targets push-only. `route.py` needed no change (its generic `.gs` branch already routes the new files). The 6 `* Split out of OrderGuideScript.gs` provenance banners are kept as accurate history.
+
+## Outstanding (carry forward — later session)
+
+- **PARKED → now NEXT: the KM-editor feature.** Decisions locked (computer-only + PIN-gated; progressive Option A — route `doGet?page=…` to serve the existing desktop modals, PIN-gate them, gate editing off on phones, rebuild incrementally). **New scaffolding needed:** `doGet` page-routing (today `doGet` returns JSON only — lives in `MOGApi.gs`), a **PIN gate for web-app HTML pages** (distinct from the `doPost` JSON PIN check), and the device gate. Architectural-walkthrough first; prototype **Manage Items** on canary. The split makes this cleaner — `Items.gs` is now an isolable module.
+- **Dead-code side-task still open** (Sebastian, in the Sheet): right-click each dashboard button → *Assign script*, note which of `showAdminResetSidebar` / `goToOrderEntry` / `toggleSetupTabVisibility` / `toggleMasterItemsTabVisibility` / `toggleOrderLogVisibility` are button-bound; delete the unwired ones next pass. `showAdminResetSidebar` is the one to watch (AdminReset isn't in the quick-actions, so a button is likely its only entry point). They now live in `ResetLog.gs` (AdminReset) / `Core.gs` (goToOrderEntry) / `PickPath.gs` (the 3 toggles).
+
+## Commits landed (later session)
+
+```
+15ec141 docs: update file references for the OrderGuideScript.gs split
+a771767 refactor(apps-script): dedup new-day detection into Core helpers (#5)
+38382db refactor(apps-script): split OrderGuideScript.gs god-object into Core + 6 files
+```
+
+## Opening prompt for next session
+
+```
+Read docs/MOG_CurrentState.md first. The OrderGuideScript.gs god-object is now
+split into Core.gs + 6 domain modules (Vendors/Items/PickPath/ResetLog/History/
+Dashboard), and the AE2/AE9 new-day logic is deduped into Core's
+getActiveOrderDate_/getResetStaleness_ — both shipped to all 9 + master.
+
+Next up is the PARKED KM-editor feature: let KMs edit more easily than opening the
+Google Sheet. Decisions are locked — computer-only (gate editing off on phones) +
+PIN-gated; progressive Option A: route doGet?page=items to serve the existing
+desktop modals (they already run browser-side via google.script.run), PIN-gate the
+HTML pages, rebuild editors into a shared shell over time. New scaffolding: doGet
+page-routing (today doGet is JSON-only, in MOGApi.gs), a PIN gate for web-app HTML
+pages (separate from the doPost JSON PIN check), and a device gate. Architectural
+walkthrough FIRST, prototype Manage Items on canary rpfrf. Reference: MVS/MPS both
+serve an HtmlService SPA at /exec via doGet + google.script.run.
+
+Side-task still open: confirm which of showAdminResetSidebar / goToOrderEntry /
+the 3 toggle*Visibility fns are dashboard-button-assigned (Sheet-side, invisible
+to grep), then delete the unwired ones.
+```
