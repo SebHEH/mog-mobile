@@ -46,6 +46,8 @@ For ANY multi-target deploy (clasp to 9 stores; `build.py` regenerating 8 store 
 
 The reason: spreadsheet data and per-store state vary subtly. A change that works in the canary's data shape may surface a bug in tnyt's. Catching it on the canary means 1 store affected, not 9.
 
+**Staged-commit discipline (when a session is planned as N separate commits).** It's fine — often better — to bundle several logical changes onto *one* canary smoke test for efficiency. But **commit each logical change before you start editing the next one.** If you deploy change A to canary, then edit change B on top before committing A, you can no longer make two clean commits without reconstructing A from a scratchpad snapshot (the working tree now holds A+B intermingled). Commit A first → the second commit is then just B's diff. The canary bundling and the commit granularity are independent: deploy whenever it's efficient, but don't let an uncommitted stage pile onto the next.
+
 ## When the layer choice isn't obvious
 
 Common ambiguities and the right resolution:
