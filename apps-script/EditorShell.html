@@ -8,6 +8,12 @@
   :root { --login-accent: #1a1a2e; }
 
   .mge-overlay { position: fixed; inset: 0; z-index: 9999; background: #f3f3ee; display: flex; align-items: center; justify-content: center; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  /* The `hidden` attribute must win even though .mge-overlay/.mge-crumb set a
+     display value — a class rule otherwise overrides the UA [hidden] rule,
+     leaving the overlay covering the page (root cause of the blank-modal
+     regression). Self-contained so the gate doesn't rely on the host page's
+     own [hidden] rule (which the home had but the modals didn't). */
+  .mge-overlay[hidden], .mge-crumb[hidden] { display: none !important; }
   .mge-overlay .mge-es { display: none; }
   .mge-overlay.lang-es .mge-en { display: none; }
   .mge-overlay.lang-es .mge-es { display: inline; }

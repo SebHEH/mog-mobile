@@ -6,6 +6,16 @@
     <script>
       var VENDOR_LIST  = <?!= vendorListJson ?>;
       var VENDOR_TABLE = <?!= vendorTableJson ?>;
+      // Web-app delivery context (Editor.gs injects web:true; showManageVendorsSidebar
+      // injects web:false → everything below stays inert in the Sheet dialog).
+      var WEB_BOOT  = <?!= webBootJson ?>;
+      var MOG_WEB   = !!WEB_BOOT.web;
+      var MOG_STORE = WEB_BOOT.store || '';
+      var MOG_ABBR  = WEB_BOOT.abbr || '';
+      var BASE_URL  = WEB_BOOT.base || '';
+      var THEME     = WEB_BOOT.theme || {};
+      var CONCEPT   = WEB_BOOT.concept || '';
+      var MOG_TOKEN = null;   // set by the PIN gate (web mode only)
     </script>
     <style>
 
@@ -280,6 +290,7 @@
     </style>
   </head>
   <body class="lang-en">
+  <?!= include('EditorShell'); ?>
 
     <div class="top-bar">
       <div class="lang-group">
@@ -520,7 +531,7 @@
     </div><!-- /scroll-body -->
 
     <div class="modal-footer">
-      <button class="btn-close" onclick="google.script.host.close()">
+      <button class="btn-close" onclick="editorClose()">
         <span class="en">Close</span>
         <span class="es">Cerrar</span>
       </button>
@@ -917,7 +928,7 @@
         loadEl.style.display   = 'block';
         byId('vendor-cards').innerHTML = '';
 
-        google.script.run
+        MIRPC()
           .withSuccessHandler(function(vendors) {
             loadEl.style.display = 'none';
             vendorData = vendors;
@@ -1157,7 +1168,7 @@
         // single RPC against one row lookup. Halves round-trips and
         // eliminates the partial-success state where mults saved but
         // cutoff failed (or vice versa).
-        google.script.run
+        MIRPC()
           .withSuccessHandler(function() {
             setSavingCard_('vcard-' + vIdx, false);
             statusEl.textContent = t('saved');
@@ -1209,7 +1220,7 @@
         setSavingCard_('body-add', true);
 
         bumpMutationTs_();
-        google.script.run
+        MIRPC()
           .withSuccessHandler(function() {
             setSavingCard_('body-add', false);
             setStatus('add', t('added') + name + t('addedEnd'), 'ok');
@@ -1345,7 +1356,7 @@
         setSavingCard_('body-import', true);
         bumpMutationTs_();
 
-        google.script.run
+        MIRPC()
           .withSuccessHandler(function(res) {
             setSavingCard_('body-import', false);
             byId('imp-btn').disabled = false;
@@ -1397,7 +1408,7 @@
         setStatus('remove', t('removing'), 'info');
         setDeletingCard_('body-remove', true);
         bumpMutationTs_();
-        google.script.run
+        MIRPC()
           .withSuccessHandler(function() {
             setDeletingCard_('body-remove', false);
             setStatus('remove', '"' + name + t('removed'), 'ok');
@@ -1415,9 +1426,62 @@
           .commitRemoveVendor(name);
       }
 
+      // ── Server-call indirection (one source of truth, two hosts) ──────────────
+      // In the Sheet, MIRPC() === google.script.run. In the web app it returns a
+      // chainable proxy that prepends the session token and routes through the
+      // token-guarded webedit_call dispatcher (Editor.gs).
+      function MIRPC() {
+        if (!MOG_WEB) return google.script.run;
+        var ok = null, fail = null;
+        function mk(fnName) {
+          return function () {
+            var args = [].slice.call(arguments);
+            google.script.run
+              .withSuccessHandler(function (r) { if (ok) ok(r); })
+              .withFailureHandler(function (e) { webHandleFail(e, fail); })
+              .webedit_call(MOG_TOKEN, fnName, args);
+          };
+        }
+        var proxy = {
+          withSuccessHandler: function (f) { ok = f; return proxy; },
+          withFailureHandler: function (g) { fail = g; return proxy; },
+          getVendorTableData:               mk('getVendorTableData'),
+          commitUpdateVendorMultsAndCutoff: mk('commitUpdateVendorMultsAndCutoff'),
+          commitAddVendor:                  mk('commitAddVendor'),
+          commitImportVendor:               mk('commitImportVendor'),
+          commitRemoveVendor:               mk('commitRemoveVendor')
+        };
+        return proxy;
+      }
+      function webHandleFail(err, fail) {
+        var msg = (err && err.message) ? err.message : '';
+        if (msg.indexOf('SESSION_EXPIRED') !== -1) {
+          if (typeof mgeReshowGate_ === 'function') mgeReshowGate_();
+          return;
+        }
+        if (fail) fail(err);
+      }
+      function editorClose() {
+        if (MOG_WEB) { window.open((BASE_URL || '') + '?page=editor', '_top'); }
+        else { google.script.host.close(); }
+      }
+
       // ── Init ──────────────────────────────────────────────────────────────────
-      setLang('en');
-      renderVendorCards(true);  // use prebaked VENDOR_TABLE from template — no server call
+      function initManageVendors_() {
+        if (MOG_WEB) {  // web: breadcrumb + footer "Close" returns to the editor home
+          setBreadcrumb_(
+            [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+            { en: 'Manage Vendors', es: 'Administrar proveedores' }
+          );
+          var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
+          var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
+        }
+        setLang(MOG_WEB ? mgeGetLang_() : 'en');   // web: open in the language chosen at the gate
+        renderVendorCards(true);  // use prebaked VENDOR_TABLE from template — no server call
+      }
+      // Sheet mode: init immediately. Web mode: gate (device + PIN) first, then init.
+      if (MOG_WEB) { mgeStartGate_(initManageVendors_); }
+      else { initManageVendors_(); }
     </script>
   </body>
 </html>

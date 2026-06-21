@@ -26,7 +26,8 @@
       --ink: #1d1f1d; --muted: #6b6f6b; --faint: #9aa3ad; --line: #e3e5e3; --bg: #f5f6f5; --card: #ffffff;
       --sp-2: 8px; --sp-3: 12px; --sp-5: 22px; --sp-6: 32px;
       --radius: 12px; --radius-sm: 9px;
-      --fs-xs: 11px; --fs-sm: 12px; --fs-md: 15px; --fs-2xl: 20px;
+      --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 15px; --fs-lg: 16px; --fs-xl: 18px; --fs-2xl: 20px;
+      --accent-soft: #eef2f2;
       --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
       --shadow: 0 1px 3px rgba(0,0,0,.08), 0 6px 18px rgba(0,0,0,.05);
     }
@@ -60,6 +61,26 @@
     .tile.soon .ico { color: var(--faint); }
     .tile .soon-tag { font-size: var(--fs-xs); font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin-top: 6px; }
     @media (max-width: 600px) { .tile-grid { grid-template-columns: 1fr 1fr; } }
+
+    /* Help CTA banner (MVS-style) + help popup. */
+    .help-cta { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; cursor: pointer; background: var(--accent); color: var(--accent-text); border: none; border-radius: var(--radius); padding: 16px 18px; margin-bottom: var(--sp-4); font-family: var(--font); transition: box-shadow .12s, transform .12s; }
+    .help-cta:hover { box-shadow: 0 6px 22px rgba(0,0,0,.18); transform: translateY(-2px); }
+    .help-cta .hc-ico { flex: none; width: 42px; height: 42px; border-radius: 50%; background: rgba(255,255,255,.18); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; line-height: 1; }
+    .help-cta .hc-txt { flex: 1; min-width: 0; }
+    .help-cta .hc-ttl { display: block; font-size: var(--fs-lg); font-weight: 800; }
+    .help-cta .hc-sub { display: block; font-size: var(--fs-sm); opacity: .92; margin-top: 3px; }
+    .help-cta .hc-go { flex: none; background: var(--accent-text); color: var(--accent); font-weight: 800; font-size: var(--fs-sm); padding: 9px 14px; border-radius: var(--radius-sm); }
+
+    .ehelp-overlay { position: fixed; inset: 0; background: rgba(15,18,22,.5); display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; z-index: 200; overflow: auto; }
+    .ehelp-card { background: var(--card); border-radius: var(--radius); width: 100%; max-width: 540px; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
+    .ehelp-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--line); }
+    .ehelp-title { font-size: var(--fs-xl); font-weight: 800; }
+    .ehelp-x { border: none; background: none; font-size: 24px; line-height: 1; cursor: pointer; color: var(--muted); }
+    .ehelp-body { padding: 18px 22px 24px; font-size: var(--fs-base); color: var(--ink); line-height: 1.55; }
+    .ehelp-body p { margin: 0 0 12px; }
+    .ehelp-body ol { margin: 0 0 14px 18px; padding: 0; }
+    .ehelp-body li { margin-bottom: 7px; }
+    .ehelp-tip { background: var(--accent-soft); border-radius: var(--radius-sm); padding: 11px 14px; font-size: var(--fs-sm); color: var(--muted); }
   </style>
 </head>
 <body>
@@ -80,6 +101,8 @@
 
   <div class="main" id="home-main" hidden></div>
 
+  <div id="ehelp-root"></div>
+
   <script>
     var IC = {
       items:    '<path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5 12 12l8.5-4.5"/><path d="M12 12v9"/>',
@@ -96,7 +119,7 @@
     var HOME_SECTIONS = [
       { en: 'Manage', es: 'Administrar', cards: [
         { key: 'items',    live: true, page: 'items', en: 'Manage Items',      es: 'Administrar artículos' },
-        { key: 'vendors',  live: false,               en: 'Manage Vendors',    es: 'Administrar proveedores' },
+        { key: 'vendors',  live: true, page: 'vendors', en: 'Manage Vendors',    es: 'Administrar proveedores' },
         { key: 'areas',    live: false,               en: 'Storage Areas',     es: 'Áreas de almacenamiento' },
         { key: 'pickpath', live: false,               en: 'Reorder Pick Path', es: 'Reordenar ruta' }
       ]},
@@ -108,7 +131,28 @@
       ]}
     ];
 
-    var HOME_T = { en: { soon: 'Soon' }, es: { soon: 'Pronto' } };
+    var HOME_T = {
+      en: { soon: 'Soon', helpTitle: 'Have a question?', helpSub: 'Open the guide anytime.', helpBtn: 'Help' },
+      es: { soon: 'Pronto', helpTitle: '¿Tienes una pregunta?', helpSub: 'Abre la guía cuando quieras.', helpBtn: 'Ayuda' }
+    };
+    var HOME_HELP = {
+      en: {
+        title: 'Getting started',
+        body: '<p>This is the MOG editor — make changes without opening the Google Sheet.</p>'
+            + '<ol><li>Use it on a <b>computer</b> (the phone app stays for ordering).</li>'
+            + '<li>Enter your store <b>PIN</b> to unlock.</li>'
+            + '<li>Pick a tool below — <b>Manage Items</b> is ready now; more are on the way.</li></ol>',
+        tip: 'Your changes save straight to the store sheet, the same as editing in Google Sheets.'
+      },
+      es: {
+        title: 'Primeros pasos',
+        body: '<p>Este es el editor de MOG — haz cambios sin abrir la hoja de Google.</p>'
+            + '<ol><li>Úsalo en una <b>computadora</b> (la app del teléfono es para pedidos).</li>'
+            + '<li>Ingresa el <b>PIN</b> de tu tienda para entrar.</li>'
+            + '<li>Elige una herramienta abajo — <b>Administrar artículos</b> ya está listo; pronto habrá más.</li></ol>',
+        tip: 'Tus cambios se guardan directamente en la hoja de la tienda, igual que editar en Google Sheets.'
+      }
+    };
     function homeLang() { return mgeGetLang_(); }
     function ht(k) { var l = homeLang(); return (HOME_T[l] && HOME_T[l][k]) || HOME_T.en[k] || k; }
     function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -125,6 +169,11 @@
       document.getElementById('home-es').className = 'lang-btn' + (l === 'es' ? ' on' : '');
 
       var h = '';
+      h += '<button type="button" class="help-cta" onclick="openEditorHelp()">'
+         + '<span class="hc-ico">?</span>'
+         + '<span class="hc-txt"><span class="hc-ttl">' + esc(ht('helpTitle')) + '</span>'
+         + '<span class="hc-sub">' + esc(ht('helpSub')) + '</span></span>'
+         + '<span class="hc-go">' + esc(ht('helpBtn')) + '</span></button>';
       for (var s = 0; s < HOME_SECTIONS.length; s++) {
         var sec = HOME_SECTIONS[s];
         h += '<div class="section-label">' + esc(l === 'es' ? sec.es : sec.en) + '</div>';
@@ -147,6 +196,19 @@
       main.innerHTML = h;
       main.removeAttribute('hidden');
     }
+
+    function openEditorHelp() {
+      var c = HOME_HELP[homeLang()] || HOME_HELP.en;
+      document.getElementById('ehelp-root').innerHTML =
+        '<div class="ehelp-overlay" id="ehelp-overlay" onclick="if(event.target.id===\'ehelp-overlay\')closeEditorHelp()">' +
+          '<div class="ehelp-card" role="dialog" aria-modal="true">' +
+            '<div class="ehelp-head"><span class="ehelp-title">' + esc(c.title) + '</span>' +
+            '<button type="button" class="ehelp-x" onclick="closeEditorHelp()" aria-label="Close">&times;</button></div>' +
+            '<div class="ehelp-body">' + c.body + '<div class="ehelp-tip">' + esc(c.tip) + '</div></div>' +
+          '</div></div>';
+    }
+    function closeEditorHelp() { document.getElementById('ehelp-root').innerHTML = ''; }
+    document.addEventListener('keydown', function (e) { if (e.keyCode === 27) closeEditorHelp(); });
 
     // Gate first (device + PIN, or skip if a shared token exists), then render.
     mgeStartGate_(renderHome);

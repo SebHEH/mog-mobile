@@ -22,6 +22,7 @@ function showManageVendorsSidebar() {
   // server roundtrip. Was previously also calling getVendorTableData() on init.
   tmpl.vendorListJson  = JSON.stringify(getVendorList());
   tmpl.vendorTableJson = JSON.stringify(getVendorTableData());
+  tmpl.webBootJson     = JSON.stringify({ web: false });   // in-Sheet dialog: web bits stay inert
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Manage Vendors"

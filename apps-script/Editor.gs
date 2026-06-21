@@ -41,6 +41,12 @@ function getWebAppUrl_() {
   try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; }
 }
 
+// Browser-tab title: "<store name + location> · Master Ordering Guide".
+function editorTabTitle_() {
+  const store = PropertiesService.getScriptProperties().getProperty(PROP_LOCATION) || 'Store';
+  return store + ' · Master Ordering Guide';
+}
+
 // Common web context injected into every editor page: branding + store name
 // (for the PIN gate) + the base URL (for inter-page links). The session token
 // is minted client-side after the PIN and shared across pages via localStorage.
@@ -64,7 +70,7 @@ function renderEditorHome_() {
   const tmpl = HtmlService.createTemplateFromFile('EditorHome');
   tmpl.webBootJson = editorWebBoot_();
   return tmpl.evaluate()
-    .setTitle('MOG · Editor')
+    .setTitle(editorTabTitle_())
     .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
@@ -77,7 +83,21 @@ function renderManageItemsWeb_() {
   tmpl.vendorListJson = JSON.stringify(getVendorList());
   tmpl.webBootJson    = editorWebBoot_();
   return tmpl.evaluate()
-    .setTitle('MOG · Manage Items')
+    .setTitle(editorTabTitle_())
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// ?page=vendors — the EXISTING Manage Vendors modal served as a web page.
+// Same dual-host treatment as Manage Items; injects the same template vars
+// the Sheet dialog uses plus the web boot context.
+function renderManageVendorsWeb_() {
+  const tmpl = HtmlService.createTemplateFromFile('ManageVendors');
+  tmpl.vendorListJson  = JSON.stringify(getVendorList());
+  tmpl.vendorTableJson = JSON.stringify(getVendorTableData());
+  tmpl.webBootJson     = editorWebBoot_();
+  return tmpl.evaluate()
+    .setTitle(editorTabTitle_())
     .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
@@ -170,6 +190,12 @@ function webeditDispatch_(name) {
     case 'commitUpsertItem':        return commitUpsertItem;
     case 'commitSwitchActiveVendor':return commitSwitchActiveVendor;
     case 'commitDeleteItem':        return commitDeleteItem;
+    // Manage Vendors
+    case 'getVendorTableData':              return getVendorTableData;
+    case 'commitUpdateVendorMultsAndCutoff':return commitUpdateVendorMultsAndCutoff;
+    case 'commitAddVendor':                 return commitAddVendor;
+    case 'commitImportVendor':              return commitImportVendor;
+    case 'commitRemoveVendor':              return commitRemoveVendor;
     default:                        return null;
   }
 }
