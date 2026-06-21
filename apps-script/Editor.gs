@@ -88,6 +88,49 @@ function renderManageItemsWeb_() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+// ?page=areas — the EXISTING Storage Areas modal served as a web page.
+function renderStorageAreasWeb_() {
+  const tmpl = HtmlService.createTemplateFromFile('StorageAreas');
+  tmpl.areaListJson = JSON.stringify(getStorageAreaList());
+  tmpl.webBootJson  = editorWebBoot_();
+  return tmpl.evaluate()
+    .setTitle(editorTabTitle_())
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// ?page=pickpath — the EXISTING Reorder Pick Path modal served as a web page.
+// Mirrors showReorderPickPathSidebar's vendor selection + pick-data preload.
+function renderReorderPickPathWeb_() {
+  const tmpl    = HtmlService.createTemplateFromFile('ReorderPickPath');
+  const vendors = getVendorList();
+  if (vendors.length) {
+    const setup    = getSheet_(SHEET_SETUP);
+    const b2Vendor = String(setup.getRange(SETUP_VENDOR_CELL).getDisplayValue()).trim();
+    const vendor   = (b2Vendor && vendors.indexOf(b2Vendor) !== -1) ? b2Vendor : vendors[0];
+    tmpl.pickDataJson   = JSON.stringify(getPickPathForSidebar(vendor));
+    tmpl.vendorListJson = JSON.stringify(vendors);
+  } else {
+    tmpl.pickDataJson   = JSON.stringify({});
+    tmpl.vendorListJson = JSON.stringify([]);
+  }
+  tmpl.webBootJson = editorWebBoot_();
+  return tmpl.evaluate()
+    .setTitle(editorTabTitle_())
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// ?page=history — the EXISTING Order History modal served as a web page (read-only).
+function renderOrderHistoryWeb_() {
+  const tmpl = HtmlService.createTemplateFromFile('OrderHistory');
+  tmpl.webBootJson = editorWebBoot_();
+  return tmpl.evaluate()
+    .setTitle(editorTabTitle_())
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
 // ?page=vendors — the EXISTING Manage Vendors modal served as a web page.
 // Same dual-host treatment as Manage Items; injects the same template vars
 // the Sheet dialog uses plus the web boot context.
@@ -196,6 +239,13 @@ function webeditDispatch_(name) {
     case 'commitAddVendor':                 return commitAddVendor;
     case 'commitImportVendor':              return commitImportVendor;
     case 'commitRemoveVendor':              return commitRemoveVendor;
+    // Order History (read-only)
+    case 'getOrderHistoryBootstrap':        return getOrderHistoryBootstrap;
+    case 'getOrderHistory':                 return getOrderHistory;
+    // Storage Areas + Reorder Pick Path (getStorageAreaList already listed above)
+    case 'commitStorageAreasDraft':         return commitStorageAreasDraft;
+    case 'getPickPathForSidebar':           return getPickPathForSidebar;
+    case 'commitReorderPickPath':           return commitReorderPickPath;
     default:                        return null;
   }
 }

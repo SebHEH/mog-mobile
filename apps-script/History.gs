@@ -12,10 +12,10 @@
 // Opens the Order History modal from the menu.
 function showOrderHistoryModal() {
   ensureLogSheet_();
+  const tmpl = HtmlService.createTemplateFromFile("OrderHistory");
+  tmpl.webBootJson = JSON.stringify({ web: false });   // in-Sheet dialog: web bits stay inert
   SpreadsheetApp.getUi().showModalDialog(
-    HtmlService.createTemplateFromFile("OrderHistory").evaluate()
-      .setWidth(MODAL_LG_W)
-      .setHeight(MODAL_LG_H),
+    tmpl.evaluate().setWidth(MODAL_LG_W).setHeight(MODAL_LG_H),
     "Order History"
   );
 }

@@ -104,6 +104,9 @@ function doGet(e) {
   if (page === 'editor')  return renderEditorHome_();        // Editor.gs — home dashboard (card launcher)
   if (page === 'items')   return renderManageItemsWeb_();    // Editor.gs — Manage Items as a web page
   if (page === 'vendors') return renderManageVendorsWeb_();  // Editor.gs — Manage Vendors as a web page
+  if (page === 'history') return renderOrderHistoryWeb_();   // Editor.gs — Order History as a web page
+  if (page === 'areas')   return renderStorageAreasWeb_();   // Editor.gs — Storage Areas as a web page
+  if (page === 'pickpath')return renderReorderPickPathWeb_();// Editor.gs — Reorder Pick Path as a web page
 
   const location = PropertiesService.getScriptProperties().getProperty(PROP_LOCATION) || 'Not configured';
   return jsonResponse_({

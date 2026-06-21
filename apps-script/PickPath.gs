@@ -79,6 +79,7 @@ function getAreaOrderMap_() {
 function showStorageAreasSidebar() {
   const tmpl = HtmlService.createTemplateFromFile("StorageAreas");
   tmpl.areaListJson = JSON.stringify(getStorageAreaList());
+  tmpl.webBootJson  = JSON.stringify({ web: false });   // in-Sheet dialog: web bits stay inert
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Storage Areas"
@@ -702,6 +703,7 @@ function showReorderPickPathSidebar() {
   const tmpl = HtmlService.createTemplateFromFile("ReorderPickPath");
   tmpl.pickDataJson   = JSON.stringify(data);
   tmpl.vendorListJson = JSON.stringify(vendors);
+  tmpl.webBootJson    = JSON.stringify({ web: false });   // in-Sheet dialog: web bits stay inert
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Pick Path"

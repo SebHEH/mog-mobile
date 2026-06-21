@@ -5,6 +5,16 @@
     <?!= include('Styles'); ?>
     <script>
       var AREA_LIST = <?!= areaListJson ?>;
+      // Web-app delivery context (Editor.gs injects web:true; showStorageAreasSidebar
+      // injects web:false → everything below stays inert in the Sheet dialog).
+      var WEB_BOOT  = <?!= webBootJson ?>;
+      var MOG_WEB   = !!WEB_BOOT.web;
+      var MOG_STORE = WEB_BOOT.store || '';
+      var MOG_ABBR  = WEB_BOOT.abbr || '';
+      var BASE_URL  = WEB_BOOT.base || '';
+      var THEME     = WEB_BOOT.theme || {};
+      var CONCEPT   = WEB_BOOT.concept || '';
+      var MOG_TOKEN = null;   // set by the PIN gate (web mode only)
     </script>
     <style>
 
@@ -234,6 +244,7 @@
     </style>
   </head>
   <body class="lang-en">
+  <?!= include('EditorShell'); ?>
 
     <div class="header">
       <div class="header-title">
@@ -638,7 +649,7 @@
         byId('save-btn').disabled = true;
         setSavingCard_('list-card', true);
         setStatus('save', t('saving'), 'info');
-        google.script.run
+        MIRPC()
           .withSuccessHandler(function(res) {
             setSavingCard_('list-card', false);
             byId('save-btn').disabled = false;
@@ -664,12 +675,16 @@
       // ── Close (guards unsaved changes) ────────────────────────────────────────
       function doClose() {
         if (isDirty && !window.confirm(t('unsavedClose'))) return;
-        google.script.host.close();
+        editorClose();
+      }
+      function editorClose() {
+        if (MOG_WEB) { window.open((BASE_URL || '') + '?page=editor', '_top'); }
+        else { google.script.host.close(); }
       }
 
       // ── Refresh from server (recovery after a failed save) ────────────────────
       function refreshAreas(callback) {
-        google.script.run
+        MIRPC()
           .withSuccessHandler(function(list) {
             areas = list.map(function(a) {
               return { name: a.name, order: a.order, origName: a.name };
@@ -690,8 +705,50 @@
         if (e.key === 'Escape') toggleHelp(false);
       });
 
+      // ── Server-call indirection (one source of truth, two hosts) ──────────────
+      function MIRPC() {
+        if (!MOG_WEB) return google.script.run;
+        var ok = null, fail = null;
+        function mk(fnName) {
+          return function () {
+            var args = [].slice.call(arguments);
+            google.script.run
+              .withSuccessHandler(function (r) { if (ok) ok(r); })
+              .withFailureHandler(function (e) { webHandleFail(e, fail); })
+              .webedit_call(MOG_TOKEN, fnName, args);
+          };
+        }
+        var proxy = {
+          withSuccessHandler: function (f) { ok = f; return proxy; },
+          withFailureHandler: function (g) { fail = g; return proxy; },
+          getStorageAreaList:      mk('getStorageAreaList'),
+          commitStorageAreasDraft: mk('commitStorageAreasDraft')
+        };
+        return proxy;
+      }
+      function webHandleFail(err, fail) {
+        var msg = (err && err.message) ? err.message : '';
+        if (msg.indexOf('SESSION_EXPIRED') !== -1) {
+          if (typeof mgeReshowGate_ === 'function') mgeReshowGate_();
+          return;
+        }
+        if (fail) fail(err);
+      }
+
       // ── Init ──────────────────────────────────────────────────────────────────
-      setLang('en');
+      function initStorageAreas_() {
+        if (MOG_WEB) {  // web: breadcrumb + footer "Close" returns to the editor home
+          setBreadcrumb_(
+            [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+            { en: 'Storage Areas', es: 'Áreas de almacenamiento' }
+          );
+          var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
+          var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
+        }
+        setLang(MOG_WEB ? mgeGetLang_() : 'en');
+      }
+      if (MOG_WEB) { mgeStartGate_(initStorageAreas_); }
+      else { initStorageAreas_(); }
     </script>
   </body>
 </html>

@@ -6,6 +6,16 @@
     <script>
       var PICK_DATA   = <?!= pickDataJson ?>;
       var VENDOR_LIST = <?!= vendorListJson ?>;
+      // Web-app delivery context (Editor.gs injects web:true; showReorderPickPathSidebar
+      // injects web:false → everything below stays inert in the Sheet dialog).
+      var WEB_BOOT  = <?!= webBootJson ?>;
+      var MOG_WEB   = !!WEB_BOOT.web;
+      var MOG_STORE = WEB_BOOT.store || '';
+      var MOG_ABBR  = WEB_BOOT.abbr || '';
+      var BASE_URL  = WEB_BOOT.base || '';
+      var THEME     = WEB_BOOT.theme || {};
+      var CONCEPT   = WEB_BOOT.concept || '';
+      var MOG_TOKEN = null;   // set by the PIN gate (web mode only)
     </script>
     <style>
 
@@ -412,6 +422,7 @@
     </style>
   </head>
   <body class="lang-en">
+  <?!= include('EditorShell'); ?>
 
     <!-- Language toggle -->
     <div class="lang-bar">
@@ -680,7 +691,7 @@
         setStatus('');
         setVendorSelectLocked_(true);
 
-        google.script.run
+        MIRPC()
           .withSuccessHandler(function(data) {
             groups = buildGroups(data);
             render();
@@ -1105,7 +1116,7 @@
         });
 
         bumpMutationTs_();
-        google.script.run
+        MIRPC()
           .withSuccessHandler(function(res) {
             setStatus(t('saved') + res.count + t('itemsUpdated'), 'ok');
             byId('saveBtn').disabled = false;
@@ -1128,11 +1139,57 @@
         if (isDirty) {
           if (!window.confirm(t('unsavedClose'))) return;
         }
-        google.script.host.close();
+        editorClose();
+      }
+      function editorClose() {
+        if (MOG_WEB) { window.open((BASE_URL || '') + '?page=editor', '_top'); }
+        else { google.script.host.close(); }
+      }
+
+      // ── Server-call indirection (one source of truth, two hosts) ──────────────
+      function MIRPC() {
+        if (!MOG_WEB) return google.script.run;
+        var ok = null, fail = null;
+        function mk(fnName) {
+          return function () {
+            var args = [].slice.call(arguments);
+            google.script.run
+              .withSuccessHandler(function (r) { if (ok) ok(r); })
+              .withFailureHandler(function (e) { webHandleFail(e, fail); })
+              .webedit_call(MOG_TOKEN, fnName, args);
+          };
+        }
+        var proxy = {
+          withSuccessHandler: function (f) { ok = f; return proxy; },
+          withFailureHandler: function (g) { fail = g; return proxy; },
+          getPickPathForSidebar: mk('getPickPathForSidebar'),
+          commitReorderPickPath: mk('commitReorderPickPath')
+        };
+        return proxy;
+      }
+      function webHandleFail(err, fail) {
+        var msg = (err && err.message) ? err.message : '';
+        if (msg.indexOf('SESSION_EXPIRED') !== -1) {
+          if (typeof mgeReshowGate_ === 'function') mgeReshowGate_();
+          return;
+        }
+        if (fail) fail(err);
       }
 
       // ── Init ──────────────────────────────────────────────────────────────────
-      setLang('en');
+      function initReorderPickPath_() {
+        if (MOG_WEB) {  // web: breadcrumb + footer "Close" returns to the editor home
+          setBreadcrumb_(
+            [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+            { en: 'Reorder Pick Path', es: 'Reordenar ruta' }
+          );
+          var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
+          var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
+        }
+        setLang(MOG_WEB ? mgeGetLang_() : 'en');
+      }
+      if (MOG_WEB) { mgeStartGate_(initReorderPickPath_); }
+      else { initReorderPickPath_(); }
     </script>
   </body>
 </html>

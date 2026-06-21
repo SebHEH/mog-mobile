@@ -3,6 +3,18 @@
 <head>
   <base target="_top">
     <?!= include('Styles'); ?>
+  <script>
+    // Web-app delivery context (Editor.gs injects web:true; showOrderHistoryModal
+    // injects web:false → everything below stays inert in the Sheet dialog).
+    var WEB_BOOT  = <?!= webBootJson ?>;
+    var MOG_WEB   = !!WEB_BOOT.web;
+    var MOG_STORE = WEB_BOOT.store || '';
+    var MOG_ABBR  = WEB_BOOT.abbr || '';
+    var BASE_URL  = WEB_BOOT.base || '';
+    var THEME     = WEB_BOOT.theme || {};
+    var CONCEPT   = WEB_BOOT.concept || '';
+    var MOG_TOKEN = null;   // set by the PIN gate (web mode only)
+  </script>
   <style>
 
     html, body {
@@ -15,6 +27,10 @@
     }
 
     .shell { display: flex; flex-direction: column; height: 100%; }
+    /* Web app only: make room for the breadcrumb bar above the modal without
+       overflowing. Gated on body.mge-web so the in-Sheet dialog is unchanged. */
+    body.mge-web { display: flex; flex-direction: column; height: 100%; }
+    body.mge-web .shell { height: auto; flex: 1 1 auto; min-height: 0; }
     .modal-footer {
       flex: 0 0 auto;
       background: #fff; border-top: 1px solid #e8eaed;
@@ -302,6 +318,7 @@
   </style>
 </head>
 <body>
+<?!= include('EditorShell'); ?>
 <div class="shell">
 
   <div class="top-bar">
@@ -449,7 +466,7 @@
   </div>
 
   <div class="modal-footer">
-    <button class="btn-close" onclick="google.script.host.close()">
+    <button class="btn-close" onclick="editorClose()">
       <span class="en">Close</span>
       <span class="es">Cerrar</span>
     </button>
@@ -550,14 +567,63 @@
   var cachedFilterSig = null;
   function filterSig(f) { return (f.vendorFilter||'') + '|' + (f.dateFrom||'') + '|' + (f.dateTo||''); }
 
+  /* ══ Server-call indirection (one source of truth, two hosts) ══
+     In the Sheet, MIRPC() === google.script.run. In the web app it returns a
+     chainable proxy that prepends the session token and routes through the
+     token-guarded webedit_call dispatcher (Editor.gs). */
+  function MIRPC() {
+    if (!MOG_WEB) return google.script.run;
+    var ok = null, fail = null;
+    function mk(fnName) {
+      return function () {
+        var args = [].slice.call(arguments);
+        google.script.run
+          .withSuccessHandler(function (r) { if (ok) ok(r); })
+          .withFailureHandler(function (e) { webHandleFail(e, fail); })
+          .webedit_call(MOG_TOKEN, fnName, args);
+      };
+    }
+    var proxy = {
+      withSuccessHandler: function (f) { ok = f; return proxy; },
+      withFailureHandler: function (g) { fail = g; return proxy; },
+      getOrderHistoryBootstrap: mk('getOrderHistoryBootstrap'),
+      getOrderHistory:          mk('getOrderHistory')
+    };
+    return proxy;
+  }
+  function webHandleFail(err, fail) {
+    var msg = (err && err.message) ? err.message : '';
+    if (msg.indexOf('SESSION_EXPIRED') !== -1) {
+      if (typeof mgeReshowGate_ === 'function') mgeReshowGate_();
+      return;
+    }
+    if (fail) fail(err);
+  }
+  function editorClose() {
+    if (MOG_WEB) { window.open((BASE_URL || '') + '?page=editor', '_top'); }
+    else { google.script.host.close(); }
+  }
+
   /* ══ INIT ══ */
-  window.onload = function() {
+  function initOrderHistory_() {
+    if (MOG_WEB) {  // web: breadcrumb + footer "Close" returns to the editor home
+      document.body.classList.add('mge-web');
+      setBreadcrumb_(
+        [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+        { en: 'Order History', es: 'Historial de pedidos' }
+      );
+      var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
+      var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
+    }
     var today = new Date(), from = new Date(today);
     from.setDate(from.getDate() - 7);
     document.getElementById('date-to').value   = fmtD(today);
     document.getElementById('date-from').value = fmtD(from);
-    setLang('en');     // sets language + translates option labels
+    setLang(MOG_WEB ? mgeGetLang_() : 'en');   // web: open in the language chosen at the gate
     loadBootstrap();   // single RPC: populates vendor dropdown + seeds Recent tab
+  }
+  window.onload = function() {
+    if (MOG_WEB) { mgeStartGate_(initOrderHistory_); } else { initOrderHistory_(); }
   };
 
   // Single-RPC modal-open path: fetches vendor dropdown + initial Recent rows
@@ -567,7 +633,7 @@
     showLoading('recent');
     var f   = getFilters();
     var sig = filterSig(f);
-    google.script.run
+    MIRPC()
       .withSuccessHandler(function(res) {
         var vendors = (res && res.vendors) || [];
         var rows    = (res && res.rows)    || [];
@@ -661,7 +727,7 @@
       return;
     }
     showLoading('recent');
-    google.script.run
+    MIRPC()
       .withSuccessHandler(function(rows) {
         rawHistory      = rows || [];
         cachedFilterSig = sig;
@@ -788,7 +854,7 @@
       return;
     }
     showLoading('item');
-    google.script.run
+    MIRPC()
       .withSuccessHandler(function(rows){
         rawHistory      = rows || [];
         cachedFilterSig = sig;
@@ -886,7 +952,7 @@
     // aggregateSummary). Avoids a second server round-trip that would re-read
     // LOG_ORDERS on top of what Recent/Item already loaded.
     showLoading('summary');
-    google.script.run
+    MIRPC()
       .withSuccessHandler(function(rows){
         rawHistory      = rows || [];
         cachedFilterSig = sig;
