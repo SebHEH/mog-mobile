@@ -97,6 +97,13 @@ const VENDOR_META = {
  ***********************/
 
 function doGet(e) {
+  // Page routing (mirrors MVS/MPS). New pages are additive; the default
+  // path below is unchanged, and the PWA never calls doGet (it only POSTs),
+  // so adding routes here cannot affect the ordering app.
+  const page = (e && e.parameter && e.parameter.page) ? String(e.parameter.page) : '';
+  if (page === 'editor') return renderEditorHome_();     // Editor.gs — home dashboard (card launcher)
+  if (page === 'items')  return renderManageItemsWeb_();  // Editor.gs — Manage Items as a web page
+
   const location = PropertiesService.getScriptProperties().getProperty(PROP_LOCATION) || 'Not configured';
   return jsonResponse_({
     ok: true,

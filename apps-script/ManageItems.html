@@ -5,6 +5,18 @@
     <?!= include('Styles'); ?>
     <script>
       var VENDOR_LIST = <?!= vendorListJson ?>;
+      // Web-app delivery context. Editor.gs (doGet?page=editor) injects
+      // web:true + the store name for the PIN gate; showManageItemsSidebar
+      // (the in-Sheet dialog) injects web:false, so everything below is inert
+      // in the Sheet and the modal behaves exactly as it always has.
+      var WEB_BOOT  = <?!= webBootJson ?>;
+      var MOG_WEB   = !!WEB_BOOT.web;
+      var MOG_STORE = WEB_BOOT.store || '';
+      var MOG_ABBR  = WEB_BOOT.abbr || '';
+      var BASE_URL  = WEB_BOOT.base || '';
+      var THEME     = WEB_BOOT.theme || {};
+      var CONCEPT   = WEB_BOOT.concept || '';
+      var MOG_TOKEN = null;   // set by the PIN gate (web mode only)
     </script>
     <style>
 
@@ -18,6 +30,11 @@
       }
 
       .shell { display: flex; flex-direction: column; height: 100%; }
+      /* Web app only: make room for the breadcrumb bar above the modal without
+         overflowing (the breadcrumb is injected by EditorShell at body top).
+         Gated on body.mge-web so the in-Sheet dialog layout is unchanged. */
+      body.mge-web { display: flex; flex-direction: column; height: 100%; }
+      body.mge-web .shell { height: auto; flex: 1 1 auto; min-height: 0; }
       .modal-footer {
         flex: 0 0 auto;
         background: #fff; border-top: 1px solid #e8eaed;
@@ -356,6 +373,7 @@
     </style>
   </head>
   <body class="lang-en">
+  <?!= include('EditorShell'); ?>
   <div class="shell">
 
     <div class="top-bar">
@@ -637,7 +655,7 @@
     </div>
 
     <div class="modal-footer">
-      <button class="btn-close" onclick="google.script.host.close()">
+      <button class="btn-close" onclick="editorClose()">
         <span class="en">Close</span>
         <span class="es">Cerrar</span>
       </button>
@@ -918,6 +936,55 @@
 
     function byId(id) { return document.getElementById(id); }
 
+    // ── Server-call indirection (one source of truth, two hosts) ───────────────
+    // Every server call in this modal goes through MIRPC() instead of
+    // google.script.run. In the Sheet it returns google.script.run unchanged.
+    // In the web app it returns a chainable proxy that prepends the session
+    // token and routes through the token-guarded webedit_call dispatcher
+    // (Editor.gs). The proxy exposes exactly the functions this modal uses.
+    function MIRPC() {
+      if (!MOG_WEB) return google.script.run;
+      var ok = null, fail = null;
+      function mk(fnName) {
+        return function () {
+          var args = [].slice.call(arguments);
+          google.script.run
+            .withSuccessHandler(function (r) { if (ok) ok(r); })
+            .withFailureHandler(function (e) { webHandleFail(e, fail); })
+            .webedit_call(MOG_TOKEN, fnName, args);
+        };
+      }
+      var proxy = {
+        withSuccessHandler: function (f) { ok = f; return proxy; },
+        withFailureHandler: function (g) { fail = g; return proxy; },
+        getManageItemsBootstrap:  mk('getManageItemsBootstrap'),
+        getStorageAreaList:       mk('getStorageAreaList'),
+        getItemForEdit:           mk('getItemForEdit'),
+        getUnassignedActiveItems: mk('getUnassignedActiveItems'),
+        commitUpsertItem:         mk('commitUpsertItem'),
+        commitSwitchActiveVendor: mk('commitSwitchActiveVendor'),
+        commitDeleteItem:         mk('commitDeleteItem')
+      };
+      return proxy;
+    }
+    // Web failure handler: an expired token throws SESSION_EXPIRED server-side
+    // → reprompt for the PIN (the user retries their action). Anything else is
+    // passed through to the call site's own failure handler.
+    function webHandleFail(err, fail) {
+      var msg = (err && err.message) ? err.message : '';
+      if (msg.indexOf('SESSION_EXPIRED') !== -1) {
+        if (typeof mgeReshowGate_ === 'function') mgeReshowGate_();
+        return;
+      }
+      if (fail) fail(err);
+    }
+    // Close is Sheet-only (google.script.host). In the web app there's no host
+    // dialog to close, so "Close" returns to the editor home dashboard.
+    function editorClose() {
+      if (MOG_WEB) { window.open((BASE_URL || '') + '?page=editor', '_top'); }
+      else { google.script.host.close(); }
+    }
+
     // ── Help panel ──
     function toggleHelp(show) {
       byId('help-overlay').classList.toggle('open', show);
@@ -989,7 +1056,16 @@
     }
 
     // ── Init ──────────────────────────────────────────────────────────────────
-    (function() {
+    function initManageItems_() {
+      if (MOG_WEB) {  // web: breadcrumb + footer "Close" returns to the editor home dashboard
+        document.body.classList.add('mge-web');
+        setBreadcrumb_(
+          [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+          { en: 'Manage Items', es: 'Administrar artículos' }
+        );
+        var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
+        var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
+      }
       ['add-vendor','edit-vendor'].forEach(id => {
         const sel = byId(id); if (!sel) return;
         VENDOR_LIST.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
@@ -999,7 +1075,7 @@
 
       buildVendorChecklist_('add-eligible', '', []);  // no active vendor picked yet
 
-      google.script.run
+      MIRPC()
         .withSuccessHandler(areas => {
           areaList = areas;
           ['add-area','edit-area-new'].forEach(id => {
@@ -1011,9 +1087,12 @@
         .withFailureHandler(() => {})
         .getStorageAreaList();
 
-      setLang('en');
+      setLang(MOG_WEB ? mgeGetLang_() : 'en');   // web: open in the language chosen at the gate
       loadAllItems();
-    })();
+    }
+    // Sheet mode: init immediately. Web mode: gate (device + PIN) first, then init.
+    if (MOG_WEB) { mgeStartGate_(initManageItems_); }
+    else { initManageItems_(); }
 
     // ── Tab switching ─────────────────────────────────────────────────────────
     const TAB_KEYS = ['view','add','inactive','unassigned'];
@@ -1109,7 +1188,7 @@
       // CacheService keyed by the document mutation timestamp). Saves one
       // full network round-trip vs the previous parallel pair, and skips
       // the sheet read entirely when the server cache hits.
-      google.script.run
+      MIRPC()
         .withSuccessHandler(result => {
           allItems = (result && result.items) || [];
           parFlags = (result && result.flags) || {};
@@ -1336,7 +1415,7 @@
       sel.disabled = true;
       setStatus('view-switch', t('switching'), 'info');
       bumpMutationTs_();
-      google.script.run
+      MIRPC()
         .withSuccessHandler(res => {
           selectedItem.vendor = res.vendor;
           const entry = allItems.find(x => x.id === res.id);
@@ -1382,7 +1461,7 @@
       // One authoritative fetch — getItemForEdit returns every field the form
       // needs (incl. eligibleVendors + currentArea), so no vendor-list
       // round-trip and no in-panel selectors are needed.
-      google.script.run
+      MIRPC()
         .withSuccessHandler(data => {
           if (!data) {
             setEditFormState_('empty');
@@ -1425,7 +1504,7 @@
       // Pass areaName in the payload — server does the inline area assignment
       // atomically, eliminating a second roundtrip.
       bumpMutationTs_();
-      google.script.run
+      MIRPC()
         .withSuccessHandler(res => {
           if (area && res.assignedArea) {
             setStatus('add', t('added') + res.id + t('assignedTo') + res.assignedArea + t('assignedEnd'), 'ok');
@@ -1463,7 +1542,7 @@
       const newArea = byId('edit-area-new').value, vendor = byId('edit-vendor').value;
       // Pass areaName in payload so server does the inline reassignment atomically.
       bumpMutationTs_();
-      google.script.run
+      MIRPC()
         .withSuccessHandler(res => {
           if (newArea && res.assignedArea) {
             setStatus('edit', t('saved') + res.id + t('savedArea') + res.assignedArea + '".', 'ok');
@@ -1536,7 +1615,7 @@
       byId('edit-delete-btn').disabled = true; setStatus('edit-delete', t('savingDeleting'), 'info');
       setDeletingPanel_('panel-edit', true);
       bumpMutationTs_();
-      google.script.run
+      MIRPC()
         .withSuccessHandler(res => {
           setStatus('edit-delete', t('deleted') + res.name + ' (' + res.id + ')', 'ok');
           byId('edit-delete-btn').disabled = false;
@@ -1594,7 +1673,7 @@
     function loadUnassigned() {
       setStatus('unassigned', t('loadingUnassigned'), 'info');
       byId('unassigned-list-wrap').innerHTML = loadingHtml_('loadingUnassigned');
-      google.script.run
+      MIRPC()
         .withSuccessHandler(items => {
           setStatus('unassigned', '');
           const badge = byId('unassigned-count-badge');

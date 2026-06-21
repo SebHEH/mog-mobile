@@ -19,6 +19,7 @@
 function showManageItemsSidebar() {
   const tmpl = HtmlService.createTemplateFromFile("ManageItems");
   tmpl.vendorListJson = JSON.stringify(getVendorList());
+  tmpl.webBootJson    = JSON.stringify({ web: false });   // in-Sheet dialog: web bits stay inert
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_LG_W).setHeight(MODAL_LG_H),
     "Manage Items"

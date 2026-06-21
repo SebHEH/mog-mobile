@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    // Injected by Editor.gs renderEditorHome_.
+    var WEB_BOOT  = <?!= webBootJson ?>;
+    var MOG_WEB   = true;
+    var MOG_STORE = WEB_BOOT.store || '';
+    var MOG_ABBR  = WEB_BOOT.abbr || '';
+    var BASE_URL  = WEB_BOOT.base || '';
+    var THEME     = WEB_BOOT.theme || {};
+    var CONCEPT   = WEB_BOOT.concept || '';
+    var MOG_TOKEN = null;
+  </script>
+  <style>
+    /* Home dashboard — faithful copy of the MVS web-app design system
+       (Inter type, accent header, 880px container, fixed 3-col tile grid,
+       soft-shadow centered icon tiles). Per-concept accent set by JS. */
+    :root {
+      --accent: #0e7c7c; --accent-text: #ffffff; --accent-ink: #0e7c7c;
+      --ink: #1d1f1d; --muted: #6b6f6b; --faint: #9aa3ad; --line: #e3e5e3; --bg: #f5f6f5; --card: #ffffff;
+      --sp-2: 8px; --sp-3: 12px; --sp-5: 22px; --sp-6: 32px;
+      --radius: 12px; --radius-sm: 9px;
+      --fs-xs: 11px; --fs-sm: 12px; --fs-md: 15px; --fs-2xl: 20px;
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 6px 18px rgba(0,0,0,.05);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: var(--fs-md); line-height: 1.45; -webkit-font-smoothing: antialiased; min-height: 100vh; }
+    [hidden] { display: none !important; }
+
+    .app-header { background: var(--accent); color: var(--accent-text); padding: 16px 20px 18px; }
+    .ah-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); max-width: 880px; margin: 0 auto; }
+    .ah-store { font-size: var(--fs-2xl); font-weight: 800; letter-spacing: .01em; }
+    .ah-eyebrow { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .12em; opacity: .82; margin-bottom: 2px; }
+    .lang-toggle { display: inline-flex; background: rgba(255,255,255,.16); border-radius: var(--radius-sm); overflow: hidden; flex: none; }
+    .lang-btn { background: transparent; color: var(--accent-text); border: none; padding: 6px 11px; font-size: var(--fs-sm); font-weight: 700; cursor: pointer; opacity: .65; font-family: var(--font); }
+    .lang-btn.on { background: rgba(255,255,255,.92); color: var(--accent-ink); opacity: 1; }
+
+    .main { max-width: 880px; margin: 0 auto; padding: 24px 20px 80px; }
+    .section-label { font-size: var(--fs-sm); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: var(--sp-5) 2px var(--sp-3); }
+
+    .tile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); }
+    .tile {
+      display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+      padding: 24px 14px; text-decoration: none; color: var(--ink); cursor: pointer; font-family: var(--font);
+      transition: box-shadow .12s, transform .12s;
+    }
+    a.tile:hover { box-shadow: 0 4px 16px rgba(0,0,0,.10); transform: translateY(-2px); }
+    .tile .ico { color: var(--accent-ink); margin-bottom: 10px; display: flex; align-items: center; justify-content: center; }
+    .tile .ico svg { width: 30px; height: 30px; }
+    .tile .ttl { font-size: var(--fs-md); font-weight: 700; line-height: 1.2; }
+    .tile.soon { opacity: .5; cursor: default; box-shadow: var(--shadow); }
+    .tile.soon .ico { color: var(--faint); }
+    .tile .soon-tag { font-size: var(--fs-xs); font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin-top: 6px; }
+    @media (max-width: 600px) { .tile-grid { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <?!= include('EditorShell'); ?>
+
+  <div class="app-header">
+    <div class="ah-top">
+      <div>
+        <div class="ah-eyebrow">MOG Editor</div>
+        <div class="ah-store" id="home-store">Store</div>
+      </div>
+      <div class="lang-toggle">
+        <button type="button" class="lang-btn" id="home-en" onclick="setHomeLang('en')">EN</button>
+        <button type="button" class="lang-btn" id="home-es" onclick="setHomeLang('es')">ES</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="main" id="home-main" hidden></div>
+
+  <script>
+    var IC = {
+      items:    '<path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5 12 12l8.5-4.5"/><path d="M12 12v9"/>',
+      vendors:  '<path d="M3.5 3.5h7l10 10-7 7-10-10z"/><circle cx="7.6" cy="7.6" r="1.4"/>',
+      areas:    '<path d="M3.5 7.5a2 2 0 0 1 2-2H9l2 2h7.5a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
+      pickpath: '<circle cx="6" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 6h7a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h7"/>',
+      history:  '<path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3"/><path d="M3.5 4.5v4h4"/><path d="M12 8v4.6l3 1.8"/>',
+      reset:    '<path d="M20.5 12a8.5 8.5 0 1 1-2.8-6.3"/><path d="M20.5 4.5v4h-4"/>'
+    };
+    function icon(k) {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (IC[k] || '') + '</svg>';
+    }
+
+    var HOME_SECTIONS = [
+      { en: 'Manage', es: 'Administrar', cards: [
+        { key: 'items',    live: true, page: 'items', en: 'Manage Items',      es: 'Administrar artículos' },
+        { key: 'vendors',  live: false,               en: 'Manage Vendors',    es: 'Administrar proveedores' },
+        { key: 'areas',    live: false,               en: 'Storage Areas',     es: 'Áreas de almacenamiento' },
+        { key: 'pickpath', live: false,               en: 'Reorder Pick Path', es: 'Reordenar ruta' }
+      ]},
+      { en: 'Records', es: 'Registros', cards: [
+        { key: 'history',  live: false,               en: 'Order History',     es: 'Historial de pedidos' }
+      ]},
+      { en: 'Admin', es: 'Administración', cards: [
+        { key: 'reset',    live: false,               en: 'Admin Reset',       es: 'Reinicio admin' }
+      ]}
+    ];
+
+    var HOME_T = { en: { soon: 'Soon' }, es: { soon: 'Pronto' } };
+    function homeLang() { return mgeGetLang_(); }
+    function ht(k) { var l = homeLang(); return (HOME_T[l] && HOME_T[l][k]) || HOME_T.en[k] || k; }
+    function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+    function setHomeLang(l) { mgeSetLang_(l); }       // persists + fires onEditorLangChange
+    function onEditorLangChange() { renderHome(); }
+
+    function renderHome() {
+      var l = homeLang();
+      if (THEME.accent)     { document.documentElement.style.setProperty('--accent', THEME.accent); document.documentElement.style.setProperty('--accent-ink', THEME.accent); }
+      if (THEME.bannerFont) document.documentElement.style.setProperty('--accent-text', THEME.bannerFont);
+      document.getElementById('home-store').textContent = MOG_STORE || 'Store';
+      document.getElementById('home-en').className = 'lang-btn' + (l === 'en' ? ' on' : '');
+      document.getElementById('home-es').className = 'lang-btn' + (l === 'es' ? ' on' : '');
+
+      var h = '';
+      for (var s = 0; s < HOME_SECTIONS.length; s++) {
+        var sec = HOME_SECTIONS[s];
+        h += '<div class="section-label">' + esc(l === 'es' ? sec.es : sec.en) + '</div>';
+        h += '<div class="tile-grid">';
+        for (var i = 0; i < sec.cards.length; i++) {
+          var c = sec.cards[i];
+          var inner =
+            '<div class="ico">' + icon(c.key) + '</div>' +
+            '<div class="ttl">' + esc(l === 'es' ? c.es : c.en) + '</div>' +
+            (c.live ? '' : '<div class="soon-tag">' + esc(ht('soon')) + '</div>');
+          if (c.live) {
+            h += '<a class="tile" target="_top" href="' + esc(BASE_URL) + '?page=' + esc(c.page) + '">' + inner + '</a>';
+          } else {
+            h += '<div class="tile soon">' + inner + '</div>';
+          }
+        }
+        h += '</div>';
+      }
+      var main = document.getElementById('home-main');
+      main.innerHTML = h;
+      main.removeAttribute('hidden');
+    }
+
+    // Gate first (device + PIN, or skip if a shared token exists), then render.
+    mgeStartGate_(renderHome);
+  </script>
+</body>
+</html>
