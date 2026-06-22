@@ -2,6 +2,9 @@
 <html>
   <head>
     <base target="_top">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <?!= include('Styles'); ?>
     <script>
       var VENDOR_LIST  = <?!= vendorListJson ?>;
@@ -287,6 +290,64 @@
       /* ── i18n ── */
       .es { display: none; }
       .en { display: inline; }
+
+      /* ════════════════════════════════════════════════════════════════════
+         WEB EDITOR RE-SKIN — every rule is scoped to body.mge-web, so the
+         in-Sheet dialog (no .mge-web class) is byte-identical. Turns the navy
+         dialog into a centered, concept-themed, Inter-typeset web page.
+         --web-accent / --web-accent-text are set by JS from THEME.
+         ════════════════════════════════════════════════════════════════════ */
+      /* Web tokens (--web-accent*, --shadow, --font, --r, --r-sm, --muted,
+         --faint) are defined once in EditorShell and inherited here. */
+      body.mge-web { font-family: var(--font); background: var(--page); --shell-width: 920px; }
+
+      /* Navy top-bar emptied (lang/help relocated to the shared band) + hidden. */
+      body.mge-web .top-bar { display: none; }
+
+      /* Centered ~920px column. */
+      body.mge-web .scroll-body { padding: 24px 24px 8px; }
+      body.mge-web .scroll-body > * { width: 100%; max-width: 920px; margin-left: auto; margin-right: auto; }
+
+      /* "Vendors" section header → quiet label instead of a full sticky green band. */
+      body.mge-web .section-header { position: static; background: transparent; color: var(--web-accent-dark); padding: 0 2px 9px; font-size: 12px; }
+
+      /* Vendor list → one card. */
+      body.mge-web .vendor-list-wrap { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 20px; }
+      body.mge-web .view-hint { font-size: 12px; color: var(--muted); padding: 13px 18px; background: #fafbfa; border-bottom: 1px solid var(--line-soft); }
+      body.mge-web .vendor-card { padding: 15px 18px; }
+      body.mge-web .vendor-card:hover { background: #f7faf8; }
+      body.mge-web .vendor-card-name { font-size: 15px; }
+      body.mge-web .edit-mult-btn { font-size: 12px; padding: 6px 14px; border-radius: var(--r-sm); }
+      body.mge-web .day-pill-label { font-size: 9px; }
+      body.mge-web .day-pill-val { font-size: 12px; min-width: 28px; padding: 3px 6px; }
+      body.mge-web .cutoff-badge { font-size: 10px; }
+
+      /* Action panels (Add / Import / Remove) → one card. */
+      body.mge-web .action-panels { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 2px 20px; }
+      body.mge-web .collapsible-header { padding: 15px 0; }
+      body.mge-web .collapsible-title { font-size: 13px; }
+      body.mge-web .collapsible-arrow { font-size: 11px; }
+      body.mge-web .section-label { font-size: 11px; margin: 16px 0 7px; }
+      body.mge-web .hint { font-size: 12px; color: var(--muted); }
+      body.mge-web label { font-size: 12px; }
+      body.mge-web input[type="text"],
+      body.mge-web input[type="time"],
+      body.mge-web input[type="file"],
+      body.mge-web select { font-size: 14px; padding: 9px 11px; border-radius: var(--r-sm); }
+      body.mge-web .day-check { width: 20px; height: 20px; }
+      body.mge-web .day-label { font-size: 11px; }
+      body.mge-web .mult-input { font-size: 13px; padding: 7px 0; border-radius: var(--r-sm); }
+      body.mge-web button.btn-primary,
+      body.mge-web button.btn-secondary,
+      body.mge-web button.btn-danger { font-size: 13px; padding: 11px 16px; border-radius: var(--r-sm); }
+      body.mge-web .delivery-summary,
+      body.mge-web .warning-banner,
+      body.mge-web .mult-example { font-size: 12px; border-radius: var(--r-sm); }
+
+      /* Footer → quiet left-aligned back link, not a grey button bar. */
+      body.mge-web .modal-footer { background: transparent; border-top: none; max-width: 920px; margin: 0 auto; width: 100%; padding: 4px 24px 22px; justify-content: flex-start; }
+      body.mge-web button.btn-close { background: transparent; color: var(--muted); padding: 8px 2px; }
+      body.mge-web button.btn-close:hover { color: var(--web-accent-dark); opacity: 1; }
     </style>
   </head>
   <body class="lang-en">
@@ -615,7 +676,10 @@
 
       function setLang(lang) {
         LANG = lang;
-        document.body.className = 'lang-' + lang;  // drives card.saving::after content
+        // Toggle ONLY the lang class — must not clobber `mge-web` (gates the web
+        // re-skin). Still drives the body.lang-* card.saving::after content.
+        document.body.classList.remove('lang-en', 'lang-es');
+        document.body.classList.add('lang-' + lang);
         document.querySelectorAll('.lang-btn').forEach(function(b, i) {
           b.classList.toggle('active', ['en','es'][i] === lang);
         });
@@ -1468,7 +1532,8 @@
 
       // ── Init ──────────────────────────────────────────────────────────────────
       function initManageVendors_() {
-        if (MOG_WEB) {  // web: breadcrumb + footer "Close" returns to the editor home
+        if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
+          mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
           setBreadcrumb_(
             [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
             { en: 'Manage Vendors', es: 'Administrar proveedores' }

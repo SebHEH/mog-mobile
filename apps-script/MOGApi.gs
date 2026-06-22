@@ -1284,9 +1284,15 @@ function sendRecapEmail_(recipient, sections, cycleDate, totalItems) {
                      ? dashTheme_()
                      : { accent: '#1a1a2e', bannerFont: '#ffffff' };
   const bandBg   = theme.accent;        // header band background (concept color)
-  const bandText = theme.bannerFont;    // band title (white, or TNY gold)
-  const bandSub  = (String(bandText).toLowerCase() === '#ffffff') ? '#dcdce6' : '#cfcfcf';
-  const headInk  = theme.accent;        // vendor headers + the "× qty" action number
+  const bandText = theme.bannerFont;    // band title (white, or TNY charcoal)
+  // Sub-line tone that reads on the band: light gray on a dark band, muted dark
+  // on a light (e.g. TNY gold) band — picked from the band's luminance.
+  let _bandHex = String(bandBg).replace('#', '');
+  if (_bandHex.length === 3) _bandHex = _bandHex[0]+_bandHex[0]+_bandHex[1]+_bandHex[1]+_bandHex[2]+_bandHex[2];
+  const bandLum  = parseInt(_bandHex.substr(0,2),16)*0.299 + parseInt(_bandHex.substr(2,2),16)*0.587 + parseInt(_bandHex.substr(4,2),16)*0.114;
+  const bandSub  = (bandLum > 150) ? '#6b5f43'
+                 : (String(bandText).toLowerCase() === '#ffffff') ? '#dcdce6' : '#cfcfcf';
+  const headInk  = theme.ink;           // vendor headers + the "× qty" number (dark — reads on white)
 
   let html = '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:640px;margin:0 auto;color:#1f2937">';
 

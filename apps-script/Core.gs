@@ -417,7 +417,7 @@ function onOpen(e) {
     .addItem("    Manage Storage Areas",               "showStorageAreasSidebar")
     .addItem("    Manage Vendors",                     "showManageVendorsSidebar")
     .addItem("    Manage Items",                       "showManageItemsSidebar")
-    .addItem("    Manage Pick Path",                   "showReorderPickPathSidebar")
+    .addItem("    Shelf to Sheet",                     "showReorderPickPathSidebar")
     .addItem("    View Order History",                 "showOrderHistoryModal")
     .addSeparator()
     .addItem("    🏠 Rebuild Home Dashboard",          "buildHomeDashboard")

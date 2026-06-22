@@ -46,12 +46,19 @@ const DASH_COLORS = {
 // Per-concept dashboard branding. `accent` is the background fill that
 // replaces DASH_COLORS.NAVY on the banner + tiles (chosen dark enough for
 // white text); `bannerFont` is applied to the banner text only (tiles keep
-// white text for legibility). Colors mirror the PWA's concept themes so the
-// Sheet dashboard matches what KMs see in the app. Static table — identical
-// across all stores; the per-store choice comes from the MOG_CONCEPT property.
+// white text for legibility). `accent` is the BAND/BANNER background fill;
+// `bannerFont` is the text drawn on it; `ink` is the dark color used wherever a
+// dark fill (light text) or dark-text-on-white reading is needed — the tiles,
+// the reset strip, and the recap email's vendor headers + "× qty" numbers.
+// `ink` defaults to `accent` (correct for dark accents like RP teal / navy), so
+// those concepts are unchanged. TNY is gold-forward: a gold band with charcoal
+// text, while tiles + email ink stay charcoal so everything stays legible. Same
+// palette mirrors the PWA + the KM web editor (which reads accent/bannerFont).
+// Static table — identical across all stores; the per-store choice comes from
+// the MOG_CONCEPT property.
 const CONCEPT_THEMES = {
-  'roll-play': { accent: "#2d8c6b", bannerFont: "#ffffff" },  // RP teal-dark + white
-  'teasnyou':  { accent: "#1a1a1a", bannerFont: "#D4A574" },  // TNY charcoal + Kintsugi gold
+  'roll-play': { accent: "#2d8c6b", bannerFont: "#ffffff" },                  // RP teal-dark + white
+  'teasnyou':  { accent: "#D4A574", bannerFont: "#1a1a1a", ink: "#1a1a1a" },  // TNY Kintsugi gold band + charcoal ink
   'default':   { accent: DASH_COLORS.NAVY, bannerFont: DASH_COLORS.WHITE }
 };
 
@@ -65,7 +72,9 @@ function dashTheme_() {
   var concept = String(
     PropertiesService.getScriptProperties().getProperty(PROP_CONCEPT) || ""
   ).trim().toLowerCase();
-  _dashThemeCache = CONCEPT_THEMES[concept] || CONCEPT_THEMES['default'];
+  var t = CONCEPT_THEMES[concept] || CONCEPT_THEMES['default'];
+  // `ink` defaults to `accent` so dark-accent concepts (RP/navy) are unchanged.
+  _dashThemeCache = { accent: t.accent, bannerFont: t.bannerFont, ink: t.ink || t.accent };
   return _dashThemeCache;
 }
 
@@ -465,12 +474,12 @@ function buildHomeQuickActions_(sh, layout) {
   const tileSpec = [
     { range: "A"+tilesRow+":E"+tilesRow,   en: "Manage Items",      es: "Artículos"        },
     { range: "F"+tilesRow+":J"+tilesRow,   en: "Manage Vendors",    es: "Proveedores"      },
-    { range: "K"+tilesRow+":O"+tilesRow,   en: "Manage Pick Path",  es: "Ruta de Picking"  },
+    { range: "K"+tilesRow+":O"+tilesRow,   en: "Shelf to Sheet",    es: "Estante a Hoja"   },
     { range: "P"+tilesRow+":T"+tilesRow,   en: "Storage Areas",     es: "Áreas"            },
     { range: "U"+tilesRow+":Y"+tilesRow,   en: "Order History",     es: "Historial"        },
     { range: "Z"+tilesRow+":AD"+tilesRow,  en: "How To Use",        es: "Cómo Usar"        }
   ];
-  tileSpec.forEach(t => buildHomeTile_(sh, t.range, t.en, t.es, dashTheme_().accent));
+  tileSpec.forEach(t => buildHomeTile_(sh, t.range, t.en, t.es, dashTheme_().ink));
 
   // Six checkbox cells matching tile widths. Each merged range contains a
   // single checkbox at its top-left cell. Top-left col letters match
@@ -614,7 +623,7 @@ function buildHomeResetTile_(sh, layout) {
         ')' +
       ')'
     )
-    .setBackground(dashTheme_().accent)
+    .setBackground(dashTheme_().ink)
     .setFontColor(DASH_COLORS.WHITE)
     .setFontFamily("Arial")
     .setFontSize(11)
@@ -835,7 +844,7 @@ function buildHomeConditionalFormatting_(sh, layout) {
   // the section header band so empty tile-pairs disappear into the frame.
   const vendorPopulatedRule = SpreadsheetApp.newConditionalFormatRule()
     .whenCellNotEmpty()
-    .setBackground(dashTheme_().accent)
+    .setBackground(dashTheme_().ink)
     .setFontColor(DASH_COLORS.WHITE)
     .setRanges([vendorRange])
     .build();

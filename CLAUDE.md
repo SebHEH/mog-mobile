@@ -14,7 +14,7 @@ If sources conflict, items higher in this list win for "what's currently in flig
 
 Replace the path here with the newest handoff at the end of each session that ships material changes. (The `mog-session-handoff` skill rewrites this line.)
 
-@docs/MOG_SessionHandoff_2026_06_21.md
+@docs/MOG_SessionHandoff_2026_06_22.md
 
 ## Quick orientation
 
@@ -74,6 +74,7 @@ Skills auto-load and trigger via the descriptions in their frontmatter.
 | `mog-i18n-parity` | Deterministic EN/ES key-parity check across the modals (ships `scripts/check_i18n_parity.py`, `--all` scans `apps-script/*.html`). Triggers on "check the parity" / "did I drop a translation key" / end of any modal session that changed strings. Replaces the by-eye "102 keys each" count. |
 | `mog-sheet-formula-verify` | Prove a data-model / order-math change is safe against the LIVE store sheet before shipping. Triggers on "does any formula use column X" / "can I repurpose the SKU column" / "verify the order math" / any MASTER_ITEMS column change. The discipline that caught the column-D-vs-O near-miss. |
 | `mog-pwa-audit` | Full-file audit of the PWA layer (`template/index.html` + `sw.js`) for latent bugs / dead code / unlocalized strings / cache hygiene. PWA-layer twin of `appsscript-codebase-audit`. Triggers on "audit the PWA" / "review template/index.html" / after a big PWA edit. |
+| `mog-editor-web-reskin` | Turnkey recipe for polishing one KM web-editor tool (dual-host modal via `doGet?page=…`) into a full-page web app — bespoke per tool, `body.mge-web`-gated so the Sheet dialog is untouched. Triggers on "polish the next tool" / "do Manage Vendors/Pick Path/Order History next" / before touching any editor modal's web rendering (step 1 = the `setLang` class-clobber fix is a hard prerequisite). Pins the web chrome + in-place-update + validation-clear patterns and the `/dev`-vs-`/exec` iterate rule. |
 
 **User-global** (`~/.claude/skills/<name>/SKILL.md` — load in every Claude Code session):
 

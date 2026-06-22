@@ -2,6 +2,9 @@
 <html>
 <head>
   <base target="_top">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <?!= include('Styles'); ?>
   <script>
     // Web-app delivery context (Editor.gs injects web:true; showOrderHistoryModal
@@ -315,6 +318,73 @@
 
     .es { display: none; }
     .en { display: inline; }
+
+    /* ════════════════════════════════════════════════════════════════════
+       WEB EDITOR RE-SKIN — every rule scoped to body.mge-web, so the in-Sheet
+       dialog is byte-identical. Read-only viewer: shared band (EditorShell) +
+       pill tabs + toolbar filter + centered content at --shell-width. Concept
+       accent tokens come from EditorShell; :root holds Sheet-mode fallbacks.
+       ════════════════════════════════════════════════════════════════════ */
+    /* Web tokens (--web-accent*, --shadow, --font, --r, --r-sm, --muted,
+       --faint) are defined once in EditorShell and inherited here. */
+    body.mge-web { font-family: var(--font); background: var(--page); --shell-width: 1080px; }
+    /* helper: anything tagged .web-col centers at the page width */
+    body.mge-web .top-bar,
+    body.mge-web .filter-bar,
+    body.mge-web .result-bar,
+    body.mge-web .hist-date-group,
+    body.mge-web .ih-group,
+    body.mge-web .summary-vendor-block,
+    body.mge-web #recent-detail-content,
+    body.mge-web .print-header { max-width: var(--shell-width); margin-left: auto; margin-right: auto; }
+
+    /* Navy tab bar → centered pill/segmented tabs on the page background. */
+    body.mge-web .top-bar { background: transparent; height: auto; display: block; flex-shrink: 0; padding: 18px 28px 0; }
+    body.mge-web .top-tabs { display: inline-flex; flex: none; gap: 4px; background: #eceef1; border: 1px solid var(--line); border-radius: var(--r); padding: 4px; }
+    body.mge-web .top-tab { padding: 8px 16px; border-bottom: none !important; border-radius: var(--r-sm); font-size: 13px; color: var(--muted); }
+    body.mge-web .top-tab:hover { color: var(--ink, #1c2024); }
+    body.mge-web .top-tab.active { background: var(--card); color: var(--web-accent-dark); box-shadow: var(--shadow); }
+
+    /* Filter row → a clean toolbar card. */
+    body.mge-web .filter-bar { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 12px 16px; }
+    body.mge-web .filter-bar select,
+    body.mge-web .filter-bar input[type="date"],
+    body.mge-web .filter-bar input[type="text"] { height: auto; padding: 8px 10px; font-size: 14px; border-radius: var(--r-sm); border-color: var(--line); }
+    body.mge-web .btn-apply { height: auto; padding: 9px 18px; font-size: 13px; border-radius: var(--r-sm); background: var(--web-accent); }
+    body.mge-web .btn-apply:hover { background: var(--web-accent-dark); }
+    body.mge-web .btn-export { height: auto; padding: 9px 14px; font-size: 13px; border-radius: var(--r-sm); }
+
+    /* Result line: quiet, no strip. */
+    body.mge-web .result-bar { margin-top: 14px; background: transparent; border: none; padding: 0 28px; font-size: 12px; }
+    body.mge-web .result-count { color: var(--web-accent-dark); }
+    body.mge-web .table-wrap { padding-bottom: 18px; }
+
+    /* Recent Orders → responsive card grid under each date. */
+    body.mge-web .hist-date-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-top: 16px; padding: 0 28px; }
+    body.mge-web .hist-date-header { grid-column: 1 / -1; position: static; background: transparent; color: var(--web-accent-dark); border: none; padding: 4px 2px; font-size: 12px; }
+    body.mge-web .hist-card { margin: 0; border-radius: var(--r); box-shadow: var(--shadow); }
+    body.mge-web .hist-card-count { background: var(--web-accent); }
+    body.mge-web .hist-card-vendor { color: var(--ink, #1c2024); font-size: 15px; }
+
+    /* Item History accordion + Vendor Summary blocks → centered, themed. */
+    body.mge-web .ih-group,
+    body.mge-web .summary-vendor-block { margin-top: 12px; border-radius: var(--r); box-shadow: var(--shadow); }
+    body.mge-web .ih-count { background: var(--web-accent); }
+    body.mge-web .ih-name,
+    body.mge-web .col-vendor,
+    body.mge-web .qty-num,
+    body.mge-web .col-qty { color: var(--web-accent-dark); }
+    body.mge-web .summary-vendor-header { background: var(--web-accent); }
+    body.mge-web .summary-totals-row td { background: var(--web-accent-soft); color: var(--web-accent-dark); }
+
+    /* Recent detail drill-down: keep its content centered. */
+    body.mge-web .hist-detail-bar { padding-left: 28px; padding-right: 28px; }
+    body.mge-web .hist-detail-list { padding: 0; }
+
+    /* Footer → quiet back link (read-only: no save). */
+    body.mge-web .modal-footer { background: transparent; border-top: 1px solid var(--line); max-width: var(--shell-width); margin: 0 auto; width: 100%; padding: 11px 28px; justify-content: flex-start; }
+    body.mge-web button.btn-close { background: transparent; color: var(--muted); padding: 8px 2px; }
+    body.mge-web button.btn-close:hover { color: var(--web-accent-dark); opacity: 1; }
   </style>
 </head>
 <body>
@@ -606,8 +676,8 @@
 
   /* ══ INIT ══ */
   function initOrderHistory_() {
-    if (MOG_WEB) {  // web: breadcrumb + footer "Close" returns to the editor home
-      document.body.classList.add('mge-web');
+    if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
+      mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
       setBreadcrumb_(
         [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
         { en: 'Order History', es: 'Historial de pedidos' }

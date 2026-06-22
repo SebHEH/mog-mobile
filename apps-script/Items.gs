@@ -301,7 +301,14 @@ function commitUpsertItem(payload) {
     // Block A:G — single setValues for ID, NAME, VENDOR, PACK, PAR. SKU (D)
     // and CATEGORY (F) are not managed here; on a newly inserted row those
     // cells are blank, so writing empty strings is a no-op.
-    sh.getRange(newRow, 1, 1, 7).setValues([[itemId, name, vendor, '', pack, '', par]]);
+    // insertRowAfter copies the row-above's data-validation into the new row;
+    // some stores carry a stray rule on the NAME column (B) that then rejects
+    // the typed name ("violates data validation"). These are free text/number
+    // fields with no legit validation, so clear it on the block before writing.
+    // (The intentional checkbox validation on L:M is applied separately below.)
+    const addBlock = sh.getRange(newRow, 1, 1, 7);
+    addBlock.clearDataValidations();
+    addBlock.setValues([[itemId, name, vendor, '', pack, '', par]]);
 
     // Eligible Vendors lives in column O, past the A:G block, so it's a
     // separate write. The active vendor (C) is always forced into the list.
@@ -358,6 +365,7 @@ function commitUpsertItem(payload) {
   editVals[COL.VENDOR - 1] = vendor;
   editVals[COL.PACK   - 1] = pack;
   editVals[COL.PAR    - 1] = par;
+  editRange.clearDataValidations();   // strip any stray validation on A:G (e.g. NAME) before writing
   editRange.setValues([editVals]);
 
   // Eligible Vendors (column O, outside the A:G block): use the payload's list

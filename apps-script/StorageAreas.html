@@ -241,6 +241,53 @@
       /* ── i18n ── */
       .es { display: none; }
       .en { display: inline; }
+
+      /* ════════════════════════════════════════════════════════════════════
+         WEB EDITOR RE-SKIN — every rule is scoped to body.mge-web, so the
+         in-Sheet dialog (no .mge-web class) is unaffected. Turns the navy
+         dialog into a centered, concept-themed, Inter-typeset web page.
+         --web-accent / --web-accent-text are set by JS from THEME.
+         ════════════════════════════════════════════════════════════════════ */
+      /* Web tokens (--web-accent*, --shadow, --font, --r, --r-sm, --muted,
+         --faint) are defined once in EditorShell and inherited here. */
+      body.mge-web { font-family: var(--font); background: var(--page); --shell-width: 760px; }
+
+      /* Navy header emptied (lang/help relocated to the shared band) + hidden. */
+      body.mge-web .header { display: none; }
+
+      /* Centered ~760px column. */
+      body.mge-web .body { padding: 20px 24px 24px; gap: 16px; }
+      body.mge-web .body > * { width: 100%; max-width: 760px; margin-left: auto; margin-right: auto; }
+
+      /* Cards. */
+      body.mge-web .list-card, body.mge-web .action-card { border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); }
+      body.mge-web .list-card-header { background: #fafbfa; color: var(--muted); border-bottom: 1px solid var(--line-soft); padding: 13px 18px; font-size: 13px; letter-spacing: .04em; }
+      body.mge-web .area-count { background: var(--web-accent-soft); color: var(--web-accent-dark); font-size: 12px; }
+
+      /* Area rows — roomier for a full screen. */
+      body.mge-web .area-item { padding: 12px 18px; gap: 12px; border-bottom: 1px solid var(--line-soft); }
+      body.mge-web .area-item:hover { background: #f7faf8; }
+      body.mge-web .area-name { font-size: 15px; color: var(--ink); }
+      body.mge-web .order-badge { min-width: 34px; background: var(--page); color: var(--faint); }
+      body.mge-web .btn-move { border-color: var(--line); }
+      body.mge-web .btn-icon { width: 30px; height: 30px; }
+
+      /* Add-area: always visible (collapse header hidden), inline input + button. */
+      body.mge-web #add-card .action-header { display: none; }
+      body.mge-web #add-card .action-body { display: flex !important; flex-wrap: wrap; align-items: center; gap: 10px; background: #fafbfa; padding: 14px 18px; }
+      body.mge-web #add-card .form-row { flex: 1; min-width: 180px; margin: 0; }
+      body.mge-web #add-card .form-row label { display: none; }
+      body.mge-web #add-card .btn-row { flex: 0 0 auto; }
+      body.mge-web #add-card .btn-primary { background: var(--web-accent-soft); color: var(--web-accent-dark); }
+      body.mge-web #add-card #add-status { flex-basis: 100%; }
+
+      /* Sticky footer (already pinned at viewport bottom by the body flex column). */
+      body.mge-web .modal-footer { background: transparent; border-top: 1px solid var(--line); max-width: 760px; margin: 0 auto; width: 100%; padding: 12px 24px; }
+      body.mge-web .btn-close { background: transparent; color: var(--muted); padding: 8px 2px; }
+      body.mge-web .btn-close:hover { color: var(--web-accent-dark); opacity: 1; }
+      body.mge-web .btn-save { background: var(--web-accent); padding: 11px 22px; }
+      body.mge-web .btn-save:hover { background: var(--web-accent-dark); opacity: 1; }
+      body.mge-web .hint-footer { color: var(--faint); }
     </style>
   </head>
   <body class="lang-en">
@@ -277,7 +324,7 @@
           <div class="help-step"><span class="en"><strong>3.</strong> <strong>✎</strong> renames an area · <strong>🗑</strong> deletes it.</span><span class="es"><strong>3.</strong> <strong>✎</strong> renombra un área · <strong>🗑</strong> la elimina.</span></div>
           <div class="help-step"><span class="en"><strong>4.</strong> Tap <strong>Save Areas</strong> to apply — your changes are a draft until you save.</span><span class="es"><strong>4.</strong> Toca <strong>Guardar Áreas</strong> para aplicar — tus cambios son un borrador hasta que guardas.</span></div>
           <div class="help-tip"><span class="en">💡 The area order sets the order items appear on <strong>every</strong> vendor's order sheet.</span><span class="es">💡 El orden de las áreas define el orden en que aparecen los artículos en la hoja de <strong>cada</strong> proveedor.</span></div>
-          <div class="help-warn"><span class="en">⚠ Deleting an area unassigns its items — they vanish from vendor tabs until you reassign them in <strong>Manage Pick Path</strong>.</span><span class="es">⚠ Eliminar un área desasigna sus artículos — desaparecen de las pestañas hasta reasignarlos en <strong>Administrar Ruta</strong>.</span></div>
+          <div class="help-warn"><span class="en">⚠ Deleting an area unassigns its items — they vanish from vendor tabs until you reassign them in <strong>Shelf to Sheet</strong>.</span><span class="es">⚠ Eliminar un área desasigna sus artículos — desaparecen de las pestañas hasta reasignarlos en <strong>Estante a Hoja</strong>.</span></div>
         </div>
       </div>
     </div>
@@ -350,7 +397,7 @@
         en: {
           addPlaceholder:'e.g., Walk-In Cooler',
           blankName:'Area name cannot be blank.', alreadyExists:'" already exists.',
-          itemsLost:' item(s) unassigned — reassign them in Manage Pick Path.',
+          itemsLost:' item(s) unassigned — reassign them in Shelf to Sheet.',
           renamePh:'New name…', save:'Save', cancel:'Cancel',
           confirmDelete:'Delete "', confirmDeleteEnd:'"? Assigned items will lose their area.',
           noAreas:'No areas yet — add one below.',
@@ -360,7 +407,7 @@
         es: {
           addPlaceholder:'ej. Cámara Fría',
           blankName:'El nombre no puede estar vacío.', alreadyExists:'" ya existe.',
-          itemsLost:' artículo(s) sin área — reasígnalos en Gestionar Ruta de Picking.',
+          itemsLost:' artículo(s) sin área — reasígnalos en Estante a Hoja.',
           renamePh:'Nuevo nombre…', save:'Guardar', cancel:'Cancelar',
           confirmDelete:'¿Eliminar "', confirmDeleteEnd:'"? Los artículos asignados perderán su área.',
           noAreas:'Sin áreas — agrega una abajo.',
@@ -373,7 +420,10 @@
 
       function setLang(lang) {
         LANG = lang;
-        document.body.className = 'lang-' + lang;  // drives card.saving::after content
+        // Toggle ONLY the lang class — must not clobber `mge-web` (gates the web
+        // re-skin). Still drives the body.lang-* card.saving::after content.
+        document.body.classList.remove('lang-en', 'lang-es');
+        document.body.classList.add('lang-' + lang);
         document.querySelectorAll('.lang-btn').forEach(function(b, i) {
           b.classList.toggle('active', ['en','es'][i] === lang);
         });
@@ -737,7 +787,8 @@
 
       // ── Init ──────────────────────────────────────────────────────────────────
       function initStorageAreas_() {
-        if (MOG_WEB) {  // web: breadcrumb + footer "Close" returns to the editor home
+        if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
+          mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
           setBreadcrumb_(
             [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
             { en: 'Storage Areas', es: 'Áreas de almacenamiento' }

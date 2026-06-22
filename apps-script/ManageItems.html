@@ -3,6 +3,11 @@
   <head>
     <base target="_top">
     <?!= include('Styles'); ?>
+    <!-- Web editor only uses Inter (font-family is gated on body.mge-web, so the
+         in-Sheet dialog keeps Arial — this link is an unused fetch there). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
       var VENDOR_LIST = <?!= vendorListJson ?>;
       // Web-app delivery context. Editor.gs (doGet?page=editor) injects
@@ -33,7 +38,7 @@
       /* Web app only: make room for the breadcrumb bar above the modal without
          overflowing (the breadcrumb is injected by EditorShell at body top).
          Gated on body.mge-web so the in-Sheet dialog layout is unchanged. */
-      body.mge-web { display: flex; flex-direction: column; height: 100%; }
+      body.mge-web { display: flex; flex-direction: column; height: 100%; --shell-width: 1500px; }
       body.mge-web .shell { height: auto; flex: 1 1 auto; min-height: 0; }
       .modal-footer {
         flex: 0 0 auto;
@@ -370,6 +375,111 @@
       /* ── i18n ── */
       .es { display: none; }
       .en { display: inline; }
+
+      /* ════════════════════════════════════════════════════════════════════
+         WEB EDITOR RE-SKIN — every rule below is scoped to body.mge-web, so
+         the in-Sheet dialog (where MOG_WEB=false, no .mge-web class) is
+         completely unaffected. Turns the dialog-shaped modal into a centered,
+         concept-themed, Inter-typeset full-page web app. Accent color comes
+         from --web-accent / --web-accent-text (set by JS from THEME in
+         initManageItems_); falls back here so the page still themes if JS
+         hasn't run yet.
+         ════════════════════════════════════════════════════════════════════ */
+      /* Web tokens (--web-accent*, --shadow, --font, --r, --r-sm, --muted,
+         --faint) are defined once in EditorShell and inherited here. (This file
+         previously defined only a partial set, so var(--r)/var(--faint) here
+         silently fell back — now fixed by the shared definition.) */
+
+      body.mge-web {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        background: var(--page);
+      }
+      /* Whole app is a centered, capped column → same aspect on a laptop and a
+         27" monitor (page bg flanks it on wide screens). Internal scroll model
+         is preserved: the column fills the viewport height and the item table
+         scrolls inside its own pane, exactly as in the dialog. */
+      body.mge-web .shell {
+        max-width: 1500px; width: 100%; margin: 0 auto;
+        background: transparent;
+      }
+
+      /* The Sheet's navy tab bar is replaced in web by left filter chips; the
+         lang/help buttons relocate to the shared band. Hide the emptied bar. */
+      body.mge-web .top-bar { display: none; }
+
+      /* Left filter chips (All / Unassigned / Inactive) — web only. They replace
+         the View All / Inactive / Unassigned tabs; the list itself is "view all". */
+      .filter-chips { display: none; }
+      body.mge-web .filter-chips { display: inline-flex; gap: 6px; }
+      .fchip {
+        padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px;
+        font: 700 12px var(--font); background: #fff; color: var(--ink-mute);
+        cursor: pointer; white-space: nowrap;
+      }
+      .fchip.active { background: var(--web-accent); border-color: var(--web-accent); color: #fff; }
+      .fchip.warn.active { background: var(--warn); border-color: var(--warn); color: var(--warn-ink); }
+      .fchip .fchip-n { font-size: 11px; opacity: .85; margin-left: 3px; }
+
+      /* Right-panel tab toggle (Item details | + Add item) — web only. This is
+         the "tabs above the sidebar" placement. */
+      .panel-tabs { display: none; }
+      body.mge-web .panel-tabs {
+        display: flex; flex: 0 0 auto;
+        border-bottom: 1px solid var(--line); background: #fff;
+      }
+      /* Inactive tab clearly recedes (faded, lighter weight); active tab is
+         accent-colored, bolder, with the underline — so it's obvious which is which. */
+      .ptab {
+        flex: 1; padding: 13px 12px; text-align: center; border: none;
+        background: transparent; font: 600 13px var(--font); color: var(--faint);
+        cursor: pointer; border-bottom: 3px solid transparent; opacity: .7;
+      }
+      .ptab:hover { color: var(--ink-soft); opacity: 1; }
+      .ptab.active { color: var(--web-accent); font-weight: 800; border-bottom-color: var(--web-accent); opacity: 1; }
+      /* Active panel fills the space below the toggle and scrolls inside it. */
+      body.mge-web .panel.active { height: auto; flex: 1 1 auto; min-height: 0; }
+
+      /* "New" badge on recently-added items (client-side first-seen, ~7 days). */
+      .new-badge {
+        font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+        background: var(--success-bg); color: var(--success); border: 1px solid #bfe3cd;
+        border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: 1px;
+      }
+
+      /* Brief highlight on the row just added/edited (paired with auto-centering)
+         so you immediately see where it landed in the list. */
+      @keyframes rowFlash { from { background: #d9f0e6; } to { background: transparent; } }
+      body.mge-web .item-table tbody tr.row-flash { animation: rowFlash 1.5s ease-out; }
+
+      /* Body: two cards on the page background, with breathing room. */
+      body.mge-web .body-split { padding: 18px 24px; gap: 18px; background: var(--page); }
+      body.mge-web .left-pane {
+        border: 1px solid var(--line); border-right: 1px solid var(--line);
+        border-radius: var(--r-card); box-shadow: var(--shadow); overflow: hidden;
+      }
+      body.mge-web .right-pane {
+        width: 384px; background: #fff;
+        border: 1px solid var(--line); border-radius: var(--r-card);
+        box-shadow: var(--shadow); overflow: hidden;
+      }
+      /* A touch more density for a real screen vs. a cramped dialog. */
+      body.mge-web .item-table td { padding: 11px 10px; }
+      body.mge-web .item-table thead th { padding: 11px 10px; }
+      body.mge-web .left-toolbar { padding: 13px 16px; }
+
+      /* Footer: drop the dialog bar; a quiet back-link to the home. */
+      body.mge-web .modal-footer {
+        background: transparent; border-top: none;
+        padding: 10px 24px 22px; justify-content: flex-start;
+      }
+      body.mge-web .btn-close { background: transparent; color: var(--ink-mute); padding: 8px 2px; }
+      body.mge-web .btn-close:hover { color: var(--web-accent); opacity: 1; }
+
+      /* Resized-narrow window (desktop-only tool, so just a graceful stack). */
+      @media (max-width: 980px) {
+        body.mge-web .body-split { flex-direction: column; overflow-y: auto; }
+        body.mge-web .right-pane { width: auto; }
+      }
     </style>
   </head>
   <body class="lang-en">
@@ -413,7 +523,7 @@
           <div class="help-step"><span class="en"><strong>1. Add:</strong> on the <strong>➕ Add</strong> tab fill Name, Vendor, Pack/Unit, Base Par; set <strong>Use Multiplier</strong>; tap <strong>Add Item</strong>.</span><span class="es"><strong>1. Agregar:</strong> en la pestaña <strong>➕ Agregar</strong> completa Nombre, Proveedor, Empaque/Unidad, Par Base; define <strong>Usar Multiplicador</strong>; toca <strong>Agregar Artículo</strong>.</span></div>
           <div class="help-step"><span class="en"><strong>2. Edit:</strong> tap any row to open its detail, then <strong>Edit This Item →</strong>. (There's no separate Edit tab.)</span><span class="es"><strong>2. Editar:</strong> toca cualquier fila para abrir su detalle, luego <strong>Editar Este Artículo →</strong>. (No hay pestaña Editar aparte.)</span></div>
           <div class="help-step"><span class="en"><strong>3.</strong> From an item's detail: <strong>Deactivate</strong> (reversible) or <strong>Delete</strong> (permanent, in the Danger Zone).</span><span class="es"><strong>3.</strong> Desde el detalle: <strong>Desactivar</strong> (reversible) o <strong>Eliminar</strong> (permanente, en la Zona de Peligro).</span></div>
-          <div class="help-step"><span class="en"><strong>4.</strong> The <strong>⚠ Unassigned</strong> tab lists active items with no storage area — assign them in <strong>Manage Pick Path</strong> or they won't show on vendor tabs.</span><span class="es"><strong>4.</strong> La pestaña <strong>⚠ Sin Área</strong> lista artículos activos sin área — asígnalos en <strong>Administrar Ruta</strong> o no aparecerán en las pestañas.</span></div>
+          <div class="help-step"><span class="en"><strong>4.</strong> The <strong>⚠ Unassigned</strong> tab lists active items with no storage area — assign them in <strong>Shelf to Sheet</strong> or they won't show on vendor tabs.</span><span class="es"><strong>4.</strong> La pestaña <strong>⚠ Sin Área</strong> lista artículos activos sin área — asígnalos en <strong>Estante a Hoja</strong> o no aparecerán en las pestañas.</span></div>
           <div class="help-tip"><span class="en">💡 The rightmost column flags items whose pars may need review — high On Hand (over-ordered) or always empty.</span><span class="es">💡 La columna derecha marca artículos cuyo par podría revisarse — En Stock alto (sobre-pedido) o siempre vacío.</span></div>
         </div>
       </div>
@@ -424,6 +534,11 @@
       <!-- LEFT: item table -->
       <div class="left-pane">
         <div class="left-toolbar">
+          <div class="filter-chips" id="filter-chips">
+            <button class="fchip active" type="button" data-vf="all" onclick="setViewFilter('all')"><span class="en">All active</span><span class="es">Activos</span> <span class="fchip-n" id="fc-all"></span></button>
+            <button class="fchip warn" type="button" data-vf="unassigned" onclick="setViewFilter('unassigned')">⚠ <span class="en">Unassigned</span><span class="es">Sin Área</span> <span class="fchip-n" id="fc-unassigned"></span></button>
+            <button class="fchip" type="button" data-vf="inactive" onclick="setViewFilter('inactive')"><span class="en">Inactive</span><span class="es">Inactivos</span> <span class="fchip-n" id="fc-inactive"></span></button>
+          </div>
           <select id="view-vendor-filter" onchange="applyFilters()">
             <option value="" id="opt-all-vendors-items"></option>
           </select>
@@ -447,8 +562,8 @@
                 <th onclick="setSort('par')"     id="th-par"></th>
                 <th onclick="setSort('active')"  id="th-active"></th>
                 <th onclick="setSort('useMult')" id="th-mult"></th>
-                <th id="th-sheet"></th>
-                <th id="th-flag" style="cursor:default;"></th>
+                <th onclick="setSort('onSheet')" id="th-sheet"></th>
+                <th onclick="setSort('flag')"    id="th-flag"></th>
               </tr>
             </thead>
           </table>
@@ -473,6 +588,13 @@
 
       <!-- RIGHT: panels -->
       <div class="right-pane">
+
+        <!-- Web-only tab toggle (above the work surface). Sheet hides it and
+             uses the navy top-bar tabs instead. -->
+        <div class="panel-tabs" id="panel-tabs">
+          <button class="ptab active" type="button" id="ptab-details" onclick="switchTab('view')"><span class="en">Item details</span><span class="es">Detalles</span></button>
+          <button class="ptab" type="button" id="ptab-add" onclick="switchTab('add')">+ <span class="en">Add item</span><span class="es">Agregar</span></button>
+        </div>
 
         <!-- VIEW ALL -->
         <div id="panel-view" class="panel active">
@@ -679,7 +801,7 @@
         phAdd:'Add New Item', lblName:'Item Name', lblVendor:'Vendor',
         lblPack:'Pack / Unit', lblPar:'Base Par', lblMult:'Use Multiplier',
         lblArea:'Storage Area', areaOptional:'(optional)',
-        areaLater:'— Assign later via Manage Pick Path —',
+        areaLater:'— Assign later via Shelf to Sheet —',
         hintArea:'Selecting an area places this item at the bottom of that group immediately after saving.',
         btnAdd:'Add Item',
         lblEligible:'Also orderable from', lblEligibleEdit:'Also orderable from',
@@ -688,7 +810,7 @@
         lblSwitchVendor:'Active vendor', switchOne:'Only orderable from one vendor.',
         hintSwitchVendor:'Switch which vendor this item is ordered from — it moves to that vendor\'s order sheet. Par is unchanged.',
         switching:'Switching…', switched:'Now ordered from ',
-        switchNeedsArea:' — assign a Storage Area for this vendor via Manage Pick Path so it shows on the order sheet.',
+        switchNeedsArea:' — assign a Storage Area for this vendor via Shelf to Sheet so it shows on the order sheet.',
         phEdit:'Edit Item', lblVendorSel:'Vendor', lblItemSel:'Item',
         optSelVendor:'-- Select a vendor --', optSelItem:'-- Select a vendor first --',
         optSelItemReady:'-- Select an item --',
@@ -696,7 +818,7 @@
         lblReassignVendor:'Reassign to Vendor', lblEditPack:'Pack / Unit',
         lblEditPar:'Base Par', lblEditMult:'Use Multiplier',
         lblEditActive:'Active', optActive:'Active', optInactive:'Inactive',
-        slPickPath:'Pick Path', lblCurrentArea:'Current Area', lblNewArea:'Reassign to',
+        slPickPath:'Shelf to Sheet', lblCurrentArea:'Current Area', lblNewArea:'Reassign to',
         optNoChange:'— No change —',
         hintEditArea:'Reassigning places this item at the bottom of the new area\'s group.',
         btnEditClear:'Clear', btnEditSave:'Save Changes',
@@ -706,7 +828,7 @@
         btnCancelDelete:'Cancel', btnConfirmDelete:'Delete Permanently',
         confirmDelete:'Permanently delete', cannotUndo:'? This cannot be undone.',
         phUnassigned:'Unassigned Items',
-        bannerUnassigned:'These active items have <strong>no Storage Area assigned</strong> and won\'t appear on any vendor order sheet.<br><br>Fix via <strong>Ordering Guide → Manage Pick Path</strong>: select the vendor, drag the item into a Storage Area group, and Save.',
+        bannerUnassigned:'These active items have <strong>no Storage Area assigned</strong> and won\'t appear on any vendor order sheet.<br><br>Fix via <strong>Ordering Guide → Shelf to Sheet</strong>: select the vendor, drag the item into a Storage Area group, and Save.',
         btnRefresh:'↻ Refresh List', clickRefresh:'Click Refresh to load.',
         allAssigned:'✅ All active items have a Storage Area assigned.',
         loadingUnassigned:'Loading…',
@@ -748,7 +870,7 @@
         phAdd:'Agregar Nuevo Artículo', lblName:'Nombre del Artículo', lblVendor:'Proveedor',
         lblPack:'Empaque / Unidad', lblPar:'Par Base', lblMult:'Usar Multiplicador',
         lblArea:'Área de Almacén', areaOptional:'(opcional)',
-        areaLater:'— Asignar después vía Administrar Ruta —',
+        areaLater:'— Asignar después vía Estante a Hoja —',
         hintArea:'Seleccionar un área coloca este artículo al fondo de ese grupo al guardar.',
         btnAdd:'Agregar Artículo',
         lblEligible:'También se puede pedir de', lblEligibleEdit:'También se puede pedir de',
@@ -757,7 +879,7 @@
         lblSwitchVendor:'Proveedor activo', switchOne:'Solo se puede pedir de un proveedor.',
         hintSwitchVendor:'Cambia de qué proveedor se pide este artículo — se mueve a la hoja de pedido de ese proveedor. El par no cambia.',
         switching:'Cambiando…', switched:'Ahora se pide de ',
-        switchNeedsArea:' — asigna un Área de Almacén para este proveedor vía Administrar Ruta para que aparezca en la hoja.',
+        switchNeedsArea:' — asigna un Área de Almacén para este proveedor vía Estante a Hoja para que aparezca en la hoja.',
         phEdit:'Editar Artículo', lblVendorSel:'Proveedor', lblItemSel:'Artículo',
         optSelVendor:'-- Selecciona un proveedor --', optSelItem:'-- Selecciona un proveedor primero --',
         optSelItemReady:'-- Selecciona un artículo --',
@@ -765,7 +887,7 @@
         lblReassignVendor:'Reasignar a Proveedor', lblEditPack:'Empaque / Unidad',
         lblEditPar:'Par Base', lblEditMult:'Usar Multiplicador',
         lblEditActive:'Activo', optActive:'Activo', optInactive:'Inactivo',
-        slPickPath:'Ruta de Picking', lblCurrentArea:'Área Actual', lblNewArea:'Reasignar a',
+        slPickPath:'Estante a Hoja', lblCurrentArea:'Área Actual', lblNewArea:'Reasignar a',
         optNoChange:'— Sin cambio —',
         hintEditArea:'Reasignar coloca el artículo al fondo del grupo del área nueva.',
         btnEditClear:'Limpiar', btnEditSave:'Guardar Cambios',
@@ -775,7 +897,7 @@
         btnCancelDelete:'Cancelar', btnConfirmDelete:'Eliminar Permanentemente',
         confirmDelete:'¿Eliminar permanentemente', cannotUndo:'? No se puede deshacer.',
         phUnassigned:'Artículos Sin Área',
-        bannerUnassigned:'Estos artículos activos <strong>no tienen Área de Almacén asignada</strong> y no aparecerán en ninguna hoja de pedido.<br><br>Corrígelo en <strong>Ordering Guide → Administrar Ruta</strong>: selecciona el proveedor, arrastra el artículo a un grupo de área y guarda.',
+        bannerUnassigned:'Estos artículos activos <strong>no tienen Área de Almacén asignada</strong> y no aparecerán en ninguna hoja de pedido.<br><br>Corrígelo en <strong>Ordering Guide → Estante a Hoja</strong>: selecciona el proveedor, arrastra el artículo a un grupo de área y guarda.',
         btnRefresh:'↻ Actualizar Lista', clickRefresh:'Haz clic en Actualizar para cargar.',
         allAssigned:'✅ Todos los artículos activos tienen un Área de Almacén asignada.',
         loadingUnassigned:'Cargando…',
@@ -811,7 +933,12 @@
 
     function setLang(lang) {
       LANG = lang;
-      document.body.className = 'lang-' + lang;  // drives panel.saving::after content
+      // Toggle ONLY the lang class — must not clobber other body classes
+      // (notably `mge-web`, which gates the entire web re-skin; a wholesale
+      // className reset here silently disabled the skin). Keeps driving the
+      // body.lang-* selectors used by .panel.saving::after.
+      document.body.classList.remove('lang-en', 'lang-es');
+      document.body.classList.add('lang-' + lang);
       document.querySelectorAll('.lang-btn').forEach(function(b, i) {
         b.classList.toggle('active', ['en','es'][i] === lang);
       });
@@ -833,8 +960,8 @@
       setInnerHTML('th-par',    t('lblPar') + ' <span class="si" id="si-par"></span>');
       setInnerHTML('th-active', t('lblEditActive') + ' <span class="si" id="si-active"></span>');
       setInnerHTML('th-mult',   'Mult <span class="si" id="si-useMult"></span>');
-      setText('th-sheet', 'On Sheet');
-      setText('th-flag',  t('thFlag'));
+      setInnerHTML('th-sheet', 'On Sheet <span class="si" id="si-onSheet"></span>');
+      setInnerHTML('th-flag',  t('thFlag') + ' <span class="si" id="si-flag"></span>');
       setText('legend-empty', t('legendEmpty'));
       setText('legend-over',  t('legendOver'));
       // Legend
@@ -852,7 +979,7 @@
       setText('btn-edit-this',   t('btnEditThis'));
       setText('lbl-switch-vendor',  t('lblSwitchVendor'));
       setText('hint-switch-vendor', t('hintSwitchVendor'));
-      byId('view-noarea-banner').innerHTML = '⚠ ' + t('legendNoArea') + ' — assign via <strong>Manage Pick Path</strong>.';
+      byId('view-noarea-banner').innerHTML = '⚠ ' + t('legendNoArea') + ' — assign via <strong>Shelf to Sheet</strong>.';
       // Add panel
       setText('ph-add',          t('phAdd'));
       setText('lbl-add-name',    t('lblName'));
@@ -919,6 +1046,8 @@
 
     // ── App state ─────────────────────────────────────────────────────────────
     let allItems = [], sortKey = 'vendor', sortAsc = true, selectedItem = null;
+    let viewFilter = 'all';   // web filter chips: 'all' | 'unassigned' | 'inactive'
+    let newItemIds = {};      // id -> true for items shown with a "New" badge (web, client-side)
     let parFlags = {}; // {itemId: {flag, timesOrdered, avgOnHand, par, emptyCount, overCount}}
     let areaList = [];
     let editLookup = '';
@@ -1057,8 +1186,8 @@
 
     // ── Init ──────────────────────────────────────────────────────────────────
     function initManageItems_() {
-      if (MOG_WEB) {  // web: breadcrumb + footer "Close" returns to the editor home dashboard
-        document.body.classList.add('mge-web');
+      if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
+        mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
         setBreadcrumb_(
           [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
           { en: 'Manage Items', es: 'Administrar artículos' }
@@ -1102,6 +1231,14 @@
       byId('panel-' + key).classList.add('active');
       if (key === 'inactive')   renderInactive();
       if (key === 'unassigned') loadUnassigned();
+      setWebPanelTab_(key === 'add' ? 'add' : 'details');
+    }
+    // Web right-panel toggle highlight: 'details' covers view + edit (the selected
+    // item); 'add' is the add form. No-op in the Sheet (the toggle isn't shown).
+    function setWebPanelTab_(which) {
+      const d = byId('ptab-details'), a = byId('ptab-add');
+      if (d) d.classList.toggle('active', which !== 'add');
+      if (a) a.classList.toggle('active', which === 'add');
     }
 
     // ── Item table ────────────────────────────────────────────────────────────
@@ -1173,6 +1310,7 @@
         allItems = cached.items;
         parFlags = cached.flags || {};
         byId('table-loading').style.display = 'none';
+        computeNewIds_();
         renderTable();
         return;
       }
@@ -1194,6 +1332,7 @@
           parFlags = (result && result.flags) || {};
           writeItemsCache_(allItems, parFlags); // populate client cache for next open
           byId('table-loading').style.display = 'none';
+          computeNewIds_();
           renderTable();
         })
         .withFailureHandler(err => {
@@ -1212,6 +1351,39 @@
 
     function applyFilters() { renderTable(); }
 
+    // Left filter chips (web). Inactive items stay visible (dimmed) under "All";
+    // the chips just narrow the list so you can find unassigned/inactive fast.
+    function setViewFilter(f) {
+      viewFilter = f;
+      document.querySelectorAll('.fchip').forEach(c => c.classList.toggle('active', c.getAttribute('data-vf') === f));
+      renderTable();
+    }
+    function matchesViewFilter_(x) {
+      if (viewFilter === 'unassigned') return x.active && !x.hasArea;
+      if (viewFilter === 'inactive')   return !x.active;
+      return x.active;   // 'all' = all ACTIVE items; inactive show only under the Inactive chip
+    }
+
+    // "New" badge: client-side, per-store, per-device first-seen tracking. No
+    // schema change — the browser remembers which IDs it has seen and badges any
+    // that first appeared within the last NEW_WINDOW. On the very first load we
+    // seed every current ID as already-seen so the whole catalog doesn't light up.
+    const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+    function computeNewIds_() {
+      newItemIds = {};
+      if (!MOG_WEB) return;
+      const key = 'mog_itemSeen_' + (MOG_ABBR || 'x');
+      const now = Date.now();
+      let map = {};
+      try { map = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { map = {}; }
+      const firstRun = !Object.keys(map).length;
+      allItems.forEach(it => {
+        if (!(it.id in map)) map[it.id] = firstRun ? (now - NEW_WINDOW_MS - 1) : now;
+        if (now - map[it.id] < NEW_WINDOW_MS) newItemIds[it.id] = true;
+      });
+      try { localStorage.setItem(key, JSON.stringify(map)); } catch (e) {}
+    }
+
     // Reflect global counts on the Inactive / Unassigned tab chips so the user
     // sees there are inactive or unassigned items without opening those tabs.
     // Derived from allItems (already loaded) — no extra round-trip.
@@ -1222,19 +1394,44 @@
       if (ic) { ic.textContent = inactiveCount; ic.classList.toggle('hidden', inactiveCount === 0); }
       const uc = byId('tab-chip-unassigned');
       if (uc) { uc.textContent = unassignedCount; uc.classList.toggle('hidden', unassignedCount === 0); }
+      // Web left filter-chip counts (global, independent of the active filter).
+      const ca = byId('fc-all');        if (ca)  ca.textContent  = allItems.length - inactiveCount;
+      const cu = byId('fc-unassigned'); if (cu)  cu.textContent  = unassignedCount;
+      const cin = byId('fc-inactive');  if (cin) cin.textContent = inactiveCount;
+    }
+
+    // Comparable value for a sort key. Direct fields return as-is; the two
+    // derived columns (On Sheet, Par Review) are ranked into numbers so they
+    // sort sensibly — ascending = least → most (click again to flip and bring
+    // the most-needs-attention rows to the top).
+    function sortValue_(item, key) {
+      if (key === 'onSheet') {                 // inactive < not-on-sheet < on-sheet
+        if (!item.active) return 0;
+        return item.hasArea ? 2 : 1;
+      }
+      if (key === 'flag') {                    // inactive < no-data < ok < under < over < both
+        if (!item.active) return -1;
+        const f = parFlags[item.id];
+        if (!f || f.timesOrdered < 5) return 0;
+        if (!f.flag) return 1;
+        if (f.flag === 'empty') return 2;
+        if (f.flag === 'over')  return 3;
+        return 4;                              // 'both'
+      }
+      return item[key];
     }
 
     function renderTable() {
       updateTabChips_();
       const vf = byId('view-vendor-filter').value.toLowerCase();
-      let rows = allItems.filter(x => !vf || x.vendor.toLowerCase() === vf);
+      let rows = allItems.filter(x => (!vf || x.vendor.toLowerCase() === vf) && matchesViewFilter_(x));
       rows = rows.slice().sort((a, b) => {
-        let va = a[sortKey], vb = b[sortKey];
+        let va = sortValue_(a, sortKey), vb = sortValue_(b, sortKey);
         if (typeof va === 'boolean') { va = va ? 1 : 0; vb = vb ? 1 : 0; }
         if (typeof va === 'number') return sortAsc ? va - vb : vb - va;
         return sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
       });
-      ['name','vendor','pack','par','active','useMult'].forEach(k => {
+      ['name','vendor','pack','par','active','useMult','onSheet','flag'].forEach(k => {
         const el = byId('si-' + k); if (!el) return;
         el.textContent = k === sortKey ? (sortAsc ? '▲' : '▼') : '';
         el.className   = 'si' + (k === sortKey ? ' on' : '');
@@ -1251,6 +1448,7 @@
 
       rows.forEach(item => {
         const tr = document.createElement('tr');
+        tr.setAttribute('data-id', item.id);   // lets rerenderAndCenter_ find the row
         if (!item.active) tr.classList.add('inactive-row');
         if (item.active && !item.hasArea) tr.classList.add('no-area-row');
         if (selectedItem && selectedItem.id === item.id) tr.classList.add('selected');
@@ -1263,7 +1461,9 @@
 
         const flagHtml = buildFlagPill(item.id, item.active);
         tr.innerHTML =
-          "<td class='td-name'>" + esc(item.name) + "<span class='td-id'>" + esc(item.id) + "</span></td>" +
+          "<td class='td-name'>" + esc(item.name) +
+            (newItemIds[item.id] ? " <span class='new-badge'>" + (LANG === 'es' ? 'Nuevo' : 'New') + "</span>" : "") +
+            "<span class='td-id'>" + esc(item.id) + "</span></td>" +
           "<td class='td-vendor'>" + esc(item.vendor) + "</td>" +
           "<td class='td-pack'>" + esc(item.pack || '—') + "</td>" +
           "<td class='td-par'>" + (item.par !== '' ? item.par : '—') + "</td>" +
@@ -1274,6 +1474,26 @@
         tr.addEventListener('click', () => selectItem(item));
         tbody.appendChild(tr);
       });
+    }
+
+    // Re-render the table while keeping the user's scroll position — used after
+    // an in-place add/edit/delete so the list never jumps back to the top.
+    function rerenderPreservingScroll_() {
+      const sc = document.querySelector('.table-scroll');
+      const top = sc ? sc.scrollTop : 0;
+      renderTable();
+      if (sc) sc.scrollTop = top;
+    }
+
+    // Re-render, then scroll the given item's row to the middle of the list and
+    // briefly flash it — so after an add/edit you see exactly where it landed.
+    function rerenderAndCenter_(id) {
+      renderTable();
+      if (!id) return;
+      const tr = byId('item-tbody').querySelector('tr[data-id="' + id + '"]');
+      if (!tr) return;
+      if (tr.scrollIntoView) tr.scrollIntoView({ block: 'center' });
+      tr.classList.add('row-flash');
     }
 
     function selectItem(item) {
@@ -1419,12 +1639,11 @@
         .withSuccessHandler(res => {
           selectedItem.vendor = res.vendor;
           const entry = allItems.find(x => x.id === res.id);
-          if (entry) entry.vendor = res.vendor;
+          if (entry) { entry.vendor = res.vendor; entry.hasArea = !res.needsArea; }
           const msg = t('switched') + res.vendor + (res.needsArea ? t('switchNeedsArea') : '');
-          clearItemsCache_();
-          selectItem(selectedItem);                   // re-render detail with new active vendor
+          clearItemsCache_(); writeItemsCache_(allItems, parFlags);
+          selectItem(selectedItem);                   // re-render detail + table with the new vendor
           setStatus('view-switch', msg, res.needsArea ? 'warn' : 'ok');
-          loadAllItems();                             // refetch table truth in the background
         })
         .withFailureHandler(err => {
           sel.disabled = false;
@@ -1452,6 +1671,7 @@
       document.querySelectorAll('.top-tab').forEach(tab => tab.classList.remove('active'));
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
       byId('panel-edit').classList.add('active');
+      setWebPanelTab_('details');   // editing lives under the "Item details" tab
 
       // Reset stale state and show the loading spinner so the previous item's
       // data never peeks through during the round-trip.
@@ -1499,6 +1719,7 @@
       if (!name)   return setStatus('add', t('nameRequired'), 'warn');
       if (!vendor) return setStatus('add', t('vendorRequired'), 'warn');
       if (par === '' || isNaN(Number(par))) return setStatus('add', t('parRequired'), 'warn');
+      const eligible = getCheckedEligible_('add-eligible', vendor);   // capture before the form resets
       byId('add-btn').disabled = true; setStatus('add', t('saving'), 'info');
       setSavingPanel_('panel-add', true);
       // Pass areaName in the payload — server does the inline area assignment
@@ -1521,15 +1742,29 @@
           buildVendorChecklist_('add-eligible', byId('add-vendor').value, []);
           byId('add-btn').disabled = false;
           setSavingPanel_('panel-add', false);
-          clearItemsCache_();
-          allItems = []; loadAllItems();
+          // In-place insert: keep the user on the Add tab and the left list
+          // exactly where it is (was: full clear + refetch + render-from-top).
+          allItems.push({
+            id: res.id, name: name, vendor: vendor, eligibleVendors: eligible,
+            pack: pack, par: (par === '' ? '' : Number(par)),
+            active: true, useMult: (useMult === 'true'), hasArea: !!res.assignedArea
+          });
+          clearItemsCache_(); writeItemsCache_(allItems, parFlags);
+          computeNewIds_();
+          // Blank the sidebar (back to the Item-details hint), then show where the
+          // new item landed: centered in the list + briefly flashed.
+          selectedItem = null;
+          byId('view-select-hint').style.display = 'block';
+          byId('view-detail').style.display = 'none';
+          switchTab('view');
+          rerenderAndCenter_(res.id);
         })
         .withFailureHandler(err => {
           setSavingPanel_('panel-add', false);
           setStatus('add', err.message || String(err), 'warn');
           byId('add-btn').disabled = false;
         })
-        .commitUpsertItem({ mode:'add', name, vendor, eligibleVendors: getCheckedEligible_('add-eligible', vendor), pack, par: Number(par), useMult, active:'true', areaName: area });
+        .commitUpsertItem({ mode:'add', name, vendor, eligibleVendors: eligible, pack, par: Number(par), useMult, active:'true', areaName: area });
     }
 
     // ── EDIT ──────────────────────────────────────────────────────────────────
@@ -1556,8 +1791,22 @@
           }
           byId('edit-btn').disabled = false;
           setSavingPanel_('panel-edit', false);
-          clearItemsCache_();
-          allItems = []; loadAllItems();
+          // In-place update: refresh just this row, keep scroll + selection so
+          // editing several items in a row doesn't lose your place.
+          const _e = allItems.find(x => x.id === res.id);
+          if (_e) {
+            _e.name    = byId('edit-name').value.trim() || _e.name;   // blank = keep current
+            _e.vendor  = vendor;
+            _e.eligibleVendors = getCheckedEligible_('edit-eligible', vendor);
+            _e.pack    = byId('edit-pack').value.trim();
+            _e.par     = Number(par);
+            _e.active  = (byId('edit-active').value === 'true');
+            _e.useMult = (byId('edit-useMult').value === 'true');
+            if (res.assignedArea) _e.hasArea = true;
+            if (selectedItem && selectedItem.id === _e.id) selectedItem = _e;
+          }
+          clearItemsCache_(); writeItemsCache_(allItems, parFlags);
+          rerenderAndCenter_(res.id);
         })
         .withFailureHandler(err => {
           setSavingPanel_('panel-edit', false);
@@ -1617,11 +1866,20 @@
       bumpMutationTs_();
       MIRPC()
         .withSuccessHandler(res => {
-          setStatus('edit-delete', t('deleted') + res.name + ' (' + res.id + ')', 'ok');
           byId('edit-delete-btn').disabled = false;
           setDeletingPanel_('panel-edit', false);
-          clearItemsCache_();
-          clearEditForm(); allItems = []; loadAllItems();
+          // Null-safe: fall back to the id we deleted (editLookup) if the proxy
+          // returns an empty result — must not throw before the row is removed.
+          const delId   = (res && res.id) || editLookup;
+          const delName = (res && res.name) || delId;
+          setStatus('edit-delete', t('deleted') + delName + ' (' + delId + ')', 'ok');
+          // Bulletproof removal (filter by id) + guaranteed repaint.
+          allItems = allItems.filter(x => String(x.id) !== String(delId));
+          if (selectedItem && String(selectedItem.id) === String(delId)) selectedItem = null;
+          clearItemsCache_(); writeItemsCache_(allItems, parFlags);
+          clearEditForm();
+          switchTab('view');
+          rerenderPreservingScroll_();
         })
         .withFailureHandler(err => {
           setDeletingPanel_('panel-edit', false);

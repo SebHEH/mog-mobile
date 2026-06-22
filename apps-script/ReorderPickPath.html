@@ -2,6 +2,9 @@
 <html>
   <head>
     <base target="_top">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <?!= include('Styles'); ?>
     <script>
       var PICK_DATA   = <?!= pickDataJson ?>;
@@ -419,6 +422,61 @@
       /* ── i18n ── */
       .es { display: none; }
       .en { display: inline; }
+
+      /* ════════════════════════════════════════════════════════════════════
+         WEB EDITOR RE-SKIN — every rule is scoped to body.mge-web, so the
+         in-Sheet dialog (no .mge-web class) is byte-identical. Centered,
+         concept-themed, Inter-typeset web page. The --web-accent* tokens are
+         set centrally in EditorShell (per-concept); :root holds Sheet-mode
+         fallbacks. Section headers use Treatment B (soft accent tint + edge
+         bar); the "Unassigned" header stays amber (it means "not on the order
+         sheet yet"), not the brand color.
+         ════════════════════════════════════════════════════════════════════ */
+      /* Web tokens (--web-accent*, --shadow, --font, --r, --r-sm, --muted,
+         --faint) are defined once in EditorShell and inherited here. */
+      body.mge-web { font-family: var(--font); background: var(--page); --shell-width: 780px; }
+
+      /* Navy lang-bar emptied (lang/help relocated to the shared band) + hidden. */
+      body.mge-web .lang-bar { display: none; }
+
+      /* Vendor picker → its own card (the h3 is dropped; band + breadcrumb name the page). */
+      body.mge-web .header { position: static; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); max-width: min(780px, calc(100% - 48px)); margin: 18px auto 0; padding: 15px 18px; }
+      body.mge-web .header h3 { display: none; }
+      .web-vendor-lbl { display: none; }
+      body.mge-web .web-vendor-lbl { display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+      body.mge-web .vendor-select { font-size: 14px; padding: 10px 12px; border-radius: var(--r-sm); border-color: var(--line); color: var(--web-accent-dark); }
+
+      /* Sheet keeps its inline hint; web shows the shared info-note instead. */
+      body.mge-web .hint-drag { display: none; }
+
+      /* Groups column. */
+      body.mge-web #groupsContainer { max-width: min(780px, calc(100% - 48px)); margin: 0 auto; padding-bottom: 8px; }
+      body.mge-web .area-group { margin: 14px 0 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+
+      /* Treatment B section headers — soft accent tint + accent edge bar. */
+      body.mge-web .area-header { background: var(--web-accent-soft); color: var(--web-accent-dark); border-left: 3px solid var(--web-accent); border-radius: 0; padding: 10px 14px; }
+      body.mge-web .area-header.unassigned { background: var(--warn-bg); color: var(--warn-ink); border-left-color: var(--warn); }
+      body.mge-web .area-order-badge { background: var(--web-accent); color: #fff; }
+      body.mge-web .area-header.unassigned .area-order-badge { background: var(--warn); }
+      body.mge-web .btn-add-to-section { background: #fff; color: var(--web-accent-dark); border: 1px solid #c8ddd5; }
+      body.mge-web .btn-add-to-section:hover { background: var(--web-accent-soft); }
+
+      /* Item rows — roomier, brand-accented controls. */
+      body.mge-web .area-body { border: none; border-radius: 0; }
+      body.mge-web .item-row { padding: 11px 14px; font-size: 14px; gap: 10px; }
+      body.mge-web .item-row:hover { background: #f7faf8; }
+      body.mge-web .shelf-badge { min-width: 30px; font-size: 11px; padding: 4px 6px; border-radius: var(--r-sm); }
+      body.mge-web .btn-swap { background: var(--web-accent-soft); color: var(--web-accent-dark); border-color: #c8ddd5; font-size: 15px; padding: 7px 11px; border-radius: var(--r-sm); }
+      body.mge-web .btn-move { font-size: 11px; padding: 3px 9px; min-width: 28px; border-radius: var(--r-sm); border-color: var(--line); }
+      body.mge-web .btn-assign { background: var(--web-accent); font-size: 12px; padding: 7px 13px; border-radius: var(--r-sm); }
+
+      /* Sticky save footer — quiet back link left, accent Save right. */
+      body.mge-web .footer { position: sticky; bottom: 0; background: rgba(244,245,247,.94); border-top: 1px solid var(--line); padding: 11px 24px; margin-top: 10px; }
+      body.mge-web .footer .btn-row { max-width: 780px; margin: 0 auto; justify-content: space-between; align-items: center; }
+      body.mge-web button.btn-close { flex: 0 0 auto; background: transparent; color: var(--muted); padding: 8px 2px; }
+      body.mge-web button.btn-close:hover { color: var(--web-accent-dark); opacity: 1; }
+      body.mge-web button.btn-save { flex: 0 0 auto; background: var(--web-accent); padding: 12px 24px; border-radius: var(--r-sm); }
+      body.mge-web button.btn-save:hover { opacity: .9; }
     </style>
   </head>
   <body class="lang-en">
@@ -435,19 +493,19 @@
     <div id="help-overlay" class="help-overlay" onclick="if(event.target===this)toggleHelp(false)">
       <div class="help-card">
         <div class="help-head">
-          <span><span class="en">Manage Pick Path — how it works</span><span class="es">Administrar Ruta — cómo funciona</span></span>
+          <span><span class="en">Shelf to Sheet — how it works</span><span class="es">Estante a Hoja — cómo funciona</span></span>
           <span class="help-x" onclick="toggleHelp(false)">✕</span>
         </div>
         <div class="help-body">
           <div class="help-lead">
-            <span class="en">The <strong>pick path</strong> sets the order items appear on a vendor's order sheet — grouped by storage area, then shelf order. The goal: count the kitchen in one walk.</span>
-            <span class="es">La <strong>ruta</strong> define el orden en que los artículos aparecen en la hoja de un proveedor — por área de almacén y luego por orden de estante. La meta: contar la cocina en un solo recorrido.</span>
+            <span class="en"><strong>Shelf to Sheet</strong> sets the order items appear on a vendor's order sheet — grouped by storage area, then shelf order. The goal: count the kitchen in one walk.</span>
+            <span class="es"><strong>Estante a Hoja</strong> define el orden en que los artículos aparecen en la hoja de un proveedor — por área de almacén y luego por orden de estante. La meta: contar la cocina en un solo recorrido.</span>
           </div>
           <div class="help-step"><span class="en"><strong>1.</strong> Pick a vendor at the top.</span><span class="es"><strong>1.</strong> Elige un proveedor arriba.</span></div>
           <div class="help-step"><span class="en"><strong>2. ▲▼</strong> reorder an item within its area (shelf order).</span><span class="es"><strong>2. ▲▼</strong> reordena un artículo dentro de su área (orden de estante).</span></div>
           <div class="help-step"><span class="en"><strong>3. ⇆</strong> move an item to a different area.</span><span class="es"><strong>3. ⇆</strong> mueve un artículo a otra área.</span></div>
           <div class="help-step"><span class="en"><strong>4. +</strong> on an area header adds an unassigned item to that area.</span><span class="es"><strong>4. +</strong> en el encabezado de un área agrega un artículo sin asignar.</span></div>
-          <div class="help-step"><span class="en"><strong>5.</strong> Tap <strong>Save Pick Path</strong> — the vendor tab updates immediately.</span><span class="es"><strong>5.</strong> Toca <strong>Guardar Ruta</strong> — la pestaña del proveedor se actualiza al instante.</span></div>
+          <div class="help-step"><span class="en"><strong>5.</strong> Tap <strong>Save</strong> — the vendor tab updates immediately.</span><span class="es"><strong>5.</strong> Toca <strong>Guardar</strong> — la pestaña del proveedor se actualiza al instante.</span></div>
           <div class="help-warn"><span class="en">⚠ Switching vendors with unsaved changes will prompt you to save or discard first.</span><span class="es">⚠ Cambiar de proveedor con cambios sin guardar te pedirá guardar o descartar primero.</span></div>
         </div>
       </div>
@@ -456,9 +514,10 @@
     <!-- Sticky header -->
     <div class="header">
       <h3>
-        <span class="en">Pick Path</span>
-        <span class="es">Ruta de Picking</span>
+        <span class="en">Shelf to Sheet</span>
+        <span class="es">Estante a Hoja</span>
       </h3>
+      <div class="web-vendor-lbl"><span class="en">Vendor</span><span class="es">Proveedor</span></div>
       <select class="vendor-select" id="vendorSelect" onchange="onVendorChange()"></select>
     </div>
 
@@ -476,8 +535,8 @@
           <span class="es">Cerrar</span>
         </button>
         <button class="btn-save" id="saveBtn" onclick="doSave()">
-          <span class="en">Save Pick Path</span>
-          <span class="es">Guardar Ruta</span>
+          <span class="en">Save</span>
+          <span class="es">Guardar</span>
         </button>
       </div>
       <div id="status" class="status"></div>
@@ -552,7 +611,10 @@
 
       function setLang(lang) {
         LANG = lang;
-        document.body.className = 'lang-' + lang;  // drives #groupsContainer.saving::after content
+        // Toggle ONLY the lang class — must not clobber `mge-web` (gates the web
+        // re-skin). Still drives the #groupsContainer.saving::after content.
+        document.body.classList.remove('lang-en', 'lang-es');
+        document.body.classList.add('lang-' + lang);
         document.querySelectorAll('.lang-btn').forEach(function(btn, i) {
           btn.classList.toggle('active', ['en','es'][i] === lang);
         });
@@ -1178,10 +1240,11 @@
 
       // ── Init ──────────────────────────────────────────────────────────────────
       function initReorderPickPath_() {
-        if (MOG_WEB) {  // web: breadcrumb + footer "Close" returns to the editor home
+        if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
+          mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
           setBreadcrumb_(
             [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
-            { en: 'Reorder Pick Path', es: 'Reordenar ruta' }
+            { en: 'Shelf to Sheet', es: 'Estante a Hoja' }
           );
           var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
           var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';

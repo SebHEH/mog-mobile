@@ -706,7 +706,7 @@ function showReorderPickPathSidebar() {
   tmpl.webBootJson    = JSON.stringify({ web: false });   // in-Sheet dialog: web bits stay inert
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
-    "Pick Path"
+    "Shelf to Sheet"
   );
 }
 

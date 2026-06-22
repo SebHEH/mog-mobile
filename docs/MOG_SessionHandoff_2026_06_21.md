@@ -75,3 +75,59 @@ Gotcha to remember: a blank editor page usually means a `hidden`-attribute-vs-
 CSS-display override (see EditorShell's .mge-overlay[hidden] fix); and
 google.script.run can't call _-suffixed functions.
 ```
+
+---
+
+## Later session — Manage Items + Storage Areas web polish
+
+**Session focus:** Bespoke per-tool web polish of the KM editor (Sebastian's "rethink each tool now it's a standalone page") — Manage Items first, then Storage Areas.
+**Outcome:** Both tools fully re-skinned and shipped to canary rpfrf `/dev`; Sebastian confirmed each. Captured the repeatable recipe as a new skill. Still rpfrf-only — not pushed, not fanned out.
+**Next session focus:** Same recipe on the remaining three — Manage Vendors, Reorder Pick Path, Order History (read-only, lightest).
+
+### What shipped (canary rpfrf only, each via `deploy.py --redeploy --target rpfrf`)
+
+**The fix that unblocked everything:** each modal's `setLang()` did `document.body.className = 'lang-'+lang`, which **wipes the `mge-web` class the whole re-skin is gated on** — so the new CSS was *delivered* (curl/clasp confirmed) but never *activated* (page looked like the old dialog). Fixed in both modals to toggle only the lang class. **Every remaining tool's `setLang` has the same bug — fix it FIRST.**
+
+**Manage Items** (`ManageItems.html`):
+- Web re-skin (all `body.mge-web`-gated): concept-accent header band (lang/help relocated in), centered 1500px master-detail column, Inter, cards/`--shadow`, quiet footer.
+- On Sheet + Par Review now **sortable** (`sortValue_` ranks the derived states); Mult already was.
+- Layout rework: tabs → an `Item details | + Add item` toggle above the sidebar; View All + Inactive tabs replaced by left **filter chips** (All active / Unassigned / Inactive, with counts); **"All active" excludes inactive** (they show only under the Inactive chip).
+- **New badge** (client-side per-store first-seen, ~7 days).
+- **In-place add/edit/delete** (no full reload): preserves place, auto-centers + flashes the affected row; blank sidebar after add; null-safe delete removal.
+- Server (`Items.gs`): `clearDataValidations()` on the A:G block in `commitUpsertItem` add+edit — fixes the "cell B43 violates data validation" add failure (`insertRowAfter` inherited a stray rule on the NAME column).
+
+**Storage Areas** (`StorageAreas.html`):
+- Web re-skin (`body.mge-web`-gated): accent band, centered 760px column, card list, **always-visible Add-area row**, **sticky Save footer**, web-only intro. Draft/Save model preserved exactly.
+
+**Skills/docs:**
+- NEW **`mog-editor-web-reskin`** — turnkey per-tool recipe (setLang fix → web chrome → web-gated CSS + 0-bleed check → in-place/validation patterns → `/dev` iterate). Registered in `CLAUDE.md`.
+- ENHANCED **`mog-deploy-workflow`** — `/dev` (live HEAD, iterate here) vs `/exec` (public CDN-cached snapshot); editor canary = **rpfrf**; "deployed but not rendering = runtime, not deploy."
+- Memory: `feedback_delivered_vs_executing`.
+
+### Outstanding (carry forward)
+
+- **Remaining 3 tools** — Manage Vendors, Reorder Pick Path, Order History. Use `mog-editor-web-reskin`; **fix each `setLang` clobber first.** Order History is read-only → lightest.
+- **Still canary rpfrf only** — not pushed, not fanned out. The 3 Phase-1 commits + this session's work are all unpushed.
+- **Then:** guided tour (`appsscript-guided-tour-help`) → fan out (`deploy.py --redeploy`, no `--target`) → `git push`.
+- **Iterate on `/dev`**, never `/exec`.
+
+### Files touched (later session)
+
+- Source: `apps-script/ManageItems.html`, `apps-script/StorageAreas.html`, `apps-script/Items.gs`.
+- Skills/docs: NEW `.claude/skills/mog-editor-web-reskin/SKILL.md`; `.claude/skills/mog-deploy-workflow/SKILL.md`; `CLAUDE.md` (skills table); this handoff; `docs/MOG_CurrentState.md`.
+- Deploys: `deploy.py --redeploy --target rpfrf` (canary only). No `build.py`, no fan-out, no push. Uncommitted at handoff time.
+
+### Opening prompt for next session (polish continuation)
+
+```
+Read docs/MOG_CurrentState.md first. We're polishing the KM web editor tools
+bespoke per tool (web-gated body.mge-web re-skin; the in-Sheet dialog stays
+untouched). Manage Items + Storage Areas are DONE on canary rpfrf /dev. Next:
+Manage Vendors, Reorder Pick Path, then Order History (read-only, lightest) —
+follow the mog-editor-web-reskin skill, and FIRST fix each modal's setLang (it
+does document.body.className = 'lang-'+lang, which wipes the mge-web class and
+silently disables the whole re-skin). Iterate on the /dev URL (live HEAD), not
+/exec (CDN-cached snapshot). Deploy: python deploy.py --redeploy --target rpfrf.
+Still rpfrf-only — not pushed, not fanned out. After all tools: guided tour,
+then fan out, then git push.
+```
