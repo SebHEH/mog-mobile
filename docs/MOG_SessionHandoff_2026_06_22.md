@@ -74,3 +74,78 @@ setLang clobbering the mge-web class), not a deploy/cache one — iterate on /de
 (live HEAD), never /exec (CDN-cached). google.script.run can't call _-suffixed
 fns.
 ```
+
+---
+
+## Later session (same day) — audit done, fanned out, TNY gold-forward, Shelf-to-Sheet rename, grouped home + guided tour
+
+**Session focus:** Run the editor code audit, then ship the editor (fan out), then polish (TNY color, rename, home layout, guided tour).
+**Outcome:** Editor audit came back **clean** (one cosmetic fix). Everything from the parked editor work is now **fanned out to all 9 + master** and **committed + pushed** (`bdb44c7`, on top of the 4 prior base commits). TNY is gold-forward everywhere; "Reorder Pick Path" is renamed to "Shelf to Sheet"; the home is 3-sectioned with a first-run guided tour.
+**Next session focus:** Build the first-time-setup wizard (the MVS/MPS-style setup version MOG lacks).
+
+### What shipped (this session)
+
+- **KM editor code audit — clean** (`appsscript-codebase-audit` + dead-code check). No dead helpers from the dual-host conversion, no redundant init RPCs (pages render from prebaked template vars), handoff cleanups left zero residue, all cross-file hooks wired. **Resolved the open dead-code check: KEEP all 5** of `showAdminResetSidebar` / `goToOrderEntry` / 3× `toggle*Visibility` — none are menu-wired or code-called, yet `showAdminResetSidebar` is the *sole* entry to the live "Sheet-only" Admin Reset, which proves they're **dashboard-drawing-button-assigned** (grep-invisible). One-time confirm via "Assign script" on a Home dashboard, but do NOT delete on grep evidence. One cosmetic fix applied: dropped `--font`/`--shadow`/`--muted`/`--faint` from `EditorHome` `:root` (EditorShell owns them; verified visual no-op).
+- **Editor fanned out** — the parked Phase-1 + 06-22 polish went to all 9 + master via `deploy.py --redeploy` (no `--target`). First time the editor is on every store's `/exec`.
+- **TNY gold-forward everywhere** (web editor band + Sheet dashboard banner + recap email). Split `CONCEPT_THEMES`'s single `accent` into `accent` (band/banner fill → gold `#D4A574`) and new **`ink`** (tiles, reset strip, recap-email vendor headers + "× qty" → charcoal `#1a1a1a`). `dashTheme_()` normalizes `ink: t.ink || t.accent`, so **RP and default are byte-unchanged**. `Dashboard.gs` tiles/strip/vendor-populated CF use `ink`; `MOGApi.gs` email `headInk = theme.ink` + a luminance-derived `bandSub` (muted dark on a light band). The earlier web-only `webAccent` override was removed (base theme is gold-forward now), so `mgeApplyWebAccent_` reverted to plain `accent`/`bannerFont`.
+- **Removed the per-tool info-note one-liners** (markup in all 5 tools + the `.web-note` CSS in EditorShell). **Breadcrumb left-aligned** (`.mge-crumb` → `margin: 0`, flush at the 28px rail).
+- **Renamed "Reorder Pick Path" → "Shelf to Sheet" / "Estante a Hoja"** everywhere shown: EditorHome tile, `Core.gs` menu, `Dashboard.gs` tile, `PickPath.gs` dialog title, the tool's own title/breadcrumb/help/Save button (now just "Save"/"Guardar"), cross-refs in ManageItems + StorageAreas, and HowToUse (nav/section/headings/concept prose). **Left unchanged:** code identifiers (`ReorderPickPath`, `page=pickpath`, `commitReorderPickPath`), comments, and AdminReset's "Pick Path DB/List" (those name SETUP data columns, not the tool). ES uses "Estante a Hoja" as a proper-noun label.
+- **Editor home grouped into 3 sections** — Catalog (Items + Vendors), Order Sheet Layout (Storage Areas + Shelf to Sheet), Records (Order History) — plus a **first-run guided tour**: MVS/MPS-style **cutout-spotlight** coach-marks (4 dim panels around a bright pulsing hole), bilingual, 6 info steps, fires once per browser (`localStorage mog_edit_tour_seen`), language inherited from the PIN gate (no splash needed), replayable from the "Have a question?" help popup. Fixed the stale "Manage Items is ready now" home-help copy.
+
+### Outstanding (carry forward)
+
+- **Manual per-store step:** run **Rebuild Home Dashboard** in each Sheet to pick up the renamed tile (all 9) and the gold banner (the 2 TNY stores). Recap email re-themes on next send automatically.
+- **Confirm (don't delete):** "Assign script" on a Home dashboard to verify the 5 button-bound fns above.
+- **Tour engine still lives in `EditorHome.html`** (info-mode only). To support per-tool tours + the setup tour, **promote it to `EditorShell`** as shared infra (add `info`/`click`/`focus` modes + input-gating from the MVS engine, and the `--ink`/`--card` tokens it needs).
+- **Per-tool mini-tours** still deferred (iterate per tool, Manage Items first).
+
+### NEXT FOCUS — first-time-setup wizard (designed, not built)
+
+MOG has **no web setup screen** — store setup is `setupMobileApi()` (6 `ui.prompt`s: PIN, location, abbr, concept, GM email, master PIN → PropertiesService), owner-run from the menu. The MVS/MPS "setup version" of the tour walks a web setup form MOG lacks. Build:
+- `?page=setup` → new `Setup.html` + `renderStoreSetupWeb_` + **`commitStoreSetup({pin, location, abbr, concept, gmEmail})`** writing the same props as `setupMobileApi` (parity; keep the menu version as fallback). **Identity-only** — no data (areas/vendors/items have their own tools).
+- **First-run routing:** when `MOG_API_PIN` is unset, `?page=editor` routes to the wizard (solves the chicken-and-egg — can't gate on a PIN that doesn't exist). This is where the **MVS language splash** finally fits (no lang chosen, no gate yet).
+- **Gated setup tour** (focus steps, Next locked until each field is filled) → on Finish, save + redirect to the editor home + the home tour.
+- **3 open decisions:** (1) master PIN in the wizard or owner-menu-only (it's sensitive)? (2) access model — open when unconfigured vs a one-time setup token (fresh-store `/exec` exposure)? (3) retire `setupMobileApi()` or keep as fallback (recommend keep)?
+- Optional: Sebastian offered MVS/MPS setup screenshots.
+
+### Files touched (this session)
+
+- **Theme/server:** `apps-script/Dashboard.gs` (`CONCEPT_THEMES` accent/ink split, `dashTheme_` normalize, tile/strip/vendor-CF → `ink`), `apps-script/MOGApi.gs` (recap email `headInk`/`bandSub`), `apps-script/Core.gs` + `apps-script/PickPath.gs` (menu + dialog rename).
+- **Editor HTML:** `apps-script/EditorShell.html` (info-note CSS removed, breadcrumb left-align, `mgeApplyWebAccent_` revert), `apps-script/EditorHome.html` (token dedup, 3-section `HOME_SECTIONS`, guided-tour engine + steps + replay, stale-copy fix), `apps-script/ManageItems.html` / `ManageVendors.html` / `StorageAreas.html` / `ReorderPickPath.html` / `OrderHistory.html` (info-note removal + rename).
+- **Guide:** `apps-script/HowToUse.html` (Shelf-to-Sheet rename across nav/sections/prose).
+- **Docs/memory:** this handoff; `docs/MOG_CurrentState.md`; new memory `project_editor_webonly_direction`.
+- **Deploys:** `deploy.py --redeploy` (canary rpfrf, then full fan-out, several rounds). No `build.py` / no PWA / no hub changes. No new OAuth scopes.
+
+### Commits landed (this session)
+
+```
+bdb44c7 feat(editor): TNY gold-forward, Shelf to Sheet rename, grouped home + guided tour
+```
+(plus the 4 pre-existing base commits `4b5c353` `fe47a12` `1a3a799` `eeb4c00`, all now pushed to origin/main)
+
+### Opening prompt for next session (supersedes the one above)
+
+```
+Read docs/MOG_CurrentState.md first. The KM web editor is DONE and live on all 9
+stores + master (committed + pushed, bdb44c7): audited clean, TNY gold-forward
+everywhere, "Reorder Pick Path" renamed to "Shelf to Sheet", home is 3-sectioned
+(Catalog / Order Sheet Layout / Records) with a first-run MVS-style cutout-
+spotlight guided tour (replayable from the help popup).
+
+This session: build the FIRST-TIME-SETUP WIZARD — the MVS/MPS-style setup screen
+MOG lacks. Today setup is setupMobileApi() (6 ui.prompts → PropertiesService),
+owner-run from the menu. Build ?page=setup + Setup.html + commitStoreSetup({pin,
+location, abbr, concept, gmEmail}) writing the same props (keep the menu as
+fallback); first-run routing (no MOG_API_PIN → wizard, since you can't gate on a
+PIN that doesn't exist yet); the MVS language splash (fits here — no gate yet);
+and a gated setup tour (focus steps) → on Finish, home + home tour. Identity-only
+(no data). Decide first: master PIN in-wizard?, access model (open-when-unconfigured
+vs setup token)?, retire setupMobileApi or keep as fallback? Also promote the tour
+engine from EditorHome.html into EditorShell (add info/click/focus + gating from
+the MVS engine) so the setup tour + per-tool tours reuse it.
+
+Carry-forward: run Rebuild Home Dashboard per store (gold banner on the 2 TNY
+stores, Shelf to Sheet tile on all). Editor canary is rpfrf; iterate on /dev, fan
+out with deploy.py --redeploy (no --target). MVS tour engine reference:
+Master-Visual-Schedule/MvsApp_Help.html.
+```
