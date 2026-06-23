@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    // Injected by Editor.gs renderStoreSetupWeb_. On a fresh store CONCEPT is ''
+    // and MOG_STORE is 'Store' (identity isn't set yet), so the wizard opens on
+    // the default navy and re-themes live the moment the owner picks a concept.
+    var WEB_BOOT  = <?!= webBootJson ?>;
+    var MOG_WEB   = true;
+    var MOG_STORE = WEB_BOOT.store || '';
+    var BASE_URL  = WEB_BOOT.base || '';
+    var THEME     = WEB_BOOT.theme || {};
+    var CONCEPT   = WEB_BOOT.concept || '';
+    var MOG_TOKEN = null;
+  </script>
+  <style>
+    /* Setup wizard — MPS/MVS setup shell: a brand header band (re-themed live
+       on concept pick), mode pill + intro + numbered steps, an identity card,
+       and a FORCED save bar (no exit until a real identity saves). Theme tokens
+       only, so picking a concept re-skins the whole screen for free. */
+    :root {
+      --accent: #1a1a2e; --accent-text: #ffffff; --accent-ink: #1a1a2e; --accent-soft: #eef0f4;
+      --ink: #1d1f1d; --line: #e3e5e3; --bg: #f5f6f5; --card: #ffffff; --danger: #b3261e;
+      --r: 12px; --r-sm: 9px;
+      --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 15px; --fs-lg: 16px; --fs-xl: 18px; --fs-2xl: 20px;
+      /* --font, --shadow, --muted, --faint inherited from EditorShell's :root. */
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: var(--fs-md); line-height: 1.45; -webkit-font-smoothing: antialiased; min-height: 100vh; }
+    [hidden] { display: none !important; }
+
+    /* ── Language splash (shown BEFORE the form; no gate has been passed) ── */
+    .splash { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .splash-card { background: var(--card); border-radius: var(--r); box-shadow: 0 14px 44px rgba(0,0,0,.12); border-top: 6px solid var(--accent); padding: 36px 30px 30px; width: 100%; max-width: 380px; text-align: center; }
+    .splash-eyebrow { font-size: var(--fs-xs); font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+    .splash-h { font-size: var(--fs-2xl); font-weight: 800; line-height: 1.2; margin-bottom: 6px; }
+    .splash-h2 { font-size: var(--fs-md); font-weight: 700; color: var(--muted); margin-bottom: 24px; }
+    .splash-langs { display: flex; gap: 10px; }
+    .splash-lang { flex: 1; padding: 14px; border: none; border-radius: var(--r-sm); background: var(--accent); color: var(--accent-text); font-family: var(--font); font-size: var(--fs-lg); font-weight: 800; cursor: pointer; }
+    .splash-lang:hover { filter: brightness(1.08); }
+
+    /* ── Brand header band (re-themed via --accent on concept pick) ── */
+    .app-header { background: var(--accent); color: var(--accent-text); padding: 16px 20px 18px; transition: background .18s, color .18s; }
+    .ah-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 640px; margin: 0 auto; }
+    .ah-store { font-size: var(--fs-2xl); font-weight: 800; letter-spacing: .01em; }
+    .ah-sub { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .12em; opacity: .82; margin-top: 3px; }
+    .lang-toggle { display: inline-flex; background: rgba(255,255,255,.16); border-radius: var(--r-sm); overflow: hidden; flex: none; }
+    .lang-btn { background: transparent; color: var(--accent-text); border: none; padding: 6px 11px; font-size: var(--fs-sm); font-weight: 700; cursor: pointer; opacity: .62; font-family: var(--font); }
+    .lang-btn.on { background: rgba(255,255,255,.92); color: var(--accent-ink); opacity: 1; }
+
+    .main { max-width: 640px; margin: 0 auto; padding: 22px 20px 120px; }
+    .view-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+    .v-title { display: flex; align-items: center; gap: 9px; font-size: var(--fs-2xl); font-weight: 800; color: var(--ink); }
+    .help-dot { width: 24px; height: 24px; border-radius: 50%; border: none; background: var(--accent-soft); color: var(--accent-ink); font-size: var(--fs-base); font-weight: 800; cursor: pointer; line-height: 1; }
+    .setup-mode { flex: none; font-size: var(--fs-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 5px 12px; border-radius: 999px; color: var(--accent-ink); border: 1px solid var(--accent-ink); background: var(--accent-soft); }
+    .setup-intro { font-size: var(--fs-base); color: var(--ink); margin: 8px 2px 0; line-height: 1.55; }
+    .setup-steps { background: var(--accent-soft); border-radius: var(--r); padding: 14px 16px; margin: 16px 0 20px; }
+    .setup-steps ol { margin: 0; padding-left: 20px; }
+    .setup-steps li { color: var(--ink); font-size: var(--fs-base); margin-bottom: 5px; }
+    .setup-guide-btn { margin-top: 10px; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 9px 16px; font-size: var(--fs-sm); font-weight: 700; cursor: pointer; font-family: var(--font); }
+
+    .card-label { font-size: var(--fs-sm); font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 2px 2px 8px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 20px 20px 8px; margin-bottom: 18px; }
+    .field { margin-bottom: 18px; }
+    .field-label { display: block; font-size: var(--fs-base); font-weight: 700; color: var(--ink); margin-bottom: 3px; }
+    .field-hint { display: block; font-size: var(--fs-sm); color: var(--muted); margin-bottom: 7px; }
+    .field input[type=text], .field input[type=email], .field select { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); font-size: var(--fs-md); font-family: var(--font); background: #fafaf8; color: var(--ink); }
+    .field select { cursor: pointer; }
+    .field input:focus, .field select:focus { outline: none; border-color: var(--accent-ink); }
+    .field.invalid input, .field.invalid select { border-color: var(--danger); background: #fef4f3; }
+    .field-err { display: none; font-size: var(--fs-sm); color: var(--danger); margin-top: 5px; }
+    .field.invalid .field-err { display: block; }
+
+    /* Live name + code preview (read-only — auto-built from concept/area/city) */
+    .preview { background: var(--accent-soft); border-radius: var(--r-sm); padding: 12px 14px; margin-bottom: 6px; }
+    .preview-row { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-base); }
+    .preview-row + .preview-row { margin-top: 6px; }
+    .preview-k { font-size: var(--fs-xs); font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); flex: none; width: 86px; }
+    .preview-v { font-weight: 800; color: var(--ink); }
+    .preview-v.code { font-family: 'Inter', monospace; letter-spacing: .04em; }
+    .preview-v.empty { font-weight: 600; color: var(--faint); }
+
+    .save-bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--line); box-shadow: 0 -2px 14px rgba(0,0,0,.06); padding: 14px 20px; }
+    .save-bar-in { max-width: 640px; margin: 0 auto; display: flex; align-items: center; gap: 14px; }
+    .save-msg { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--danger); }
+    .save-btn { border: none; border-radius: var(--r-sm); padding: 13px 24px; font-size: var(--fs-md); font-weight: 800; cursor: pointer; font-family: var(--font); background: var(--accent); color: var(--accent-text); flex: none; }
+    .save-btn:disabled { background: #aab0b6; cursor: default; }
+
+    /* Help popup (the ? next to the title) */
+    .help-overlay { position: fixed; inset: 0; background: rgba(15,18,22,.5); display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; z-index: 200; overflow: auto; }
+    .help-card { background: var(--card); border-radius: var(--r); width: 100%; max-width: 480px; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
+    .help-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+    .help-title { font-size: var(--fs-xl); font-weight: 800; }
+    .help-x { border: none; background: none; font-size: 24px; line-height: 1; cursor: pointer; color: var(--muted); }
+    .help-body { padding: 16px 20px 22px; font-size: var(--fs-base); color: var(--ink); line-height: 1.55; }
+    .help-body ol { margin: 0 0 4px 18px; padding: 0; } .help-body li { margin-bottom: 7px; }
+  </style>
+</head>
+<body>
+  <?!= include('EditorShell'); ?>
+
+  <!-- Language splash: the MVS pattern — choose EN/ES before anything else,
+       since there is no PIN gate on the setup screen. -->
+  <div class="splash" id="setup-splash" hidden>
+    <div class="splash-card">
+      <div class="splash-eyebrow">Master Ordering Guide</div>
+      <div class="splash-h">Welcome &middot; Bienvenido</div>
+      <div class="splash-h2">Choose your language &middot; Elige tu idioma</div>
+      <div class="splash-langs">
+        <button type="button" class="splash-lang" onclick="chooseSetupLang('en')">English</button>
+        <button type="button" class="splash-lang" onclick="chooseSetupLang('es')">Español</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="setup-main" hidden>
+    <div class="app-header">
+      <div class="ah-top">
+        <div>
+          <div class="ah-store" id="s-bandname">{Store Name}</div>
+          <div class="ah-sub" id="s-bandsub">Master Ordering Guide</div>
+        </div>
+        <div class="lang-toggle">
+          <button type="button" class="lang-btn" id="s-en" onclick="setSetupLang('en')">EN</button>
+          <button type="button" class="lang-btn" id="s-es" onclick="setSetupLang('es')">ES</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="view-head">
+        <div class="v-title"><span id="s-title"></span><button type="button" class="help-dot" id="s-helpdot" onclick="openSetupHelp()">?</button></div>
+        <span class="setup-mode" id="s-mode"></span>
+      </div>
+      <p class="setup-intro" id="s-intro"></p>
+
+      <div class="setup-steps">
+        <ol>
+          <li id="s-step1"></li>
+          <li id="s-step2"></li>
+          <li id="s-step3"></li>
+          <li id="s-step4"></li>
+        </ol>
+        <button type="button" class="setup-guide-btn" id="s-guide" onclick="replaySetupTour()" hidden></button>
+      </div>
+
+      <div class="card-label" id="s-cardlabel"></div>
+      <div class="card">
+        <div class="field" id="f-concept">
+          <label class="field-label" id="l-concept" for="i-concept"></label>
+          <span class="field-hint" id="h-concept"></span>
+          <select id="i-concept" onchange="onIdentityInput()"></select>
+          <span class="field-err" id="e-concept"></span>
+        </div>
+
+        <div class="field" id="f-area">
+          <label class="field-label" id="l-area" for="i-area"></label>
+          <span class="field-hint" id="h-area"></span>
+          <select id="i-area" onchange="onIdentityInput()"></select>
+          <span class="field-err" id="e-area"></span>
+        </div>
+
+        <div class="field" id="f-city">
+          <label class="field-label" id="l-city" for="i-city"></label>
+          <span class="field-hint" id="h-city"></span>
+          <input type="text" id="i-city" autocomplete="off" maxlength="40" oninput="onIdentityInput()">
+          <span class="field-err" id="e-city"></span>
+        </div>
+
+        <div class="preview">
+          <div class="preview-row"><span class="preview-k" id="p-name-k"></span><span class="preview-v empty" id="p-name"></span></div>
+          <div class="preview-row"><span class="preview-k" id="p-code-k"></span><span class="preview-v code empty" id="p-code"></span></div>
+        </div>
+      </div>
+
+      <div class="card-label" id="s-cardlabel2"></div>
+      <div class="card">
+        <div class="field" id="f-pin">
+          <label class="field-label" id="l-pin" for="i-pin"></label>
+          <span class="field-hint" id="h-pin"></span>
+          <input type="text" id="i-pin" inputmode="numeric" autocomplete="off" maxlength="8">
+          <span class="field-err" id="e-pin"></span>
+        </div>
+
+        <div class="field" id="f-gmEmail">
+          <label class="field-label" id="l-gmEmail" for="i-gmEmail"></label>
+          <span class="field-hint" id="h-gmEmail"></span>
+          <input type="email" id="i-gmEmail" autocomplete="off" maxlength="120">
+          <span class="field-err" id="e-gmEmail"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="save-bar">
+      <div class="save-bar-in">
+        <span class="save-msg" id="s-savemsg"></span>
+        <button type="button" class="save-btn" id="s-save" onclick="submitSetup()"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="help-root"></div>
+
+  <script>
+    /* ES5 / Rhino-safe to match the shared shell (var, function, no arrows or
+       template literals). Strings are bilingual via a T dictionary; the form is
+       static markup whose labels/hints are filled by applySetupLang so toggling
+       language never loses entered values. */
+
+    // Concept themes — mirror the SERVER CONCEPT_THEMES (Dashboard.gs) so the
+    // live wizard preview matches exactly what the dashboard/editor/email render
+    // after save. `soft` is the light tint (steps box, pill, help dot).
+    var CONCEPT_THEME = {
+      'roll-play': { accent: '#2d8c6b', text: '#ffffff', ink: '#2d8c6b', soft: '#e4f3ee' },
+      'an':        { accent: '#3C1124', text: '#ffffff', ink: '#3C1124', soft: '#f0e6ea' },  // ĂN Night Market burgundy
+      'teasnyou':  { accent: '#D4A574', text: '#1a1a1a', ink: '#1a1a1a', soft: '#f5ead8' },
+      'leid':      { accent: '#b51579', text: '#ffffff', ink: '#b51579', soft: '#fbe3f1' },
+      '':          { accent: '#1a1a2e', text: '#ffffff', ink: '#1a1a2e', soft: '#eef0f4' }
+    };
+    var CONCEPT_ORDER = ['roll-play', 'an', 'teasnyou', 'leid'];
+    // Display names (proper nouns, same in both languages) + order-reference codes.
+    var CONCEPT_NAME = { 'roll-play': 'Roll Play', 'an': 'ĂN', 'teasnyou': 'Teas’n You', 'leid': 'Lei’d Poke' };
+    var CONCEPT_CODE = { 'roll-play': 'RP', 'an': 'AN', 'teasnyou': 'TNY', 'leid': 'LEI' };
+    // Code = CONCEPT + first two city letters + full BOH/FOH (e.g. TNYROBOH, ANTYFOH).
+    var AREA_ORDER = ['BOH', 'FOH'];
+    var AREA_CODE  = { 'BOH': 'BOH', 'FOH': 'FOH' };
+
+    var T = {
+      en: {
+        bandsub: 'Master Ordering Guide', bandPlaceholder: '{Store Name}',
+        title: 'Store Setup', mode: 'First-time setup',
+        intro: 'Welcome. Set this store up once — it tells the app who this location is.',
+        step1: 'Pick your concept — it re-themes the app instantly.',
+        step2: 'Choose front (FOH) or back (BOH) of house.',
+        step3: 'Type the city — we build the store name and code for you.',
+        step4: 'Set a team PIN (add an order email if you want).',
+        cardLabel: 'Store identity', cardLabel2: 'Access',
+        lConcept: 'Concept', hConcept: 'Sets the colors and logo, and starts the store code.',
+        selectConcept: '— Select a concept —',
+        lArea: 'Front or back of house', hArea: 'BOH = kitchen / back of house. FOH = front of house.',
+        selectArea: '— Select —', areaBOH: 'Back of house (BOH)', areaFOH: 'Front of house (FOH)',
+        lCity: 'City', hCity: 'The city or location this store is in. Example: Rockville',
+        pName: 'Store name', pCode: 'Store code', pEmpty: 'Fill in the fields above',
+        lPin: 'Store PIN', hPin: '4–8 digits — your team uses this to open the app.',
+        lGm: 'Order email (optional)', hGm: 'The daily order summary is emailed here. You can add more later.',
+        save: 'Finish setup', saving: 'Saving…', replay: 'Replay walkthrough',
+        ePin: 'PIN must be 4–8 digits.', eConcept: 'Pick a concept.', eArea: 'Pick front or back of house.',
+        eCity: 'Enter the city.', eGm: 'Enter a valid email, or leave blank.',
+        eGeneric: 'Something went wrong. Try again.',
+        eAlready: 'This store is already set up. Redirecting…',
+        helpTitle: 'Store setup',
+        helpBody: '<p>This runs once and configures the store.</p>'
+          + '<ol><li><b>Concept</b> — sets the colors and logo across the app.</li>'
+          + '<li><b>Front / back of house</b> and <b>city</b> — together with the concept these build your <b>store name</b> and <b>store code</b> automatically (you don’t type the code).</li>'
+          + '<li><b>Store PIN</b> — your team types this to open the editor.</li>'
+          + '<li><b>Order email</b> — where the daily order summary is sent (optional).</li></ol>'
+          + '<p>Press <b>Finish setup</b> to save and open the editor.</p>'
+      },
+      es: {
+        bandsub: 'Master Ordering Guide', bandPlaceholder: '{Nombre de tienda}',
+        title: 'Configurar tienda', mode: 'Configuración inicial',
+        intro: 'Bienvenido. Configura esta tienda una sola vez — le dice a la app qué local es este.',
+        step1: 'Elige tu concepto — cambia el aspecto de la app al instante.',
+        step2: 'Elige cocina (BOH) o mostrador (FOH).',
+        step3: 'Escribe la ciudad — armamos el nombre y el código por ti.',
+        step4: 'Define un PIN (agrega un correo de pedidos si quieres).',
+        cardLabel: 'Identidad de la tienda', cardLabel2: 'Acceso',
+        lConcept: 'Concepto', hConcept: 'Define los colores y el logo, y empieza el código de la tienda.',
+        selectConcept: '— Elige un concepto —',
+        lArea: 'Cocina o mostrador', hArea: 'BOH = cocina / parte trasera. FOH = mostrador / parte delantera.',
+        selectArea: '— Elige —', areaBOH: 'Cocina (BOH)', areaFOH: 'Mostrador (FOH)',
+        lCity: 'Ciudad', hCity: 'La ciudad o ubicación de esta tienda. Ejemplo: Rockville',
+        pName: 'Nombre', pCode: 'Código', pEmpty: 'Completa los campos de arriba',
+        lPin: 'PIN de la tienda', hPin: '4 a 8 dígitos — tu equipo lo usa para abrir la app.',
+        lGm: 'Correo de pedidos (opcional)', hGm: 'El resumen diario se envía aquí. Puedes agregar más después.',
+        save: 'Finalizar', saving: 'Guardando…', replay: 'Repetir el recorrido',
+        ePin: 'El PIN debe tener de 4 a 8 dígitos.', eConcept: 'Elige un concepto.', eArea: 'Elige cocina o mostrador.',
+        eCity: 'Escribe la ciudad.', eGm: 'Ingresa un correo válido o déjalo en blanco.',
+        eGeneric: 'Algo salió mal. Inténtalo de nuevo.',
+        eAlready: 'Esta tienda ya está configurada. Redirigiendo…',
+        helpTitle: 'Configurar tienda',
+        helpBody: '<p>Esto se hace una sola vez y configura la tienda.</p>'
+          + '<ol><li><b>Concepto</b> — define los colores y el logo en toda la app.</li>'
+          + '<li><b>Cocina / mostrador</b> y <b>ciudad</b> — junto con el concepto arman tu <b>nombre</b> y <b>código</b> de tienda automáticamente (no escribes el código).</li>'
+          + '<li><b>PIN</b> — tu equipo lo escribe para abrir el editor.</li>'
+          + '<li><b>Correo de pedidos</b> — a dónde se envía el resumen diario (opcional).</li></ol>'
+          + '<p>Pulsa <b>Finalizar</b> para guardar y abrir el editor.</p>'
+      }
+    };
+
+    function L() { return mgeGetLang_(); }
+    function t(k) { var l = L(); return (T[l] && T[l][k]) || T.en[k] || k; }
+    function el(id) { return document.getElementById(id); }
+    function setTxt(id, s) { var n = el(id); if (n) n.textContent = s; }
+
+    var CONCEPT_SEL = '';   // 'roll-play' | 'an' | 'teasnyou' | 'leid' | ''
+    var AREA_SEL    = '';   // 'BOH' | 'FOH' | ''
+
+    // Re-skin the whole screen to the chosen concept (the MPS/MVS live re-theme).
+    function applyConceptTheme() {
+      var th = CONCEPT_THEME[CONCEPT_SEL] || CONCEPT_THEME[''];
+      var rs = document.documentElement.style;
+      rs.setProperty('--accent', th.accent);
+      rs.setProperty('--accent-text', th.text);
+      rs.setProperty('--accent-ink', th.ink);
+      rs.setProperty('--accent-soft', th.soft);
+    }
+
+    function cityCode() {
+      var c = (el('i-city').value || '').replace(/[^A-Za-z]/g, '');
+      return c ? c.substring(0, 2).toUpperCase() : '';
+    }
+    function builtName() {
+      var cn = CONCEPT_NAME[CONCEPT_SEL] || '';
+      var city = (el('i-city').value || '').trim();
+      if (!cn || !AREA_SEL || !city) return '';
+      return cn + ' ' + city + ' ' + AREA_SEL;     // e.g. "Teas’n You Rockville BOH"
+    }
+    function builtCode() {
+      var cc = CONCEPT_CODE[CONCEPT_SEL] || '';
+      var ci = cityCode();
+      var ac = AREA_CODE[AREA_SEL] || '';
+      if (!cc || !ci || !ac) return '';
+      return cc + ci + ac;                          // e.g. "TNYROBOH"
+    }
+
+    // Recompute the live preview + header band whenever an identity input changes.
+    function onIdentityInput() {
+      CONCEPT_SEL = el('i-concept').value || '';
+      AREA_SEL    = el('i-area').value || '';
+      applyConceptTheme();
+      var name = builtName(), code = builtCode();
+      var pn = el('p-name'), pc = el('p-code');
+      if (name) { pn.textContent = name; pn.className = 'preview-v'; }
+      else      { pn.textContent = t('pEmpty'); pn.className = 'preview-v empty'; }
+      if (code) { pc.textContent = code; pc.className = 'preview-v code'; }
+      else      { pc.textContent = t('pEmpty'); pc.className = 'preview-v code empty'; }
+      setTxt('s-bandname', name || t('bandPlaceholder'));
+    }
+
+    function renderConceptSelect() {
+      var h = '<option value="">' + t('selectConcept') + '</option>';
+      for (var i = 0; i < CONCEPT_ORDER.length; i++) {
+        var v = CONCEPT_ORDER[i];
+        h += '<option value="' + v + '"' + (v === CONCEPT_SEL ? ' selected' : '') + '>' + CONCEPT_NAME[v] + '</option>';
+      }
+      el('i-concept').innerHTML = h;
+    }
+    function renderAreaSelect() {
+      var labels = { 'BOH': t('areaBOH'), 'FOH': t('areaFOH') };
+      var h = '<option value="">' + t('selectArea') + '</option>';
+      for (var i = 0; i < AREA_ORDER.length; i++) {
+        var v = AREA_ORDER[i];
+        h += '<option value="' + v + '"' + (v === AREA_SEL ? ' selected' : '') + '>' + labels[v] + '</option>';
+      }
+      el('i-area').innerHTML = h;
+    }
+
+    function applySetupLang() {
+      var l = L();
+      el('s-en').className = 'lang-btn' + (l === 'en' ? ' on' : '');
+      el('s-es').className = 'lang-btn' + (l === 'es' ? ' on' : '');
+      setTxt('s-bandsub', t('bandsub'));
+      setTxt('s-title', t('title')); setTxt('s-mode', t('mode')); setTxt('s-intro', t('intro'));
+      setTxt('s-step1', t('step1')); setTxt('s-step2', t('step2'));
+      setTxt('s-step3', t('step3')); setTxt('s-step4', t('step4'));
+      setTxt('s-cardlabel', t('cardLabel')); setTxt('s-cardlabel2', t('cardLabel2'));
+      setTxt('l-concept', t('lConcept')); setTxt('h-concept', t('hConcept')); setTxt('e-concept', t('eConcept'));
+      setTxt('l-area', t('lArea'));       setTxt('h-area', t('hArea'));       setTxt('e-area', t('eArea'));
+      setTxt('l-city', t('lCity'));       setTxt('h-city', t('hCity'));       setTxt('e-city', t('eCity'));
+      setTxt('p-name-k', t('pName'));     setTxt('p-code-k', t('pCode'));
+      setTxt('l-pin', t('lPin'));         setTxt('h-pin', t('hPin'));         setTxt('e-pin', t('ePin'));
+      setTxt('l-gmEmail', t('lGm'));      setTxt('h-gmEmail', t('hGm'));      setTxt('e-gmEmail', t('eGm'));
+      setTxt('s-save', t('save'));        setTxt('s-guide', t('replay'));
+      renderConceptSelect(); renderAreaSelect();
+      onIdentityInput();   // refresh preview/band text in the new language
+      var g = el('s-guide');
+      if (g) { if (typeof startSetupTour === 'function') g.removeAttribute('hidden'); else g.setAttribute('hidden', ''); }
+    }
+    function setSetupLang(l) { mgeSetLang_(l); applySetupLang(); }   // header EN/ES toggle
+
+    function openSetupHelp() {
+      el('help-root').innerHTML =
+        '<div class="help-overlay" id="help-overlay" onclick="if(event.target.id===\'help-overlay\')closeSetupHelp()">' +
+          '<div class="help-card" role="dialog" aria-modal="true">' +
+            '<div class="help-head"><span class="help-title">' + t('helpTitle') + '</span>' +
+            '<button type="button" class="help-x" onclick="closeSetupHelp()" aria-label="Close">&times;</button></div>' +
+            '<div class="help-body">' + t('helpBody') + '</div>' +
+          '</div></div>';
+    }
+    function closeSetupHelp() { el('help-root').innerHTML = ''; }
+    function replaySetupTour() { if (typeof startSetupTour === 'function') startSetupTour(); }   // wired in Phase B
+    document.addEventListener('keydown', function (e) { if (e.keyCode === 27) closeSetupHelp(); });
+
+    function clearInvalid() {
+      var ids = ['f-concept', 'f-area', 'f-city', 'f-pin', 'f-gmEmail'];
+      for (var i = 0; i < ids.length; i++) el(ids[i]).className = 'field';
+      setTxt('s-savemsg', '');
+    }
+    function markInvalid(field) { var f = el('f-' + field); if (f) f.className = 'field invalid'; }
+
+    function submitSetup() {
+      clearInvalid();
+      var city  = (el('i-city').value || '').trim();
+      var pin   = (el('i-pin').value || '').trim();
+      var email = (el('i-gmEmail').value || '').trim();
+
+      // Validate the wizard inputs (concept/area/city), then the built fields.
+      if (!CONCEPT_SEL)              { markInvalid('concept'); el('i-concept').focus(); return; }
+      if (!AREA_SEL)                 { markInvalid('area');    el('i-area').focus();    return; }
+      if (!city)                     { markInvalid('city');    el('i-city').focus();    return; }
+      if (!/^\d{4,8}$/.test(pin))    { markInvalid('pin');     el('i-pin').focus();     return; }
+      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { markInvalid('gmEmail'); el('i-gmEmail').focus(); return; }
+
+      var v = {
+        pin:      pin,
+        location: builtName(),     // "Concept City AREA"
+        abbr:     builtCode(),     // "CONCEPT + city-initial + area"
+        concept:  CONCEPT_SEL,
+        gmEmail:  email
+      };
+
+      var btn = el('s-save'); btn.disabled = true; setTxt('s-save', t('saving'));
+      google.script.run
+        .withSuccessHandler(onSetupSaved)
+        .withFailureHandler(onSetupFail)
+        .commitStoreSetup(v);
+    }
+
+    function onSetupSaved(res) {
+      if (!res || !res.ok) {
+        var btn = el('s-save'); btn.disabled = false; setTxt('s-save', t('save'));
+        if (res && res.error === 'alreadyConfigured') {
+          setTxt('s-savemsg', t('eAlready'));
+          window.top.location.href = BASE_URL + '?page=editor';
+          return;
+        }
+        // Server-side validation maps abbr/location errors back to a wizard field.
+        var map = { abbr: 'city', location: 'city', pin: 'pin', concept: 'concept', gmEmail: 'gmEmail' };
+        var f = res && res.error ? map[res.error] : null;
+        if (f) { markInvalid(f); var b = el('i-' + f); if (b) b.focus(); }
+        else { setTxt('s-savemsg', t('eGeneric')); }
+        return;
+      }
+      // Token minted server-side: stash it so the home skips the PIN gate.
+      if (res.token) mgeStoreToken_(res.token);
+      window.top.location.href = BASE_URL + '?page=editor';
+    }
+    function onSetupFail() {
+      var btn = el('s-save'); btn.disabled = false; setTxt('s-save', t('save'));
+      setTxt('s-savemsg', t('eGeneric'));
+    }
+
+    /* ── Boot: device gate → language splash → form ── */
+    function chooseSetupLang(l) {
+      mgeSetLang_(l);
+      el('setup-splash').setAttribute('hidden', '');
+      applySetupLang();
+      applyConceptTheme();
+      el('setup-main').removeAttribute('hidden');
+      el('i-concept').focus();
+    }
+
+    (function bootSetup() {
+      mgeApplyConcept_();           // shared shell tokens (default navy on a fresh store)
+      applyConceptTheme();          // wizard accent vars (navy until a concept is picked)
+      if (mgeIsPhone_()) { mgeShow_('device'); return; }   // computer-only, reuse shell device card
+      el('setup-splash').removeAttribute('hidden');
+    })();
+  </script>
+</body>
+</html>

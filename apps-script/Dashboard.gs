@@ -58,7 +58,9 @@ const DASH_COLORS = {
 // the MOG_CONCEPT property.
 const CONCEPT_THEMES = {
   'roll-play': { accent: "#2d8c6b", bannerFont: "#ffffff" },                  // RP teal-dark + white
+  'an':        { accent: "#3C1124", bannerFont: "#ffffff" },                  // ĂN Night Market burgundy (brand-kit primary/header color)
   'teasnyou':  { accent: "#D4A574", bannerFont: "#1a1a1a", ink: "#1a1a1a" },  // TNY Kintsugi gold band + charcoal ink
+  'leid':      { accent: "#b51579", bannerFont: "#ffffff" },                  // Lei'd dark magenta (white reads on the dark shade)
   'default':   { accent: DASH_COLORS.NAVY, bannerFont: DASH_COLORS.WHITE }
 };
 

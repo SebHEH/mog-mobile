@@ -101,21 +101,39 @@ function doGet(e) {
   // path below is unchanged, and the PWA never calls doGet (it only POSTs),
   // so adding routes here cannot affect the ordering app.
   const page = (e && e.parameter && e.parameter.page) ? String(e.parameter.page) : '';
-  if (page === 'editor')  return renderEditorHome_();        // Editor.gs — home dashboard (card launcher)
-  if (page === 'items')   return renderManageItemsWeb_();    // Editor.gs — Manage Items as a web page
-  if (page === 'vendors') return renderManageVendorsWeb_();  // Editor.gs — Manage Vendors as a web page
-  if (page === 'history') return renderOrderHistoryWeb_();   // Editor.gs — Order History as a web page
-  if (page === 'areas')   return renderStorageAreasWeb_();   // Editor.gs — Storage Areas as a web page
-  if (page === 'pickpath')return renderReorderPickPathWeb_();// Editor.gs — Reorder Pick Path as a web page
+  const props = PropertiesService.getScriptProperties();
+  const configured = !!props.getProperty(PROP_PIN);
 
-  const location = PropertiesService.getScriptProperties().getProperty(PROP_LOCATION) || 'Not configured';
-  return jsonResponse_({
-    ok: true,
-    service: 'MOG Mobile API',
-    version: API_VERSION,
-    location: location,
-    message: 'POST to this URL with { pin, action, payload }'
-  });
+  // Health / API probe — an EXPLICIT endpoint so the plain /exec can open the
+  // editor (below) while debugging + onboarding checks still have a JSON
+  // response. Works in either configured state. (The PWA never needs this — it
+  // only POSTs — but it preserves the old bare-GET payload for humans/tools.)
+  if (page === 'api' || page === 'health') {
+    return jsonResponse_({
+      ok: true,
+      service: 'MOG Mobile API',
+      version: API_VERSION,
+      location: props.getProperty(PROP_LOCATION) || 'Not configured',
+      message: 'POST to this URL with { pin, action, payload }'
+    });
+  }
+
+  // First-run: an UNCONFIGURED store sends every browser GET (including the bare
+  // URL the owner opens right after deploying) to the setup wizard — you can't
+  // gate on a PIN that doesn't exist yet.
+  if (!configured) return renderStoreSetupWeb_();
+
+  // CONFIGURED store. The PLAIN /exec opens the editor home — the easy link the
+  // owner bookmarks for editing pars/items; page= picks a specific tool. The PWA
+  // is unaffected: it only POSTs (doPost), which never reaches doGet. ?page=setup
+  // stays viewable (one-shot-guarded server-side, so harmless once configured).
+  if (page === 'setup')    return renderStoreSetupWeb_();     // Editor.gs — first-run wizard
+  if (page === 'items')    return renderManageItemsWeb_();    // Editor.gs — Manage Items as a web page
+  if (page === 'vendors')  return renderManageVendorsWeb_();  // Editor.gs — Manage Vendors as a web page
+  if (page === 'history')  return renderOrderHistoryWeb_();   // Editor.gs — Order History as a web page
+  if (page === 'areas')    return renderStorageAreasWeb_();   // Editor.gs — Storage Areas as a web page
+  if (page === 'pickpath') return renderReorderPickPathWeb_();// Editor.gs — Reorder Pick Path as a web page
+  return renderEditorHome_();   // '' (plain link), 'editor', or anything else → editor home
 }
 
 function doPost(e) {

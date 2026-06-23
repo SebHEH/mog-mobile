@@ -75,6 +75,19 @@ function renderEditorHome_() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+// ?page=setup — the first-run store-setup wizard. doGet routes any editor page
+// here while MOG_API_PIN is unset (you can't gate on a PIN that doesn't exist
+// yet). Identity-only: the form writes the same PropertiesService keys as
+// setupMobileApi (MOGApi.gs), minus the master PIN (an owner-menu concern).
+function renderStoreSetupWeb_() {
+  const tmpl = HtmlService.createTemplateFromFile('Setup');
+  tmpl.webBootJson = editorWebBoot_({ setup: true });
+  return tmpl.evaluate()
+    .setTitle('Store Setup · Master Ordering Guide')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
 // ?page=items — the EXISTING Manage Items modal served as a web page. Same
 // template the Sheet dialog uses, with MOG_WEB=true so the gate + token shim
 // engage. Parity is by construction (one file, two hosts).
@@ -209,6 +222,64 @@ function requireEditorToken_(token) {
   if (!tier) throw new Error('SESSION_EXPIRED');
   putEditorToken_(t, tier);   // sliding refresh
   return tier;
+}
+
+
+/***********************
+ * FIRST-RUN STORE SETUP (token-less, one-shot)
+ *
+ * Client-callable (no trailing underscore) so the setup wizard can reach it
+ * via plain google.script.run. It deliberately does NOT route through the
+ * webedit_call token dispatcher: on a fresh store there is no PIN yet, so no
+ * session token can exist (chicken-and-egg). Its safety is a HARD ONE-SHOT
+ * GUARD instead — it runs only while MOG_API_PIN is unset and refuses the
+ * moment a PIN exists, so a configured store's /exec can never be re-claimed
+ * through it. Writes the SAME identity props as setupMobileApi (MOGApi.gs),
+ * minus the master PIN (owner-menu only). The /exec URL is unpublished until
+ * setup completes (it enters stores.json afterward), so the open window is an
+ * unguessable, self-closing one. On success it mints a session token so the
+ * just-configured owner lands on the home dashboard without re-typing the PIN.
+ ***********************/
+function commitStoreSetup(payload) {
+  const props = PropertiesService.getScriptProperties();
+
+  // One-shot: refuse once this store is configured.
+  if (props.getProperty(PROP_PIN)) {
+    return { ok: false, error: 'alreadyConfigured' };
+  }
+
+  const p         = payload || {};
+  const pin       = String(p.pin || '').trim();
+  const location  = String(p.location || '').trim();
+  const abbr      = String(p.abbr || '').trim().toUpperCase();
+  const gmEmail   = String(p.gmEmail || '').trim();
+  const conceptIn = String(p.concept || '').trim().toLowerCase();
+  const concept   = conceptIn === 'roll-play' ? 'roll-play'
+                  : conceptIn === 'teasnyou'  ? 'teasnyou'
+                  : '';
+
+  // Server-side validation — mirrors setupMobileApi's rules. The `error` field
+  // name lets the client focus the offending input.
+  // abbr is auto-built by the wizard (CONCEPT + first 2 city letters + full
+  // BOH/FOH, e.g. TNYROBOH). Cap is 10 (longest real case TNY/LEI + 2 + BOH = 8).
+  if (!/^\d{4,8}$/.test(pin))      return { ok: false, error: 'pin',      message: 'PIN must be 4–8 digits.' };
+  if (!location)                   return { ok: false, error: 'location', message: 'Location name is required.' };
+  if (!/^[A-Z]{2,10}$/.test(abbr)) return { ok: false, error: 'abbr',     message: 'Store code must be 2–10 letters.' };
+  if (conceptIn && !concept)      return { ok: false, error: 'concept',  message: 'Choose a concept, or none.' };
+  if (gmEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(gmEmail))
+                                  return { ok: false, error: 'gmEmail',  message: 'Enter a valid email, or leave blank.' };
+
+  props.setProperty(PROP_PIN, pin);
+  props.setProperty(PROP_LOCATION, location);
+  props.setProperty(PROP_LOCATION_ABBR, abbr);
+  props.setProperty(PROP_GM_EMAIL, gmEmail);     // setupMobileApi sets this even when blank
+  if (concept) props.setProperty(PROP_CONCEPT, concept);
+  else         props.deleteProperty(PROP_CONCEPT);
+  // PROP_MASTER_PIN intentionally untouched — owner sets it via the menu.
+
+  const token = Utilities.getUuid();
+  putEditorToken_(token, 'store');
+  return { ok: true, token: token };
 }
 
 
