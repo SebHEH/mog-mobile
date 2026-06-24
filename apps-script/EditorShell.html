@@ -67,6 +67,18 @@
   .mge-crumb a:hover { text-decoration: underline; }
   .mge-crumb .mge-crumb-sep { color: #b0b4ba; }
   .mge-crumb .mge-crumb-cur { color: #1c2024; font-weight: 700; }
+  /* Prominent ? next to the current page (the MVS .vh-help look): a filled
+     accent circle with a soft halo, relocated out of the band by setBreadcrumb_.
+     !important beats each tool's own .help-btn base rules. */
+  body.mge-web .mge-crumb .mge-crumb-help {
+    display: inline-flex !important; align-items: center; justify-content: center;
+    width: 25px !important; height: 25px !important; margin: 0 0 0 8px !important; padding: 0 !important;
+    border: none !important; border-radius: 50% !important;
+    background: var(--web-accent, #1a1a2e) !important; color: var(--web-accent-text, #fff) !important;
+    font-family: inherit; font-size: 14px !important; font-weight: 800 !important; line-height: 1 !important; cursor: pointer; opacity: 1 !important;
+    box-shadow: 0 0 0 3px var(--web-accent-soft, #eef0f4) !important; transition: transform .12s, box-shadow .12s;
+  }
+  body.mge-web .mge-crumb .mge-crumb-help:hover { transform: scale(1.12); box-shadow: 0 0 0 4px var(--web-accent-soft, #eef0f4) !important; }
 
   /* ── Shared web-app header band (shown only when a tool calls mgeMountWebChrome_) ── */
   .mge-web-hd { display: none; }
@@ -123,17 +135,28 @@
   .mge-tour-pop .mge-tour-count { font-size: 11px; font-weight: 800; color: var(--accent-ink, var(--accent, #1a1a2e)); letter-spacing: .08em; margin-bottom: 4px; }
   .mge-tour-pop .mge-tour-title { font-size: 18px; font-weight: 800; color: var(--ink, #1d1f1d); margin-bottom: 6px; }
   .mge-tour-pop .mge-tour-text { font-size: 13px; color: var(--ink, #1d1f1d); line-height: 1.5; margin-bottom: 14px; }
+  /* Gate hint: shown on a gated step while its action is incomplete, so the
+     disabled "Done" button is explained ("do this to continue") — the MVS cue. */
+  .mge-tour-hint { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; font-weight: 700; line-height: 1.4; color: var(--accent-ink, var(--accent, #1a1a2e)); background: var(--accent-soft, #eef0f4); border-radius: var(--r-sm, 8px); padding: 8px 10px; margin-bottom: 12px; }
   .mge-tour-actions { display: flex; align-items: center; gap: 8px; }
   .mge-tour-spacer { flex: 1; }
   .mge-tour-skip { background: none; border: none; color: var(--muted, #6b6f6b); font-size: 12px; font-weight: 700; cursor: pointer; font-family: var(--font); padding: 0; }
   .mge-tour-skip:hover { color: var(--ink, #1d1f1d); }
   .mge-tour-btn { border: none; border-radius: var(--r-sm, 8px); padding: 9px 16px; font-size: 12px; font-weight: 800; cursor: pointer; font-family: var(--font); }
   .mge-tour-btn.ghost { background: var(--bg, #f2f2ee); color: var(--ink, #1d1f1d); border: 1px solid var(--line, #e3e5e3); }
-  .mge-tour-btn.primary { background: var(--accent, #1a1a2e); color: var(--accent-text, #fff); }
+  /* Solid concept accent on every page: tools define --web-accent, the home/setup
+     define --accent — fall through so the button is never the navy default. */
+  .mge-tour-btn.primary { background: var(--web-accent, var(--accent, #1a1a2e)); color: var(--web-accent-text, var(--accent-text, #fff)); }
+  .mge-tour-btn.primary:hover { filter: brightness(.94); }
   .mge-tour-btn.primary:disabled { background: #aab0b6; color: #fff; cursor: default; }
   .mge-tour-pop.arrow-up::before, .mge-tour-pop.arrow-down::before { content: ''; position: absolute; left: var(--arrow-left, 50%); width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; margin-left: -9px; }
   .mge-tour-pop.arrow-up::before { top: -9px; border-bottom: 9px solid var(--card, #fff); }
   .mge-tour-pop.arrow-down::before { bottom: -9px; border-top: 9px solid var(--card, #fff); }
+  /* Replay-walkthrough button (lives at the bottom of each tool's help popup) —
+     web only, so the Sheet dialog's help is unchanged. Shared so every tool's
+     mini-tour reuses it without a per-tool copy. */
+  .tour-replay-wrap { display: none; margin-top: 14px; }
+  body.mge-web .tour-replay-wrap { display: block; }
 
 </style>
 
@@ -961,6 +984,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
   /* Shared editor chrome. ES5 / Rhino-safe; functions are global so inline
      onclick + each page's init can call them. */
   var MGE_CB = null, MGE_MODE = 'start';
+  var MGE_HELPBTN = null;   // the tool's ? button, relocated next to the breadcrumb title
 
   function mgeEl_(id) { return document.getElementById(id); }
   function mgeEsc_(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -1070,14 +1094,14 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     hd.setAttribute('data-concept', (typeof CONCEPT !== 'undefined' && CONCEPT) ? CONCEPT : '');
     var loc = mgeEl_('mge-web-loc');
     if (loc) loc.textContent = mgeShortLoc_((typeof MOG_STORE !== 'undefined' && MOG_STORE) ? MOG_STORE : 'Store');
-    // Relocate the page's own help + lang buttons into the band, wrapping the
-    // two lang buttons in a segmented control. The band fully restyles them
-    // (see CSS) so they look identical on every page regardless of the host's
-    // own .lang-btn / .help-btn base rules. Idempotent across re-renders.
+    // The ? goes next to the page title (the breadcrumb's current segment) as a
+    // prominent MVS-style circle — setBreadcrumb_ places it. Capture the node now
+    // (kept on MGE_HELPBTN so it survives breadcrumb re-renders). Only the EN/ES
+    // toggle lives in the band, matching MVS. The band fully restyles the lang
+    // buttons (see CSS) regardless of the host's own base rules.
+    MGE_HELPBTN = document.querySelector('.help-btn');
     var slot = mgeEl_('mge-web-right');
     if (slot && !slot.getAttribute('data-mounted')) {
-      var help = document.querySelector('.help-btn');
-      if (help) slot.appendChild(help);
       var langs = document.querySelectorAll('.lang-btn');
       if (langs.length) {
         var seg = document.createElement('div');
@@ -1100,15 +1124,35 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
   }
   function mgeHide_() { var o = mgeEl_('mge-overlay'); if (o) o.setAttribute('hidden', ''); }
 
-  // Each page's init calls this: gate (device → block, stored token → skip,
-  // else PIN), then run cb() once authed.
+  // Runs the page's init callback (kept on MGE_CB so a later reauth can re-run
+  // it — reloading the tool cleanly instead of leaving a blank/stale page).
+  function mgeRunCb_() { if (typeof MGE_CB === 'function') MGE_CB(); }
+
+  // Each page's init calls this. The gate is the ONLY door: device → block;
+  // a stored token is VALIDATED server-side (editorPing) before the page runs,
+  // never used optimistically; anything else → PIN. This guarantees you can't
+  // land on a tool with an unverified session — a token flushed by a redeploy
+  // or expired routes to the PIN, not a broken page.
   function mgeStartGate_(cb) {
     MGE_CB = cb || null; MGE_MODE = 'start';
     mgeApplyConcept_(); mgeApplyLang_();
     if (mgeIsPhone_()) { mgeShow_('device'); return; }
     var tok = mgeStoredToken_();
-    if (tok) { MOG_TOKEN = tok; if (typeof cb === 'function') cb(); return; }
-    mgeShow_('pin');
+    if (!tok) { mgeShow_('pin'); return; }
+    // Validate-first: show the gate (neutral "checking" — no card) while we
+    // confirm the token, then either run the page or fall back to the PIN.
+    MOG_TOKEN = tok;
+    mgeShow_('checking');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok) { mgeHide_(); mgeRunCb_(); }
+        else { mgeClearToken_(); MOG_TOKEN = null; mgeShow_('pin'); }
+      })
+      .withFailureHandler(function () {
+        // Couldn't verify (transport error) — safest is to require the PIN.
+        mgeClearToken_(); MOG_TOKEN = null; mgeShow_('pin');
+      })
+      .editorPing(tok);
   }
   // Reprompt after a mid-session token expiry. Clear the dead token first.
   function mgeReshowGate_() {
@@ -1147,7 +1191,11 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     MOG_TOKEN = res.token;
     mgeStoreToken_(res.token);
     mgeHide_();
-    if (MGE_MODE === 'start' && typeof MGE_CB === 'function') { var cb = MGE_CB; MGE_CB = null; cb(); }
+    // Run the page init on EVERY successful auth — initial PIN or a mid-session
+    // reauth. After a reauth the tool reloads cleanly instead of sitting blank
+    // (the old code only ran init on the first 'start' auth, which is why a
+    // reprompt left an empty table).
+    mgeRunCb_();
   }
   function mgeOnAuthFail_(err) {
     var btn = mgeEl_('mge-btn'); if (btn) btn.disabled = false;
@@ -1169,6 +1217,10 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     }
     h += '<span class="mge-crumb-cur">' + mgeEsc_(es ? (current.es || current.en) : current.en) + '</span>';
     bar.innerHTML = h;
+    // Place the prominent ? right after the current page name (MVS-style). The
+    // node is held on MGE_HELPBTN, so re-appending after the innerHTML wipe (e.g.
+    // a language re-render) re-attaches the same button with its onclick intact.
+    if (MGE_HELPBTN) { MGE_HELPBTN.className = 'help-btn mge-crumb-help'; bar.appendChild(MGE_HELPBTN); }
     bar.removeAttribute('hidden');
   }
 
@@ -1185,8 +1237,10 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
      per-tool tours all share one engine. ES5 / Rhino-safe. */
   var MGE_TOUR = { active: false, step: 0, steps: [], opts: {}, wired: false };
   var MGE_TOUR_T = {
-    en: { skip: 'Skip', back: 'Back', next: 'Next', done: 'Done' },
-    es: { skip: 'Omitir', back: 'Atrás', next: 'Siguiente', done: 'Listo' }
+    en: { skip: 'Skip', back: 'Back', next: 'Next', done: 'Done',
+          stepDone: 'Done with this step', gateHint: 'Do this step to continue.' },
+    es: { skip: 'Omitir', back: 'Atrás', next: 'Siguiente', done: 'Listo',
+          stepDone: 'Listo con este paso', gateHint: 'Completa este paso para continuar.' }
   };
   function mgeTt_(k) { var l = mgeGetLang_(); return (MGE_TOUR_T[l] && MGE_TOUR_T[l][k]) || MGE_TOUR_T.en[k] || k; }
   function mgeTourActive_() { return MGE_TOUR.active; }
@@ -1225,6 +1279,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     var es = (mgeGetLang_() === 'es');
     var c = (es && s.es) ? s.es : s.en;
     var last = MGE_TOUR.step === MGE_TOUR.steps.length - 1;
+    var gated = (MGE_TOUR.opts.mode === 'gated' && typeof s.gate === 'function');
     var hasTarget = !!(s.sel && document.querySelector(s.sel));
     var h = '';
     if (hasTarget) {
@@ -1238,11 +1293,17 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     h +=   '<div class="mge-tour-count">' + (MGE_TOUR.step + 1) + ' / ' + MGE_TOUR.steps.length + '</div>';
     h +=   '<div class="mge-tour-title">' + mgeEsc_(c.title) + '</div>';
     h +=   '<div class="mge-tour-text">' + mgeEsc_(c.body) + '</div>';
+    // Gated step: a hint that explains the disabled button (shown while locked,
+    // hidden by mgeTourSyncGate_ once the action is done) — the MVS "do this to
+    // continue" cue, so a greyed-out button never looks broken.
+    if (gated) h += '<div class="mge-tour-hint" id="mge-tour-gate-hint">&#9432; ' + mgeEsc_(mgeTt_('gateHint')) + '</div>';
     h +=   '<div class="mge-tour-actions">';
     h +=     '<button type="button" class="mge-tour-skip" onclick="mgeEndTour_()">' + mgeEsc_(mgeTt_('skip')) + '</button>';
     h +=     '<span class="mge-tour-spacer"></span>';
     if (MGE_TOUR.step > 0) h += '<button type="button" class="mge-tour-btn ghost" onclick="mgeTourBack_()">' + mgeEsc_(mgeTt_('back')) + '</button>';
-    h +=     '<button type="button" class="mge-tour-btn primary" id="mge-tour-next" onclick="mgeTourNext_()">' + mgeEsc_(last ? mgeTt_('done') : mgeTt_('next')) + '</button>';
+    // Gated steps read "Done with this step" (you act, then advance); others Next/Done.
+    var advLabel = last ? mgeTt_('done') : (gated ? mgeTt_('stepDone') : mgeTt_('next'));
+    h +=     '<button type="button" class="mge-tour-btn primary" id="mge-tour-next" onclick="mgeTourNext_()">' + mgeEsc_(advLabel) + '</button>';
     h +=   '</div>';
     h += '</div>';
     root.innerHTML = h;
@@ -1256,7 +1317,11 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
 
   // Enable/disable Next per the current gated step (no full re-render, so the
   // user's focus + caret stay put while typing).
-  function mgeTourSyncGate_() { var btn = mgeEl_('mge-tour-next'); if (btn) btn.disabled = !mgeTourGateOk_(); }
+  function mgeTourSyncGate_() {
+    var ok = mgeTourGateOk_();
+    var btn = mgeEl_('mge-tour-next'); if (btn) btn.disabled = !ok;
+    var hint = mgeEl_('mge-tour-gate-hint'); if (hint) hint.style.display = ok ? 'none' : '';
+  }
 
   function mgeTourReposition_() {
     if (!MGE_TOUR.active) return;

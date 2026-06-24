@@ -507,6 +507,7 @@
           <div class="help-step"><span class="en"><strong>4. +</strong> on an area header adds an unassigned item to that area.</span><span class="es"><strong>4. +</strong> en el encabezado de un área agrega un artículo sin asignar.</span></div>
           <div class="help-step"><span class="en"><strong>5.</strong> Tap <strong>Save</strong> — the vendor tab updates immediately.</span><span class="es"><strong>5.</strong> Toca <strong>Guardar</strong> — la pestaña del proveedor se actualiza al instante.</span></div>
           <div class="help-warn"><span class="en">⚠ Switching vendors with unsaved changes will prompt you to save or discard first.</span><span class="es">⚠ Cambiar de proveedor con cambios sin guardar te pedirá guardar o descartar primero.</span></div>
+          <div class="tour-replay-wrap"><button type="button" class="mge-tour-btn primary" onclick="replayPickPathTour()"><span class="en">↻ Replay walkthrough</span><span class="es">↻ Repetir el recorrido</span></button></div>
         </div>
       </div>
     </div>
@@ -1239,6 +1240,31 @@
       }
 
       // ── Init ──────────────────────────────────────────────────────────────────
+      // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──
+      var PICKPATH_TOUR_STEPS = [
+        { sel: null,
+          en: { title: 'Count in one walk', body: 'This sets the order items appear on a vendor’s sheet — by area, then shelf order. Match how you walk the kitchen and counting is one pass.' },
+          es: { title: 'Cuenta en un recorrido', body: 'Esto define el orden en que los artículos aparecen en la hoja de un proveedor — por área y luego por estante. Acomódalo como recorres la cocina y cuentas en una sola pasada.' } },
+        { sel: '#vendorSelect',
+          en: { title: 'Pick a vendor', body: 'Choose whose sheet to arrange — each vendor has its own layout.' },
+          es: { title: 'Elige un proveedor', body: 'Elige de quién organizar la hoja — cada proveedor tiene su propio orden.' } },
+        { sel: '#groupsContainer',
+          en: { title: 'Arrange the items', body: 'Within an area, ▲▼ reorders; ⇆ moves an item to another area; + on an area header pulls in an unassigned one. Amber Unassigned items aren’t on the sheet yet — place them to add them.' },
+          es: { title: 'Organiza los artículos', body: 'Dentro de un área, ▲▼ reordena; ⇆ mueve un artículo a otra área; + en el encabezado trae uno sin asignar. Los ámbar Sin asignar aún no están en la hoja — colócalos para agregarlos.' } },
+        { sel: '#saveBtn',
+          en: { title: 'Save to apply', body: 'Press Save and the vendor’s sheet updates right away. Switching vendors with unsaved changes asks you first. Tap the ? up top anytime to replay this.' },
+          es: { title: 'Guarda para aplicar', body: 'Pulsa Guardar y la hoja del proveedor se actualiza al instante. Cambiar de proveedor con cambios sin guardar te pregunta primero. Toca el ? de arriba para repetir esto.' } }
+      ];
+      function startPickPathTour() { toggleHelp(false); mgeStartTour_(PICKPATH_TOUR_STEPS, { mode: 'info' }); }
+      function replayPickPathTour() { startPickPathTour(); }
+      function maybeAutoStartPickPathTour_() {
+        var seen = false;
+        try { seen = localStorage.getItem('mog_pickpath_tour_seen') === '1'; } catch (e) {}
+        if (seen) return;
+        try { localStorage.setItem('mog_pickpath_tour_seen', '1'); } catch (e) {}
+        setTimeout(startPickPathTour, 500);
+      }
+
       function initReorderPickPath_() {
         if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
           mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
@@ -1250,6 +1276,7 @@
           var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
         }
         setLang(MOG_WEB ? mgeGetLang_() : 'en');
+        if (MOG_WEB) maybeAutoStartPickPathTour_();   // first-run mini-tour (once per browser)
       }
       if (MOG_WEB) { mgeStartGate_(initReorderPickPath_); }
       else { initReorderPickPath_(); }

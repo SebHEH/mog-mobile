@@ -427,6 +427,7 @@
         <div class="help-step"><span class="en"><strong>Vendor Summary</strong> — totals per item; use <strong>🖨 Print</strong> to print or export.</span><span class="es"><strong>Resumen por Proveedor</strong> — totales por artículo; usa <strong>🖨 Imprimir</strong> para imprimir o exportar.</span></div>
         <div class="help-step"><span class="en">Filter by vendor or date range (7 / 30 / 90 days, All Time, or Custom) at the top.</span><span class="es">Filtra por proveedor o rango de fechas (7 / 30 / 90 días, Todo, o Personalizado) arriba.</span></div>
         <div class="help-tip"><span class="en">💡 History starts the day logging began — there's no data for orders before that.</span><span class="es">💡 El historial empieza el día en que comenzó el registro — no hay datos de pedidos anteriores.</span></div>
+        <div class="tour-replay-wrap"><button type="button" class="mge-tour-btn primary" onclick="replayHistoryTour()"><span class="en">↻ Replay walkthrough</span><span class="es">↻ Repetir el recorrido</span></button></div>
       </div>
     </div>
   </div>
@@ -675,6 +676,31 @@
   }
 
   /* ══ INIT ══ */
+  // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──
+  var HISTORY_TOUR_STEPS = [
+    { sel: null,
+      en: { title: 'A record of orders', body: 'Order History is read-only. Every time someone resets On Hand, that day’s order is logged here.' },
+      es: { title: 'Un registro de pedidos', body: 'El Historial es de solo lectura. Cada vez que alguien restablece En Stock, el pedido de ese día se registra aquí.' } },
+    { sel: '.filter-bar',
+      en: { title: 'Filter what you see', body: 'Narrow by vendor and date range — 7 / 30 / 90 days, All Time, or custom. 🖨 Print exports whatever’s on screen.' },
+      es: { title: 'Filtra lo que ves', body: 'Acota por proveedor y rango de fechas — 7 / 30 / 90 días, Todo o personalizado. 🖨 Imprimir exporta lo que está en pantalla.' } },
+    { sel: '#recent-list',
+      en: { title: 'Open a day’s orders', body: 'Recent shows vendor cards by date — click one for that order’s detail. The tabs up top add Item History (one item’s entries) and Vendor Summary (totals per item).' },
+      es: { title: 'Abre los pedidos de un día', body: 'Recientes muestra tarjetas por proveedor por fecha — toca una para ver el detalle. Las pestañas de arriba agregan Historial por Artículo (los registros de un artículo) y Resumen por Proveedor (totales por artículo).' } },
+    { sel: null,
+      en: { title: 'You’re all set', body: 'History starts the day logging began — nothing before that, and nothing here changes your data. Tap the ? up top anytime to replay this.' },
+      es: { title: 'Listo', body: 'El historial empieza el día en que comenzó el registro — nada antes, y nada aquí cambia tus datos. Toca el ? de arriba para repetir esto.' } }
+  ];
+  function startHistoryTour() { toggleHelp(false); mgeStartTour_(HISTORY_TOUR_STEPS, { mode: 'info' }); }
+  function replayHistoryTour() { startHistoryTour(); }
+  function maybeAutoStartHistoryTour_() {
+    var seen = false;
+    try { seen = localStorage.getItem('mog_history_tour_seen') === '1'; } catch (e) {}
+    if (seen) return;
+    try { localStorage.setItem('mog_history_tour_seen', '1'); } catch (e) {}
+    setTimeout(startHistoryTour, 500);
+  }
+
   function initOrderHistory_() {
     if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
       mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
@@ -691,6 +717,7 @@
     document.getElementById('date-from').value = fmtD(from);
     setLang(MOG_WEB ? mgeGetLang_() : 'en');   // web: open in the language chosen at the gate
     loadBootstrap();   // single RPC: populates vendor dropdown + seeds Recent tab
+    if (MOG_WEB) maybeAutoStartHistoryTour_();   // first-run mini-tour (once per browser)
   }
   window.onload = function() {
     if (MOG_WEB) { mgeStartGate_(initOrderHistory_); } else { initOrderHistory_(); }

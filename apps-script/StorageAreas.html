@@ -325,6 +325,7 @@
           <div class="help-step"><span class="en"><strong>4.</strong> Tap <strong>Save Areas</strong> to apply — your changes are a draft until you save.</span><span class="es"><strong>4.</strong> Toca <strong>Guardar Áreas</strong> para aplicar — tus cambios son un borrador hasta que guardas.</span></div>
           <div class="help-tip"><span class="en">💡 The area order sets the order items appear on <strong>every</strong> vendor's order sheet.</span><span class="es">💡 El orden de las áreas define el orden en que aparecen los artículos en la hoja de <strong>cada</strong> proveedor.</span></div>
           <div class="help-warn"><span class="en">⚠ Deleting an area unassigns its items — they vanish from vendor tabs until you reassign them in <strong>Shelf to Sheet</strong>.</span><span class="es">⚠ Eliminar un área desasigna sus artículos — desaparecen de las pestañas hasta reasignarlos en <strong>Estante a Hoja</strong>.</span></div>
+          <div class="tour-replay-wrap"><button type="button" class="mge-tour-btn primary" onclick="replayAreasTour()"><span class="en">↻ Replay walkthrough</span><span class="es">↻ Repetir el recorrido</span></button></div>
         </div>
       </div>
     </div>
@@ -786,6 +787,31 @@
       }
 
       // ── Init ──────────────────────────────────────────────────────────────────
+      // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──
+      var AREAS_TOUR_STEPS = [
+        { sel: null,
+          en: { title: 'Where you count', body: 'Areas are the physical spots you store product — Walk-In, Dry Storage, Freezer, Bar. An item needs an area to show on a sheet, and the area order is the order items print.' },
+          es: { title: 'Dónde cuentas', body: 'Las áreas son los lugares donde guardas el producto — Cámara, Almacén seco, Congelador, Bar. Un artículo necesita un área para aparecer en una hoja, y el orden de las áreas es el orden en que se imprimen.' } },
+        { sel: '#area-list',
+          en: { title: 'Order your areas', body: 'Use ▲▼ to put areas in the order you walk the kitchen, ✎ to rename, 🗑 to delete. Deleting one unassigns its items until you place them again in Shelf to Sheet.' },
+          es: { title: 'Ordena tus áreas', body: 'Usa ▲▼ para poner las áreas en el orden en que recorres la cocina, ✎ para renombrar, 🗑 para eliminar. Eliminar una desasigna sus artículos hasta colocarlos de nuevo en Estante a Hoja.' } },
+        { sel: '.action-header',
+          en: { title: 'Add an area', body: 'Open ➕ Add Area, type a name, and add it. New areas land at the bottom — reorder with ▲▼.' },
+          es: { title: 'Agrega un área', body: 'Abre ➕ Agregar Área, escribe un nombre y agrégala. Las nuevas quedan al final — reordénalas con ▲▼.' } },
+        { sel: '#save-btn',
+          en: { title: 'Save to apply', body: 'Your changes are a draft until you press Save Areas — then they hit the store sheet. Tap the ? up top anytime to replay this.' },
+          es: { title: 'Guarda para aplicar', body: 'Tus cambios son un borrador hasta que pulsas Guardar Áreas — entonces llegan a la hoja. Toca el ? de arriba para repetir esto.' } }
+      ];
+      function startAreasTour() { toggleHelp(false); mgeStartTour_(AREAS_TOUR_STEPS, { mode: 'info' }); }
+      function replayAreasTour() { startAreasTour(); }
+      function maybeAutoStartAreasTour_() {
+        var seen = false;
+        try { seen = localStorage.getItem('mog_areas_tour_seen') === '1'; } catch (e) {}
+        if (seen) return;
+        try { localStorage.setItem('mog_areas_tour_seen', '1'); } catch (e) {}
+        setTimeout(startAreasTour, 500);
+      }
+
       function initStorageAreas_() {
         if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
           mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
@@ -797,6 +823,7 @@
           var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
         }
         setLang(MOG_WEB ? mgeGetLang_() : 'en');
+        if (MOG_WEB) maybeAutoStartAreasTour_();   // first-run mini-tour (once per browser)
       }
       if (MOG_WEB) { mgeStartGate_(initStorageAreas_); }
       else { initStorageAreas_(); }

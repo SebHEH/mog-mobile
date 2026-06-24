@@ -154,6 +154,7 @@
       .pill-over     { background: #fde8e8; color: #7a1a1a; font-weight: bold; }
       .pill-both     { background: #f8d7da; color: #7a1a1a; font-weight: bold; }
       .pill-nodata   { background: var(--page); color: #aaa; font-weight: normal; font-style: italic; }
+      .pill-adjusted { background: #e7f0fb; color: #2c5d99; }
       .table-empty, .table-loading { padding: 36px; text-align: center; color: #bbb; font-size: 13px; font-style: italic; }
       .table-legend {
         display: flex; gap: 24px; padding: 14px 18px 16px;
@@ -474,7 +475,10 @@
          scroll at a viewport-relative height; the detail pane sticks as you
          scroll the list. ── */
       body.mge-web .body-split { flex: 0 0 auto; overflow: visible; align-items: flex-start; }
-      body.mge-web .table-scroll { max-height: calc(100vh - 340px); }
+      /* Floor the list at the open edit-form's height so the left card matches
+         the detail sidebar when it's extended and never gets shorter than it;
+         grow with the viewport up to a cap so big monitors don't overshoot. */
+      body.mge-web .table-scroll { min-height: 600px; max-height: clamp(600px, calc(100vh - 220px), 680px); }
       body.mge-web .right-pane { position: sticky; top: 14px; align-self: flex-start; max-height: calc(100vh - 28px); }
 
       /* Persistent title + description (web only), MVS/MPS-style. */
@@ -910,6 +914,7 @@
         flagNone:'—',
         flagNoData:'No data yet',
         flagOk:'No change',
+        flagAdjusted:'Recently adjusted',
         flagOrders:'orders logged',
         flagAvgOnHand:'Avg On Hand',
         flagEmptyCount:'Times Empty',
@@ -979,6 +984,7 @@
         flagNone:'—',
         flagNoData:'Sin datos',
         flagOk:'Sin cambio',
+        flagAdjusted:'Ajuste reciente',
         flagOrders:'pedidos registrados',
         flagAvgOnHand:'Prom. En Stock',
         flagEmptyCount:'Veces Vacío',
@@ -1106,6 +1112,7 @@
     let allItems = [], sortKey = 'vendor', sortAsc = true, selectedItem = null;
     let viewFilter = 'all';   // web filter chips: 'all' | 'unassigned' | 'inactive'
     let newItemIds = {};      // id -> true for items shown with a "New" badge (web, client-side)
+    let parAdjustedIds = {};  // id -> true for items whose par was adjusted recently (web, client-side)
     let parFlags = {}; // {itemId: {flag, timesOrdered, avgOnHand, par, emptyCount, overCount}}
     let areaList = [];
     let editLookup = '';
@@ -1323,20 +1330,20 @@
     // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──
     var ITEMS_TOUR_STEPS = [
       { sel: null,
-        en: { title: 'Manage Items', body: 'This is your master list of everything you order. Each item belongs to a vendor, carries a pack size and a base par, and lands on the order sheet by its storage area. Here’s a quick look around — about 20 seconds.' },
-        es: { title: 'Administrar artículos', body: 'Esta es tu lista maestra de todo lo que pides. Cada artículo pertenece a un proveedor, tiene un empaque y un par base, y aparece en la hoja de pedido según su área. Aquí tienes un vistazo rápido — unos 20 segundos.' } },
+        en: { title: 'Your item list', body: 'Everything you order lives here. Each item has a vendor, a pack size, and a base par, and sits in a storage area — that’s what puts it on the order sheet.' },
+        es: { title: 'Tu lista de artículos', body: 'Aquí está todo lo que pides. Cada artículo tiene un proveedor, un empaque y un par base, y vive en un área de almacén — eso es lo que lo pone en la hoja de pedido.' } },
       { sel: '#filter-chips',
-        en: { title: 'Filter your list', body: 'Jump between all active items, ⚠ Unassigned (active but with no storage area yet — they won’t show on a vendor tab until you give them one), and Inactive (hidden, but kept around).' },
-        es: { title: 'Filtra tu lista', body: 'Cambia entre todos los activos, ⚠ Sin área (activos pero sin área aún — no aparecen en la pestaña del proveedor hasta que les des una) e Inactivos (ocultos, pero guardados).' } },
+        en: { title: 'Filter your list', body: 'Switch between all active items, ⚠ Unassigned (active but with no area yet — they won’t show on a vendor tab), and Inactive (hidden, but kept).' },
+        es: { title: 'Filtra tu lista', body: 'Cambia entre todos los activos, ⚠ Sin área (activos pero sin área aún — no aparecen en la pestaña del proveedor) e Inactivos (ocultos, pero guardados).' } },
       { sel: '.left-pane',
-        en: { title: 'Every item is a row', body: 'Click any row to open it on the right, where you set its vendor, pack size, par, and storage area — or deactivate it (reversible) or delete it (permanent). The far-right column flags pars that may need a look.' },
-        es: { title: 'Cada artículo es una fila', body: 'Toca cualquier fila para abrirla a la derecha y ajustar su proveedor, empaque, par y área — o desactivarla (reversible) o eliminarla (permanente). La columna derecha marca pares que tal vez debas revisar.' } },
+        en: { title: 'Open any item', body: 'Click a row to edit it on the right — set its vendor, pack, par, and area, or deactivate or delete it. The right-hand column flags pars worth a look.' },
+        es: { title: 'Abre cualquier artículo', body: 'Toca una fila para editarla a la derecha — ajusta su proveedor, empaque, par y área, o desactívala o elimínala. La columna derecha marca pares que vale la pena revisar.' } },
       { sel: '#ptab-add',
-        en: { title: 'Add an item', body: '“+ Add item” adds something new — give it a name, its vendor, a pack size, and optionally a base par and the storage area you count it in. Items belong to a vendor, so set your vendors up first.' },
-        es: { title: 'Agrega un artículo', body: '“+ Agregar” agrega algo nuevo — dale un nombre, su proveedor, un empaque y, si quieres, un par base y el área donde lo cuentas. Los artículos pertenecen a un proveedor, así que configura tus proveedores primero.' } },
+        en: { title: 'Add an item', body: 'Tap + Add item — give it a name, a vendor, and a pack size, plus an optional par and storage area. Items belong to a vendor, so add your vendors first.' },
+        es: { title: 'Agrega un artículo', body: 'Toca + Agregar — dale un nombre, un proveedor y un empaque, y si quieres un par y un área. Los artículos pertenecen a un proveedor, así que agrega tus proveedores primero.' } },
       { sel: null,
-        en: { title: 'That’s the tour', body: 'Your changes save straight to the store sheet — just like editing in Google Sheets. Tap the ? up top anytime to replay this, and every other tool has its own ? too.' },
-        es: { title: 'Eso es todo', body: 'Tus cambios se guardan directo en la hoja de la tienda — igual que editar en Google Sheets. Toca el ? de arriba para repetir esto, y cada herramienta tiene su propio ? también.' } }
+        en: { title: 'You’re all set', body: 'Changes save straight to the store sheet, just like editing in Google Sheets. Tap the ? up top anytime to replay this.' },
+        es: { title: 'Listo', body: 'Los cambios se guardan directo en la hoja de la tienda, igual que en Google Sheets. Toca el ? de arriba para repetir esto.' } }
     ];
     function startItemsTour() { toggleHelp(false); mgeStartTour_(ITEMS_TOUR_STEPS, { mode: 'info' }); }
     function replayItemsTour() { startItemsTour(); }
@@ -1486,6 +1493,7 @@
         parFlags = cached.flags || {};
         byId('table-loading').style.display = 'none';
         computeNewIds_();
+        computeParAdjustedIds_();
         renderTable();
         return;
       }
@@ -1508,6 +1516,7 @@
           writeItemsCache_(allItems, parFlags); // populate client cache for next open
           byId('table-loading').style.display = 'none';
           computeNewIds_();
+          computeParAdjustedIds_();
           renderTable();
         })
         .withFailureHandler(err => {
@@ -1559,6 +1568,36 @@
       try { localStorage.setItem(key, JSON.stringify(map)); } catch (e) {}
     }
 
+    // "Recently adjusted" pill: client-side, per-store, per-device. When a KM
+    // changes an item's par here, the browser remembers it for PAR_ADJ_WINDOW
+    // and the Par Review column shows "Recently adjusted" (taking precedence
+    // over the historical flag, which is misleading until new orders accrue
+    // against the new par). Same localStorage shape as the "New" badge; no
+    // schema change. Expired entries are pruned so the map can't grow forever.
+    const PAR_ADJ_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+    function parAdjustedKey_() { return 'mog_parAdjusted_' + (MOG_ABBR || 'x'); }
+    function computeParAdjustedIds_() {
+      parAdjustedIds = {};
+      if (!MOG_WEB) return;
+      const now = Date.now();
+      let map = {};
+      try { map = JSON.parse(localStorage.getItem(parAdjustedKey_()) || '{}') || {}; } catch (e) { map = {}; }
+      let changed = false;
+      Object.keys(map).forEach(id => {
+        if (now - map[id] < PAR_ADJ_WINDOW_MS) parAdjustedIds[id] = true;
+        else { delete map[id]; changed = true; }
+      });
+      if (changed) { try { localStorage.setItem(parAdjustedKey_(), JSON.stringify(map)); } catch (e) {} }
+    }
+    function markParAdjusted_(id) {
+      if (!MOG_WEB) return;
+      let map = {};
+      try { map = JSON.parse(localStorage.getItem(parAdjustedKey_()) || '{}') || {}; } catch (e) { map = {}; }
+      map[id] = Date.now();
+      try { localStorage.setItem(parAdjustedKey_(), JSON.stringify(map)); } catch (e) {}
+      parAdjustedIds[id] = true;
+    }
+
     // Reflect global counts on the Inactive / Unassigned tab chips so the user
     // sees there are inactive or unassigned items without opening those tabs.
     // Derived from allItems (already loaded) — no extra round-trip.
@@ -1584,8 +1623,9 @@
         if (!item.active) return 0;
         return item.hasArea ? 2 : 1;
       }
-      if (key === 'flag') {                    // inactive < no-data < ok < under < over < both
+      if (key === 'flag') {                    // inactive < no-data < adjusted < ok < under < over < both
         if (!item.active) return -1;
+        if (parAdjustedIds[item.id]) return 0.5;   // shown as "Recently adjusted", overrides the flag
         const f = parFlags[item.id];
         if (!f || f.timesOrdered < 5) return 0;
         if (!f.flag) return 1;
@@ -1700,6 +1740,7 @@
     // ── Par Review flag helpers ───────────────────────────────────────────────
     function buildFlagPill(itemId, active) {
       if (!active) return "<span style='color:#ddd'>—</span>";
+      if (parAdjustedIds[itemId]) return "<span class='pill pill-adjusted'>✎ " + t('flagAdjusted') + "</span>";
       const f = parFlags[itemId];
       if (!f || f.timesOrdered < 5) return "<span class='pill pill-nodata'>" + t('flagNoData') + "</span>";
       if (!f.flag) return "<span class='pill pill-no'>✓ " + t('flagOk') + "</span>";
@@ -1710,6 +1751,9 @@
 
     function buildFlagDetail(itemId, active) {
       if (!active) return '';
+      if (parAdjustedIds[itemId]) {
+        return "<div class='dk'>" + t('thFlag') + "</div><div class='dv' style='color:#2c5d99;font-weight:bold'>✎ " + t('flagAdjusted') + "</div>";
+      }
       const f = parFlags[itemId];
       if (!f) return '';
       if (f.timesOrdered < 5) {
@@ -1970,6 +2014,11 @@
           // In-place update: refresh just this row, keep scroll + selection so
           // editing several items in a row doesn't lose your place.
           const _e = allItems.find(x => x.id === res.id);
+          // Flag a "Recently adjusted" pill only when the par actually changed —
+          // the Par Review column is par-specific, so vendor/pack/active edits
+          // don't invalidate the historical flag. Read the old par off _e before
+          // we overwrite it below.
+          const parChanged = _e ? Number(_e.par) !== Number(par) : false;
           if (_e) {
             _e.name    = byId('edit-name').value.trim() || _e.name;   // blank = keep current
             _e.vendor  = vendor;
@@ -1981,6 +2030,7 @@
             if (res.assignedArea) _e.hasArea = true;
             if (selectedItem && selectedItem.id === _e.id) selectedItem = _e;
           }
+          if (parChanged) markParAdjusted_(res.id);
           clearItemsCache_(); writeItemsCache_(allItems, parFlags);
           rerenderAndCenter_(res.id);
         })

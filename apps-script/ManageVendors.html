@@ -377,6 +377,7 @@
           <div class="help-step"><span class="en"><strong>2.</strong> <strong>➕ Add Vendor</strong>: enter a name, check the delivery days (multipliers auto-fill), then <strong>Add Vendor + Create Tab</strong>.</span><span class="es"><strong>2.</strong> <strong>➕ Agregar Proveedor</strong>: escribe un nombre, marca los días de entrega (los multiplicadores se autocompletan), luego <strong>Agregar Proveedor + Crear Pestaña</strong>.</span></div>
           <div class="help-step"><span class="en"><strong>3.</strong> <strong>✕ Remove Vendor</strong> drops it from the list only — its tab, items and pick path are kept.</span><span class="es"><strong>3.</strong> <strong>✕ Eliminar Proveedor</strong> solo lo quita de la lista — su pestaña, artículos y ruta se conservan.</span></div>
           <div class="help-tip"><span class="en">💡 <strong>1</strong> = standard day · <strong>2+</strong> = order covers multiple days · <strong>0</strong> = no order that day.</span><span class="es">💡 <strong>1</strong> = día estándar · <strong>2+</strong> = el pedido cubre varios días · <strong>0</strong> = no se pide ese día.</span></div>
+          <div class="tour-replay-wrap"><button type="button" class="mge-tour-btn primary" onclick="replayVendorsTour()"><span class="en">↻ Replay walkthrough</span><span class="es">↻ Repetir el recorrido</span></button></div>
         </div>
       </div>
     </div>
@@ -1531,6 +1532,31 @@
       }
 
       // ── Init ──────────────────────────────────────────────────────────────────
+      // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──
+      var VENDORS_TOUR_STEPS = [
+        { sel: null,
+          en: { title: 'Who you order from', body: 'Vendors are your suppliers. Every item belongs to one, so it’s worth adding your vendors before your items.' },
+          es: { title: 'A quién le pides', body: 'Los proveedores son tus suministradores. Cada artículo pertenece a uno, así que conviene agregar tus proveedores antes que tus artículos.' } },
+        { sel: '#vendor-cards',
+          en: { title: 'Edit a vendor', body: 'Each card is a vendor. Tap Edit to change its order-day multipliers and cutoff time, then save — or ✕ Remove to drop it (its tab and items stay).' },
+          es: { title: 'Edita un proveedor', body: 'Cada tarjeta es un proveedor. Toca Editar para cambiar sus multiplicadores por día y la hora de corte, luego guarda — o ✕ Eliminar para quitarlo (su pestaña y artículos se conservan).' } },
+        { sel: '.collapsible-header',
+          en: { title: 'Add a vendor', body: 'Open ➕ Add Vendor — name it and check its delivery days, and the multipliers fill in for you. Or use ⬆ Import Vendor below to bulk-load items from a CSV.' },
+          es: { title: 'Agrega un proveedor', body: 'Abre ➕ Agregar Proveedor — nómbralo y marca sus días de entrega, y los multiplicadores se completan solos. O usa ⬆ Importar Proveedor abajo para cargar artículos desde un CSV.' } },
+        { sel: null,
+          en: { title: 'You’re all set', body: 'Multipliers scale each par by delivery day — 1 is standard, 2+ covers more days, 0 skips it. Tap the ? up top anytime to replay this.' },
+          es: { title: 'Listo', body: 'Los multiplicadores escalan cada par según el día — 1 es estándar, 2+ cubre más días, 0 lo omite. Toca el ? de arriba para repetir esto.' } }
+      ];
+      function startVendorsTour() { toggleHelp(false); mgeStartTour_(VENDORS_TOUR_STEPS, { mode: 'info' }); }
+      function replayVendorsTour() { startVendorsTour(); }
+      function maybeAutoStartVendorsTour_() {
+        var seen = false;
+        try { seen = localStorage.getItem('mog_vendors_tour_seen') === '1'; } catch (e) {}
+        if (seen) return;
+        try { localStorage.setItem('mog_vendors_tour_seen', '1'); } catch (e) {}
+        setTimeout(startVendorsTour, 500);
+      }
+
       function initManageVendors_() {
         if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
           mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
@@ -1543,6 +1569,7 @@
         }
         setLang(MOG_WEB ? mgeGetLang_() : 'en');   // web: open in the language chosen at the gate
         renderVendorCards(true);  // use prebaked VENDOR_TABLE from template — no server call
+        if (MOG_WEB) maybeAutoStartVendorsTour_();   // first-run mini-tour (once per browser)
       }
       // Sheet mode: init immediately. Web mode: gate (device + PIN) first, then init.
       if (MOG_WEB) { mgeStartGate_(initManageVendors_); }

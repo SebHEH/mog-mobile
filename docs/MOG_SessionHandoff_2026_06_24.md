@@ -78,3 +78,60 @@ throws mid-init and stops items loading. ALWAYS hand Sebastian the bare /exec
 HOME link, never a ?page= deep link (cold deep-link is buggy). Editor canary =
 rpfrf (data) / _template (wizard); iterate on /dev, fan out with --redeploy.
 ```
+
+---
+
+## Later session — fan-out + validate-first gate + per-tool mini-tours + MVS voice/chrome parity
+
+**Session focus:** Ship QOL #2, harden the editor's reliability and MVS/MPS fidelity (gate, tours, voice, chrome), then fan everything out.
+**Outcome:** All of Section B plus this session's fixes are **fanned out to all 9 + master** (`deploy.py --redeploy`, every target push+deploy OK) and committed. The gate is now validate-first (no more redeploy-brick), all 5 tools have mini-tours, and the tour/help voice + `?`/EN-ES chrome match MVS/MPS.
+**Next session focus:** Decide auto-fire vs replay-only for the 4 new mini-tours; optionally extend the natural-scroll "B" layout + per-tool subtitles to the other tools.
+
+### What shipped
+
+- **QOL #2 — "Recently adjusted" pill** (`ManageItems.html`): client-side per-store `mog_parAdjusted_<abbr>` localStorage map (7-day window, MOG_WEB-gated, self-pruning); `markParAdjusted_` fires in `doEdit` **only when the par value changed**; takes precedence over the historical flag in `buildFlagPill`/`buildFlagDetail`/`sortValue_`; new `✎ Recently adjusted` / `✎ Ajuste reciente` pill + `.pill-adjusted`. No schema change.
+- **Table height matches the sidebar** (`ManageItems.html`): `.table-scroll` `max-height:calc(100vh−340px)` → `min-height:600px; max-height:clamp(600px, calc(100vh−220px), 680px)` so the list card matches the open edit form and never collapses below it.
+- **Validate-first gate — the gate is the only door** (`EditorShell.html` + `Editor.gs`): root cause of "redeploy bricks the editor" — session tokens live in `CacheService`, which Google **flushes on a new deployment version**, so the old optimistic gate ran a tool with a dead token and bricked on the first RPC. Fix: new client-callable **`editorPing(token)`** (auth-layer; bypasses the `webedit_call` allowlist); `mgeStartGate_` now **validates a stored token server-side before running any tool** (brief "checking" → tool, else → PIN); init re-runs on **every** successful auth (`mgeRunCb_`) so a stale/expired token re-prompts and reloads cleanly instead of a blank page. Shared → all 5 tools + home, and kills the cold deep-link brick. Accepted trade-off: a mid-edit expiry reloads the tool on re-PIN, dropping unsaved form input.
+- **Tour engine gate hint** (`EditorShell.html`): gated steps show `ⓘ Do this step to continue` + relabel the button **"Done with this step"** (was a silently-disabled Next — why setup gating "felt broken"). Mirrors MVS `tour_gate_hint`/`tour_step_done`.
+- **Per-tool mini-tours for the 4 remaining tools** (Vendors/StorageAreas/ReorderPickPath/OrderHistory): info-mode `<TOOL>_TOUR_STEPS` + `start/replay/maybeAutoStart` trio + once-per-browser key + `.tour-replay-wrap` "↻ Replay walkthrough" in each `?` help; auto-fire once + replay. `.tour-replay-wrap` CSS centralized in `EditorShell`.
+- **Voice rewrite (all 5 mini-tours)** to the MVS/MPS house voice: imperative titles, action-first bodies that name the control, em-dash why, warm close, **no "~20 seconds" meta-narration**; ES informal tú imperative. (The older Manage Items tour got the same treatment.)
+- **`?` chrome relocated to match MVS** (`EditorShell.html`): moved out of the band into a **prominent filled-accent circle with a halo next to the breadcrumb title** (`.mge-crumb-help`, MVS `.vh-help`; held on `MGE_HELPBTN` so it survives breadcrumb re-renders). EN/ES stays alone in the band; `mgeMountWebChrome_` now relocates only the lang buttons.
+- **Faded buttons fixed** (`EditorShell.html`): `.mge-tour-btn.primary` used `var(--accent)` — undefined on tool pages (they use `--web-accent`) → navy fallback; now `var(--web-accent, var(--accent, #1a1a2e))` so tour Next/Done + Replay are solid concept accent everywhere, with `:hover` brightness.
+- **Home help-popup rewrite** (`EditorHome.html`): dropped the already-done steps (use a computer / enter PIN); now orients (what the editor is + build order Vendors → Items → Areas → Shelf to Sheet + "every tool has a ?"). Header band **colored with the accent** (white title/✕, card `overflow:hidden`) to match the MVS/MPS help modal.
+- **Skill + docs updates:** `mog-deploy-workflow` — loud "NEVER `--redeploy` to iterate; push-only on `/dev`" note (CacheService token flush). `mog-editor-web-reskin` — **Rule 0 "port faithfully from MVS/MPS,"** centralized-chrome correction (per-tool band superseded by `mgeMountWebChrome_`/`setBreadcrumb_`), new **Tours & voice** section, accurate tool status. `MOG_CurrentState.md` — validate-first-gate architecture note. New memory `feedback_editor_iterate_on_dev`.
+
+### Process corrections (this session's recurring friction)
+- **Port faithfully, don't adapt.** The editor kept diverging from MVS/MPS (voice, `?`/EN-ES, gating) because it was built as an adaptation; each fix was "go match what MVS does." Encoded as `mog-editor-web-reskin` Rule 0.
+- **Pull + confirm a clean `git status` before deploying.** A stale local checkout was deployed mid-session and rolled rpfrf back to the old layout (the "super small table") until a `git pull`.
+- **Iterate push-only on `/dev`, never `--redeploy`.** `--redeploy` flushes CacheService session tokens (+ CDN-caches `/exec`), which bricked the editor repeatedly until the validate-first gate landed. `--redeploy` is fan-out only.
+
+### Outstanding (carry forward)
+- **Auto-fire vs replay-only** for the 4 new mini-tours (currently auto-fire once/browser, matching Manage Items). With the home flow-tour + 5 per-tool tours that may be a lot of coaching — switch to replay-only by dropping the `maybeAutoStart…` calls if so.
+- **Natural-scroll "B" layout + persistent subtitle** only on Manage Items; the other 4 tools are still height-locked. Convert per-tool when adding subtitles.
+- **Global-skill refinement deferred** (scoped to repo skills this round). The MVS/MPS-fidelity lessons could later fold into global `appsscript-guided-tour-help` / `appsscript-phrasing-glossary` / `appsscript-first-run-setup` / `architectural-walkthrough`.
+
+### Files touched
+- Server: `Editor.gs` (`editorPing`).
+- Editor HTML: `EditorShell.html` (validate-first gate + gate hint + `?` relocation + button-accent fix + shared replay-wrap CSS), `EditorHome.html` (help-popup rewrite + colored header), `ManageItems.html` (QOL pill + table height + tour voice), `ManageVendors.html` / `StorageAreas.html` / `ReorderPickPath.html` / `OrderHistory.html` (mini-tours + voice).
+- Docs/skills: `MOG_CurrentState.md`, `mog-deploy-workflow/SKILL.md`, `mog-editor-web-reskin/SKILL.md`. Memory: `feedback_editor_iterate_on_dev`.
+- Deploy: `deploy.py --redeploy` (all 9 + master, every target OK). Iterated push-only on rpfrf `/dev` throughout.
+
+### Opening prompt for next session
+```
+Read docs/MOG_CurrentState.md first. The KM web editor is fully fanned out to all
+9 + master: validate-first gate (editorPing — survives redeploys), per-tool
+mini-tours on all 5 tools + the home flow-tour + gated setup tour, MVS/MPS-voiced
+tour/help copy, the ? as a prominent breadcrumb circle (EN/ES in the band), solid
+concept-accent tour buttons, the Manage Items "Recently adjusted" pill +
+table-height match, and a rewritten home help popup.
+
+Open threads: (1) decide auto-fire vs replay-only for the 4 new mini-tours
+(currently auto-fire once/browser). (2) Optionally extend the natural-scroll "B"
+layout + persistent subtitle to the other 4 tools (only Manage Items has it). (3)
+Optionally fold the MVS/MPS-fidelity lessons into the GLOBAL skills (this round
+was repo-only).
+
+Deploy discipline: iterate push-only on rpfrf /dev (never --redeploy to iterate —
+it flushes CacheService session tokens); fan out with deploy.py --redeploy. Always
+pull + confirm a clean git status before deploying. Editor canary = rpfrf.
+```

@@ -224,6 +224,24 @@ function requireEditorToken_(token) {
   return tier;
 }
 
+// Lightweight token check for the gate's validate-first flow. Client-callable
+// (no trailing underscore, like editorAuth) so the web page can call it via
+// plain google.script.run; it is part of the AUTH layer, so it deliberately
+// does NOT route through the webedit_call allowlist. Returns {ok} — a token
+// flushed by a redeploy (CacheService is volatile across versions) or an
+// expired one resolves to {ok:false}, so the gate sends the user to the PIN
+// instead of letting a stale session run a tool and brick on the first call.
+// Refreshes the TTL on success (via requireEditorToken_) so an active session
+// keeps sliding forward just like a real call.
+function editorPing(token) {
+  try {
+    requireEditorToken_(token);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false };
+  }
+}
+
 
 /***********************
  * FIRST-RUN STORE SETUP (token-less, one-shot)

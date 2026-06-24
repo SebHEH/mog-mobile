@@ -77,10 +77,12 @@
     .help-cta .hc-go { flex: none; background: var(--accent-text); color: var(--accent); font-weight: 800; font-size: var(--fs-sm); padding: 9px 14px; border-radius: var(--radius-sm); }
 
     .ehelp-overlay { position: fixed; inset: 0; background: rgba(15,18,22,.5); display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; z-index: 200; overflow: auto; }
-    .ehelp-card { background: var(--card); border-radius: var(--radius); width: 100%; max-width: 540px; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
-    .ehelp-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--line); }
-    .ehelp-title { font-size: var(--fs-xl); font-weight: 800; }
-    .ehelp-x { border: none; background: none; font-size: 24px; line-height: 1; cursor: pointer; color: var(--muted); }
+    .ehelp-card { background: var(--card); border-radius: var(--radius); width: 100%; max-width: 540px; box-shadow: 0 18px 50px rgba(0,0,0,.28); overflow: hidden; }
+    /* Accent-filled header band, matching the MVS/MPS help modal. */
+    .ehelp-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; background: var(--accent); color: var(--accent-text); }
+    .ehelp-title { font-size: var(--fs-xl); font-weight: 800; color: var(--accent-text); }
+    .ehelp-x { border: none; background: none; font-size: 24px; line-height: 1; cursor: pointer; color: var(--accent-text); opacity: .85; }
+    .ehelp-x:hover { opacity: 1; }
     .ehelp-body { padding: 18px 22px 24px; font-size: var(--fs-base); color: var(--ink); line-height: 1.55; }
     .ehelp-body p { margin: 0 0 12px; }
     .ehelp-body ol { margin: 0 0 14px 18px; padding: 0; }
@@ -145,19 +147,15 @@
     var HOME_HELP = {
       en: {
         title: 'Getting started',
-        body: '<p>This is the MOG editor — make changes without opening the Google Sheet.</p>'
-            + '<ol><li>Use it on a <b>computer</b> (the phone app stays for ordering).</li>'
-            + '<li>Enter your store <b>PIN</b> to unlock.</li>'
-            + '<li>Pick a tool below to get started.</li></ol>',
-        tip: 'Your changes save straight to the store sheet, the same as editing in Google Sheets.'
+        body: '<p>The MOG editor lets you change your store from a computer — no Google Sheet needed. Everything saves straight to it.</p>'
+            + '<p style="margin:12px 0 0"><b>New store?</b> Build it in order:<br>Vendors → Items → Storage Areas → Shelf to Sheet.</p>',
+        tip: 'Every tool has its own ? with a quick walkthrough.'
       },
       es: {
         title: 'Primeros pasos',
-        body: '<p>Este es el editor de MOG — haz cambios sin abrir la hoja de Google.</p>'
-            + '<ol><li>Úsalo en una <b>computadora</b> (la app del teléfono es para pedidos).</li>'
-            + '<li>Ingresa el <b>PIN</b> de tu tienda para entrar.</li>'
-            + '<li>Elige una herramienta abajo para empezar.</li></ol>',
-        tip: 'Tus cambios se guardan directamente en la hoja de la tienda, igual que editar en Google Sheets.'
+        body: '<p>El editor de MOG te deja cambiar tu tienda desde una computadora — sin abrir la hoja de Google. Todo se guarda directo en ella.</p>'
+            + '<p style="margin:12px 0 0"><b>¿Tienda nueva?</b> Ármala en orden:<br>Proveedores → Artículos → Áreas → Estante a Hoja.</p>',
+        tip: 'Cada herramienta tiene su propio ? con un recorrido rápido.'
       }
     };
     function homeLang() { return mgeGetLang_(); }
