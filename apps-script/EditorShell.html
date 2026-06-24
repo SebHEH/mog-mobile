@@ -109,7 +109,35 @@
   body.mge-web .mge-web-langs .lang-btn.active,
   body.mge-web .mge-web-langs .lang-btn.on { background: #fff !important; color: var(--web-accent-dark, #216b51) !important; }
 
+  /* ── Shared guided tour (coach-marks, cutout spotlight) ──
+     Used by the home dashboard (info mode) and the setup wizard (gated mode).
+     Self-themed via --accent / --card / --ink with literal fallbacks so it works
+     on ANY editor page regardless of which tokens that page defines. Sits below
+     the PIN-gate overlay (z 9999) but above page content. */
+  .mge-tour-frame { position: fixed; background: rgba(20,24,28,.58); z-index: 9100; }
+  .mge-tour-overlay { position: fixed; inset: 0; background: rgba(20,24,28,.58); z-index: 9100; }
+  .mge-tour-hl { position: fixed; z-index: 9101; border-radius: var(--r-sm, 8px); border: 2px solid var(--accent-text, #fff); box-shadow: 0 0 0 3px var(--accent, #1a1a2e), 0 0 16px 2px rgba(0,0,0,.35); pointer-events: none; transition: top .15s, left .15s, width .15s, height .15s; }
+  .mge-tour-hl.pulse { animation: mgeTourPulse 1.6s ease-in-out infinite; }
+  @keyframes mgeTourPulse { 0%,100% { box-shadow: 0 0 0 3px var(--accent,#1a1a2e), 0 0 16px 2px rgba(0,0,0,.35); } 50% { box-shadow: 0 0 0 7px var(--accent,#1a1a2e), 0 0 22px 4px rgba(0,0,0,.35); } }
+  .mge-tour-pop { position: fixed; z-index: 9102; width: min(330px, 88vw); background: var(--card, #fff); border-radius: var(--r, 12px); box-shadow: 0 18px 48px rgba(0,0,0,.28); padding: 16px 18px; font-family: var(--font); }
+  .mge-tour-pop .mge-tour-count { font-size: 11px; font-weight: 800; color: var(--accent-ink, var(--accent, #1a1a2e)); letter-spacing: .08em; margin-bottom: 4px; }
+  .mge-tour-pop .mge-tour-title { font-size: 18px; font-weight: 800; color: var(--ink, #1d1f1d); margin-bottom: 6px; }
+  .mge-tour-pop .mge-tour-text { font-size: 13px; color: var(--ink, #1d1f1d); line-height: 1.5; margin-bottom: 14px; }
+  .mge-tour-actions { display: flex; align-items: center; gap: 8px; }
+  .mge-tour-spacer { flex: 1; }
+  .mge-tour-skip { background: none; border: none; color: var(--muted, #6b6f6b); font-size: 12px; font-weight: 700; cursor: pointer; font-family: var(--font); padding: 0; }
+  .mge-tour-skip:hover { color: var(--ink, #1d1f1d); }
+  .mge-tour-btn { border: none; border-radius: var(--r-sm, 8px); padding: 9px 16px; font-size: 12px; font-weight: 800; cursor: pointer; font-family: var(--font); }
+  .mge-tour-btn.ghost { background: var(--bg, #f2f2ee); color: var(--ink, #1d1f1d); border: 1px solid var(--line, #e3e5e3); }
+  .mge-tour-btn.primary { background: var(--accent, #1a1a2e); color: var(--accent-text, #fff); }
+  .mge-tour-btn.primary:disabled { background: #aab0b6; color: #fff; cursor: default; }
+  .mge-tour-pop.arrow-up::before, .mge-tour-pop.arrow-down::before { content: ''; position: absolute; left: var(--arrow-left, 50%); width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; margin-left: -9px; }
+  .mge-tour-pop.arrow-up::before { top: -9px; border-bottom: 9px solid var(--card, #fff); }
+  .mge-tour-pop.arrow-down::before { bottom: -9px; border-top: 9px solid var(--card, #fff); }
+
 </style>
+
+<div id="mge-tour-root"></div>
 
 <div id="mge-overlay" class="mge-overlay" hidden>
   <div id="mge-device" class="mge-card mge-device-card" hidden>
@@ -1142,5 +1170,140 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     h += '<span class="mge-crumb-cur">' + mgeEsc_(es ? (current.es || current.en) : current.en) + '</span>';
     bar.innerHTML = h;
     bar.removeAttribute('hidden');
+  }
+
+
+  /* ───────── Shared guided tour (coach-marks, cutout spotlight) ─────────
+     mgeStartTour_(steps, opts):
+       steps = [{ sel, gate, en:{title,body}, es:{title,body} }]
+         sel  — CSS selector to spotlight (null = centered welcome bubble)
+         gate — (gated mode only) fn returning true when this step's input is
+                satisfied; Next stays disabled until it is, re-checked on input.
+       opts.mode  'info' (Next always enabled) | 'gated'
+       opts.onDone() — fires once after the final Next (e.g. submit/redirect)
+     Promoted from EditorHome so the home tour, the setup tour, and future
+     per-tool tours all share one engine. ES5 / Rhino-safe. */
+  var MGE_TOUR = { active: false, step: 0, steps: [], opts: {}, wired: false };
+  var MGE_TOUR_T = {
+    en: { skip: 'Skip', back: 'Back', next: 'Next', done: 'Done' },
+    es: { skip: 'Omitir', back: 'Atrás', next: 'Siguiente', done: 'Listo' }
+  };
+  function mgeTt_(k) { var l = mgeGetLang_(); return (MGE_TOUR_T[l] && MGE_TOUR_T[l][k]) || MGE_TOUR_T.en[k] || k; }
+  function mgeTourActive_() { return MGE_TOUR.active; }
+  function mgeTourGateOk_() {
+    var s = MGE_TOUR.steps[MGE_TOUR.step];
+    if (MGE_TOUR.opts.mode !== 'gated' || !s || typeof s.gate !== 'function') return true;
+    try { return !!s.gate(); } catch (e) { return true; }
+  }
+
+  function mgeStartTour_(steps, opts) {
+    MGE_TOUR.steps = steps || []; MGE_TOUR.opts = opts || {};
+    MGE_TOUR.active = true; MGE_TOUR.step = 0;
+    if (!MGE_TOUR.wired) {
+      MGE_TOUR.wired = true;
+      window.addEventListener('resize', function () { if (MGE_TOUR.active) mgeTourReposition_(); });
+      window.addEventListener('scroll', function () { if (MGE_TOUR.active) mgeTourReposition_(); }, true);
+      // Gated steps unlock as the user fills the field — re-check on any input.
+      document.addEventListener('input', function () { if (MGE_TOUR.active) mgeTourSyncGate_(); });
+      document.addEventListener('change', function () { if (MGE_TOUR.active) mgeTourSyncGate_(); });
+      document.addEventListener('keydown', function (e) { if (e.keyCode === 27 && MGE_TOUR.active) mgeEndTour_(); });
+    }
+    mgeRenderTour_();
+  }
+  function mgeTourTarget_() { var s = MGE_TOUR.steps[MGE_TOUR.step]; if (!s || !s.sel) return null; return document.querySelector(s.sel); }
+  function mgeEndTour_() { MGE_TOUR.active = false; var r = mgeEl_('mge-tour-root'); if (r) r.innerHTML = ''; }
+  function mgeTourNext_() {
+    if (!mgeTourGateOk_()) return;
+    if (MGE_TOUR.step < MGE_TOUR.steps.length - 1) { MGE_TOUR.step++; mgeRenderTour_(); }
+    else { var d = MGE_TOUR.opts.onDone; mgeEndTour_(); if (typeof d === 'function') { try { d(); } catch (e) {} } }
+  }
+  function mgeTourBack_() { if (MGE_TOUR.step > 0) { MGE_TOUR.step--; mgeRenderTour_(); } }
+
+  function mgeRenderTour_() {
+    var root = mgeEl_('mge-tour-root'); if (!root) return;
+    var s = MGE_TOUR.steps[MGE_TOUR.step]; if (!s) { mgeEndTour_(); return; }
+    var es = (mgeGetLang_() === 'es');
+    var c = (es && s.es) ? s.es : s.en;
+    var last = MGE_TOUR.step === MGE_TOUR.steps.length - 1;
+    var hasTarget = !!(s.sel && document.querySelector(s.sel));
+    var h = '';
+    if (hasTarget) {
+      h += '<div class="mge-tour-frame" id="mge-tf-t"></div><div class="mge-tour-frame" id="mge-tf-r"></div>';
+      h += '<div class="mge-tour-frame" id="mge-tf-b"></div><div class="mge-tour-frame" id="mge-tf-l"></div>';
+      h += '<div class="mge-tour-hl pulse" id="mge-tour-hl"></div>';
+    } else {
+      h += '<div class="mge-tour-overlay"></div>';
+    }
+    h += '<div class="mge-tour-pop" id="mge-tour-pop">';
+    h +=   '<div class="mge-tour-count">' + (MGE_TOUR.step + 1) + ' / ' + MGE_TOUR.steps.length + '</div>';
+    h +=   '<div class="mge-tour-title">' + mgeEsc_(c.title) + '</div>';
+    h +=   '<div class="mge-tour-text">' + mgeEsc_(c.body) + '</div>';
+    h +=   '<div class="mge-tour-actions">';
+    h +=     '<button type="button" class="mge-tour-skip" onclick="mgeEndTour_()">' + mgeEsc_(mgeTt_('skip')) + '</button>';
+    h +=     '<span class="mge-tour-spacer"></span>';
+    if (MGE_TOUR.step > 0) h += '<button type="button" class="mge-tour-btn ghost" onclick="mgeTourBack_()">' + mgeEsc_(mgeTt_('back')) + '</button>';
+    h +=     '<button type="button" class="mge-tour-btn primary" id="mge-tour-next" onclick="mgeTourNext_()">' + mgeEsc_(last ? mgeTt_('done') : mgeTt_('next')) + '</button>';
+    h +=   '</div>';
+    h += '</div>';
+    root.innerHTML = h;
+    var target = s.sel ? document.querySelector(s.sel) : null;
+    if (target && target.scrollIntoView) {
+      try { target.scrollIntoView({ block: 'center', inline: 'nearest' }); }
+      catch (e) { try { target.scrollIntoView(); } catch (e2) {} }
+    }
+    mgeTourReposition_(); mgeTourSyncGate_();
+  }
+
+  // Enable/disable Next per the current gated step (no full re-render, so the
+  // user's focus + caret stay put while typing).
+  function mgeTourSyncGate_() { var btn = mgeEl_('mge-tour-next'); if (btn) btn.disabled = !mgeTourGateOk_(); }
+
+  function mgeTourReposition_() {
+    if (!MGE_TOUR.active) return;
+    var pop = mgeEl_('mge-tour-pop'); if (!pop) return;
+    var hl = mgeEl_('mge-tour-hl');
+    var target = mgeTourTarget_();
+    var vh = window.innerHeight, vw = window.innerWidth, pad = 6, gap = 14;
+    if (!target) {
+      if (hl) hl.style.display = 'none';
+      mgeTourFrame_(null, 0);
+      pop.className = 'mge-tour-pop';
+      pop.style.top = Math.max(gap, (vh - pop.offsetHeight) / 2) + 'px';
+      pop.style.left = Math.max(gap, (vw - pop.offsetWidth) / 2) + 'px';
+      return;
+    }
+    var r = target.getBoundingClientRect();
+    if (hl) {
+      hl.style.display = 'block';
+      hl.style.top = (r.top - pad) + 'px'; hl.style.left = (r.left - pad) + 'px';
+      hl.style.width = (r.width + pad * 2) + 'px'; hl.style.height = (r.height + pad * 2) + 'px';
+    }
+    mgeTourFrame_(r, pad);
+    var ph = pop.offsetHeight, pw = pop.offsetWidth, place, top, left;
+    if (r.bottom + gap + ph <= vh) { top = r.bottom + gap; place = 'up'; }
+    else if (r.top - gap - ph >= 0) { top = r.top - gap - ph; place = 'down'; }
+    else { top = Math.max(gap, (vh - ph) / 2); place = 'none'; }
+    left = Math.max(gap, Math.min(vw - pw - gap, r.left + r.width / 2 - pw / 2));
+    pop.className = 'mge-tour-pop arrow-' + place;
+    pop.style.top = top + 'px'; pop.style.left = left + 'px';
+    var arrowLeft = (r.left + r.width / 2) - left;
+    arrowLeft = Math.max(16, Math.min(pw - 16, arrowLeft));
+    pop.style.setProperty('--arrow-left', arrowLeft + 'px');
+  }
+
+  // Four dim panels around a bright hole over rect r (the cutout spotlight).
+  function mgeTourFrame_(r, pad) {
+    var pt = mgeEl_('mge-tf-t'), pr = mgeEl_('mge-tf-r'), pb = mgeEl_('mge-tf-b'), pl = mgeEl_('mge-tf-l');
+    if (!pt || !pr || !pb || !pl) return;
+    if (!r) { pt.style.display = 'none'; pr.style.display = 'none'; pb.style.display = 'none'; pl.style.display = 'none'; return; }
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var hx = Math.max(0, r.left - pad), hy = Math.max(0, r.top - pad);
+    var hw = r.width + pad * 2, hh = r.height + pad * 2;
+    var hr = hx + hw, hb = hy + hh;
+    function box(el, x, y, w, hgt) { el.style.display = 'block'; el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.width = Math.max(0, w) + 'px'; el.style.height = Math.max(0, hgt) + 'px'; }
+    box(pt, 0, 0, vw, hy);
+    box(pb, 0, hb, vw, vh - hb);
+    box(pl, 0, hy, hx, hh);
+    box(pr, hr, hy, vw - hr, hh);
   }
 </script>

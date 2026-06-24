@@ -443,7 +443,7 @@ function onOpen(e) {
       .addItem("    Recalibrate Vendor Pars","showRecalibrateVendorSidebar")
       .addItem("    Audit Vendor Cadence",   "showVendorCadenceAuditSidebar")
       .addItem("    Sync Vendor Multiplier Formulas","syncVendorMultiplierFormulasMenu_")
-      .addItem("    Clear Config",           "clearMobileApiConfig"))
+      .addItem("    Clear Config (reset for setup)", "clearMobileApiConfig"))
     .addToUi();
 }
 

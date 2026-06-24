@@ -38,8 +38,13 @@
       /* Web app only: make room for the breadcrumb bar above the modal without
          overflowing (the breadcrumb is injected by EditorShell at body top).
          Gated on body.mge-web so the in-Sheet dialog layout is unchanged. */
-      body.mge-web { display: flex; flex-direction: column; height: 100%; --shell-width: 1500px; }
-      body.mge-web .shell { height: auto; flex: 1 1 auto; min-height: 0; }
+      /* Unlock the dialog's html/body height + overflow lock (line ~28) so the
+         WHOLE PAGE scrolls in web mode — the legend/footer below the table are
+         reachable. Scoped to .mge-web on <html> (added only by this tool's init)
+         so tools still on the locked layout are unaffected. */
+      html.mge-web { height: auto; overflow-y: auto; overflow-x: hidden; }
+      body.mge-web { display: flex; flex-direction: column; height: auto; min-height: 100vh; overflow: visible; --shell-width: 1500px; }
+      body.mge-web .shell { height: auto; flex: 0 0 auto; min-height: 0; }
       .modal-footer {
         flex: 0 0 auto;
         background: #fff; border-top: 1px solid #e8eaed;
@@ -462,6 +467,21 @@
         border: 1px solid var(--line); border-radius: var(--r-card);
         box-shadow: var(--shadow); overflow: hidden;
       }
+
+      /* ── Natural-scroll layout (B): the page scrolls like MVS/MPS instead of
+         being locked to the viewport, so a title + one-line description can sit
+         above the table without squeezing it. The table keeps its own internal
+         scroll at a viewport-relative height; the detail pane sticks as you
+         scroll the list. ── */
+      body.mge-web .body-split { flex: 0 0 auto; overflow: visible; align-items: flex-start; }
+      body.mge-web .table-scroll { max-height: calc(100vh - 340px); }
+      body.mge-web .right-pane { position: sticky; top: 14px; align-self: flex-start; max-height: calc(100vh - 28px); }
+
+      /* Persistent title + description (web only), MVS/MPS-style. */
+      .web-titlebar { display: none; }
+      body.mge-web .web-titlebar { display: block; padding: 16px 24px 2px; }
+      body.mge-web .web-title { font-size: 22px; font-weight: 800; color: #1d1f1d; margin: 0; }
+      body.mge-web .web-subtitle { font-size: 13.5px; color: var(--muted); margin: 4px 0 0; line-height: 1.45; max-width: 72ch; }
       /* A touch more density for a real screen vs. a cramped dialog. */
       body.mge-web .item-table td { padding: 11px 10px; }
       body.mge-web .item-table thead th { padding: 11px 10px; }
@@ -475,10 +495,39 @@
       body.mge-web .btn-close { background: transparent; color: var(--ink-mute); padding: 8px 2px; }
       body.mge-web .btn-close:hover { color: var(--web-accent); opacity: 1; }
 
+      /* Prerequisite warning banner (web only): a hard block when no vendor exists
+         yet (items need one), a soft tip when no storage area exists (items need
+         one to land on the order sheet). Amber stays constant for warnings; the
+         softer tip borrows the concept accent tint. */
+      body.mge-web #mge-prereq { flex: 0 0 auto; margin: 14px 24px 0; padding: 11px 15px; border-radius: 8px; font-size: 13.5px; line-height: 1.45; }
+      body.mge-web #mge-prereq a { font-weight: 700; text-decoration: underline; white-space: nowrap; }
+      body.mge-web #mge-prereq.block { background: #fdf2e0; border: 1px solid #eab864; color: #7a5200; }
+      body.mge-web #mge-prereq.block a { color: #8a5200; }
+      body.mge-web #mge-prereq.tip { background: var(--web-accent-soft); border: 1px solid var(--web-accent-line); color: #3a3f3a; }
+      body.mge-web #mge-prereq.tip a { color: var(--web-accent-dark); }
+
+      /* "Replay walkthrough" button in the help popup — web only (the tour engine
+         lives in EditorShell, which the in-Sheet dialog doesn't load). */
+      .tour-replay-wrap { display: none; margin-top: 14px; }
+      body.mge-web .tour-replay-wrap { display: block; }
+
+      /* Live per-delivery-day par preview (web only): as you change the par, shows
+         the order target for each of the vendor's delivery days (par × that day's
+         multiplier; flat par when Use Multiplier is off). */
+      .par-preview { display: none; }
+      body.mge-web .par-preview { display: block; margin: -2px 0 14px; padding: 10px 12px; background: var(--web-accent-soft); border: 1px solid var(--web-accent-line); border-radius: 8px; }
+      body.mge-web .par-preview .pp-head { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--web-accent-dark); margin-bottom: 7px; }
+      body.mge-web .par-preview .pp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+      body.mge-web .par-preview .pp-chip { display: inline-flex; align-items: baseline; gap: 5px; background: #fff; border: 1px solid var(--web-accent-line); border-radius: 6px; padding: 4px 9px; }
+      body.mge-web .par-preview .pp-day { font-size: 11px; font-weight: 700; color: var(--muted); }
+      body.mge-web .par-preview .pp-qty { font-size: 15px; font-weight: 800; color: #1d1f1d; }
+      body.mge-web .par-preview .pp-hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+
       /* Resized-narrow window (desktop-only tool, so just a graceful stack). */
       @media (max-width: 980px) {
         body.mge-web .body-split { flex-direction: column; overflow-y: auto; }
-        body.mge-web .right-pane { width: auto; }
+        body.mge-web .right-pane { width: auto; position: static; max-height: none; }
+        body.mge-web .table-scroll { max-height: calc(100vh - 300px); }
       }
     </style>
   </head>
@@ -525,8 +574,14 @@
           <div class="help-step"><span class="en"><strong>3.</strong> From an item's detail: <strong>Deactivate</strong> (reversible) or <strong>Delete</strong> (permanent, in the Danger Zone).</span><span class="es"><strong>3.</strong> Desde el detalle: <strong>Desactivar</strong> (reversible) o <strong>Eliminar</strong> (permanente, en la Zona de Peligro).</span></div>
           <div class="help-step"><span class="en"><strong>4.</strong> The <strong>⚠ Unassigned</strong> tab lists active items with no storage area — assign them in <strong>Shelf to Sheet</strong> or they won't show on vendor tabs.</span><span class="es"><strong>4.</strong> La pestaña <strong>⚠ Sin Área</strong> lista artículos activos sin área — asígnalos en <strong>Estante a Hoja</strong> o no aparecerán en las pestañas.</span></div>
           <div class="help-tip"><span class="en">💡 The rightmost column flags items whose pars may need review — high On Hand (over-ordered) or always empty.</span><span class="es">💡 La columna derecha marca artículos cuyo par podría revisarse — En Stock alto (sobre-pedido) o siempre vacío.</span></div>
+          <div class="tour-replay-wrap"><button type="button" class="mge-tour-btn primary" onclick="replayItemsTour()"><span class="en">↻ Replay walkthrough</span><span class="es">↻ Repetir el recorrido</span></button></div>
         </div>
       </div>
+    </div>
+
+    <div class="web-titlebar">
+      <h1 class="web-title"><span class="en">Manage Items</span><span class="es">Administrar artículos</span></h1>
+      <p class="web-subtitle"><span class="en">Your master list of everything you order. Each item belongs to a vendor and lands on the order sheet by its storage area.</span><span class="es">Tu lista maestra de todo lo que pides. Cada artículo pertenece a un proveedor y aparece en la hoja de pedido según su área.</span></p>
     </div>
 
     <div class="body-split">
@@ -628,15 +683,16 @@
           </div>
           <div class="row"><label id="lbl-add-pack"></label><input id="add-pack" /></div>
           <div class="two-col">
-            <div class="row"><label id="lbl-add-par"></label><input id="add-par" type="number" step="1" min="0" /></div>
+            <div class="row"><label id="lbl-add-par"></label><input id="add-par" type="number" step="1" min="0" oninput="renderParPreview_('add')" /></div>
             <div class="row">
               <label id="lbl-add-mult"></label>
-              <select id="add-useMult">
+              <select id="add-useMult" onchange="renderParPreview_('add')">
                 <option value="true"  id="opt-yes-add"></option>
                 <option value="false" id="opt-no-add"></option>
               </select>
             </div>
           </div>
+          <div id="add-par-preview" class="par-preview"></div>
           <hr>
           <div class="section-label" id="sl-pickpath"></div>
           <div class="row">
@@ -689,15 +745,16 @@
           </div>
           <div class="row"><label id="lbl-edit-pack"></label><input id="edit-pack" /></div>
           <div class="two-col">
-            <div class="row"><label id="lbl-edit-par"></label><input id="edit-par" type="number" step="1" min="0" /></div>
+            <div class="row"><label id="lbl-edit-par"></label><input id="edit-par" type="number" step="1" min="0" oninput="renderParPreview_('edit')" /></div>
             <div class="row">
               <label id="lbl-edit-mult"></label>
-              <select id="edit-useMult">
+              <select id="edit-useMult" onchange="renderParPreview_('edit')">
                 <option value="true"  id="opt-yes-edit"></option>
                 <option value="false" id="opt-no-edit"></option>
               </select>
             </div>
           </div>
+          <div id="edit-par-preview" class="par-preview"></div>
           <div class="two-col">
             <div class="row">
               <label id="lbl-edit-active"></label>
@@ -946,6 +1003,7 @@
         el.style.display = el.classList.contains(lang) ? 'inline' : 'none';
       });
       applyTranslations();
+      updatePrereqBanner_();   // re-translate the prerequisite banner on EN/ES toggle
     }
 
     function applyTranslations() {
@@ -1088,6 +1146,7 @@
         withFailureHandler: function (g) { fail = g; return proxy; },
         getManageItemsBootstrap:  mk('getManageItemsBootstrap'),
         getStorageAreaList:       mk('getStorageAreaList'),
+        getVendorTableData:       mk('getVendorTableData'),
         getItemForEdit:           mk('getItemForEdit'),
         getUnassignedActiveItems: mk('getUnassignedActiveItems'),
         commitUpsertItem:         mk('commitUpsertItem'),
@@ -1185,9 +1244,114 @@
     }
 
     // ── Init ──────────────────────────────────────────────────────────────────
+    // ── Live per-delivery-day par preview (web only) ──
+    // VENDOR_MULTS[name] = [mon..sun] multipliers (from getVendorTableData). The
+    // order target for a delivery day = par × that day's multiplier (raw, no
+    // rounding — matches MOGApi targetPar); flat par when Use Multiplier is off.
+    var VENDOR_MULTS = {};
+    var PP_DAYS = { en: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], es: ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'] };
+    // Round UP to a whole unit — you can't order a fraction from a vendor, and it
+    // always rounds up, never down. Applied AFTER the multiplier (ceil(par×mult)),
+    // e.g. par 3.25 × mult 3 = 9.75 → 10. (Round nudge first to kill float noise so
+    // an exact 6.0 doesn't ceil to 7.)
+    function ppCeil_(x) { if (!(x > 0)) return 0; return Math.ceil(Math.round(x * 1000) / 1000); }
+    function renderParPreview_(mode) {
+      if (!MOG_WEB) return;
+      var el = byId(mode + '-par-preview'); if (!el) return;
+      var es = (typeof mgeGetLang_ === 'function' && mgeGetLang_() === 'es');
+      var head = es ? 'Pedido por día de entrega' : 'Order per delivery day';
+      var vendor = (byId(mode + '-vendor') || {}).value || '';
+      var mults = VENDOR_MULTS[vendor];
+      if (!vendor || !mults) { el.style.display = 'none'; el.innerHTML = ''; return; }
+      el.style.display = 'block';
+      var par = parseFloat((byId(mode + '-par') || {}).value);
+      if (isNaN(par)) {
+        el.innerHTML = '<div class="pp-head">' + head + '</div><div class="pp-hint">' +
+          (es ? 'Escribe un par para ver el pedido de cada día.' : 'Enter a par to see each day’s order.') + '</div>';
+        return;
+      }
+      var useMult = ((byId(mode + '-useMult') || {}).value !== 'false');
+      var days = PP_DAYS[es ? 'es' : 'en'], chips = '', any = false;
+      for (var i = 0; i < 7; i++) {
+        var m = mults[i] || 0;
+        if (m <= 0) continue;   // not a delivery day
+        any = true;
+        var qty = ppCeil_(useMult ? par * m : par);
+        chips += '<span class="pp-chip"><span class="pp-day">' + days[i] + '</span><span class="pp-qty">' + qty + '</span></span>';
+      }
+      if (!any) {
+        el.innerHTML = '<div class="pp-head">' + head + '</div><div class="pp-hint">' +
+          (es ? 'Este proveedor no tiene días de entrega configurados.' : 'This vendor has no delivery days set.') + '</div>';
+        return;
+      }
+      var note = '<div class="pp-hint">' + (es
+        ? ('Redondeado hacia arriba a unidades enteras' + (useMult ? '' : ' · par fijo, sin multiplicador') + '.')
+        : ('Rounded up to whole units' + (useMult ? '' : ' · flat par, no multiplier') + '.')) + '</div>';
+      el.innerHTML = '<div class="pp-head">' + head + '</div><div class="pp-chips">' + chips + '</div>' + note;
+    }
+
+    // Web-only: warn when a prerequisite for adding/placing items is missing.
+    // Items belong to a vendor (hard block — you can't add any until one exists),
+    // and need a storage area to land on the order sheet (soft tip). Re-evaluated
+    // when vendors/areas load and on language toggle.
+    function updatePrereqBanner_() {
+      if (!MOG_WEB) return;
+      var shell = document.querySelector('.shell'); if (!shell) return;
+      var el = byId('mge-prereq');
+      if (!el) { el = document.createElement('div'); el.id = 'mge-prereq'; shell.parentNode.insertBefore(el, shell); }
+      var es = (typeof mgeGetLang_ === 'function' && mgeGetLang_() === 'es');
+      var base = (typeof BASE_URL !== 'undefined' && BASE_URL) ? BASE_URL : '';
+      var noVendors = !VENDOR_LIST || !VENDOR_LIST.length;
+      var noAreas = !areaList || !areaList.length;
+      if (noVendors) {
+        el.className = 'block';
+        el.innerHTML = es
+          ? '⚠ Agrega al menos un <b>proveedor</b> antes de agregar artículos — cada artículo pertenece a un proveedor. <a href="' + base + '?page=vendors" target="_top">Abrir Administrar proveedores →</a>'
+          : '⚠ Add at least one <b>vendor</b> before adding items — every item belongs to a vendor. <a href="' + base + '?page=vendors" target="_top">Open Manage Vendors →</a>';
+        el.style.display = '';
+      } else if (noAreas) {
+        el.className = 'tip';
+        el.innerHTML = es
+          ? 'Consejo: crea un <b>área de almacenamiento</b> para poder colocar artículos en la hoja de pedido. <a href="' + base + '?page=areas" target="_top">Abrir Áreas →</a>'
+          : 'Tip: create a <b>storage area</b> so items can be placed on the order sheet. <a href="' + base + '?page=areas" target="_top">Open Storage Areas →</a>';
+        el.style.display = '';
+      } else {
+        el.style.display = 'none';
+      }
+    }
+
+    // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──
+    var ITEMS_TOUR_STEPS = [
+      { sel: null,
+        en: { title: 'Manage Items', body: 'This is your master list of everything you order. Each item belongs to a vendor, carries a pack size and a base par, and lands on the order sheet by its storage area. Here’s a quick look around — about 20 seconds.' },
+        es: { title: 'Administrar artículos', body: 'Esta es tu lista maestra de todo lo que pides. Cada artículo pertenece a un proveedor, tiene un empaque y un par base, y aparece en la hoja de pedido según su área. Aquí tienes un vistazo rápido — unos 20 segundos.' } },
+      { sel: '#filter-chips',
+        en: { title: 'Filter your list', body: 'Jump between all active items, ⚠ Unassigned (active but with no storage area yet — they won’t show on a vendor tab until you give them one), and Inactive (hidden, but kept around).' },
+        es: { title: 'Filtra tu lista', body: 'Cambia entre todos los activos, ⚠ Sin área (activos pero sin área aún — no aparecen en la pestaña del proveedor hasta que les des una) e Inactivos (ocultos, pero guardados).' } },
+      { sel: '.left-pane',
+        en: { title: 'Every item is a row', body: 'Click any row to open it on the right, where you set its vendor, pack size, par, and storage area — or deactivate it (reversible) or delete it (permanent). The far-right column flags pars that may need a look.' },
+        es: { title: 'Cada artículo es una fila', body: 'Toca cualquier fila para abrirla a la derecha y ajustar su proveedor, empaque, par y área — o desactivarla (reversible) o eliminarla (permanente). La columna derecha marca pares que tal vez debas revisar.' } },
+      { sel: '#ptab-add',
+        en: { title: 'Add an item', body: '“+ Add item” adds something new — give it a name, its vendor, a pack size, and optionally a base par and the storage area you count it in. Items belong to a vendor, so set your vendors up first.' },
+        es: { title: 'Agrega un artículo', body: '“+ Agregar” agrega algo nuevo — dale un nombre, su proveedor, un empaque y, si quieres, un par base y el área donde lo cuentas. Los artículos pertenecen a un proveedor, así que configura tus proveedores primero.' } },
+      { sel: null,
+        en: { title: 'That’s the tour', body: 'Your changes save straight to the store sheet — just like editing in Google Sheets. Tap the ? up top anytime to replay this, and every other tool has its own ? too.' },
+        es: { title: 'Eso es todo', body: 'Tus cambios se guardan directo en la hoja de la tienda — igual que editar en Google Sheets. Toca el ? de arriba para repetir esto, y cada herramienta tiene su propio ? también.' } }
+    ];
+    function startItemsTour() { toggleHelp(false); mgeStartTour_(ITEMS_TOUR_STEPS, { mode: 'info' }); }
+    function replayItemsTour() { startItemsTour(); }
+    function maybeAutoStartItemsTour_() {
+      var seen = false;
+      try { seen = localStorage.getItem('mog_items_tour_seen') === '1'; } catch (e) {}
+      if (seen) return;
+      try { localStorage.setItem('mog_items_tour_seen', '1'); } catch (e) {}
+      setTimeout(startItemsTour, 500);   // let the list paint before anchoring
+    }
+
     function initManageItems_() {
       if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
         mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
+        document.documentElement.classList.add('mge-web');  // unlock page scroll (html.mge-web)
         setBreadcrumb_(
           [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
           { en: 'Manage Items', es: 'Administrar artículos' }
@@ -1203,6 +1367,7 @@
       VENDOR_LIST.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; vf.appendChild(o); });
 
       buildVendorChecklist_('add-eligible', '', []);  // no active vendor picked yet
+      updatePrereqBanner_();   // vendors are known synchronously (injected)
 
       MIRPC()
         .withSuccessHandler(areas => {
@@ -1212,12 +1377,22 @@
             while (sel.options.length > 1) sel.remove(1);
             areas.forEach(a => { const o = document.createElement('option'); o.value = a.name; o.textContent = a.name; sel.appendChild(o); });
           });
+          updatePrereqBanner_();   // areas now known — may flip block→tip→hidden
         })
         .withFailureHandler(() => {})
         .getStorageAreaList();
 
       setLang(MOG_WEB ? mgeGetLang_() : 'en');   // web: open in the language chosen at the gate
       loadAllItems();
+      if (MOG_WEB) {
+        // Live per-day par preview needs each vendor's 7-day multipliers. Fetched
+        // AFTER loadAllItems so an issue here can never block the item list.
+        MIRPC()
+          .withSuccessHandler(rows => { (rows || []).forEach(r => { VENDOR_MULTS[r.name] = r.mults || []; }); })
+          .withFailureHandler(() => {})
+          .getVendorTableData();
+        maybeAutoStartItemsTour_();   // first-run mini-tour (once per browser)
+      }
     }
     // Sheet mode: init immediately. Web mode: gate (device + PIN) first, then init.
     if (MOG_WEB) { mgeStartGate_(initManageItems_); }
@@ -1604,8 +1779,8 @@
     // Rebuild the checklist when the active vendor changes, preserving any other
     // boxes already ticked (pass '' as active so the prior active isn't treated
     // as implicit and silently dropped from the preserved set).
-    function onAddVendorChange()  { buildVendorChecklist_('add-eligible',  byId('add-vendor').value,  getCheckedEligible_('add-eligible', '')); }
-    function onEditVendorChange() { buildVendorChecklist_('edit-eligible', byId('edit-vendor').value, getCheckedEligible_('edit-eligible', '')); }
+    function onAddVendorChange()  { buildVendorChecklist_('add-eligible',  byId('add-vendor').value,  getCheckedEligible_('add-eligible', '')); renderParPreview_('add'); }
+    function onEditVendorChange() { buildVendorChecklist_('edit-eligible', byId('edit-vendor').value, getCheckedEligible_('edit-eligible', '')); renderParPreview_('edit'); }
 
     function renderQuickSwitch_(item) {
       const row  = byId('view-switch-row');
@@ -1701,6 +1876,7 @@
             : '(' + t('optNoChange').replace(/—/g, '').trim() + ')';
           byId('edit-area-new').value = '';
           setEditFormState_('loaded');
+          renderParPreview_('edit');   // live per-delivery-day order target
           setStatus('edit-load', 'Loaded: ' + data.id, 'ok'); setStatus('edit', '');
           showDangerZone(data);
         })

@@ -87,27 +87,8 @@
     .ehelp-body li { margin-bottom: 7px; }
     .ehelp-tip { background: var(--accent-soft); border-radius: var(--radius-sm); padding: 11px 14px; font-size: var(--fs-sm); color: var(--muted); }
 
-    /* ── Guided tour (coach-marks, cutout spotlight — MVS/MPS-style) ── */
-    .tour-overlay { position: fixed; inset: 0; background: rgba(20,24,28,.58); z-index: 100; }
-    /* Every anchored step dims the page with 4 panels around a bright hole over the target. */
-    .tour-frame { position: fixed; background: rgba(20,24,28,.58); z-index: 100; }
-    .tour-highlight { position: fixed; z-index: 101; border-radius: var(--radius-sm); border: 2px solid var(--accent-text); box-shadow: 0 0 0 3px var(--accent), 0 0 16px 2px rgba(0,0,0,.35); pointer-events: none; transition: top .15s, left .15s, width .15s, height .15s; }
-    .tour-highlight.pulse { animation: tourPulse 1.6s ease-in-out infinite; }
-    @keyframes tourPulse { 0%,100% { box-shadow: 0 0 0 3px var(--accent), 0 0 16px 2px rgba(0,0,0,.35); } 50% { box-shadow: 0 0 0 7px var(--accent), 0 0 22px 4px rgba(0,0,0,.35); } }
-    .tour-pop { position: fixed; z-index: 102; width: min(330px, 88vw); background: var(--card); border-radius: var(--radius); box-shadow: 0 18px 48px rgba(0,0,0,.28); padding: 16px 18px; }
-    .tour-pop .tour-count { font-size: var(--fs-xs); font-weight: 800; color: var(--accent-ink); letter-spacing: .08em; margin-bottom: 4px; }
-    .tour-pop .tour-title { font-size: var(--fs-xl); font-weight: 800; color: var(--ink); margin-bottom: 6px; }
-    .tour-pop .tour-text { font-size: var(--fs-base); color: var(--ink); line-height: 1.5; margin-bottom: 14px; }
-    .tour-actions { display: flex; align-items: center; gap: 8px; }
-    .tour-spacer { flex: 1; }
-    .tour-skip { background: none; border: none; color: var(--muted); font-size: var(--fs-sm); font-weight: 700; cursor: pointer; font-family: var(--font); padding: 0; }
-    .tour-skip:hover { color: var(--ink); }
-    .tour-btn { border: none; border-radius: var(--radius-sm); padding: 9px 16px; font-size: var(--fs-sm); font-weight: 800; cursor: pointer; font-family: var(--font); }
-    .tour-btn.ghost { background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
-    .tour-btn.primary { background: var(--accent); color: var(--accent-text); }
-    .tour-pop.arrow-up::before, .tour-pop.arrow-down::before { content: ''; position: absolute; left: var(--arrow-left, 50%); width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; margin-left: -9px; }
-    .tour-pop.arrow-up::before { top: -9px; border-bottom: 9px solid var(--card); }
-    .tour-pop.arrow-down::before { bottom: -9px; border-top: 9px solid var(--card); }
+    /* Guided-tour coach-mark styles now live in EditorShell (.mge-tour-*),
+       shared with the setup wizard. This page just supplies the steps. */
   </style>
 </head>
 <body>
@@ -129,7 +110,6 @@
   <div class="main" id="home-main" hidden></div>
 
   <div id="ehelp-root"></div>
-  <div id="tour-root"></div>
 
   <script>
     var IC = {
@@ -220,9 +200,9 @@
             '<div class="ttl">' + esc(l === 'es' ? c.es : c.en) + '</div>' +
             (c.live ? '' : '<div class="soon-tag">' + esc(ht('soon')) + '</div>');
           if (c.live) {
-            h += '<a class="tile" target="_top" href="' + esc(BASE_URL) + '?page=' + esc(c.page) + '">' + inner + '</a>';
+            h += '<a class="tile" target="_top" data-tour="tile-' + esc(c.key) + '" href="' + esc(BASE_URL) + '?page=' + esc(c.page) + '">' + inner + '</a>';
           } else {
-            h += '<div class="tile soon">' + inner + '</div>';
+            h += '<div class="tile soon" data-tour="tile-' + esc(c.key) + '">' + inner + '</div>';
           }
         }
         h += '</div>';
@@ -241,155 +221,55 @@
             '<div class="ehelp-head"><span class="ehelp-title">' + esc(c.title) + '</span>' +
             '<button type="button" class="ehelp-x" onclick="closeEditorHelp()" aria-label="Close">&times;</button></div>' +
             '<div class="ehelp-body">' + c.body + '<div class="ehelp-tip">' + esc(c.tip) + '</div>' +
-            '<p style="margin:14px 0 0"><button type="button" class="tour-btn primary" onclick="replayHomeTour()">' + esc(ht('replayTour')) + '</button></p></div>' +
+            '<p style="margin:14px 0 0"><button type="button" class="mge-tour-btn primary" onclick="replayHomeTour()">' + esc(ht('replayTour')) + '</button></p></div>' +
           '</div></div>';
     }
     function closeEditorHelp() { document.getElementById('ehelp-root').innerHTML = ''; }
-    document.addEventListener('keydown', function (e) { if (e.keyCode === 27) { closeEditorHelp(); if (TOUR.active) endTour(); } });
+    document.addEventListener('keydown', function (e) { if (e.keyCode === 27) closeEditorHelp(); });   // shell handles ESC for the tour
 
-    /* ───────── First-run guided tour (coach-marks) ─────────
-       One page (no SPA views), so no cross-view walk. Language is already chosen
-       at the PIN gate, so the tour opens in the right language — no splash. Steps
-       are informational (no input-gating). Fires once per browser; replay from the
-       help popup. ES5 / Rhino-safe (var, function, no arrows/template literals). */
-    var TOUR = { active: false, step: 0, steps: [], started: false };
+    /* ───────── First-run guided tour (info mode) ─────────
+       Steps + auto-start/replay live here; the cutout-spotlight ENGINE is shared
+       (EditorShell: mgeStartTour_). One page, language already chosen at the gate,
+       so steps are informational (no input-gating). Fires once per browser. */
+    var TOUR_STARTED = false;
 
+    // Steps follow the real setup ORDER so a new store learns the flow and the
+    // dependencies (vendors before items, areas before assigning items to them).
     var TOUR_STEPS_HOME = [
       { sel: null,
-        en: { title: 'Welcome to the editor', body: 'Make changes to your store from a computer — no Google Sheet needed. Here\'s a 30-second tour.' },
-        es: { title: 'Bienvenido al editor', body: 'Haz cambios en tu tienda desde una computadora — sin abrir la hoja de Google. Aquí tienes un recorrido de 30 segundos.' } },
-      { sel: '.mge-web-hd',
-        en: { title: 'Your store & language', body: 'Your store is shown up here. Tap EN / ES anytime to switch language.' },
-        es: { title: 'Tu tienda e idioma', body: 'Tu tienda aparece aquí arriba. Toca EN / ES para cambiar de idioma cuando quieras.' } },
-      { sel: '[data-tour="sec-catalog"]',
-        en: { title: 'Catalog', body: 'Start here: Manage Items is what you order; Manage Vendors is who you order from.' },
-        es: { title: 'Catálogo', body: 'Empieza aquí: Administrar artículos es lo que pides; Administrar proveedores es a quién le pides.' } },
-      { sel: '[data-tour="sec-layout"]',
-        en: { title: 'Order sheet layout', body: 'Storage Areas groups your items; Shelf to Sheet sets the order they appear on the order sheet — so you count the kitchen in one walk.' },
-        es: { title: 'Diseño de la hoja', body: 'Áreas de almacenamiento agrupa tus artículos; Estante a Hoja define el orden en que aparecen en la hoja — para contar la cocina en un solo recorrido.' } },
-      { sel: '[data-tour="sec-records"]',
-        en: { title: 'Order history', body: 'Browse past orders by date, item, or vendor. This one is read-only.' },
-        es: { title: 'Historial de pedidos', body: 'Explora pedidos anteriores por fecha, artículo o proveedor. Este es solo de lectura.' } },
+        en: { title: 'Set up your store', body: 'Your store identity is saved. Now stock it — follow these 4 steps in order. Each one builds on the last.' },
+        es: { title: 'Configura tu tienda', body: 'La identidad de tu tienda está guardada. Ahora llénala — sigue estos 4 pasos en orden. Cada uno se apoya en el anterior.' } },
+      { sel: '[data-tour="tile-vendors"]',
+        en: { title: 'Step 1 — Add vendors', body: 'Start here: add who you order from. Do vendors FIRST — every item belongs to a vendor, so you can\'t add items until at least one vendor exists.' },
+        es: { title: 'Paso 1 — Agrega proveedores', body: 'Empieza aquí: agrega a quién le pides. Los proveedores van PRIMERO — cada artículo pertenece a un proveedor, así que no puedes agregar artículos hasta tener al menos uno.' } },
+      { sel: '[data-tour="tile-items"]',
+        en: { title: 'Step 2 — Add items', body: 'Then add what you order. Each item is tied to a vendor (that\'s why vendors come first). Set a par later once you know your usage.' },
+        es: { title: 'Paso 2 — Agrega artículos', body: 'Luego agrega lo que pides. Cada artículo se vincula a un proveedor (por eso los proveedores van primero). Define el par después, cuando conozcas tu uso.' } },
+      { sel: '[data-tour="tile-areas"]',
+        en: { title: 'Step 3 — Storage areas', body: 'Create the zones you count — walk-in, dry storage, line, etc. You need at least one area before you can assign items to it.' },
+        es: { title: 'Paso 3 — Áreas de almacenamiento', body: 'Crea las zonas que cuentas — cámara, almacén seco, línea, etc. Necesitas al menos un área antes de poder asignarle artículos.' } },
+      { sel: '[data-tour="tile-pickpath"]',
+        en: { title: 'Step 4 — Shelf to Sheet', body: 'Finally, arrange items in the order you physically walk the store, so counting is one smooth pass. Needs your vendors, items, and areas in place first.' },
+        es: { title: 'Paso 4 — Estante a Hoja', body: 'Por último, ordena los artículos según recorres la tienda, para contar en una sola pasada. Necesita tus proveedores, artículos y áreas ya listos.' } },
+      { sel: '[data-tour="tile-history"]',
+        en: { title: 'Order history', body: 'Once you\'re ordering on the phone, review past orders here by date, item, or vendor. Read-only.' },
+        es: { title: 'Historial de pedidos', body: 'Cuando ya estés pidiendo desde el teléfono, revisa pedidos anteriores aquí por fecha, artículo o proveedor. Solo lectura.' } },
       { sel: '[data-tour="help"]',
-        en: { title: 'Need help later?', body: 'Open this anytime for the guide — and to replay this walkthrough. Every tool also has its own ? button.' },
-        es: { title: '¿Necesitas ayuda después?', body: 'Ábrelo cuando quieras para ver la guía — y para repetir este recorrido. Cada herramienta también tiene su propio botón ?.' } }
+        en: { title: 'That\'s the flow', body: 'Vendors → Items → Areas → Shelf to Sheet. Open Help anytime to replay this, and every tool has its own ? button. Tap EN / ES up top to switch language.' },
+        es: { title: 'Ese es el flujo', body: 'Proveedores → Artículos → Áreas → Estante a Hoja. Abre Ayuda cuando quieras para repetirlo, y cada herramienta tiene su botón ?. Toca EN / ES arriba para cambiar de idioma.' } }
     ];
 
-    var TOUR_T = {
-      en: { skip: 'Skip', back: 'Back', next: 'Next', done: 'Done' },
-      es: { skip: 'Omitir', back: 'Atrás', next: 'Siguiente', done: 'Listo' }
-    };
-    function tt(k) { var l = homeLang(); return (TOUR_T[l] && TOUR_T[l][k]) || TOUR_T.en[k] || k; }
-
-    function startHomeTour() {
-      closeEditorHelp();
-      TOUR.steps = TOUR_STEPS_HOME; TOUR.active = true; TOUR.step = 0;
-      renderTour();
-    }
-    function tourTarget_() { var s = TOUR.steps[TOUR.step]; if (!s || !s.sel) return null; return document.querySelector(s.sel); }
-
-    function renderTour() {
-      var root = document.getElementById('tour-root'); if (!root) return;
-      var s = TOUR.steps[TOUR.step]; if (!s) { endTour(); return; }
-      var l = homeLang();
-      var c = (l === 'es' && s.es) ? s.es : s.en;
-      var last = TOUR.step === TOUR.steps.length - 1;
-      var hasTarget = !!(s.sel && document.querySelector(s.sel));
-      var h = '';
-      if (hasTarget) {
-        // Four dim panels frame a bright hole over the target (cutout spotlight).
-        h += '<div class="tour-frame" id="tour-fr-t"></div><div class="tour-frame" id="tour-fr-r"></div>';
-        h += '<div class="tour-frame" id="tour-fr-b"></div><div class="tour-frame" id="tour-fr-l"></div>';
-        h += '<div class="tour-highlight pulse" id="tour-hl"></div>';
-      } else {
-        h += '<div class="tour-overlay"></div>';   // welcome / no-anchor step: flat dim, centered bubble
-      }
-      h += '<div class="tour-pop" id="tour-pop">';
-      h +=   '<div class="tour-count">' + (TOUR.step + 1) + ' / ' + TOUR.steps.length + '</div>';
-      h +=   '<div class="tour-title">' + esc(c.title) + '</div>';
-      h +=   '<div class="tour-text">' + esc(c.body) + '</div>';
-      h +=   '<div class="tour-actions">';
-      h +=     '<button type="button" class="tour-skip" onclick="endTour()">' + esc(tt('skip')) + '</button>';
-      h +=     '<span class="tour-spacer"></span>';
-      if (TOUR.step > 0) h += '<button type="button" class="tour-btn ghost" onclick="tourBack()">' + esc(tt('back')) + '</button>';
-      h +=     '<button type="button" class="tour-btn primary" onclick="tourNext()">' + esc(last ? tt('done') : tt('next')) + '</button>';
-      h +=   '</div>';
-      h += '</div>';
-      root.innerHTML = h;
-      var target = s.sel ? document.querySelector(s.sel) : null;
-      if (target && target.scrollIntoView) {
-        try { target.scrollIntoView({ block: 'center', inline: 'nearest' }); }
-        catch (e) { try { target.scrollIntoView(); } catch (e2) {} }
-      }
-      tourReposition_();
-    }
-
-    function tourNext() { if (TOUR.step < TOUR.steps.length - 1) { TOUR.step++; renderTour(); } else { endTour(); } }
-    function tourBack() { if (TOUR.step > 0) { TOUR.step--; renderTour(); } }
-    function endTour() { TOUR.active = false; var r = document.getElementById('tour-root'); if (r) r.innerHTML = ''; }
-
-    function tourReposition_() {
-      if (!TOUR.active) return;
-      var pop = document.getElementById('tour-pop'); if (!pop) return;
-      var hl = document.getElementById('tour-hl');
-      var target = tourTarget_();
-      var vh = window.innerHeight, vw = window.innerWidth, pad = 6, gap = 14;
-      if (!target) {
-        if (hl) hl.style.display = 'none';
-        tourFrame_(null, 0);
-        pop.className = 'tour-pop';
-        pop.style.top = Math.max(gap, (vh - pop.offsetHeight) / 2) + 'px';
-        pop.style.left = Math.max(gap, (vw - pop.offsetWidth) / 2) + 'px';
-        return;
-      }
-      var r = target.getBoundingClientRect();
-      if (hl) {
-        hl.style.display = 'block';
-        hl.style.top = (r.top - pad) + 'px'; hl.style.left = (r.left - pad) + 'px';
-        hl.style.width = (r.width + pad * 2) + 'px'; hl.style.height = (r.height + pad * 2) + 'px';
-      }
-      tourFrame_(r, pad);
-      var ph = pop.offsetHeight, pw = pop.offsetWidth, place, top, left;
-      if (r.bottom + gap + ph <= vh) { top = r.bottom + gap; place = 'up'; }
-      else if (r.top - gap - ph >= 0) { top = r.top - gap - ph; place = 'down'; }
-      else { top = Math.max(gap, (vh - ph) / 2); place = 'none'; }
-      left = Math.max(gap, Math.min(vw - pw - gap, r.left + r.width / 2 - pw / 2));
-      pop.className = 'tour-pop arrow-' + place;
-      pop.style.top = top + 'px'; pop.style.left = left + 'px';
-      var arrowLeft = (r.left + r.width / 2) - left;
-      arrowLeft = Math.max(16, Math.min(pw - 16, arrowLeft));
-      pop.style.setProperty('--arrow-left', arrowLeft + 'px');
-    }
-
-    // Cover the viewport with four dim panels EXCEPT a hole over rect r (the
-    // cutout spotlight). r null → hide all four. Recomputed every reposition.
-    function tourFrame_(r, pad) {
-      var pt = document.getElementById('tour-fr-t'), pr = document.getElementById('tour-fr-r'),
-          pb = document.getElementById('tour-fr-b'), pl = document.getElementById('tour-fr-l');
-      if (!pt || !pr || !pb || !pl) return;
-      if (!r) { pt.style.display = 'none'; pr.style.display = 'none'; pb.style.display = 'none'; pl.style.display = 'none'; return; }
-      var vw = window.innerWidth, vh = window.innerHeight;
-      var hx = Math.max(0, r.left - pad), hy = Math.max(0, r.top - pad);
-      var hw = r.width + pad * 2, hh = r.height + pad * 2;
-      var hr = hx + hw, hb = hy + hh;
-      function box(el, x, y, w, hgt) { el.style.display = 'block'; el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.width = Math.max(0, w) + 'px'; el.style.height = Math.max(0, hgt) + 'px'; }
-      box(pt, 0, 0, vw, hy);          // above the hole
-      box(pb, 0, hb, vw, vh - hb);    // below the hole
-      box(pl, 0, hy, hx, hh);         // left of the hole
-      box(pr, hr, hy, vw - hr, hh);   // right of the hole
-    }
-    window.addEventListener('resize', function () { if (TOUR.active) tourReposition_(); });
-    window.addEventListener('scroll', function () { if (TOUR.active) tourReposition_(); }, true);
-
+    // Engine is shared (EditorShell mgeStartTour_); this page supplies steps + run policy.
+    function startHomeTour() { closeEditorHelp(); mgeStartTour_(TOUR_STEPS_HOME, { mode: 'info' }); }
     function replayHomeTour() { closeEditorHelp(); startHomeTour(); }
 
     // First run only (once per browser); returning users skip straight in.
     function maybeAutoStartTour_() {
-      if (TOUR.started) return;            // latch: don't re-fire on re-render (e.g. lang toggle)
+      if (TOUR_STARTED) return;            // latch: don't re-fire on re-render (e.g. lang toggle)
       var seen = false;
       try { seen = localStorage.getItem('mog_edit_tour_seen') === '1'; } catch (e) {}
       if (seen) return;
-      TOUR.started = true;
+      TOUR_STARTED = true;
       try { localStorage.setItem('mog_edit_tour_seen', '1'); } catch (e) {}
       setTimeout(startHomeTour, 350);      // let the home DOM settle before anchoring
     }

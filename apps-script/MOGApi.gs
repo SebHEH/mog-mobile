@@ -1922,9 +1922,12 @@ function clearPinLockout() {
 function clearMobileApiConfig() {
   const ui = SpreadsheetApp.getUi();
   const resp = ui.alert('Clear Mobile API Config',
-    'This will remove the PIN, master PIN, location, abbreviation, GM email, and recap-sent state.\n\n' +
-    'It will NOT clear the recipients block in SETUP — those rows remain (edit them in the sheet if needed).\n\n' +
-    'Continue?',
+    'This UN-CONFIGURES this store — it removes the PIN, master PIN, location, ' +
+    'store code, concept, GM email, and recap-sent state, so the first-run setup ' +
+    'wizard runs again. Handy for reusing the test template.\n\n' +
+    'Items, vendors, storage areas, and order history are NOT touched, and the ' +
+    'recipients block in SETUP remains (edit it in the sheet if needed).\n\n' +
+    'Do NOT run this on a live store. Continue?',
     ui.ButtonSet.YES_NO);
   if (resp !== ui.Button.YES) return;
   const props = PropertiesService.getScriptProperties();
@@ -1933,13 +1936,16 @@ function clearMobileApiConfig() {
   props.deleteProperty(PROP_LOCATION);
   props.deleteProperty(PROP_LOCATION_ABBR);
   props.deleteProperty(PROP_GM_EMAIL);
+  props.deleteProperty(PROP_CONCEPT);            // so the re-themed wizard starts neutral
   props.deleteProperty(PROP_LAST_RECAP_SENT_DATE);
   // Also wipe the rate-limit state — fresh deployment should never
   // start with a stale lockout window from a previous tenant of the
   // script properties.
   props.deleteProperty(PROP_PIN_FAIL_COUNT);
   props.deleteProperty(PROP_PIN_LOCKOUT_UNTIL);
-  ui.alert('Cleared. Run setupMobileApi() to reconfigure.');
+  ui.alert('Cleared',
+    'This store is now unconfigured. Open its /exec URL to run the first-run ' +
+    'setup wizard (or use Setup / Re-run Setup from this menu).');
 }
 
 

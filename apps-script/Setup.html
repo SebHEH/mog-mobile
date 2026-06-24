@@ -456,6 +456,40 @@
       setTxt('s-savemsg', t('eGeneric'));
     }
 
+    /* ───────── First-run setup tour (gated mode) ─────────
+       Walks the inputs in order; Next locks until each step's field is filled
+       (gate predicates, mgeStartTour_ gated mode). Engine is shared (EditorShell).
+       Auto-fires once per browser; the steps-box "Replay walkthrough" button (shown
+       because startSetupTour is defined) replays it anytime. */
+    var SETUP_TOUR_STEPS = [
+      { sel: null,
+        en: { title: 'Let’s set up your store', body: 'Four quick steps — we build your store name and code for you as you go.' },
+        es: { title: 'Configuremos tu tienda', body: 'Cuatro pasos rápidos — armamos el nombre y el código de tu tienda mientras avanzas.' } },
+      { sel: '#f-concept', gate: function () { return !!CONCEPT_SEL; },
+        en: { title: 'Pick your concept', body: 'Choose your concept — the whole page re-themes to its colors instantly.' },
+        es: { title: 'Elige tu concepto', body: 'Elige tu concepto — toda la página cambia a sus colores al instante.' } },
+      { sel: '#f-area', gate: function () { return !!AREA_SEL; },
+        en: { title: 'Front or back of house', body: 'Pick BOH (kitchen) or FOH (front of house).' },
+        es: { title: 'Cocina o mostrador', body: 'Elige BOH (cocina) o FOH (mostrador).' } },
+      { sel: '#f-city', gate: function () { return !!(el('i-city').value || '').trim(); },
+        en: { title: 'Type your city', body: 'Type the city — the store name and code build automatically (see the preview just below).' },
+        es: { title: 'Escribe tu ciudad', body: 'Escribe la ciudad — el nombre y el código se arman solos (míralos en la vista previa de abajo).' } },
+      { sel: '#f-pin', gate: function () { return /^\d{4,8}$/.test((el('i-pin').value || '').trim()); },
+        en: { title: 'Set a team PIN', body: '4–8 digits. Your team types this to open the editor.' },
+        es: { title: 'Define un PIN', body: '4 a 8 dígitos. Tu equipo lo escribe para abrir el editor.' } },
+      { sel: '#s-save',
+        en: { title: 'Finish', body: 'Press Finish setup to save and open your editor. You can change anything later.' },
+        es: { title: 'Listo', body: 'Pulsa Finalizar para guardar y abrir tu editor. Puedes cambiar todo después.' } }
+    ];
+    function startSetupTour() { closeSetupHelp(); mgeStartTour_(SETUP_TOUR_STEPS, { mode: 'gated' }); }
+    function maybeAutoStartSetupTour_() {
+      var seen = false;
+      try { seen = localStorage.getItem('mog_setup_tour_seen') === '1'; } catch (e) {}
+      if (seen) return;
+      try { localStorage.setItem('mog_setup_tour_seen', '1'); } catch (e) {}
+      setTimeout(startSetupTour, 400);   // let the form paint before anchoring
+    }
+
     /* ── Boot: device gate → language splash → form ── */
     function chooseSetupLang(l) {
       mgeSetLang_(l);
@@ -464,6 +498,7 @@
       applyConceptTheme();
       el('setup-main').removeAttribute('hidden');
       el('i-concept').focus();
+      maybeAutoStartSetupTour_();
     }
 
     (function bootSetup() {
