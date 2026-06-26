@@ -328,6 +328,16 @@
     /* Web tokens (--web-accent*, --shadow, --font, --r, --r-sm, --muted,
        --faint) are defined once in EditorShell and inherited here. */
     body.mge-web { font-family: var(--font); background: var(--page); --shell-width: 1080px; }
+    /* Natural page scroll (like Manage Items): release the nested flex scrollers so the
+       page is the single scroller and the header band scrolls away. Sheet dialog unaffected. */
+    html.mge-web { height: auto; overflow-y: auto; overflow-x: hidden; }
+    body.mge-web { height: auto; min-height: 100vh; overflow: visible; }
+    body.mge-web .shell { height: auto; flex: 0 0 auto; min-height: 0; }
+    body.mge-web .content-area,
+    body.mge-web .tab-panel,
+    body.mge-web .table-wrap,
+    body.mge-web .hist-detail,
+    body.mge-web .hist-detail-list { flex: 0 0 auto; overflow: visible; height: auto; min-height: 0; }
     /* helper: anything tagged .web-col centers at the page width */
     body.mge-web .top-bar,
     body.mge-web .filter-bar,
@@ -390,6 +400,11 @@
 <body>
 <?!= include('EditorShell'); ?>
 <div class="shell">
+
+  <div class="web-titlebar">
+    <h1 class="web-title"><span class="en">Order History</span><span class="es">Historial de pedidos</span></h1>
+    <p class="web-subtitle"><span class="en">A read-only look back at past orders — by date, by item, and by vendor. Nothing here changes your data.</span><span class="es">Un repaso de solo lectura de pedidos anteriores — por fecha, por artículo y por proveedor. Nada aquí cambia tus datos.</span></p>
+  </div>
 
   <div class="top-bar">
     <div class="top-tabs">
@@ -704,6 +719,7 @@
   function initOrderHistory_() {
     if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
       mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
+      document.documentElement.classList.add('mge-web');  // unlock page scroll (html.mge-web)
       setBreadcrumb_(
         [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
         { en: 'Order History', es: 'Historial de pedidos' }
@@ -717,7 +733,8 @@
     document.getElementById('date-from').value = fmtD(from);
     setLang(MOG_WEB ? mgeGetLang_() : 'en');   // web: open in the language chosen at the gate
     loadBootstrap();   // single RPC: populates vendor dropdown + seeds Recent tab
-    if (MOG_WEB) maybeAutoStartHistoryTour_();   // first-run mini-tour (once per browser)
+    // Per-tool mini-tour is REPLAY-ONLY by design (via the ? help "↻ Replay" button).
+    // Home flow-tour + setup wizard cover first-run orientation. Re-enable: if (MOG_WEB) maybeAutoStartHistoryTour_();
   }
   window.onload = function() {
     if (MOG_WEB) { mgeStartGate_(initOrderHistory_); } else { initOrderHistory_(); }

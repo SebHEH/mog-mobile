@@ -300,6 +300,11 @@
       /* Web tokens (--web-accent*, --shadow, --font, --r, --r-sm, --muted,
          --faint) are defined once in EditorShell and inherited here. */
       body.mge-web { font-family: var(--font); background: var(--page); --shell-width: 920px; }
+      /* Natural page scroll (like Manage Items): the whole page scrolls so the header
+         band scrolls away instead of pinning. Scoped to mge-web — Sheet dialog unaffected. */
+      html.mge-web { height: auto; overflow-y: auto; overflow-x: hidden; }
+      body.mge-web { height: auto; min-height: 100vh; overflow: visible; }
+      body.mge-web .scroll-body { flex: 0 0 auto; overflow: visible; }
 
       /* Navy top-bar emptied (lang/help relocated to the shared band) + hidden. */
       body.mge-web .top-bar { display: none; }
@@ -383,6 +388,11 @@
     </div>
 
     <div class="scroll-body">
+
+      <div class="web-titlebar">
+        <h1 class="web-title"><span class="en">Manage Vendors</span><span class="es">Administrar proveedores</span></h1>
+        <p class="web-subtitle"><span class="en">The suppliers you order from and the days each one delivers. A vendor's delivery days are what tell the guide how much to order on each run.</span><span class="es">Los proveedores a los que les pides y los días que entrega cada uno. Los días de entrega de un proveedor son los que le dicen a la guía cuánto pedir en cada pedido.</span></p>
+      </div>
 
       <!-- Vendor list -->
       <div class="section-header">
@@ -1560,6 +1570,7 @@
       function initManageVendors_() {
         if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
           mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
+          document.documentElement.classList.add('mge-web');  // unlock page scroll (html.mge-web)
           setBreadcrumb_(
             [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
             { en: 'Manage Vendors', es: 'Administrar proveedores' }
@@ -1569,7 +1580,8 @@
         }
         setLang(MOG_WEB ? mgeGetLang_() : 'en');   // web: open in the language chosen at the gate
         renderVendorCards(true);  // use prebaked VENDOR_TABLE from template — no server call
-        if (MOG_WEB) maybeAutoStartVendorsTour_();   // first-run mini-tour (once per browser)
+        // Per-tool mini-tour is REPLAY-ONLY by design (via the ? help "↻ Replay" button).
+        // Home flow-tour + setup wizard cover first-run orientation. Re-enable: if (MOG_WEB) maybeAutoStartVendorsTour_();
       }
       // Sheet mode: init immediately. Web mode: gate (device + PIN) first, then init.
       if (MOG_WEB) { mgeStartGate_(initManageVendors_); }

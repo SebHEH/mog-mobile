@@ -158,6 +158,14 @@
   .tour-replay-wrap { display: none; margin-top: 14px; }
   body.mge-web .tour-replay-wrap { display: block; }
 
+  /* Persistent page title + one-line subtitle above each tool's content (web only).
+     Centralized here so every tool reads the same; self-centers to the tool's column
+     via --shell-width. The Sheet dialog never shows it (.web-titlebar hidden by default). */
+  .web-titlebar { display: none; }
+  body.mge-web .web-titlebar { display: block; max-width: var(--shell-width, 1000px); margin: 0 auto; padding: 16px 24px 2px; }
+  body.mge-web .web-title { font-size: 22px; font-weight: 800; color: #1d1f1d; margin: 0; }
+  body.mge-web .web-subtitle { font-size: 13.5px; color: var(--muted, #6b7280); margin: 4px 0 0; line-height: 1.45; max-width: 72ch; }
+
 </style>
 
 <div id="mge-tour-root"></div>

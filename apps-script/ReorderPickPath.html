@@ -512,6 +512,11 @@
       </div>
     </div>
 
+    <div class="web-titlebar">
+      <h1 class="web-title"><span class="en">Shelf to Sheet</span><span class="es">Estante a Hoja</span></h1>
+      <p class="web-subtitle"><span class="en">Put each area's items in the order you actually count them, so the order sheet matches your walk through the shelves.</span><span class="es">Ordena los artículos de cada área en el orden en que realmente los cuentas, para que la hoja de pedido siga tu recorrido por los estantes.</span></p>
+    </div>
+
     <!-- Sticky header -->
     <div class="header">
       <h3>
@@ -1276,7 +1281,8 @@
           var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
         }
         setLang(MOG_WEB ? mgeGetLang_() : 'en');
-        if (MOG_WEB) maybeAutoStartPickPathTour_();   // first-run mini-tour (once per browser)
+        // Per-tool mini-tour is REPLAY-ONLY by design (via the ? help "↻ Replay" button).
+        // Home flow-tour + setup wizard cover first-run orientation. Re-enable: if (MOG_WEB) maybeAutoStartPickPathTour_();
       }
       if (MOG_WEB) { mgeStartGate_(initReorderPickPath_); }
       else { initReorderPickPath_(); }

@@ -48,16 +48,18 @@ The reason: spreadsheet data and per-store state vary subtly. A change that work
 
 **Staged-commit discipline (when a session is planned as N separate commits).** It's fine — often better — to bundle several logical changes onto *one* canary smoke test for efficiency. But **commit each logical change before you start editing the next one.** If you deploy change A to canary, then edit change B on top before committing A, you can no longer make two clean commits without reconstructing A from a scratchpad snapshot (the working tree now holds A+B intermingled). Commit A first → the second commit is then just B's diff. The canary bundling and the commit granularity are independent: deploy whenever it's efficient, but don't let an uncommitted stage pile onto the next.
 
-## KM web editor (`doGet?page=…`) — iterate on `/dev`, not `/exec`
+## KM web editor (`doGet?page=…`) — iterate by `--redeploy` to the canary, send the `/exec` link
 
-Editor pages are served two ways from the same Apps Script project, and using the wrong one wastes a session:
+Editor pages are served two ways from the same Apps Script project:
 
-- **`/exec`** — the public, anonymous, **versioned snapshot** (needs `--redeploy`). It CDN-caches hard for anonymous users; after a redeploy a browser can keep showing the old page (incognito doesn't help — only a new URL/query param or a fresh deployment busts it). This is the URL KMs use.
-- **`/dev`** — serves **live HEAD** to the logged-in owner. Every `clasp push` shows on refresh, no cache. **This is the URL to iterate on during a polish session.** Get its deployment id from `clasp deployments` (the `@HEAD` entry): `…/macros/s/<HEAD_DEPLOYMENT_ID>/dev?page=<tool>`.
+- **`/exec`** — the public, anonymous, **versioned snapshot** (only updates on `--redeploy`). This is the URL KMs use, **and the one Sebastian tests on** — he wants a single link he can open and refresh, not a `/dev` URL. A push alone does NOT change what `/exec` serves.
+- **`/dev`** — serves **live HEAD** to the logged-in owner on every `clasp push` (no `--redeploy`). Still available if you want a push-only loop, but it's owner-only and Sebastian prefers the `/exec` link.
 
-**NEVER `--redeploy` to iterate — push-only + `/dev`. `--redeploy` is fan-out ONLY.** Beyond the CDN cache, a `--redeploy` bumps the `/exec` deployment version, which **flushes `CacheService`** — and editor session tokens live there (`putEditorToken_` in `Editor.gs`). So every redeploy silently invalidates active sessions; on `/exec` that surfaces as a broken-looking page on reopen. This burned a 2026-06-24 session (redeploying `/exec` per iteration → "whenever we redeploy the whole page is buggy"). Iterate with `python deploy.py --target rpfrf` (no `--redeploy`) on `/dev`; only run `--redeploy` (all targets) once Sebastian approves the fan-out. The gate is now validate-first so a flushed token re-prompts instead of bricking, but that's a safety net — don't lean on it to iterate. See `[[feedback_editor_iterate_on_dev]]`.
+**Iterate by `--redeploy`-ing the canary and handing Sebastian its bare `/exec` HOME link** (from `stores.json`; never a `?page=` deep link — cold deep-link is buggy). `python deploy.py --redeploy --target rpfrf` → send the rpfrf `/exec` URL → he tests → fan out with `python deploy.py --redeploy` (no `--target`).
 
-**Editor canary is `rpfrf`**, not `rprfo` — the KM editor (Phase 1 + polish) lives on rpfrf. Deploy editor changes with `python deploy.py --redeploy --target rpfrf`, iterate on rpfrf's `/dev`, fan out only when Sebastian says so.
+*Why this reverses the old "never `--redeploy` to iterate" rule:* `--redeploy` flushes `CacheService`, where editor session tokens live (`putEditorToken_` in `Editor.gs`). The **old optimistic gate** then ran a tool with a dead token and bricked — that's what burned the 2026-06-24 session ("whenever we redeploy the whole page is buggy"). The **validate-first gate** (`mgeStartGate_` + `editorPing`, shipped 2026-06-24) fixed exactly that: a flushed token now routes to the PIN and reloads cleanly. So redeploying the canary to iterate is safe — the only cost is re-entering the PIN. See `[[feedback_editor_iterate_on_dev]]`.
+
+**Editor canary is `rpfrf`**, not `rprfo` (the KM editor lives on rpfrf); the setup wizard canary is `_template`. Fan out only when Sebastian says so.
 
 **"Deployed but not showing" on an editor page is a runtime bug, not a deploy/cache problem.** If `curl`/`clasp pull` confirm the new code is in the served HTML but the page looks unchanged, it's executing wrong (classic: `setLang` wiping the `mge-web` class) — open DevTools/console or "View frame source" and check the rendered DOM before touching the deploy pipeline. See `mog-editor-web-reskin` and `[[feedback_delivered_vs_executing]]`.
 

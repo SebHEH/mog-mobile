@@ -14,7 +14,7 @@ If sources conflict, items higher in this list win for "what's currently in flig
 
 Replace the path here with the newest handoff at the end of each session that ships material changes. (The `mog-session-handoff` skill rewrites this line.)
 
-@docs/MOG_SessionHandoff_2026_06_24.md
+@docs/MOG_SessionHandoff_2026_06_26.md
 
 ## Quick orientation
 
@@ -85,6 +85,19 @@ Skills auto-load and trigger via the descriptions in their frontmatter.
 | `source-of-truth-verification` | When an Edit fails (anchor not found) and drift is suspected. |
 | `rhino-safe-html` | Editing any `apps-script/*.html` script block — enforces ES5 syntax. |
 | `claude-code-project-setup` | First-time scaffold for a new repo. Not relevant here anymore. |
+
+## Global skills are governed — do NOT edit them in this repo
+
+The skills under `~/.claude/skills/` are owned by the **Claude-SKills** repo (the single
+source of truth). In THIS repo, never edit or create one of those global skills directly —
+a direct edit drifts from the canonical source and is overwritten on the next sync.
+
+When a session reveals a global skill should change (a lesson to fold in, a gotcha, a new
+global skill), invoke the **`global-skill-governance`** skill. It files a proposal into the
+mailbox (`~/.claude/skills/_global-skill-proposals/`); the Claude-SKills repo reviews,
+applies, and re-syncs. Do not apply it locally.
+
+Repo-local skills in `./.claude/skills/` ARE owned by this repo — edit those in place, no proposal.
 
 ## Working conventions
 

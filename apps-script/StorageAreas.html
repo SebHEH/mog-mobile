@@ -251,6 +251,11 @@
       /* Web tokens (--web-accent*, --shadow, --font, --r, --r-sm, --muted,
          --faint) are defined once in EditorShell and inherited here. */
       body.mge-web { font-family: var(--font); background: var(--page); --shell-width: 760px; }
+      /* Natural page scroll (like Manage Items): the whole page scrolls so the header
+         band scrolls away instead of pinning. Scoped to mge-web — Sheet dialog unaffected. */
+      html.mge-web { height: auto; overflow-y: auto; overflow-x: hidden; }
+      body.mge-web { height: auto; min-height: 100vh; overflow: visible; }
+      body.mge-web .body { flex: 0 0 auto; overflow: visible; min-height: 0; }
 
       /* Navy header emptied (lang/help relocated to the shared band) + hidden. */
       body.mge-web .header { display: none; }
@@ -281,8 +286,9 @@
       body.mge-web #add-card .btn-primary { background: var(--web-accent-soft); color: var(--web-accent-dark); }
       body.mge-web #add-card #add-status { flex-basis: 100%; }
 
-      /* Sticky footer (already pinned at viewport bottom by the body flex column). */
-      body.mge-web .modal-footer { background: transparent; border-top: 1px solid var(--line); max-width: 760px; margin: 0 auto; width: 100%; padding: 12px 24px; }
+      /* Sticky Save footer pinned to the viewport bottom (page now scrolls, so it must
+         stick or it would scroll away on a long area list). Solid bg covers content under it. */
+      body.mge-web .modal-footer { background: var(--page); border-top: 1px solid var(--line); max-width: 760px; margin: 0 auto; width: 100%; padding: 12px 24px; position: sticky; bottom: 0; z-index: 5; }
       body.mge-web .btn-close { background: transparent; color: var(--muted); padding: 8px 2px; }
       body.mge-web .btn-close:hover { color: var(--web-accent-dark); opacity: 1; }
       body.mge-web .btn-save { background: var(--web-accent); padding: 11px 22px; }
@@ -331,6 +337,11 @@
     </div>
 
     <div class="body">
+
+      <div class="web-titlebar">
+        <h1 class="web-title"><span class="en">Storage Areas</span><span class="es">Áreas de almacenamiento</span></h1>
+        <p class="web-subtitle"><span class="en">The places you store inventory. Items group by area on the order sheet, so list your areas in the order you walk the space.</span><span class="es">Los lugares donde guardas el inventario. Los artículos se agrupan por área en la hoja de pedido, así que ordena tus áreas según recorres el espacio.</span></p>
+      </div>
 
       <!-- Area list -->
       <div class="list-card" id="list-card">
@@ -815,6 +826,7 @@
       function initStorageAreas_() {
         if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
           mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
+          document.documentElement.classList.add('mge-web');  // unlock page scroll (html.mge-web)
           setBreadcrumb_(
             [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
             { en: 'Storage Areas', es: 'Áreas de almacenamiento' }
@@ -823,7 +835,8 @@
           var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
         }
         setLang(MOG_WEB ? mgeGetLang_() : 'en');
-        if (MOG_WEB) maybeAutoStartAreasTour_();   // first-run mini-tour (once per browser)
+        // Per-tool mini-tour is REPLAY-ONLY by design (via the ? help "↻ Replay" button).
+        // Home flow-tour + setup wizard cover first-run orientation. Re-enable: if (MOG_WEB) maybeAutoStartAreasTour_();
       }
       if (MOG_WEB) { mgeStartGate_(initStorageAreas_); }
       else { initStorageAreas_(); }
