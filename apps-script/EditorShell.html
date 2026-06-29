@@ -1014,12 +1014,30 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     if (eb) eb.className = 'mge-lang' + (es ? ' on' : '');
   }
 
-  /* Session token shared across editor pages via localStorage (reliable in this
-     sandbox — the modal's item cache uses it too). Optimistic: a stale token
-     just fails the first server call (SESSION_EXPIRED) and reprompts. */
+  /* Session token cache. localStorage works for same-page reloads, but the
+     HtmlService sandbox does NOT reliably keep it across a ?page= navigation —
+     so it is only a cache, not the cross-page carrier. The reliable cross-page
+     handoff is the URL (?t=…), appended to internal links by mgeDecorateLinks_
+     and read back by mgeTokenFromUrl_. A stale token just fails editorPing and
+     reprompts. */
   function mgeStoredToken_() { try { return localStorage.getItem('mog_edit_token') || ''; } catch (e) { return ''; } }
   function mgeStoreToken_(t) { try { localStorage.setItem('mog_edit_token', t); } catch (e) {} }
   function mgeClearToken_() { try { localStorage.removeItem('mog_edit_token'); } catch (e) {} }
+
+  // Carry the validated session token onto internal editor links (?page=…) so the
+  // NEXT page authenticates from the URL — the sandbox doesn't reliably keep
+  // localStorage across a ?page= navigation, so this is the reliable handoff.
+  // Idempotent (skips links that already carry &t=); no-op until MOG_TOKEN is set.
+  function mgeDecorateLinks_() {
+    if (!MOG_TOKEN) return;
+    var as = document.querySelectorAll('a[href]');
+    for (var i = 0; i < as.length; i++) {
+      var h = as[i].getAttribute('href') || '';
+      if (h.indexOf('page=') === -1) continue;     // editor page links only
+      if (/[?&]t=/.test(h)) continue;              // already carries a token
+      as[i].setAttribute('href', h + (h.indexOf('?') === -1 ? '?' : '&') + 't=' + encodeURIComponent(MOG_TOKEN));
+    }
+  }
 
   // Mix a #rrggbb (or #rgb) toward black/white, keeping `keep` (0..1) of the
   // source color. Pure JS so the derived shades need no color-mix support and
@@ -1134,7 +1152,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
 
   // Runs the page's init callback (kept on MGE_CB so a later reauth can re-run
   // it — reloading the tool cleanly instead of leaving a blank/stale page).
-  function mgeRunCb_() { if (typeof MGE_CB === 'function') MGE_CB(); }
+  function mgeRunCb_() { if (typeof MGE_CB === 'function') MGE_CB(); mgeDecorateLinks_(); }
 
   // Each page's init calls this. The gate is the ONLY door: device → block;
   // a stored token is VALIDATED server-side (editorPing) before the page runs,
@@ -1145,22 +1163,47 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     MGE_CB = cb || null; MGE_MODE = 'start';
     mgeApplyConcept_(); mgeApplyLang_();
     if (mgeIsPhone_()) { mgeShow_('device'); return; }
-    var tok = mgeStoredToken_();
-    if (!tok) { mgeShow_('pin'); return; }
-    // Validate-first: show the gate (neutral "checking" — no card) while we
-    // confirm the token, then either run the page or fall back to the PIN.
-    MOG_TOKEN = tok;
+    // Validate-first, with a cross-page handoff. A token can reach this page two
+    // ways: localStorage (same-page reloads) OR the URL (?t=<token>, appended to
+    // every internal link by mgeDecorateLinks_). The sandbox does NOT reliably
+    // keep localStorage across a ?page= navigation, so without the URL carrier a
+    // KM who PINs in on the home page gets re-prompted on every tool. Order: try
+    // the stored token; if absent/invalid, try the URL token; only then PIN.
     mgeShow_('checking');
+    var toPin = function () { mgeClearToken_(); MOG_TOKEN = null; mgeShow_('pin'); };
+    var tryUrl = function () {
+      mgeTokenFromUrl_(function (urlTok) {
+        if (urlTok) mgeTryToken_(urlTok, toPin);
+        else toPin();
+      });
+    };
+    var stored = mgeStoredToken_();
+    if (stored) mgeTryToken_(stored, tryUrl);
+    else tryUrl();
+  }
+
+  // Validate a candidate token server-side (editorPing). On success: adopt it,
+  // cache it (best-effort), reveal the page. On any failure: call onFail.
+  function mgeTryToken_(tok, onFail) {
+    MOG_TOKEN = tok;
     google.script.run
       .withSuccessHandler(function (res) {
-        if (res && res.ok) { mgeHide_(); mgeRunCb_(); }
-        else { mgeClearToken_(); MOG_TOKEN = null; mgeShow_('pin'); }
+        if (res && res.ok) { mgeStoreToken_(tok); mgeHide_(); mgeRunCb_(); }
+        else onFail();
       })
-      .withFailureHandler(function () {
-        // Couldn't verify (transport error) — safest is to require the PIN.
-        mgeClearToken_(); MOG_TOKEN = null; mgeShow_('pin');
-      })
+      .withFailureHandler(function () { onFail(); })
       .editorPing(tok);
+  }
+
+  // Read a token handed off in the top-frame URL (?t=…). google.script.url
+  // .getLocation is the only way a sandboxed page can see the real query string.
+  function mgeTokenFromUrl_(cb) {
+    try {
+      google.script.url.getLocation(function (loc) {
+        var t = (loc && loc.parameter && loc.parameter.t) ? String(loc.parameter.t) : '';
+        cb(t);
+      });
+    } catch (e) { cb(''); }
   }
   // Reprompt after a mid-session token expiry. Clear the dead token first.
   function mgeReshowGate_() {
@@ -1230,6 +1273,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     // a language re-render) re-attaches the same button with its onclick intact.
     if (MGE_HELPBTN) { MGE_HELPBTN.className = 'help-btn mge-crumb-help'; bar.appendChild(MGE_HELPBTN); }
     bar.removeAttribute('hidden');
+    mgeDecorateLinks_();   // carry the session token onto the freshly-built crumb links
   }
 
 

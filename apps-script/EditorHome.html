@@ -208,7 +208,10 @@
       var main = document.getElementById('home-main');
       main.innerHTML = h;
       main.removeAttribute('hidden');
-      maybeAutoStartTour_();
+      // Home flow-tour is REPLAY-ONLY by design (via the ? help "↻ Replay the
+      // walkthrough" button) — it was auto-popping on every editor open, which is
+      // friction for KMs. The setup wizard tour still auto-fires on a fresh store.
+      // Re-enable: maybeAutoStartTour_();
     }
 
     function openEditorHelp() {
