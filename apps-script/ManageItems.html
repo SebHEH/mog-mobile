@@ -658,6 +658,7 @@
           <div class="panel-heading" id="ph-view"></div>
           <div id="view-select-hint" class="select-hint" id="hint-view"></div>
           <div id="view-detail" style="display:none">
+            <div id="view-detail-status" class="status"></div>
             <div class="detail-grid" id="view-detail-grid"></div>
             <div id="view-switch-row" class="switch-vendor-row" style="display:none">
               <label id="lbl-switch-vendor"></label>
@@ -1703,6 +1704,13 @@
     // briefly flash it — so after an add/edit you see exactly where it landed.
     function rerenderAndCenter_(id) {
       renderTable();
+      centerRow_(id);
+    }
+
+    // Scroll a row to the middle of the list + briefly flash it, WITHOUT a
+    // re-render — for callers (e.g. post-edit) that already rendered via
+    // selectItem() and just need to point at the row.
+    function centerRow_(id) {
       if (!id) return;
       const tr = byId('item-tbody').querySelector('tr[data-id="' + id + '"]');
       if (!tr) return;
@@ -1712,6 +1720,7 @@
 
     function selectItem(item) {
       selectedItem = item; renderTable(); switchTab('view');
+      setStatus('view-detail', '');   // clear any lingering post-save confirmation
       byId('view-select-hint').style.display = 'none';
       byId('view-detail').style.display = 'block';
       const ab = item.active
@@ -1998,20 +2007,22 @@
       bumpMutationTs_();
       MIRPC()
         .withSuccessHandler(res => {
-          if (newArea && res.assignedArea) {
-            setStatus('edit', t('saved') + res.id + t('savedArea') + res.assignedArea + '".', 'ok');
-            byId('edit-area-current').value = res.assignedArea;
-            byId('edit-area-new').value = '';
-          } else if (newArea) {
-            setStatus('edit', t('saved') + res.id + t('savedFail') +
-              (res.areaError ? ' (' + res.areaError + ')' : ''), 'warn');
-          } else {
-            setStatus('edit', t('saved') + res.id, 'ok');
-          }
           byId('edit-btn').disabled = false;
           setSavingPanel_('panel-edit', false);
-          // In-place update: refresh just this row, keep scroll + selection so
-          // editing several items in a row doesn't lose your place.
+
+          // Build the save confirmation — shown on the View detail we land on
+          // below (the edit-panel status would scroll out of view on the switch).
+          let saveMsg, saveType;
+          if (newArea && res.assignedArea) {
+            saveMsg = t('saved') + res.id + t('savedArea') + res.assignedArea + '".'; saveType = 'ok';
+          } else if (newArea) {
+            saveMsg = t('saved') + res.id + t('savedFail') +
+              (res.areaError ? ' (' + res.areaError + ')' : ''); saveType = 'warn';
+          } else {
+            saveMsg = t('saved') + res.id; saveType = 'ok';
+          }
+
+          // In-place update of the cached row so we don't refetch the whole list.
           const _e = allItems.find(x => x.id === res.id);
           // Flag a "Recently adjusted" pill only when the par actually changed —
           // the Par Review column is par-specific, so vendor/pack/active edits
@@ -2027,11 +2038,24 @@
             _e.active  = (byId('edit-active').value === 'true');
             _e.useMult = (byId('edit-useMult').value === 'true');
             if (res.assignedArea) _e.hasArea = true;
-            if (selectedItem && selectedItem.id === _e.id) selectedItem = _e;
           }
           if (parChanged) markParAdjusted_(res.id);
           clearItemsCache_(); writeItemsCache_(allItems, parFlags);
-          rerenderAndCenter_(res.id);
+
+          // Reset the right pane to the just-saved item's View detail. selectItem
+          // re-renders the quick-switch from the now-updated eligible list, which
+          // also fixes the stale "can't switch active vendor after adding one"
+          // bug (the detail was previously never re-rendered after an edit).
+          if (_e) {
+            selectItem(_e);
+            centerRow_(res.id);
+            setStatus('view-detail', saveMsg, saveType);
+          } else {
+            // Row missing from cache (shouldn't happen on edit) — fall back to the
+            // old in-place behavior so the user is never stranded.
+            setStatus('edit', saveMsg, saveType);
+            rerenderAndCenter_(res.id);
+          }
         })
         .withFailureHandler(err => {
           setSavingPanel_('panel-edit', false);
