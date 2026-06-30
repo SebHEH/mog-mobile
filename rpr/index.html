@@ -3948,12 +3948,17 @@
         cacheTargetPars(ctx.items);
         renderCount();
 
-        if (added) {
-          showToast(state.lang === 'en'
-            ? 'Updated — ' + added + ' new item' + (added === 1 ? '' : 's')
-            : 'Actualizado — ' + added + ' artículo' + (added === 1 ? '' : 's') +
-              ' nuevo' + (added === 1 ? '' : 's'),
-            'success');
+        // Notify what changed — added and/or removed, with counts. We only
+        // reach here when added || removed, so the message is never empty.
+        const parts = [];
+        if (state.lang === 'en') {
+          if (added)   parts.push(added + ' new item' + (added === 1 ? '' : 's'));
+          if (removed) parts.push(removed + ' item' + (removed === 1 ? '' : 's') + ' removed');
+          showToast('Updated — ' + parts.join(', '), 'success');
+        } else {
+          if (added)   parts.push(added + ' artículo' + (added === 1 ? '' : 's') + ' nuevo' + (added === 1 ? '' : 's'));
+          if (removed) parts.push(removed + ' artículo' + (removed === 1 ? '' : 's') + ' eliminado' + (removed === 1 ? '' : 's'));
+          showToast('Actualizado — ' + parts.join(', '), 'success');
         }
       })
       .catch(() => { /* offline or transient — keep the cached render */ });
