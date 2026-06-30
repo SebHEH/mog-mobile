@@ -633,13 +633,11 @@ function commitDeleteItem(itemId) {
 
 
 
-  const lastDataRow = getLastItemRow_(sh);
-  if (lastDataRow >= 3) {
-    sh.getRange(2, 1, lastDataRow - 1, sh.getLastColumn()).sort([
-      { column: COL.VENDOR, ascending: true },
-      { column: COL.NAME,   ascending: true }
-    ]);
-  }
+  // No re-sort needed: deleteRow shifts the rows below up and preserves the
+  // existing (vendor, name) order, so the remaining block stays sorted.
+  // Adds already insert in vendor order (getLastRowForVendor_), so MASTER
+  // never needs a full re-sort here — dropping it makes delete near-instant
+  // on large catalogs (the sort scanned the entire block on every delete).
 
 
 
