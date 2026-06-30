@@ -3862,6 +3862,12 @@
     // Drill-down breadcrumb set synchronously (vendor is known before the
     // items fetch) so it's present even while the loading bar shows.
     setCountBreadcrumb_(vendor);
+    // Did we have a cached snapshot to paint instantly (in-memory or
+    // localStorage)? If so, we revalidate against the server AFTER painting
+    // (stale-while-revalidate) so items another manager added today appear
+    // without a full app reload. A cold network fetch is already fresh, so
+    // it skips the revalidation.
+    const servedFromCache = !!state.cache.vendorItems[vendor] || !!readVendorOfflineCache_(vendor);
     // Only show the loading bar if we don't already have vendor items
     // cached. The post-dashboard prefetch (prefetchTodaysVendors_) warms
     // this cache for every today vendor, so by the time the KM taps a
@@ -3894,10 +3900,63 @@
       // computeSuggested can update suggestions live as the user types.
       cacheTargetPars(state.countContext.items);
       renderCount();
+      if (servedFromCache) revalidateCountItems_(vendor);
     } catch (err) {
       console.error('openCount error:', err);
       renderError($('view-count'), () => openCount(vendor));
     }
+  }
+
+  // Stale-while-revalidate for the count screen. openCount paints instantly
+  // from cache; this re-checks the server in the background so items another
+  // manager added today appear without an app reload. Safe by construction:
+  //   - entered counts are preserved (they live in ctx.dirty / the saved
+  //     draft and are re-overlaid after the refresh — dirty wins),
+  //   - we only re-render when the item SET changed (added/removed IDs),
+  //   - we never re-render while an input is focused (don't yank the keyboard
+  //     mid-count — the next open picks it up via the warmed cache).
+  function revalidateCountItems_(vendor) {
+    if (navigator.onLine === false) return;
+    fetchVendorItems_(vendor, { force: true })
+      .then(fresh => {
+        const ctx = state.countContext;
+        // Bail if the user navigated away or switched vendors mid-fetch.
+        if (state.currentView !== 'count' || !ctx || ctx.vendor !== vendor) return;
+        if (!fresh || !Array.isArray(fresh.items)) return;
+
+        const oldIds = new Set(ctx.items.map(i => i.id));
+        const newIds = new Set(fresh.items.map(i => i.id));
+        let added = 0;   fresh.items.forEach(i => { if (!oldIds.has(i.id)) added++; });
+        let removed = 0; ctx.items.forEach(i => { if (!newIds.has(i.id)) removed++; });
+        if (!added && !removed) return;   // metadata-only diff: not worth a re-render
+
+        // Don't yank a focused input — defer to the next open.
+        const ae = document.activeElement;
+        if (ae && ae.tagName === 'INPUT' && $('view-count').contains(ae)) return;
+
+        // Rebuild from fresh server items, then re-overlay entered counts so
+        // nothing typed is lost (dirty wins over the persisted draft).
+        ctx.items = fresh.items;
+        const draft = loadDraft(ctx.dateStr, vendor);
+        for (const it of ctx.items) {
+          if (Object.prototype.hasOwnProperty.call(ctx.dirty, it.id)) {
+            it.onHand = ctx.dirty[it.id];
+          } else if (Object.prototype.hasOwnProperty.call(draft, it.id)) {
+            it.onHand = draft[it.id];
+          }
+        }
+        cacheTargetPars(ctx.items);
+        renderCount();
+
+        if (added) {
+          showToast(state.lang === 'en'
+            ? 'Updated — ' + added + ' new item' + (added === 1 ? '' : 's')
+            : 'Actualizado — ' + added + ' artículo' + (added === 1 ? '' : 's') +
+              ' nuevo' + (added === 1 ? '' : 's'),
+            'success');
+        }
+      })
+      .catch(() => { /* offline or transient — keep the cached render */ });
   }
 
   function computeSuggested(item) {
