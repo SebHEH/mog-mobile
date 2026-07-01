@@ -332,6 +332,7 @@ function webeditDispatch_(name) {
     case 'getItemForEdit':          return getItemForEdit;
     case 'getUnassignedActiveItems':return getUnassignedActiveItems;
     case 'getStoreHealthReport':    return getStoreHealthReport;
+    case 'runHealthFix':            return runHealthFix;
     case 'commitUpsertItem':        return commitUpsertItem;
     case 'commitSwitchActiveVendor':return commitSwitchActiveVendor;
     case 'commitDeleteItem':        return commitDeleteItem;

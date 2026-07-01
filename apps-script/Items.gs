@@ -515,14 +515,28 @@ function commitSwitchActiveVendor(itemId, newVendorRaw) {
 // Safe to re-run: a row already holding a normalized list is left unchanged.
 // Run once per store from Ordering Guide -> Mobile API -> Migrate Item Vendors.
 function migrateItemVendorsColumn() {
+  const r  = migrateItemVendorsColumn_core_();
+  const ui = SpreadsheetApp.getUi();
+  if (!r.hadRows) {
+    ui.alert("Eligible Vendors column header set. No item rows to seed.");
+    return;
+  }
+  ui.alert(
+    "Eligible Vendors column seeded.\n\n" +
+    r.changed + " row(s) set to their current active vendor.\n" +
+    "Header set to \"Eligible Vendors\" (column O). Safe to re-run anytime."
+  );
+}
+
+// Headless core (no UI) — shared by the Sheet menu wrapper above and the web
+// health-check fix (runHealthFix). Seeds MASTER_ITEMS column O from each row's
+// active vendor; idempotent. Returns { changed, hadRows }.
+function migrateItemVendorsColumn_core_() {
   const sh = getSheet_(SHEET_MASTER);
   sh.getRange(1, COL.ELIGIBLE_VENDORS).setValue("Eligible Vendors");
 
   const lastRow = sh.getLastRow();
-  if (lastRow < 2) {
-    SpreadsheetApp.getUi().alert("Eligible Vendors column header set. No item rows to seed.");
-    return;
-  }
+  if (lastRow < 2) return { changed: 0, hadRows: false };
 
   const vendorMap = new Map(getVendorList().map(v => [v.toLowerCase(), v]));
   const numRows   = lastRow - 1;
@@ -550,12 +564,7 @@ function migrateItemVendorsColumn() {
   oRange.setNumberFormat("@");   // plain text so pipe-delimited names aren't reformatted
   oRange.setValues(out);
   bumpServerMutationTs_();
-
-  SpreadsheetApp.getUi().alert(
-    "Eligible Vendors column seeded.\n\n" +
-    changed + " row(s) set to their current active vendor.\n" +
-    "Header set to \"Eligible Vendors\" (column O). Safe to re-run anytime."
-  );
+  return { changed: changed, hadRows: true };
 }
 
 

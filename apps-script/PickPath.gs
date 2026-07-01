@@ -1053,3 +1053,44 @@ function purgeInactiveFromPickPath() {
 
   return { removed: removedCount, kept: kept.length, itemsNotFound: notFound };
 }
+
+
+// Headless twin of purgeInactiveFromPickPath (no SpreadsheetApp.getUi(), which
+// throws in a web-app context) so the web Store Health Check can run the purge
+// via runHealthFix. Same filter → writePickDb_ → rebuildAllPickPaths_ logic;
+// returns { removed, removedNames, notFound }. KEEP IN SYNC with the menu twin
+// above (candidate to unify into one shared core in a later cleanup).
+function purgeInactiveFromPickPath_core_() {
+  const setup  = getSheet_(SHEET_SETUP);
+  const master = getSheet_(SHEET_MASTER);
+
+  const masterLastRow = master.getLastRow();
+  const activeMap     = new Map();
+  if (masterLastRow >= 2) {
+    const vals = master
+      .getRange(2, COL.ID, masterLastRow - 1, Math.max(COL.ACTIVE - COL.ID + 1, 12))
+      .getValues();
+    vals.forEach(r => {
+      const id = String(r[COL.ID - COL.ID] || "").trim();
+      if (id) activeMap.set(id, r[COL.ACTIVE - COL.ID] === true);
+    });
+  }
+
+  const existing = readPickDb_(setup);
+  const kept = [], removedNames = [], notFound = [];
+  existing.forEach(row => {
+    const itemId   = String(row[1] || "").trim();
+    const itemName = String(row[2] || "").trim();
+    if (!itemId) return;
+    if (!activeMap.has(itemId)) { notFound.push(itemId); removedNames.push(itemName || itemId); return; }
+    if (!activeMap.get(itemId)) { removedNames.push(itemName || itemId); return; }
+    kept.push(row);
+  });
+
+  const removed = existing.length - kept.length;
+  if (removed > 0) {
+    writePickDb_(setup, kept);
+    rebuildAllPickPaths_();
+  }
+  return { removed: removed, removedNames: removedNames, notFound: notFound };
+}

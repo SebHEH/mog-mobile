@@ -18,8 +18,11 @@ function getStoreHealthReport() {
   const ss     = SpreadsheetApp.getActiveSpreadsheet();
   const props  = PropertiesService.getScriptProperties();
   const checks = [];
-  const add = (id, label, status, detail, fix) =>
-    checks.push({ id: id, label: label, status: status, detail: detail || '', fix: fix || '' });
+  // fixId (optional) names a web-actionable repair that runHealthFix() can run;
+  // destructive=true makes the web client confirm before running it.
+  const add = (id, label, status, detail, fix, fixId, destructive) =>
+    checks.push({ id: id, label: label, status: status, detail: detail || '',
+                  fix: fix || '', fixId: fixId || '', destructive: !!destructive });
 
   // ── 1) Store identity / config ──────────────────────────────────────────
   try {
@@ -61,11 +64,13 @@ function getStoreHealthReport() {
     if (!tmpl) {
       add('template', 'Vendor template', 'fail',
         'VENDOR_TEMPLATE is missing — adding a vendor would fall back to a fragile copy.',
-        'Run 📱 Mobile API → Setup / Re-run Setup to re-establish it.');
+        'Rebuilds VENDOR_TEMPLATE from a healthy vendor tab.',
+        'reestablish_template');
     } else if (canonicalH2 && String(tmpl.getRange('H2').getFormula()).trim() !== canonicalH2) {
       add('template', 'Vendor template', 'fail',
         "VENDOR_TEMPLATE's H2 multiplier formula is stale — new vendors would be born un-orderable.",
-        'Run 📱 Mobile API → Sync Vendor Multiplier Formulas.');
+        "Rewrites every vendor tab's multiplier formula (and the template's) to the current one.",
+        'sync_h2');
     } else {
       add('template', 'Vendor template', 'pass', 'VENDOR_TEMPLATE present with a current H2 formula.');
     }
@@ -94,7 +99,8 @@ function getStoreHealthReport() {
     if (staleH2.length) {
       add('vendor_h2', 'Vendor multiplier formulas', 'fail',
         staleH2.length + ' tab(s) have a stale H2 multiplier formula: ' + staleH2.join(', ') + '.',
-        'Run 📱 Mobile API → Sync Vendor Multiplier Formulas.');
+        "Rewrites every vendor tab's multiplier formula (and the template's) to the current one.",
+        'sync_h2');
     } else if (canonicalH2) {
       add('vendor_h2', 'Vendor multiplier formulas', 'pass', 'All vendor tabs use the current H2 formula.');
     } else {
@@ -122,7 +128,8 @@ function getStoreHealthReport() {
       add('schema_eligible', 'Item schema', 'warn',
         'MASTER_ITEMS column O header is "' + oHeader + '" (expected "Eligible Vendors"). ' +
         'Reads self-heal, but the column should be seeded.',
-        'Run 📱 Mobile API → Migrate Item Vendors (if present), or Setup.');
+        "Seeds the Eligible Vendors column from each item's active vendor.",
+        'migrate_vendors');
     }
   } catch (e) { add('schema_eligible', 'Item schema', 'warn', 'Check errored: ' + e.message); }
 
@@ -160,7 +167,8 @@ function getStoreHealthReport() {
       add('pickdb', 'Pick path consistency', 'warn',
         (orphans ? orphans + ' pick-path row(s) reference items no longer in MASTER. ' : '') +
         (inactiveInDb ? inactiveInDb + ' inactive item(s) are still in the pick path. ' : '') + infoTail,
-        'Run Purge Inactive From Pick Path (editor-run) to clean orphan/inactive rows.');
+        'Removes orphan/inactive rows from the pick path and rebuilds the vendor tabs.',
+        'purge_pickpath', true);
     } else {
       add('pickdb', 'Pick path consistency', 'pass', 'Pick path matches MASTER.' + infoTail);
     }
@@ -180,9 +188,61 @@ function getStoreHealthReport() {
 }
 
 
+// Web-actionable repairs for the health check. ONE client-callable entry point
+// (routed through webedit_call, so the web editor can run it PIN-gated) that
+// runs a specific fix headlessly and returns { ok, message }. Reuses the same
+// UI-free cores the Sheet menu fixers use — no SpreadsheetApp.getUi() (which
+// throws in a web-app context). The fixId values match getStoreHealthReport's
+// per-check fixId.
+function runHealthFix(fixId) {
+  const id = String(fixId || '');
+  switch (id) {
+    case 'sync_h2': {
+      const r = updateVendorTabHeader2Formulas_();
+      const errs = (r.errors || []);
+      return {
+        ok: errs.length === 0,
+        message: 'Synced the multiplier formula on ' + r.updated + ' vendor tab(s)' +
+                 (r.templateUpdated ? ' and the template' : '') +
+                 (errs.length ? '. Errors: ' + errs.join('; ') : '.')
+      };
+    }
+    case 'reestablish_template': {
+      const r = reestablishVendorTemplate_();
+      return {
+        ok: true,
+        message: r.created
+          ? 'Re-established VENDOR_TEMPLATE from "' + r.source + '".'
+          : 'VENDOR_TEMPLATE was already present — nothing to do.'
+      };
+    }
+    case 'purge_pickpath': {
+      const r = purgeInactiveFromPickPath_core_();
+      return {
+        ok: true,
+        message: r.removed
+          ? 'Removed ' + r.removed + ' orphan/inactive row(s) from the pick path.'
+          : 'Pick path was already clean — nothing to remove.'
+      };
+    }
+    case 'migrate_vendors': {
+      const r = migrateItemVendorsColumn_core_();
+      return {
+        ok: true,
+        message: r.hadRows
+          ? 'Seeded the Eligible Vendors column (' + r.changed + ' row(s) updated).'
+          : 'Header set; there were no item rows to seed.'
+      };
+    }
+    default:
+      throw new Error('Unknown fix: ' + id);
+  }
+}
+
+
 // Sheet launcher — opens the dual-host HealthCheck modal as a Sheet dialog.
-// (The web editor renders the same HealthCheck.html via doGet?page=health;
-// Phase B.) webBootJson web:false keeps the web bits inert in the dialog.
+// (The web editor renders the same HealthCheck.html via doGet?page=healthcheck.)
+// webBootJson web:false keeps the web bits inert in the dialog.
 function showStoreHealthCheck() {
   const tmpl = HtmlService.createTemplateFromFile('HealthCheck');
   tmpl.webBootJson = JSON.stringify({ web: false });

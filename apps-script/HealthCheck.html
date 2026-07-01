@@ -35,6 +35,13 @@
     button { font-family: inherit; font-size: 13px; padding: 7px 14px; border-radius: 6px; border: 1px solid #c7ccd1; background: #fff; cursor: pointer; }
     button.primary { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
     .hc-loading, .hc-error { padding: 24px; text-align: center; color: #6b7280; }
+    .hc-fix { margin-top: 8px; background: #1a1a2e; color: #fff; border-color: #1a1a2e; font-size: 12px; padding: 5px 12px; }
+    .hc-fix:disabled { opacity: .5; cursor: default; }
+    .hc-banner { padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
+    .hc-banner.ok   { background: #e4f7f0; color: #1a6b2e; }
+    .hc-banner.warn { background: #fff4d6; color: #856404; }
+    .hc-banner.fail { background: #fde2e2; color: #7a1a1a; }
+    .hc-banner.info { background: #eef2f7; color: #374151; }
   </style>
 </head>
 <body>
@@ -55,6 +62,7 @@
   <?!= include('EditorShell'); ?>
 
   <div id="hc-wrap">
+    <div id="hc-fixbanner" style="display:none"></div>
     <div id="hc-loading" class="hc-loading">Running health check…</div>
     <div id="hc-content" style="display:none"></div>
   </div>
@@ -89,7 +97,8 @@
       var p = {
         withSuccessHandler: function (f) { ok = f; return p; },
         withFailureHandler: function (g) { fail = g; return p; },
-        getStoreHealthReport: mk('getStoreHealthReport')
+        getStoreHealthReport: mk('getStoreHealthReport'),
+        runHealthFix:         mk('runHealthFix')
       };
       return p;
     }
@@ -120,11 +129,15 @@
       '</div>';
       (rep.checks || []).forEach(function (c) {
         var word = c.status === 'pass' ? 'OK' : c.status === 'warn' ? 'WARN' : 'ISSUE';
+        var btn = c.fixId
+          ? '<div><button class="hc-fix" onclick="doFix(\'' + esc(c.fixId) + '\',' + (c.destructive ? 'true' : 'false') + ')">Fix</button></div>'
+          : '';
         html += '<div class="check ' + c.status + '">' +
           '<div class="check-top"><span class="badge ' + c.status + '">' + word + '</span>' +
             '<span class="check-label">' + esc(c.label) + '</span></div>' +
           (c.detail ? '<div class="check-detail">' + esc(c.detail) + '</div>' : '') +
-          (c.fix    ? '<div class="check-fix">→ ' + esc(c.fix) + '</div>' : '') +
+          (c.fix    ? '<div class="check-fix">' + (c.fixId ? '' : '→ ') + esc(c.fix) + '</div>' : '') +
+          btn +
         '</div>';
       });
       html += '<div class="hc-actions">' +
@@ -134,6 +147,34 @@
       byId('hc-content').innerHTML = html;
       byId('hc-loading').style.display = 'none';
       byId('hc-content').style.display = 'block';
+    }
+
+    // Run a web-actionable repair, then re-check so the card flips to its new
+    // state. Destructive fixes (e.g. purge) confirm first. Works in both hosts
+    // (runHealthFix is UI-free and client-callable).
+    function doFix(fixId, destructive) {
+      if (destructive && !window.confirm(
+        'This will modify the sheet (remove pick-path rows and rebuild the vendor tabs). Continue?')) return;
+      var btns = document.querySelectorAll('.hc-fix');
+      for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+      showBanner_('Applying fix…', 'info');
+      MIRPC()
+        .withSuccessHandler(function (r) {
+          showBanner_((r && r.message) ? r.message : 'Done.', (r && r.ok === false) ? 'warn' : 'ok');
+          run();   // re-check
+        })
+        .withFailureHandler(function (e) {
+          showBanner_('Fix failed: ' + (e && e.message ? e.message : e), 'fail');
+          var b2 = document.querySelectorAll('.hc-fix');
+          for (var j = 0; j < b2.length; j++) b2[j].disabled = false;
+        })
+        .runHealthFix(fixId);
+    }
+    function showBanner_(msg, kind) {
+      var b = byId('hc-fixbanner');
+      b.textContent = msg;                       // textContent — no manual escaping
+      b.className = 'hc-banner ' + (kind || '');
+      b.style.display = 'block';
     }
 
     // Web mode: PIN gate first (EditorShell), then mount chrome + breadcrumb and
