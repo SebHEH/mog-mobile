@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 16px; color: #1a1a2e; background: #f4f5f7; }
+    /* Web mode: EditorShell owns the page background + adds the header band; give
+       the report a centered column so it doesn't run edge-to-edge. */
+    body.mge-web { background: #eef0f3; }
+    body.mge-web #hc-wrap { max-width: 760px; margin: 0 auto; padding: 8px 16px 24px; }
+    .hc-head { margin-bottom: 12px; }
+    .hc-title { font-size: 18px; font-weight: bold; }
+    .hc-meta  { font-size: 12px; color: #6b7280; margin-top: 2px; }
+    .hc-summary { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .chip { padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: bold; }
+    .chip-pass { background: #e4f7f0; color: #1a6b2e; }
+    .chip-warn { background: #fff4d6; color: #856404; }
+    .chip-fail { background: #fde2e2; color: #7a1a1a; }
+    .check { background: #fff; border: 1px solid #e3e6ea; border-left-width: 4px; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+    .check.pass { border-left-color: #2d8c6b; }
+    .check.warn { border-left-color: #d9a300; }
+    .check.fail { border-left-color: #c0392b; }
+    .check-top { display: flex; align-items: center; gap: 8px; }
+    .badge { font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 6px; letter-spacing: .02em; }
+    .badge.pass { background: #e4f7f0; color: #1a6b2e; }
+    .badge.warn { background: #fff4d6; color: #856404; }
+    .badge.fail { background: #fde2e2; color: #7a1a1a; }
+    .check-label  { font-weight: bold; font-size: 14px; }
+    .check-detail { font-size: 13px; color: #374151; margin-top: 4px; }
+    .check-fix    { font-size: 12px; color: #2c5d99; margin-top: 4px; }
+    .hc-actions { margin-top: 12px; display: flex; gap: 8px; }
+    button { font-family: inherit; font-size: 13px; padding: 7px 14px; border-radius: 6px; border: 1px solid #c7ccd1; background: #fff; cursor: pointer; }
+    button.primary { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+    .hc-loading, .hc-error { padding: 24px; text-align: center; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <!-- Boot vars FIRST — EditorShell (included below) reads WEB_BOOT/MOG_WEB. -->
+  <script>
+    var WEB_BOOT  = <?!= webBootJson ?>;
+    var MOG_WEB   = !!(WEB_BOOT && WEB_BOOT.web);
+    var MOG_STORE = (WEB_BOOT && WEB_BOOT.store)   || '';   // band: location name
+    var MOG_ABBR  = (WEB_BOOT && WEB_BOOT.abbr)    || '';
+    var BASE_URL  = (WEB_BOOT && WEB_BOOT.base)    || '';
+    var THEME     = (WEB_BOOT && WEB_BOOT.theme)   || {};   // band: accent + logo
+    var CONCEPT   = (WEB_BOOT && WEB_BOOT.concept) || '';   // band: which brand logo
+    var MOG_TOKEN = null;   // set by the PIN gate (web mode only, via EditorShell)
+  </script>
+
+  <!-- Shared editor chrome (band, breadcrumb, PIN gate, tour engine, mge* helpers).
+       Inert in the Sheet dialog (MOG_WEB=false → gate/chrome never mount). -->
+  <?!= include('EditorShell'); ?>
+
+  <div id="hc-wrap">
+    <div id="hc-loading" class="hc-loading">Running health check…</div>
+    <div id="hc-content" style="display:none"></div>
+  </div>
+
+  <script>
+    function byId(id) { return document.getElementById(id); }
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Sheet → google.script.run; web → token-guarded webedit_call dispatcher.
+    function MIRPC() {
+      if (!MOG_WEB) return google.script.run;
+      var ok = null, fail = null;
+      function mk(fn) {
+        return function () {
+          var a = [].slice.call(arguments);
+          google.script.run
+            .withSuccessHandler(function (r) { if (ok) ok(r); })
+            .withFailureHandler(function (e) {
+              // An expired token (redeploy flush / TTL) → EditorShell reprompts.
+              var msg = (e && e.message) ? e.message : '';
+              if (msg.indexOf('SESSION_EXPIRED') !== -1 && typeof mgeReshowGate_ === 'function') {
+                mgeReshowGate_(); return;
+              }
+              if (fail) fail(e);
+            })
+            .webedit_call(MOG_TOKEN, fn, a);
+        };
+      }
+      var p = {
+        withSuccessHandler: function (f) { ok = f; return p; },
+        withFailureHandler: function (g) { fail = g; return p; },
+        getStoreHealthReport: mk('getStoreHealthReport')
+      };
+      return p;
+    }
+
+    function run() {
+      byId('hc-loading').textContent = 'Running health check…';
+      byId('hc-loading').style.display = 'block';
+      byId('hc-content').style.display = 'none';
+      MIRPC()
+        .withSuccessHandler(render)
+        .withFailureHandler(function (e) {
+          byId('hc-loading').innerHTML =
+            '<div class="hc-error">Could not run the check: ' +
+            esc(e && e.message ? e.message : e) + '</div>';
+        })
+        .getStoreHealthReport();
+    }
+
+    function render(rep) {
+      var s = rep.summary || { pass: 0, warn: 0, fail: 0 };
+      var html = '';
+      html += '<div class="hc-head"><div class="hc-title">' + esc(rep.store) + '</div>' +
+              '<div class="hc-meta">Checked ' + esc(rep.generatedAt) + '</div></div>';
+      html += '<div class="hc-summary">' +
+        '<span class="chip chip-pass">' + s.pass + ' OK</span>' +
+        '<span class="chip chip-warn">' + s.warn + ' warning' + (s.warn === 1 ? '' : 's') + '</span>' +
+        '<span class="chip chip-fail">' + s.fail + ' issue' + (s.fail === 1 ? '' : 's') + '</span>' +
+      '</div>';
+      (rep.checks || []).forEach(function (c) {
+        var word = c.status === 'pass' ? 'OK' : c.status === 'warn' ? 'WARN' : 'ISSUE';
+        html += '<div class="check ' + c.status + '">' +
+          '<div class="check-top"><span class="badge ' + c.status + '">' + word + '</span>' +
+            '<span class="check-label">' + esc(c.label) + '</span></div>' +
+          (c.detail ? '<div class="check-detail">' + esc(c.detail) + '</div>' : '') +
+          (c.fix    ? '<div class="check-fix">→ ' + esc(c.fix) + '</div>' : '') +
+        '</div>';
+      });
+      html += '<div class="hc-actions">' +
+        '<button class="primary" onclick="run()">Re-run check</button>' +
+        (MOG_WEB ? '' : '<button onclick="google.script.host.close()">Close</button>') +
+      '</div>';
+      byId('hc-content').innerHTML = html;
+      byId('hc-loading').style.display = 'none';
+      byId('hc-content').style.display = 'block';
+    }
+
+    // Web mode: PIN gate first (EditorShell), then mount chrome + breadcrumb and
+    // run. Sheet mode: run immediately (the dialog is already authenticated).
+    function startHealthWeb_() {
+      mgeMountWebChrome_();
+      document.documentElement.classList.add('mge-web');
+      document.body.classList.add('mge-web');
+      setBreadcrumb_(
+        [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+        { en: 'Store Health Check', es: 'Chequeo de la tienda' }
+      );
+      run();
+    }
+
+    if (MOG_WEB) { mgeStartGate_(startHealthWeb_); }
+    else { run(); }
+  </script>
+</body>
+</html>

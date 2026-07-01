@@ -432,6 +432,7 @@ function onOpen(e) {
       .addItem("    Set Master PIN",         "setMasterPin")
       .addItem("    Set Store Concept",      "setStoreConcept")
       .addItem("    Status",                 "showMobileApiStatus")
+      .addItem("    🩺 Store Health Check",   "showStoreHealthCheck")
       .addItem("    Clear PIN Lockout",      "clearPinLockout")
       .addSeparator()
       // Decluttered 2026-06-01: removed spent one-time/diagnostic entries —

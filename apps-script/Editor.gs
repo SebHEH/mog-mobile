@@ -158,6 +158,18 @@ function renderManageVendorsWeb_() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+// ?page=healthcheck — the Store Health Check served as a web page. Same
+// HealthCheck.html the Sheet dialog uses, with MOG_WEB=true so the gate +
+// token shim engage. Read-only (report is computed by getStoreHealthReport).
+function renderStoreHealthWeb_() {
+  const tmpl = HtmlService.createTemplateFromFile('HealthCheck');
+  tmpl.webBootJson = editorWebBoot_();
+  return tmpl.evaluate()
+    .setTitle(editorTabTitle_())
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
 
 /***********************
  * EDITOR AUTH (token-backed PIN gate)
@@ -319,6 +331,7 @@ function webeditDispatch_(name) {
     case 'getStorageAreaList':      return getStorageAreaList;
     case 'getItemForEdit':          return getItemForEdit;
     case 'getUnassignedActiveItems':return getUnassignedActiveItems;
+    case 'getStoreHealthReport':    return getStoreHealthReport;
     case 'commitUpsertItem':        return commitUpsertItem;
     case 'commitSwitchActiveVendor':return commitSwitchActiveVendor;
     case 'commitDeleteItem':        return commitDeleteItem;

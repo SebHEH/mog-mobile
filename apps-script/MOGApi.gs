@@ -133,6 +133,7 @@ function doGet(e) {
   if (page === 'history')  return renderOrderHistoryWeb_();   // Editor.gs — Order History as a web page
   if (page === 'areas')    return renderStorageAreasWeb_();   // Editor.gs — Storage Areas as a web page
   if (page === 'pickpath') return renderReorderPickPathWeb_();// Editor.gs — Reorder Pick Path as a web page
+  if (page === 'healthcheck') return renderStoreHealthWeb_(); // Editor.gs — Store Health Check as a web page
   return renderEditorHome_();   // '' (plain link), 'editor', or anything else → editor home
 }
 
