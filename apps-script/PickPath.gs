@@ -919,147 +919,34 @@ function toggleMasterItemsTabVisibility() {
 // Or add a temporary menu item and call it once.
 //
 // Returns a summary object: { removed: number, kept: number, itemsNotFound: string[] }
+// Sheet menu entry — delegates to the shared UI-free core (below), then shows
+// the result in a dialog. The web health-check calls the same core headlessly
+// (runHealthFix), so there's one source of truth for the purge logic.
 function purgeInactiveFromPickPath() {
-  const setup  = getSheet_(SHEET_SETUP);
-  const master = getSheet_(SHEET_MASTER);
-  const ui     = SpreadsheetApp.getUi();
-
-
-
-
-  // Build a map of itemId -> active status from MASTER_ITEMS
-  const masterLastRow = master.getLastRow();
-  const activeMap     = new Map(); // itemId (string) -> boolean
-
-
-
-
-  if (masterLastRow >= 2) {
-    const numRows = masterLastRow - 1;
-    const vals    = master
-      .getRange(2, COL.ID, numRows, Math.max(COL.ACTIVE - COL.ID + 1, 12))
-      .getValues();
-
-
-
-
-    vals.forEach(r => {
-      const id     = String(r[COL.ID     - COL.ID] || "").trim();
-      const active = r[COL.ACTIVE - COL.ID];
-      if (id) activeMap.set(id, active === true);
-    });
-  }
-
-
-
-
-  // Read current pick path DB
-  const existing = readPickDb_(setup);
-  if (!existing.length) {
-    ui.alert("Purge Complete", "Pick path database is already empty — nothing to do.", ui.ButtonSet.OK);
-    return { removed: 0, kept: 0, itemsNotFound: [] };
-  }
-
-
-
-
-  const kept         = [];
-  const removedNames = [];
-  const notFound     = [];
-
-
-
-
-  existing.forEach(row => {
-    const itemId   = String(row[1] || "").trim(); // column index 1 = Item ID in K:P
-    const itemName = String(row[2] || "").trim(); // column index 2 = Item Name
-
-
-
-
-    if (!itemId) return; // skip blank rows
-
-
-
-
-    if (!activeMap.has(itemId)) {
-      // Item ID not in MASTER_ITEMS at all
-      notFound.push(itemId + (itemName ? " (" + itemName + ")" : ""));
-      removedNames.push(itemName || itemId);
-      return;
-    }
-
-
-
-
-    if (!activeMap.get(itemId)) {
-      // Item exists but is inactive
-      removedNames.push(itemName || itemId);
-      return;
-    }
-
-
-
-
-    kept.push(row);
-  });
-
-
-
-
-  const removedCount = existing.length - kept.length;
-
-
-
-
-  if (removedCount === 0) {
-    ui.alert(
-      "Purge Complete",
+  const ui = SpreadsheetApp.getUi();
+  const r  = purgeInactiveFromPickPath_core_();
+  if (r.removed === 0) {
+    ui.alert("Purge Complete",
       "No inactive or missing items found in the pick path database. Everything looks clean.",
-      ui.ButtonSet.OK
-    );
-    return { removed: 0, kept: kept.length, itemsNotFound: notFound };
+      ui.ButtonSet.OK);
+    return r;
   }
-
-
-
-
-  // Write cleaned database back
-  writePickDb_(setup, kept);
-
-
-
-
-  // Rebuild all vendor tabs to reflect the removal
-  rebuildAllPickPaths_();
-
-
-
-
-  // Report
   const msg =
-    "Removed " + removedCount + " item(s) from the pick path database:\n\n" +
-    removedNames.map(function(n) { return "  - " + n; }).join("\n") +
-    (notFound.length ? "\n\nNote: " + notFound.length + " item(s) were not found in MASTER_ITEMS and were also removed." : "") +
+    "Removed " + r.removed + " item(s) from the pick path database:\n\n" +
+    r.removedNames.map(function (n) { return "  - " + n; }).join("\n") +
+    (r.notFound.length ? "\n\nNote: " + r.notFound.length + " item(s) were not found in MASTER_ITEMS and were also removed." : "") +
     "\n\nAll vendor tabs have been rebuilt.";
-
-
-
-
   ui.alert("Purge Complete", msg, ui.ButtonSet.OK);
-
-
-
-
-  return { removed: removedCount, kept: kept.length, itemsNotFound: notFound };
+  return r;
 }
 
 
-// Headless twin of purgeInactiveFromPickPath (no SpreadsheetApp.getUi(), which
-// throws in a web-app context) so the web Store Health Check can run the purge
-// via runHealthFix. Same filter → writePickDb_ → rebuildAllPickPaths_ logic;
-// returns { removed, removedNames, notFound }. KEEP IN SYNC with the menu twin
-// above (candidate to unify into one shared core in a later cleanup).
+// Shared UI-free core for the pick-path purge — the single source of truth.
+// The Sheet menu wrapper (purgeInactiveFromPickPath, above) and the web health
+// -check fix (runHealthFix) both call it; no SpreadsheetApp.getUi() (which
+// throws in a web-app context). Filters items that are inactive or missing from
+// MASTER out of the pick path DB, rebuilds vendor tabs when anything changed,
+// and returns { removed, removedNames, notFound }.
 function purgeInactiveFromPickPath_core_() {
   const setup  = getSheet_(SHEET_SETUP);
   const master = getSheet_(SHEET_MASTER);
