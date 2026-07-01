@@ -14,11 +14,11 @@ If sources conflict, items higher in this list win for "what's currently in flig
 
 Replace the path here with the newest handoff at the end of each session that ships material changes. (The `mog-session-handoff` skill rewrites this line.)
 
-@docs/MOG_SessionHandoff_2026_06_26.md
+@docs/MOG_SessionHandoff_2026_07_01.md
 
 ## Quick orientation
 
-- **Runtime / stack**: Vanilla JS PWA (no bundler, no framework) + Google Apps Script (V8 server-side, **Rhino ES5** in HTML modals) + Python templating (`build.py`)
+- **Runtime / stack**: Vanilla JS PWA (no bundler, no framework) + Google Apps Script (V8 server-side; HTML modals run **browser-side in an IFRAME sandbox, ES6-safe** — see invariant #4) + Python templating (`build.py`)
 - **Deploy**:
   - PWA: GitHub Pages auto-deploys from `main`. Edit `template/` → run `python build.py` → commit + push.
   - Apps Script: `clasp` via `deploy.py` (at repo root, alongside `build.py`). Edit `apps-script/<file>` → run `python deploy.py` (bound-sidebar-only changes) or `python deploy.py --redeploy` (any MOGApi.gs / `api_*` change — bumps each store's web-app `/exec` URL too). Push reaches all 9 targets in ~30s; `--redeploy` adds ~3s/target.
@@ -141,21 +141,30 @@ mog-mobile/
 │   └── sw.js                    (6.9 KB — store SW).
 ├── apps-script/                 APPS SCRIPT SOURCE.
 │   ├── README.md                Apps Script workflow docs (setup + day-to-day).
-│   ├── MOGApi.gs                Core API surface for PWA ↔ Sheet (doGet/doPost, api_* fns).
+│   ├── MOGApi.gs                Core API surface for PWA ↔ Sheet (doGet/doPost, api_* fns, page routing).
 │   ├── Core.gs                  Global constants, generic helpers, menu/onOpen/onEdit/triggers, order-cycle date helpers.
-│   ├── Vendors.gs               Vendor add/import/remove/recalibrate, cadence, templates.
+│   ├── Vendors.gs               Vendor add/import/remove/recalibrate, cadence, templates, H2 formula.
 │   ├── Items.gs                 Manage Items CRUD + active-vendor switch.
-│   ├── PickPath.gs              Storage areas + reorder pick path.
-│   ├── ResetLog.gs             Reset / order-log snapshot / daily recap.
+│   ├── PickPath.gs              Storage areas + reorder pick path (+ purge core).
+│   ├── ResetLog.gs              Reset / order-log snapshot / daily recap.
 │   ├── History.gs               Order history modal + par-review flags.
 │   ├── Dashboard.gs             HOME dashboard builder + per-concept theming.
+│   ├── Editor.gs                KM web editor: doGet page routing, PIN gate/token, webedit_call dispatch, per-tool web renderers.
+│   ├── Health.gs                Store Health Check — read-only diagnostic (getStoreHealthReport) + web fixes (runHealthFix).
 │   ├── AdminReset.html          Admin reset modal.
-│   ├── ManageItems.html         Item editor modal.
-│   ├── ManageVendors.html       Vendor editor modal.
-│   ├── OrderHistory.html        Past orders modal.
-│   ├── ReorderPickPath.html     Reorder pick-path modal.
-│   ├── StorageAreas.html        Storage area config modal.
+│   ├── ManageItems.html         Item editor modal (dual-host: Sheet dialog + web).
+│   ├── ManageVendors.html       Vendor editor modal (dual-host).
+│   ├── OrderHistory.html        Past orders modal (dual-host, read-only).
+│   ├── ReorderPickPath.html     Shelf-to-Sheet / reorder pick-path modal (dual-host).
+│   ├── StorageAreas.html        Storage area config modal (dual-host).
+│   ├── RecalibrateVendor.html   Recalibrate vendor pars modal.
+│   ├── VendorCadenceAudit.html  Vendor cadence audit modal (read-only).
+│   ├── HealthCheck.html         Store Health Check modal (dual-host: Sheet dialog + ?page=healthcheck).
 │   ├── HowToUse.html            In-app help modal.
+│   ├── Setup.html               First-run store-setup wizard (?page=setup).
+│   ├── EditorShell.html         Shared web-editor chrome (band, breadcrumb, PIN gate, tour engine, mge* helpers).
+│   ├── EditorHome.html          Web-editor home dashboard (tool tiles).
+│   ├── Styles.html              Shared modal design tokens + universal chrome (via include()).
 │   ├── appsscript.json          Manifest (timezone, OAuth scopes, webapp config).
 │   └── .clasp-targets.json      Slug → {scriptId, deploymentId} map for deploy.py.
 ├── docs/
