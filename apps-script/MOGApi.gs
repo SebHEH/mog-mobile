@@ -189,6 +189,7 @@ function doPost(e) {
       case 'ping':             data = api_ping_(authType);              break;
       case 'getResetStatus':   data = api_getResetStatus_();            break;
       case 'commitReset':      data = api_commitReset_();               break;
+      case 'setEmergencyOverride': data = api_setEmergencyOverride_(payload); break;
       case 'getDashboard':     data = api_getDashboard_();              break;
       case 'getVendorItems':   data = api_getVendorItems_(payload);     break;
       case 'saveOnHand':       data = api_saveOnHand_(payload);         break;
@@ -330,10 +331,10 @@ function api_commitReset_() {
   // hits the duplicate guard and just re-clears (no-op for already-blank
   // columns) and re-stamps AE9.
   //
-  // Note: the spreadsheet's full-fat reset wrapper also resets the
-  // emergency override checkbox. The mobile API doesn't expose emergency
-  // override yet, so we don't touch it here. If it becomes a mobile feature,
-  // mirror that behavior here too.
+  // Mirror the sheet reset's emergency-override clear: a new cycle always
+  // starts with override off. The PWA now exposes override (api_setEmergencyOverride_)
+  // and auto-runs this reset on the first open of a new day, so clearing here
+  // stops an override from leaking into the new day on PWA-only stores.
 
   const result = commitLogAndReset();
 
@@ -342,6 +343,15 @@ function api_commitReset_() {
   oe.getRange('AE9').setValue(today);
 
   const tz = Session.getScriptTimeZone();
+  const overrideRange = oe.getRange(EMERGENCY_OVERRIDE_CELL);
+  if (overrideRange.getValue() === true) {
+    overrideRange.setValue(false);
+    PropertiesService.getDocumentProperties()
+      .setProperty(EMERGENCY_OVERRIDE_LASTDATE_PROP,
+                   Utilities.formatDate(today, tz, 'yyyy-MM-dd'));
+    bumpServerMutationTs_(); // dashboard must recompute now that override is off
+  }
+
   return {
     logged:        !!result.logged,
     rowsLogged:    result.rowsLogged || 0,
@@ -349,6 +359,34 @@ function api_commitReset_() {
     skippedReason: result.skippedReason || null,
     resetDate:     Utilities.formatDate(today, tz, 'yyyy-MM-dd')
   };
+}
+
+
+function api_setEmergencyOverride_(payload) {
+  // Turn the Emergency Override (ORDER_ENTRY!AD2) on/off from the PWA.
+  // When on, vendors off-schedule today become orderable at next-delivery
+  // coverage (see vendorDayMultiplier_) and getDashboard shows all vendors.
+  //
+  // Bookkeeping mirrors the Sheet: stamp LAST_OVERRIDE_DATE = today when
+  // turning on, so resetEmergencyOverrideOnOpen_ (which clears the box if the
+  // stamp isn't today) leaves it alone for the rest of the day and clears it
+  // on the next new day. Override also clears on the daily reset (api_commitReset_).
+  const on = !!(payload && payload.on);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const oe = ss.getSheetByName(SHEET_ORDER_ENTRY);
+  if (!oe) throw new Error('ORDER_ENTRY sheet not found.');
+
+  oe.getRange(EMERGENCY_OVERRIDE_CELL).setValue(on);
+  if (on) {
+    const today = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd');
+    PropertiesService.getDocumentProperties()
+      .setProperty(EMERGENCY_OVERRIDE_LASTDATE_PROP, today);
+  }
+  // Dashboard is cached by mutation ts — bump so the vendor list (which now
+  // shows/hides off-schedule vendors based on override) recomputes immediately.
+  bumpServerMutationTs_();
+
+  return { emergencyOverride: on };
 }
 
 
@@ -403,11 +441,17 @@ function api_getDashboard_compute_() {
   const vendorCutoffs = readVendorCutoffs_(setup);
   const todaysLog    = getTodaysLogByVendor_(dateStr);
   const itemCounts   = countActiveItemsByVendor_();
+  // Emergency Override: when on, show ALL vendors (not just today's delivery
+  // vendors) so a KM can order from one that's off-schedule today.
+  const emergencyOverride = readEmergencyOverride_();
 
   const out = [];
   for (const vendorName of allVendors) {
     const mults = vendorMults.get(vendorName) || {};
-    if ((Number(mults[dayOfWeek]) || 0) <= 0) continue; // not an order day
+    // Skip non-delivery vendors only when override is off. Under override the
+    // whole list shows; the per-vendor screen (api_getVendorItems_) applies
+    // next-delivery coverage.
+    if (!emergencyOverride && (Number(mults[dayOfWeek]) || 0) <= 0) continue;
 
     const meta      = VENDOR_META[vendorName] || {};
     const itemCount = itemCounts.get(vendorName) || 0;
@@ -466,6 +510,7 @@ function api_getDashboard_compute_() {
     date:      dateStr,
     dayOfWeek: dayOfWeek,
     location:  PropertiesService.getScriptProperties().getProperty(PROP_LOCATION) || 'Unknown',
+    emergencyOverride: emergencyOverride,
     vendors:   out
   };
 }
@@ -484,11 +529,13 @@ function api_getVendorItems_(payload) {
   //   * On Hand lives on the vendor tab — that's where users enter counts
   //     (manually in the sheet, or via this API for the mobile app). The
   //     dashboard's "X / Y entered" counter reads vendor tab column E too.
-  //   * Suggested Order Qty in column F is a formula already calibrated to
-  //     today's day-of-week multiplier (via AE3). Reading the cell value
-  //     means we always reflect what the sheet shows — no client-side or
-  //     API-side multiplier math needed. Fix to AE3 (now anchored to AE9)
-  //     propagates here automatically.
+  //   * Suggested Order Qty is computed here in code (par × day-multiplier −
+  //     on-hand, honoring the Use Multiplier flag) — a faithful replication
+  //     of the vendor tab's column F formula. We no longer read column F;
+  //     keeping the math in code makes it versioned, uniform across stores,
+  //     and portable off the sheet. The in-Sheet column F formula stays for
+  //     the human view. par now comes from MASTER_ITEMS!G (via masterMeta),
+  //     not the vendor tab's col-D formula; H2 is still read from the tab.
   //
   // Storage area / pick path order still come from SETUP's pick path DB
   // because the vendor tab itself doesn't carry that metadata.
@@ -516,24 +563,33 @@ function api_getVendorItems_(payload) {
     });
   }
 
-  // Pull A:M (1..13) for every data row, AND read H2 (the day-of-week
-  // multiplier in the vendor tab header). targetPar = parInD * mult.
+  // Pull A:M (1..13) for every data row. targetPar = par * dayMult.
   const numRows = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
   const data    = sh.getRange(VENDOR_TAB.DATA_START_ROW, 1, numRows, 13).getValues();
-  const dayMult = Number(sh.getRange('H2').getValue()) || 0;
 
-  // Map<itemId, boolean> for the Use Multiplier flag from MASTER_ITEMS.
-  // Consulted per-item below to optionally override targetPar/suggested
-  // for items that should ignore the day multiplier.
-  const useMultiplierMap = readUseMultiplierMap_();
+  // Day-of-week multiplier — computed in code (was: read from the vendor tab's
+  // H2 formula). H2 = IF(AD2=TRUE, <emergency>, <today's SETUP mult>); we now
+  // derive it from the SETUP multiplier table + the active order date + the
+  // Emergency Override flag, so the order math is fully in code (no vendor-tab
+  // formula read). Under Emergency Override we improve on the sheet's flat 1x
+  // by bridging to the vendor's next scheduled delivery (see
+  // vendorDayMultiplier_). The in-Sheet H2 formula is unchanged and still
+  // drives the human view.
+  const vendorMults       = readVendorMultipliers_(setup);
+  const emergencyOverride = readEmergencyOverride_();
+  const dayMult = vendorDayMultiplier_(
+    vendorMults, vendor, getActiveOrderDate_().dayOfWeek, emergencyOverride);
+
+  // Map<itemId, {useMult, par}> from MASTER_ITEMS. par (col G) is the
+  // canonical per-item base par; useMult (col M) gates the day multiplier.
+  // Consulted per-item below to compute targetPar/suggested in code.
+  const masterMeta = readMasterItemMeta_();
 
   const items = [];
   for (const r of data) {
     const itemName = String(r[0]  || '').trim();   // A
     const pack     = String(r[1]  || '').trim();   // B
-    const parRaw   = r[3];                              // D — base par
     const onHandRaw    = r[VENDOR_TAB.ON_HAND_COL - 1]; // E (5)
-    const suggestedRaw = r[5];                          // F (6 → index 5)
     const itemId   = String(r[12] || '').trim();   // M (13 → index 12)
 
     if (!itemName || !itemId) continue;
@@ -542,34 +598,42 @@ function api_getVendorItems_(payload) {
       ? null
       : (isNaN(Number(onHandRaw)) ? null : Number(onHandRaw));
 
-    // targetPar = par (col D) * day multiplier (H2). This is what column F's
-    // formula resolves to internally before subtracting on-hand. Surfacing
-    // it lets the PWA compute live suggestions for items that hadn't been
-    // counted yet (where suggestedQty alone can't be inferred).
+    // targetPar = par (MASTER_ITEMS col G) * day multiplier (H2), honoring the
+    // per-item Use Multiplier flag. Surfacing it lets the PWA recompute live
+    // suggestions as the user types (computeSuggested).
     //
-    // Use Multiplier override: items flagged "Use Multiplier = FALSE" in
-    // MASTER_ITEMS column M get targetPar = par (no day multiplier). The
-    // sheet's column F formula still applies the multiplier; we recompute
-    // suggested directly below to match the corrected targetPar.
-    const parNum = Number(parRaw);
-    const useMult = (useMultiplierMap.has(itemId) ? useMultiplierMap.get(itemId) : true);
+    // par now comes from MASTER_ITEMS (via masterMeta) rather than the vendor
+    // tab's column-D formula — the col-D value is itself just an XLOOKUP into
+    // MASTER_ITEMS!G, so this is the same number from its canonical source.
+    // No MASTER row → par NaN → targetPar null (no suggestion); matches the
+    // old behavior where col D XLOOKUP'd to "" for an unknown id.
+    //
+    // Use Multiplier: items flagged FALSE in MASTER_ITEMS column M skip the
+    // day multiplier (effectiveMult = 1) — a par already sized for the cycle.
+    const meta = masterMeta.get(itemId);
+    const parNum = meta ? meta.par : NaN;
+    const useMult = meta ? meta.useMult : true;
     const effectiveMult = useMult ? dayMult : 1;
     const targetPar = (!isNaN(parNum) && effectiveMult > 0)
       ? parNum * effectiveMult
       : null;
 
+    // Suggested order qty — computed in code (was: read from the vendor tab's
+    // column F formula). This is a faithful replication of that formula, so
+    // the API no longer depends on reading F. The live F formula is:
+    //   F = IF(name="" OR H2=0 OR onHand="", "",
+    //          qty = ROUNDUP(par*(useMult?H2:1) - onHand); qty<=0 ? "" : qty)
+    // Here: targetPar already = par*(useMult?H2:1); dayMult > 0 mirrors F's
+    // H2=0 blank (vendor not delivering today); onHand !== null mirrors F's
+    // onHand="" blank; qty<=0 -> null mirrors F's "". Downstream (recap
+    // filter, PWA computeSuggested) treats null/0/absent alike, so behavior
+    // is unchanged. Keeping the math in code makes it versioned, uniform
+    // across stores, and portable off the sheet.
     let suggested = null;
-    if (suggestedRaw !== '' && suggestedRaw !== null && !isNaN(Number(suggestedRaw))) {
-      suggested = Math.max(0, Number(suggestedRaw));
+    if (targetPar !== null && dayMult > 0 && onHand !== null) {
+      const qty = Math.ceil(targetPar - onHand);
+      suggested = qty > 0 ? qty : null;
     }
-    // Suggested comes from the vendor tab's column F formula which
-    // already honors the Use Multiplier flag via XLOOKUP. We trust that
-    // output as-is — no client-side recomputation needed. The targetPar
-    // override above keeps the PWA's computeSuggested helper (which
-    // recomputes on every keystroke) in sync with the sheet.
-    // The PWA hides the suggestion until On Hand is entered, even if the
-    // formula has produced a number from a stale prior count. Mirror that.
-    if (onHand === null) suggested = null;
 
     const pi = pickInfo.get(itemId) || { area: '', areaOrder: 999, shelfOrder: 999999 };
 
@@ -1020,22 +1084,26 @@ function jsonResponse_(obj) {
 // AE2/AE9 order-cycle date). It stays globally callable from here.
 
 
-function readUseMultiplierMap_() {
-  // Reads MASTER_ITEMS columns A (Item ID) and M (Use Multiplier) and
-  // returns Map<itemId, boolean>. Items without a row in MASTER_ITEMS,
-  // or with an unparseable Use Multiplier value, default to true — the
-  // multiplier applies unless explicitly turned off.
+function readMasterItemMeta_() {
+  // Reads MASTER_ITEMS and returns Map<itemId, {useMult, par}> — the per-item
+  // order-math inputs, keyed by item id (column A):
+  //   * par     = column G (Base Par Qty) — the canonical, per-item base par.
+  //   * useMult = column M (Use Multiplier).
+  // Both are read here in code so api_getVendorItems_ can compute targetPar
+  // (par × multiplier) without reading the vendor tab's column-D par formula
+  // (itself just XLOOKUP(id, MASTER_ITEMS!A, MASTER_ITEMS!G)) — one MASTER
+  // read, math in code, portable off the sheet.
   //
-  // Why: the vendor tab's Suggested column F formula multiplies par by
-  // the day-of-week multiplier (H2) for every item, with no exception
-  // for items that are billed flat (e.g., contracted weekly deliveries
-  // where the par is already correct for the week). The "Use Multiplier"
-  // flag in MASTER_ITEMS column M lets the GM mark such items, but the
-  // current sheet formula and API both ignore it. This helper plus the
-  // override in api_getVendorItems_ honor that flag at the API layer.
+  // useMult: the day-of-week multiplier (H2) should not apply to items billed
+  // flat (e.g., contracted weekly deliveries whose par is already sized for
+  // the week). Column M lets the GM mark such items. Both the in-Sheet column
+  // F formula (via XLOOKUP on M) and api_getVendorItems_ honor the flag, so
+  // the code-computed suggested qty matches what the sheet shows. Items with
+  // no MASTER row default to useMult=true; par is absent so targetPar is null.
   //
   // Column layout (MASTER_ITEMS):
-  //   A=Item ID, B=Item Name, ..., L=Active, M=Use Multiplier, N=Notes
+  //   A=Item ID, B=Item Name, ..., G=Base Par Qty, ..., L=Active,
+  //   M=Use Multiplier, N=Notes
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(SHEET_MASTER);
   const map = new Map();
@@ -1055,7 +1123,9 @@ function readUseMultiplierMap_() {
     let useMult = true;
     if (raw === false) useMult = false;
     else if (typeof raw === 'string' && raw.trim().toLowerCase() === 'false') useMult = false;
-    map.set(id, useMult);
+    // Column G (index 6) — base par. Number('') / Number(null) === 0, matching
+    // the old vendor-tab col-D read (a blank par XLOOKUP'd to "" → 0).
+    map.set(id, { useMult: useMult, par: Number(r[6]) });
   }
   return map;
 }
@@ -1082,6 +1152,46 @@ function readVendorMultipliers_(setup) {
     map.set(v, m);
   }
   return map;
+}
+
+
+function readEmergencyOverride_() {
+  // ORDER_ENTRY!AD2 — the Emergency Override checkbox (true = on). When on,
+  // the KM is ordering off the normal delivery schedule; see
+  // vendorDayMultiplier_ for how the multiplier is derived in that case.
+  const oe = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ORDER_ENTRY);
+  if (!oe) return false;
+  return oe.getRange(EMERGENCY_OVERRIDE_CELL).getValue() === true;
+}
+
+
+function vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride) {
+  // Effective vendor multiplier for `vendor` on `dayOfWeek` — computed in code
+  // to replace reading the vendor tab's H2 formula. Mirrors that formula:
+  //   H2 = IF(AD2=TRUE, <emergency>, <today's mult from SETUP S:Y>)
+  //
+  // Normal (override off): today's multiplier from the SETUP S:Y table; 0 means
+  // the vendor doesn't deliver today (items then blank, same as H2=0).
+  //
+  // Emergency Override (AD2 on): a flat 1x doesn't help a vendor that only
+  // delivers some days (a 1-day order won't bridge the gap to its next drop).
+  // Instead, "bridge to the next real delivery": scan forward from today
+  // (inclusive) for the first day with mult > 0 and use that day's multiplier,
+  // so an off-schedule emergency order covers what the next scheduled drop
+  // would bring. If today is itself a delivery day, that's today's own mult
+  // (override is a no-op for that vendor). An all-zero row (vendor never
+  // delivers / misconfigured) falls back to 1 so the KM can still order.
+  const m = vendorMults.get(vendor);
+  if (!m) return 0;
+  const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const start = DAYS.indexOf(dayOfWeek);
+  if (start < 0) return Number(m[dayOfWeek]) || 0;   // unknown day label — defensive
+  if (!emergencyOverride) return Number(m[DAYS[start]]) || 0;
+  for (let i = 0; i < 7; i++) {
+    const mv = Number(m[DAYS[(start + i) % 7]]) || 0;
+    if (mv > 0) return mv;
+  }
+  return 1;   // never-delivers row: let the KM still order something under override
 }
 
 
