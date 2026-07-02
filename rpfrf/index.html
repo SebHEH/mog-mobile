@@ -456,6 +456,43 @@
     .recap-stale-banner .stale-resend:disabled { opacity: 0.6; }
     .recap-stale-banner .stale-resend i { font-size: 14px; }
 
+    /* Emergency override control on Home. Quiet dashed pill when off;
+       filled amber banner when on (mirrors .recap-stale-banner). */
+    .override-banner {
+      width: 100%;
+      display: flex; align-items: center; gap: 10px;
+      border-radius: var(--r-md);
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      font-size: 13px;
+      text-align: left;
+    }
+    .override-banner.off {
+      background: transparent;
+      border: 1px dashed #d9b463;
+      color: #8a6d1a;
+    }
+    .override-banner.off:active { background: #fef6e0; }
+    .override-banner.on {
+      background: #fef6e0;
+      border: 0.5px solid #f0c97a;
+      color: #7a5a13;
+    }
+    .override-banner i.lead { font-size: 18px; flex-shrink: 0; color: #c08a1a; }
+    .override-banner .ovr-text { flex: 1; min-width: 0; line-height: 1.3; }
+    .override-banner .ovr-title { font-weight: 700; display: block; }
+    .override-banner .ovr-sub { font-weight: 500; display: block; margin-top: 2px; font-size: 12px; opacity: 0.9; }
+    .override-banner .ovr-off-btn {
+      flex-shrink: 0;
+      background: #c08a1a; color: #fff;
+      border: none; border-radius: var(--r-sm, 6px);
+      padding: 7px 12px;
+      font-size: 12px; font-weight: 700; white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .override-banner .ovr-off-btn:active { background: #9c6e10; }
+    .override-banner .ovr-off-btn i { font-size: 14px; }
+
     /* Recipients view ── list of email recipients with active toggle.
        GM rows render locked: greyed, no toggle, no remove button. */
     .recipient-card {
@@ -2328,6 +2365,22 @@
         es: 'Esto registra todos los conteos actuales y borra el inventario de todo el sistema. Afecta a todos los proveedores, no solo a uno.'
       },
       yesReset:         { en: 'Yes, reset everything', es: 'S\u00ed, reiniciar todo' },
+      // Emergency override (home)
+      overrideCta:      { en: 'Emergency override', es: 'Anulaci\u00f3n de emergencia' },
+      overrideOnTitle:  { en: 'Emergency override on', es: 'Anulaci\u00f3n de emergencia activada' },
+      overrideOnSub: {
+        en: 'All vendors show, each sized to cover its next delivery.',
+        es: 'Se muestran todos los proveedores, ajustados para cubrir su pr\u00f3xima entrega.'
+      },
+      overrideTurnOff:  { en: 'Turn off', es: 'Desactivar' },
+      overrideConfirmTitle: { en: 'Turn on emergency override?', es: '\u00bfActivar anulaci\u00f3n de emergencia?' },
+      overrideConfirmMsg: {
+        en: 'Shows every vendor, even those not delivering today, and sizes each order to cover the vendor\u2019s next scheduled delivery. Turns off automatically at the next reset.',
+        es: 'Muestra todos los proveedores, incluso los que no entregan hoy, y ajusta cada pedido para cubrir su pr\u00f3xima entrega programada. Se desactiva autom\u00e1ticamente en el pr\u00f3ximo reinicio.'
+      },
+      overrideConfirmYes: { en: 'Turn on', es: 'Activar' },
+      overrideOnToast:  { en: 'Emergency override on', es: 'Anulaci\u00f3n de emergencia activada' },
+      overrideOffToast: { en: 'Emergency override off', es: 'Anulaci\u00f3n de emergencia desactivada' },
       confirmEditMsg: {
         en: "You'll be able to change counts. Mark as reviewed again when you're done.",
         es: 'Podrás cambiar los conteos. Marca como revisado al terminar.'
@@ -3127,6 +3180,29 @@
       '</button>' +
     '</div>';
 
+    // Emergency override control. Off → a quiet dashed pill to turn it on
+    // (with a confirm). On → an amber banner + "Turn off". When on, the
+    // server shows all vendors and sizes each order to cover its next
+    // delivery (see api_setEmergencyOverride_ / vendorDayMultiplier_).
+    if (data.emergencyOverride) {
+      html += '<div class="override-banner on">' +
+        '<i class="ti ti-alert-triangle lead" aria-hidden="true"></i>' +
+        '<span class="ovr-text">' +
+          '<span class="ovr-title">' + escapeHtml(t('overrideOnTitle')) + '</span>' +
+          '<span class="ovr-sub">' + escapeHtml(t('overrideOnSub')) + '</span>' +
+        '</span>' +
+        '<button class="ovr-off-btn" id="override-off-btn" type="button">' +
+          '<i class="ti ti-x" aria-hidden="true"></i>' +
+          '<span>' + escapeHtml(t('overrideTurnOff')) + '</span>' +
+        '</button>' +
+      '</div>';
+    } else {
+      html += '<button class="override-banner off" id="override-on-btn" type="button">' +
+        '<i class="ti ti-alert-triangle lead" aria-hidden="true"></i>' +
+        '<span class="ovr-text"><span class="ovr-title">' + escapeHtml(t('overrideCta')) + '</span></span>' +
+      '</button>';
+    }
+
     // Determine cycle-level state
     const allReviewed = data.vendors.length > 0 && data.vendors.every(v => {
       const s = effectiveStatus(v, data.date);
@@ -3278,6 +3354,39 @@
     if ($('view-full-btn'))      $('view-full-btn').addEventListener('click', openRecap);
     if ($('home-reset-btn'))     $('home-reset-btn').addEventListener('click', onHomeResetClick);
     if ($('stale-resend-btn'))   $('stale-resend-btn').addEventListener('click', onStaleResendClick);
+    if ($('override-on-btn'))    $('override-on-btn').addEventListener('click', () => onOverrideToggle_(true));
+    if ($('override-off-btn'))   $('override-off-btn').addEventListener('click', () => onOverrideToggle_(false));
+  }
+
+  // Emergency-override toggle. Turning ON asks for confirmation (it's a
+  // deliberate off-schedule action); turning OFF is immediate. Either way we
+  // drop the dashboard + per-vendor caches (override changes which vendors
+  // show AND each vendor's coverage math) and reload Today fresh.
+  async function onOverrideToggle_(turnOn) {
+    if (turnOn) {
+      const ok = await showConfirm({
+        kind: 'warn',
+        icon: 'alert-triangle',
+        title: t('overrideConfirmTitle'),
+        msg:   t('overrideConfirmMsg'),
+        confirmLabel: t('overrideConfirmYes'),
+        cancelLabel:  t('cancel')
+      });
+      if (!ok) return;
+    }
+    showBusy(t('refreshing'));
+    try {
+      await api('setEmergencyOverride', { on: turnOn });
+      state.cache.dashboard   = null;
+      state.cache.vendorItems = {};
+      await loadToday();
+      hideBusy();
+      showToast(turnOn ? t('overrideOnToast') : t('overrideOffToast'), 'success');
+    } catch (e) {
+      hideBusy();
+      if (isNetworkError_(e)) showToast(t('offlineRetry'), 'error');
+      else showToast(String((e && e.message) || 'Error'), 'error');
+    }
   }
 
   // Stale-banner Resend handler. Same code path as the all-done panel's
@@ -3564,6 +3673,7 @@
   function dashboardsDiffer_(a, b) {
     if (!a || !b) return true;
     if (a.date !== b.date) return true;
+    if ((a.emergencyOverride || false) !== (b.emergencyOverride || false)) return true;
     if (a.vendors.length !== b.vendors.length) return true;
     const byName = new Map(a.vendors.map(v => [v.name, v]));
     for (const nv of b.vendors) {
