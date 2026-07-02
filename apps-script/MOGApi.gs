@@ -517,25 +517,29 @@ function api_getDashboard_compute_() {
 
 
 function api_getVendorItems_(payload) {
-  // Reads items + On Hand + Suggested directly from the vendor tab.
+  // Reads the vendor tab for On Hand + the item roster only.
   //
   // Vendor tab structure (per VENDOR_TAB constant + script comments):
-  //   A(1) = Item Name      B(2) = Pack
-  //   E(5) = On Hand        F(6) = Suggested Order Qty (formula-driven)
+  //   E(5) = On Hand (user input)
   //   M(13)= Item ID (hidden, formula-driven from SETUP pick path)
   //   Data rows start at VENDOR_TAB.DATA_START_ROW (3).
   //
-  // Why read from the vendor tab and not MASTER_ITEMS:
+  // Those are the ONLY two columns this function consumes. Everything else
+  // comes from code + canonical sources:
   //   * On Hand lives on the vendor tab — that's where users enter counts
   //     (manually in the sheet, or via this API for the mobile app). The
   //     dashboard's "X / Y entered" counter reads vendor tab column E too.
+  //   * Item ID (M) defines WHICH items are on this vendor's order today
+  //     (a SORT/FILTER spill over SETUP's pick path DB, blank when H2=0).
+  //   * Name/pack come from MASTER_ITEMS!B/!E (via masterMeta) — the tab's
+  //     A/B columns are just XLOOKUPs into those same cells.
+  //   * par comes from MASTER_ITEMS!G (via masterMeta) — the tab's col-D
+  //     formula is the same XLOOKUP.
   //   * Suggested Order Qty is computed here in code (par × day-multiplier −
   //     on-hand, honoring the Use Multiplier flag) — a faithful replication
-  //     of the vendor tab's column F formula. We no longer read column F;
-  //     keeping the math in code makes it versioned, uniform across stores,
-  //     and portable off the sheet. The in-Sheet column F formula stays for
-  //     the human view. par now comes from MASTER_ITEMS!G (via masterMeta),
-  //     not the vendor tab's col-D formula; H2 is still read from the tab.
+  //     of the vendor tab's column F formula, which stays for the human view.
+  //   Keeping all of this in code makes it versioned, uniform across stores,
+  //   and portable off the sheet.
   //
   // Storage area / pick path order still come from SETUP's pick path DB
   // because the vendor tab itself doesn't carry that metadata.
@@ -580,19 +584,27 @@ function api_getVendorItems_(payload) {
   const dayMult = vendorDayMultiplier_(
     vendorMults, vendor, getActiveOrderDate_().dayOfWeek, emergencyOverride);
 
-  // Map<itemId, {useMult, par}> from MASTER_ITEMS. par (col G) is the
-  // canonical per-item base par; useMult (col M) gates the day multiplier.
-  // Consulted per-item below to compute targetPar/suggested in code.
+  // Map<itemId, {useMult, par, name, pack}> from MASTER_ITEMS. par (col G) is
+  // the canonical per-item base par; useMult (col M) gates the day multiplier;
+  // name/pack (cols B/E) are the display fields the tab's A/B XLOOKUPs mirror.
+  // Consulted per-item below.
   const masterMeta = readMasterItemMeta_();
 
   const items = [];
   for (const r of data) {
-    const itemName = String(r[0]  || '').trim();   // A
-    const pack     = String(r[1]  || '').trim();   // B
-    const onHandRaw    = r[VENDOR_TAB.ON_HAND_COL - 1]; // E (5)
-    const itemId   = String(r[12] || '').trim();   // M (13 → index 12)
+    const onHandRaw = r[VENDOR_TAB.ON_HAND_COL - 1]; // E (5)
+    const itemId    = String(r[12] || '').trim();    // M (13 → index 12)
+    if (!itemId) continue;
 
-    if (!itemName || !itemId) continue;
+    // Name/pack from MASTER_ITEMS (via masterMeta), not the tab's A/B — those
+    // columns are XLOOKUP(id, MASTER!A, MASTER!B / MASTER!E) spills, so this
+    // is the same text from its canonical source. No MASTER row, or a blank
+    // name, skips the row — exactly the old `A === ""` skip (the tab's
+    // XLOOKUP falls back to "" on a missing id).
+    const meta = masterMeta.get(itemId);
+    if (!meta || !meta.name) continue;
+    const itemName = meta.name;
+    const pack     = meta.pack;
 
     const onHand = (onHandRaw === '' || onHandRaw === null)
       ? null
@@ -605,14 +617,13 @@ function api_getVendorItems_(payload) {
     // par now comes from MASTER_ITEMS (via masterMeta) rather than the vendor
     // tab's column-D formula — the col-D value is itself just an XLOOKUP into
     // MASTER_ITEMS!G, so this is the same number from its canonical source.
-    // No MASTER row → par NaN → targetPar null (no suggestion); matches the
-    // old behavior where col D XLOOKUP'd to "" for an unknown id.
+    // (meta is guaranteed non-null here — rows without a MASTER entry were
+    // skipped above.)
     //
     // Use Multiplier: items flagged FALSE in MASTER_ITEMS column M skip the
     // day multiplier (effectiveMult = 1) — a par already sized for the cycle.
-    const meta = masterMeta.get(itemId);
-    const parNum = meta ? meta.par : NaN;
-    const useMult = meta ? meta.useMult : true;
+    const parNum  = meta.par;
+    const useMult = meta.useMult;
     const effectiveMult = useMult ? dayMult : 1;
     const targetPar = (!isNaN(parNum) && effectiveMult > 0)
       ? parNum * effectiveMult
@@ -1085,14 +1096,17 @@ function jsonResponse_(obj) {
 
 
 function readMasterItemMeta_() {
-  // Reads MASTER_ITEMS and returns Map<itemId, {useMult, par}> — the per-item
-  // order-math inputs, keyed by item id (column A):
+  // Reads MASTER_ITEMS and returns Map<itemId, {useMult, par, name, pack}> —
+  // the per-item order-math inputs + display fields, keyed by item id (col A):
   //   * par     = column G (Base Par Qty) — the canonical, per-item base par.
   //   * useMult = column M (Use Multiplier).
-  // Both are read here in code so api_getVendorItems_ can compute targetPar
-  // (par × multiplier) without reading the vendor tab's column-D par formula
-  // (itself just XLOOKUP(id, MASTER_ITEMS!A, MASTER_ITEMS!G)) — one MASTER
-  // read, math in code, portable off the sheet.
+  //   * name    = column B (Item Name), pack = column E (Pack / Unit).
+  // All are read here in code so api_getVendorItems_ can build its payload
+  // without reading the vendor tab's formula columns — col D (par), col A
+  // (name), and col B (pack) are each just XLOOKUP(id, MASTER_ITEMS!A, …)
+  // into the very cells read here (G / B / E respectively; verified against
+  // the live template formulas 2026-07-02) — one MASTER read, math in code,
+  // portable off the sheet.
   //
   // useMult: the day-of-week multiplier (H2) should not apply to items billed
   // flat (e.g., contracted weekly deliveries whose par is already sized for
@@ -1125,7 +1139,12 @@ function readMasterItemMeta_() {
     else if (typeof raw === 'string' && raw.trim().toLowerCase() === 'false') useMult = false;
     // Column G (index 6) — base par. Number('') / Number(null) === 0, matching
     // the old vendor-tab col-D read (a blank par XLOOKUP'd to "" → 0).
-    map.set(id, { useMult: useMult, par: Number(r[6]) });
+    map.set(id, {
+      useMult: useMult,
+      par:     Number(r[6]),
+      name:    String(r[1] || '').trim(),   // B — Item Name
+      pack:    String(r[4] || '').trim()    // E — Pack / Unit
+    });
   }
   return map;
 }
