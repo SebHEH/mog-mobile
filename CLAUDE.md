@@ -14,7 +14,7 @@ If sources conflict, items higher in this list win for "what's currently in flig
 
 Replace the path here with the newest handoff at the end of each session that ships material changes. (The `mog-session-handoff` skill rewrites this line.)
 
-@docs/MOG_SessionHandoff_2026_07_01.md
+@docs/MOG_SessionHandoff_2026_07_02.md
 
 ## Quick orientation
 
