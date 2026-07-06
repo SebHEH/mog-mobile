@@ -404,6 +404,10 @@
       .assign-footer-actions { display: flex; align-items: center; gap: 12px; }
       .assign-diff { font-size: 13px; color: #667; }
 
+      /* Brief highlight on the View detail after a save / primary change. */
+      @keyframes mgeDetailFlash { from { background: #d9f0e6; } to { background: transparent; } }
+      #view-detail.detail-flash { animation: mgeDetailFlash 1.2s ease-out; border-radius: 8px; }
+
       /* Unsaved-changes popup */
       .ig-overlay { display: none; position: fixed; inset: 0; background: rgba(20,22,28,0.45); z-index: 60; align-items: center; justify-content: center; padding: 20px; }
       .ig-overlay.open { display: flex; }
@@ -1951,6 +1955,37 @@
         .getManageItemsBootstrap();
     }
 
+    // Authoritative refresh after a mutation that changes an item's vendor/
+    // eligible/area (Make primary, or an edit that reassigns the vendor):
+    // re-fetch the item list from the server, then re-select the item so the
+    // detail shows the persisted state — never a stale in-memory object. Ends
+    // on the item's View detail with a clear confirmation + a brief flash.
+    function reloadItemsAndSelect_(id, msg, type) {
+      clearItemsCache_();
+      MIRPC()
+        .withSuccessHandler(result => {
+          allItems = (result && result.items) || [];
+          parFlags = (result && result.flags) || {};
+          writeItemsCache_(allItems, parFlags);
+          computeNewIds_(); computeParAdjustedIds_();
+          const entry = allItems.find(x => String(x.id) === String(id));
+          if (entry) {
+            selectItem(entry);          // → View detail, rendered from fresh data
+            centerRow_(id);
+            const d = byId('view-detail');
+            if (d) { d.classList.remove('detail-flash'); void d.offsetWidth; d.classList.add('detail-flash'); }
+            if (msg) setStatus('view-detail', msg, type || 'ok');
+          } else {
+            renderTable();
+          }
+        })
+        .withFailureHandler(err => {
+          renderTable();
+          if (msg) setStatus('view-detail', msg, type || 'ok');
+        })
+        .getManageItemsBootstrap();
+    }
+
     function setSort(key) {
       if (sortKey === key) sortAsc = !sortAsc; else { sortKey = key; sortAsc = true; }
       byId('sort-by-vendor').classList.toggle('active', sortKey === 'vendor');
@@ -2328,13 +2363,10 @@
       bumpMutationTs_();
       MIRPC()
         .withSuccessHandler(res => {
-          selectedItem.vendor = res.vendor;           // new primary; eligible list is unchanged (old stays a backup)
-          const entry = allItems.find(x => x.id === res.id);
-          if (entry) { entry.vendor = res.vendor; entry.hasArea = !res.needsArea; }
+          // Re-fetch from the server so the detail reflects the persisted
+          // primary (not a stale in-memory object).
           const msg = t('switched') + res.vendor + (res.needsArea ? t('switchNeedsArea') : '');
-          clearItemsCache_(); writeItemsCache_(allItems, parFlags);
-          selectItem(selectedItem);                   // re-render detail + table with the new primary
-          setStatus('view-switch', msg, res.needsArea ? 'warn' : 'ok');
+          reloadItemsAndSelect_(res.id, msg, res.needsArea ? 'warn' : 'ok');
         })
         .withFailureHandler(err => {
           if (box) box.querySelectorAll('button.vp-make').forEach(b => { b.disabled = false; });
@@ -2485,40 +2517,16 @@
             saveMsg = t('saved') + res.id; saveType = 'ok';
           }
 
-          // In-place update of the cached row so we don't refetch the whole list.
-          const _e = allItems.find(x => x.id === res.id);
-          // Flag a "Recently adjusted" pill only when the par actually changed —
-          // the Par Review column is par-specific, so vendor/pack/active edits
-          // don't invalidate the historical flag. Read the old par off _e before
-          // we overwrite it below.
-          const parChanged = _e ? Number(_e.par) !== Number(par) : false;
-          if (_e) {
-            _e.name    = byId('edit-name').value.trim() || _e.name;   // blank = keep current
-            _e.vendor  = vendor;
-            _e.eligibleVendors = getCheckedEligible_('edit-eligible', vendor);
-            _e.pack    = byId('edit-pack').value.trim();
-            _e.par     = Number(par);
-            _e.active  = (byId('edit-active').value === 'true');
-            _e.useMult = (byId('edit-useMult').value === 'true');
-            if (res.assignedArea) _e.hasArea = true;
-          }
-          if (parChanged) markParAdjusted_(res.id);
-          clearItemsCache_(); writeItemsCache_(allItems, parFlags);
+          // "Recently adjusted" Par-Review pill — flag only when the par actually
+          // changed (compare the cached row's old par before the refetch replaces
+          // it). Vendor/pack/active edits don't invalidate the historical flag.
+          const cur = allItems.find(x => x.id === res.id);
+          if (cur && Number(cur.par) !== Number(par)) markParAdjusted_(res.id);
 
-          // Reset the right pane to the just-saved item's View detail. selectItem
-          // re-renders the quick-switch from the now-updated eligible list, which
-          // also fixes the stale "can't switch active vendor after adding one"
-          // bug (the detail was previously never re-rendered after an edit).
-          if (_e) {
-            selectItem(_e);
-            centerRow_(res.id);
-            setStatus('view-detail', saveMsg, saveType);
-          } else {
-            // Row missing from cache (shouldn't happen on edit) — fall back to the
-            // old in-place behavior so the user is never stranded.
-            setStatus('edit', saveMsg, saveType);
-            rerenderAndCenter_(res.id);
-          }
+          // Authoritative refresh: re-fetch the list and land on the item's View
+          // detail rendered from the persisted data — so a vendor reassignment
+          // (or eligible/area/par change) is always reflected, never stale.
+          reloadItemsAndSelect_(res.id, saveMsg, saveType);
         })
         .withFailureHandler(err => {
           setSavingPanel_('panel-edit', false);
