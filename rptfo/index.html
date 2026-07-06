@@ -839,6 +839,17 @@
     .item-name { font-size: 15px; font-weight: 500; margin: 0; }
     .item-meta { font-size: 12px; color: var(--text-3); margin: 2px 0 0; font-style: italic; }
 
+    /* Secondary (backup) rows on the count screen — item whose primary is
+       another vendor. Reference only: de-emphasized, no counter, no order pill. */
+    .item-secondary { opacity: 0.72; }
+    .item-secondary .item-name { font-weight: 400; }
+    .secondary-badge {
+      flex-shrink: 0; font-size: 11px; font-weight: 600;
+      color: var(--text-2); background: var(--bg-soft);
+      border: 0.5px solid var(--border-2); border-radius: 999px;
+      padding: 3px 10px; white-space: nowrap;
+    }
+
     .stepper {
       display: flex;
       align-items: center;
@@ -2283,6 +2294,7 @@
       itemsOrdered:     { en: 'Items ordered', es: 'Artículos pedidos' },
       reference:        { en: 'Reference', es: 'Referencia' },
       onHand:           { en: 'on hand', es: 'stock' },
+      secondary:        { en: 'Backup', es: 'Respaldo' },
       counted:          { en: 'counted', es: 'contados' },
       reviewOrder:      { en: 'Review order', es: 'Revisar pedido' },
       saveContinue:     { en: 'Save and continue later', es: 'Guardar y continuar después' },
@@ -2614,6 +2626,39 @@
     if (!state.apiUrl || state.apiUrl.indexOf('PASTE_YOUR') === 0) {
       throw new Error('CONFIG_MISSING');
     }
+    // Read-only calls (get*/ping) auto-retry ONCE on a transient failure — a
+    // cold /exec (first hit slow → timeout) or a Google delivery flake
+    // (BAD_JSON / abort) rides out invisibly instead of flashing "Offline" or
+    // stranding the user on "Couldn't load". Writes are NOT retried: a
+    // timed-out write may have succeeded server-side, so a blind retry could
+    // duplicate it (add item/vendor, log/reset).
+    const retriable   = /^(get|ping)/i.test(action);
+    const maxAttempts = retriable ? 2 : 1;
+    let lastErr;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await apiOnce_(action, payload, timeoutMs);
+      } catch (err) {
+        lastErr = err;
+        const transient = isNetworkError_(err) ||
+          String((err && err.message) || '').indexOf('BAD_JSON') === 0;
+        if (attempt < maxAttempts && transient) {
+          await new Promise(function (r) { setTimeout(r, 700); });
+          continue;
+        }
+        // Network-class failures (incl. our timeout abort) flip the offline
+        // banner; server "not ok" / BAD_JSON responses mean we reached the
+        // server, so they don't.
+        if (isNetworkError_(err)) setOffline_();
+        throw err;
+      }
+    }
+    throw lastErr; // unreachable — the loop either returns or throws
+  }
+
+  // One request attempt: returns json.data, or throws (BAD_JSON, server !ok,
+  // network/abort). The retry policy lives in api() above.
+  async function apiOnce_(action, payload, timeoutMs) {
     const controller = new AbortController();
     // Most calls use the default API_TIMEOUT_MS. Known-slow writes (e.g.
     // commitReset, which logs + clears On Hand + sends the recap email
@@ -2654,13 +2699,6 @@
       return json.data;
     } catch (err) {
       clearTimeout(timeoutId);
-      // Treat network-class errors as a signal to flip the banner on.
-      // Server errors (BAD_JSON, application errors) are NOT offline
-      // signals — those mean we reached the server, it just answered
-      // unhappily. AbortError (our API_TIMEOUT_MS abort) is recognized
-      // as a network error by isNetworkError_, so a hung request also
-      // flips the banner here instead of stranding the user.
-      if (isNetworkError_(err)) setOffline_();
       throw err;
     }
   }
@@ -4026,6 +4064,9 @@
     //   2. item._targetPar inferred from API onHand+suggestedQty (legacy
     //      fallback, kept for safety if older API versions don't send targetPar)
     //   3. item.suggestedQty (only correct on initial render before any edit)
+    // Secondary appearances (this vendor isn't the item's primary) are never
+    // ordered from here — no suggestion regardless of On Hand.
+    if (item.secondary) return null;
     if (item.onHand === null || item.onHand === '' || item.onHand === undefined) return null;
     const oh = Number(item.onHand);
     if (isNaN(oh)) return null;
@@ -4063,10 +4104,15 @@
     const ctx = state.countContext;
     const view = $('view-count');
     const items = ctx.items;
+    // Secondary items (this vendor isn't their primary) can't be ordered here —
+    // they render as reference rows in a separate section and are excluded from
+    // the count tally. Countable items drive the "X of N" progress + order flow.
+    const countable   = items.filter(it => !it.secondary);
+    const secondaries = items.filter(it => it.secondary);
 
     let toOrder = 0;
     let counted = 0;
-    for (const it of items) {
+    for (const it of countable) {
       if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) {
         counted++;
         const s = computeSuggested(it);
@@ -4077,7 +4123,7 @@
     let html = '';
     html += '<div class="count-progress">' +
       '<span><span class="count-progress-strong">' + counted + ' ' +
-        (state.lang === 'en' ? 'of' : 'de') + ' ' + items.length + '</span> ' +
+        (state.lang === 'en' ? 'of' : 'de') + ' ' + countable.length + '</span> ' +
         escapeHtml(t('counted')) + '</span>' +
       '<span style="font-size:12px">' +
         (toOrder > 0 ? toOrder + ' ' + escapeHtml(t('itemsToOrder')) : '&nbsp;') +
@@ -4086,21 +4132,23 @@
 
     // Sticky column header strip — stays pinned to the top of the scroll
     // area so the user always knows which column is which on long lists.
-    html += '<div class="count-colheader">' +
-      '<span class="ch-item">' +
-        '<span class="lang-en">Item</span><span class="lang-es">Artículo</span>' +
-      '</span>' +
-      '<span class="ch-onhand">' +
-        '<span class="lang-en">On hand</span><span class="lang-es">Stock</span>' +
-      '</span>' +
-      '<span class="ch-order">' +
-        '<span class="lang-en">Order</span><span class="lang-es">Pedir</span>' +
-      '</span>' +
-    '</div>';
+    if (countable.length) {
+      html += '<div class="count-colheader">' +
+        '<span class="ch-item">' +
+          '<span class="lang-en">Item</span><span class="lang-es">Artículo</span>' +
+        '</span>' +
+        '<span class="ch-onhand">' +
+          '<span class="lang-en">On hand</span><span class="lang-es">Stock</span>' +
+        '</span>' +
+        '<span class="ch-order">' +
+          '<span class="lang-en">Order</span><span class="lang-es">Pedir</span>' +
+        '</span>' +
+      '</div>';
+    }
 
-    // Group by storage area, preserving the API's order
+    // Group by storage area, preserving the API's order (countable items only)
     let lastArea = null;
-    for (const it of items) {
+    for (const it of countable) {
       if (it.storageArea !== lastArea) {
         html += '<div class="area-header">' + escapeHtml(it.storageArea || '—') + '</div>';
         lastArea = it.storageArea;
@@ -4121,6 +4169,27 @@
         '</div>' +
         '<span class="' + pillCls + '">' + pillTxt + '</span>' +
       '</div>';
+    }
+
+    // Backup / secondary reference section — items whose primary vendor is
+    // someone else. Shown so the KM knows this vendor can supply them (order by
+    // making this vendor the item's primary in Manage Items); no counter, no
+    // order pill, and never part of the count tally or the order/recap.
+    if (secondaries.length) {
+      html += '<div class="section-label" style="margin-top:20px">' +
+        (state.lang === 'en' ? 'Also available from this vendor' : 'También disponible de este proveedor') +
+        ' &middot; ' + secondaries.length + '</div>';
+      for (const it of secondaries) {
+        html += '<div class="item item-secondary" data-id="' + escapeHtml(it.id) + '">' +
+          '<div class="item-info">' +
+            '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
+            '<p class="item-meta">' + escapeHtml(it.pack || '') + '</p>' +
+          '</div>' +
+          '<span class="secondary-badge">' + escapeHtml(t('secondary')) +
+            (it.primaryVendor ? ' &middot; ' + escapeHtml(it.primaryVendor) : '') +
+          '</span>' +
+        '</div>';
+      }
     }
 
     // Save and continue later goes ABOVE Review order so the primary
@@ -4195,10 +4264,10 @@
       }
     }
 
-    // Update progress block
-    const items = ctx.items;
+    // Update progress block (countable items only — secondaries aren't counted)
+    const countable = ctx.items.filter(it => !it.secondary);
     let toOrder = 0, counted = 0;
-    for (const it of items) {
+    for (const it of countable) {
       if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) {
         counted++;
         const s = computeSuggested(it);
@@ -4206,7 +4275,7 @@
       }
     }
     const prog = $('view-count').querySelector('.count-progress-strong');
-    if (prog) prog.textContent = counted + ' ' + (state.lang === 'en' ? 'of' : 'de') + ' ' + items.length;
+    if (prog) prog.textContent = counted + ' ' + (state.lang === 'en' ? 'of' : 'de') + ' ' + countable.length;
     const orderEl = $('view-count').querySelector('.count-progress span:nth-child(2)');
     if (orderEl) orderEl.innerHTML = toOrder > 0 ? toOrder + ' ' + escapeHtml(t('itemsToOrder')) : '&nbsp;';
 
