@@ -105,3 +105,71 @@ a single /exec deployment can rot (intermittent POST-delivery failure) with the
 code + GET path still healthy — fix is a fresh deployment + repoint, not a code
 change; and dummy-PIN probes trip the shared per-store 5-min lockout.
 ```
+
+---
+
+## Later session — Multi-vendor ordering + Assign-to-Vendor tab + PWA reset/badges
+
+**Session date:** 2026-07-06 (later)
+**Focus:** Build the "item orderable from two vendors at once" feature end-to-end, plus fix the PWA new-day reset UX.
+**Outcome:** SHIPPED to all 9 + master + committed (7 commits `bf05d0a`→`a5245db`). Canary for this session was **rpr** (Sebastian's call — B&T/Chef Center are BOH food vendors, so the kitchen sheet is where the feature lands).
+**Next session focus:** run "Place Backup Vendors on Tabs" on the remaining stores; then optional polish (close-modal guard, PWA backup-row grouping) or continue Tier-3.
+
+### Section A — PWA new-day reset refactor (`bf05d0a`, CACHE v26)
+Dropped the manual "Start the new day" screen entirely. The reset now **auto-runs behind the loading bar**; on success you land on home. On timeout/failure it shows a single **Refresh** button (reloads → re-checks `getResetStatus`, so a reset that already finished server-side enters cleanly with **no second reset → no double email**). Removed the raw "signal is aborted" error. `commitReset` confirmed idempotent (re-clears, skips re-logging; recap deduped by `MOG_LAST_RECAP_SENT_DATE`), so removing the manual button killed the only real double-click double-email vector. `showStaleScreen`→`showResetRefreshScreen_`; `handleStaleReset` removed; `runStaleReset_` simplified.
+
+### Section B — Multi-vendor ordering (the main arc)
+An item can sit on several vendor tabs at once, **sharing one par** (`MASTER_ITEMS!G`). Column C = **primary** (default order source); other eligible vendors (col O) are **backups** — fully orderable (order from a backup when the primary is out of stock or not delivering that day). **`mog-sheet-formula-verify`'d** against a fresh rpr export (`RP_AN_ROSSLYN`): vendor-tab col-M roster is `SORT(FILTER(SETUP!L, SETUP!K=<tab vendor>), …)` — a pure per-vendor filter, so two pick rows (same item id, different K) each spill onto their own tab, **no dedup / no #SPILL**. Par (col D) = `XLOOKUP(id, MASTER!A, MASTER!G)` = shared. Col F never references the primary, so **On-Hand-per-tab is the natural router** (count an item on the tab you're ordering it from).
+
+**Design pivots (both Sebastian's calls, mid-session):**
+- First built secondaries as **reference-only** (suppressed suggested + reset dedup). **Reverted** — a backup must be orderable. Now nothing is suppressed; the badge only *labels* the source. On-Hand-per-tab means no double-count unless the same item is deliberately counted on two tabs the same day (accepted).
+- **"Eligible = on the tab"** unified: checking a vendor in the Manage Items eligible list places the item on that vendor's tab on Save (unchecking removes it).
+
+**Backend (`4b472bc`):** `readMasterItemMeta_` +primaryVendor (col C); `api_getVendorItems_` flags `secondary`+`primaryVendor` (no suppression); `commitSwitchActiveVendor` reworked to **promote-in-place** (flip col C, keep all pick rows, old primary becomes a backup, add new primary's row if missing); `commitUpsertItem` reconciles pick rows to the eligible list on save (`syncItemEligiblePickRows_`); `syncEligibleVendorsToPickPath` one-time backfill (menu **📱 Mobile API → Place Backup Vendors on Tabs**); `commitSetVendorItems` (vendor-first bulk assign). `snapshotVendorOrders_` dedup was added then **reverted** (backup orders must log).
+
+**PWA count screen (`6680ce9`/`075a267`/`bf93ecd`, CACHE v27→v28→v29):** backup rows fully orderable; every row carries a badge — **Primary** (teal) or **Secondary** (muted), no vendor name. Plus **read auto-retry**: `api()` retries `get*`/`ping` once on a transient failure (cold `/exec` timeout, BAD_JSON) before showing Offline — fixes the cold-start "Couldn't load." Writes never retried.
+
+**Assign-to-Vendor tab (`084be0f`):** full-width table tab in Manage Items (hides the master-detail left pane while active). Prominent **"Assigning items to → <vendor>"** bar, search, **All / On vendor / Not on vendor** filter (default All), sortable columns, on-row checkboxes (primary rows locked, no-area flagged), live **"N to add · M to remove"** diff, one `commitSetVendorItems` save. Checkbox edits held in `assignPending_` so they survive filtering. **Styled unsaved-changes popup** (Save / Don't save / Cancel) guards vendor-switch and tab-switch. `getAllItemsForView` gained `storageArea` per item (item cache v2→v3).
+
+**Primary-change refresh (`a5245db`):** changing an item's primary (Make primary *or* Edit → Reassign to Vendor → Save) now **re-fetches the item list and re-renders the detail from that authoritative data** (was: mutate in-memory object → showed stale/old primary), with a brief green flash + confirmation.
+
+### Section C — rprfo confirmed healthy
+Start of session: verified rprfo's fresh `/exec` (from the earlier name/pack session) is healthy — GET clean JSON, Pages serving v25. (No POST-test — real PIN / lockout risk.)
+
+### Outstanding (carry forward)
+- **Run "Place Backup Vendors on Tabs" per store** (📱 Mobile API menu) — only **rpr** may be done. One-time backfill that surfaces existing eligible-but-unplaced backups (e.g. B&T's 43 on rpr). After it runs once, the checklist + Assign tab keep col O ↔ vendor tabs in sync automatically.
+- **Optional: close-modal guard** — the unsaved-changes popup guards vendor- and tab-switch, but NOT closing the whole Manage Items modal.
+- **Optional: PWA backup clutter** — a vendor that's a backup for many items (B&T's 43) lists them all inline on its count screen; group/collapse if noisy.
+- **Workflow rule (memory `feedback_editor_iterate_on_dev`, strengthened):** the **web app (`/exec`) is the primary surface → ALWAYS `--redeploy`, never push-only** (push leaves the web editor stale — that's why the Assign tab "didn't show" until a redeploy).
+- **Editor-link support (memory `reference_editor_link_sharing`):** a KM who can only open `/exec` in Incognito has multiple Google accounts → hand out the `/u/0/` account-pinned form (or make the right account default), and open in a real browser, not a chat-app in-app browser.
+
+### Commits landed (later session)
+```
+a5245db fix(editor): reflect primary-vendor change immediately in Manage Items
+bf93ecd fix(pwa): label count rows Primary / Secondary per vendor (CACHE v29)
+084be0f feat(editor): Assign-to-Vendor tab in Manage Items
+4b472bc feat(api): order items from multiple vendors (primary + backups)
+075a267 fix(pwa): backup vendor rows stay fully orderable, just badged (CACHE v28)
+6680ce9 feat(pwa): secondary/backup vendor rows on count screen + read auto-retry (CACHE v27)
+bf05d0a fix(pwa): auto-run new-day reset + Refresh-on-failure, drop manual reset screen (CACHE v26)
+```
+
+### Opening prompt for next session
+```
+Read docs/MOG_CurrentState.md first. Last session (2026-07-06 later) shipped the
+big multi-vendor feature: items orderable from a primary + backups sharing one
+par; the Assign-to-Vendor bulk tab in Manage Items; Primary/Secondary badges on
+the PWA count screen; PWA reset auto-run + Refresh popup; read auto-retry; and an
+authoritative refresh when changing an item's primary. All on all 9 + master,
+committed (bf05d0a -> a5245db).
+
+FIRST: run "📱 Mobile API -> Place Backup Vendors on Tabs" on each store that
+hasn't had it (only rpr may be done) — the one-time backfill that surfaces
+existing backup assignments on their vendor tabs.
+
+Optional next: a close-modal guard for the Assign tab's unsaved changes;
+grouping/collapsing backup rows on the PWA count screen if cluttered; or continue
+Tier-3 (move snapshotVendorOrders_/vendorOnHandSnapshot_ off the vendor-tab
+formulas). Canary is rpr for the multi-vendor work (rpfrf otherwise); the web app
+(/exec) is the PRIMARY surface, so ALWAYS deploy with --redeploy.
+```
