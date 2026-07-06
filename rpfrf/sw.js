@@ -33,7 +33,7 @@
 // or service-worker behavior that needs old caches evicted. Old
 // caches are deleted in the `activate` handler.
 
-const CACHE_VERSION = 'v28';
+const CACHE_VERSION = 'v29';
 const SHELL_CACHE   = 'mog-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'mog-runtime-' + CACHE_VERSION;
 
