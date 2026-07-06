@@ -839,15 +839,14 @@
     .item-name { font-size: 15px; font-weight: 500; margin: 0; }
     .item-meta { font-size: 12px; color: var(--text-3); margin: 2px 0 0; font-style: italic; }
 
-    /* Secondary (backup) rows on the count screen — item whose primary is
-       another vendor. Reference only: de-emphasized, no counter, no order pill. */
-    .item-secondary { opacity: 0.72; }
-    .item-secondary .item-name { font-weight: 400; }
+    /* Backup-vendor badge on a count row — item whose primary is another
+       vendor. It's still fully orderable here; the badge just labels the source
+       so the KM knows this isn't the default vendor for the item. */
     .secondary-badge {
-      flex-shrink: 0; font-size: 11px; font-weight: 600;
-      color: var(--text-2); background: var(--bg-soft);
+      display: inline-block; font-size: 10px; font-weight: 700;
+      letter-spacing: .02em; color: var(--text-2); background: var(--bg-soft);
       border: 0.5px solid var(--border-2); border-radius: 999px;
-      padding: 3px 10px; white-space: nowrap;
+      padding: 1px 7px; margin-left: 6px; vertical-align: 1px; white-space: nowrap;
     }
 
     .stepper {
@@ -4064,9 +4063,6 @@
     //   2. item._targetPar inferred from API onHand+suggestedQty (legacy
     //      fallback, kept for safety if older API versions don't send targetPar)
     //   3. item.suggestedQty (only correct on initial render before any edit)
-    // Secondary appearances (this vendor isn't the item's primary) are never
-    // ordered from here — no suggestion regardless of On Hand.
-    if (item.secondary) return null;
     if (item.onHand === null || item.onHand === '' || item.onHand === undefined) return null;
     const oh = Number(item.onHand);
     if (isNaN(oh)) return null;
@@ -4104,15 +4100,10 @@
     const ctx = state.countContext;
     const view = $('view-count');
     const items = ctx.items;
-    // Secondary items (this vendor isn't their primary) can't be ordered here —
-    // they render as reference rows in a separate section and are excluded from
-    // the count tally. Countable items drive the "X of N" progress + order flow.
-    const countable   = items.filter(it => !it.secondary);
-    const secondaries = items.filter(it => it.secondary);
 
     let toOrder = 0;
     let counted = 0;
-    for (const it of countable) {
+    for (const it of items) {
       if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) {
         counted++;
         const s = computeSuggested(it);
@@ -4123,7 +4114,7 @@
     let html = '';
     html += '<div class="count-progress">' +
       '<span><span class="count-progress-strong">' + counted + ' ' +
-        (state.lang === 'en' ? 'of' : 'de') + ' ' + countable.length + '</span> ' +
+        (state.lang === 'en' ? 'of' : 'de') + ' ' + items.length + '</span> ' +
         escapeHtml(t('counted')) + '</span>' +
       '<span style="font-size:12px">' +
         (toOrder > 0 ? toOrder + ' ' + escapeHtml(t('itemsToOrder')) : '&nbsp;') +
@@ -4132,23 +4123,23 @@
 
     // Sticky column header strip — stays pinned to the top of the scroll
     // area so the user always knows which column is which on long lists.
-    if (countable.length) {
-      html += '<div class="count-colheader">' +
-        '<span class="ch-item">' +
-          '<span class="lang-en">Item</span><span class="lang-es">Artículo</span>' +
-        '</span>' +
-        '<span class="ch-onhand">' +
-          '<span class="lang-en">On hand</span><span class="lang-es">Stock</span>' +
-        '</span>' +
-        '<span class="ch-order">' +
-          '<span class="lang-en">Order</span><span class="lang-es">Pedir</span>' +
-        '</span>' +
-      '</div>';
-    }
+    html += '<div class="count-colheader">' +
+      '<span class="ch-item">' +
+        '<span class="lang-en">Item</span><span class="lang-es">Artículo</span>' +
+      '</span>' +
+      '<span class="ch-onhand">' +
+        '<span class="lang-en">On hand</span><span class="lang-es">Stock</span>' +
+      '</span>' +
+      '<span class="ch-order">' +
+        '<span class="lang-en">Order</span><span class="lang-es">Pedir</span>' +
+      '</span>' +
+    '</div>';
 
-    // Group by storage area, preserving the API's order (countable items only)
+    // Group by storage area, preserving the API's order. Backup items (this
+    // vendor isn't their primary) are fully orderable here — they just carry a
+    // "Backup · <primary>" badge so the KM knows this isn't the default source.
     let lastArea = null;
-    for (const it of countable) {
+    for (const it of items) {
       if (it.storageArea !== lastArea) {
         html += '<div class="area-header">' + escapeHtml(it.storageArea || '—') + '</div>';
         lastArea = it.storageArea;
@@ -4157,9 +4148,13 @@
       const sug = computeSuggested(it);
       const pillCls = sug == null ? 'suggest empty' : (sug === 0 ? 'suggest zero' : 'suggest');
       const pillTxt = sug == null ? '—' : sug;
+      const badge = it.secondary
+        ? ' <span class="secondary-badge">' + escapeHtml(t('secondary')) +
+            (it.primaryVendor ? ' &middot; ' + escapeHtml(it.primaryVendor) : '') + '</span>'
+        : '';
       html += '<div class="item" data-id="' + escapeHtml(it.id) + '">' +
         '<div class="item-info">' +
-          '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
+          '<p class="item-name">' + escapeHtml(it.name) + badge + '</p>' +
           '<p class="item-meta">' + escapeHtml(it.pack || '') + '</p>' +
         '</div>' +
         '<div class="stepper">' +
@@ -4169,27 +4164,6 @@
         '</div>' +
         '<span class="' + pillCls + '">' + pillTxt + '</span>' +
       '</div>';
-    }
-
-    // Backup / secondary reference section — items whose primary vendor is
-    // someone else. Shown so the KM knows this vendor can supply them (order by
-    // making this vendor the item's primary in Manage Items); no counter, no
-    // order pill, and never part of the count tally or the order/recap.
-    if (secondaries.length) {
-      html += '<div class="section-label" style="margin-top:20px">' +
-        (state.lang === 'en' ? 'Also available from this vendor' : 'También disponible de este proveedor') +
-        ' &middot; ' + secondaries.length + '</div>';
-      for (const it of secondaries) {
-        html += '<div class="item item-secondary" data-id="' + escapeHtml(it.id) + '">' +
-          '<div class="item-info">' +
-            '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
-            '<p class="item-meta">' + escapeHtml(it.pack || '') + '</p>' +
-          '</div>' +
-          '<span class="secondary-badge">' + escapeHtml(t('secondary')) +
-            (it.primaryVendor ? ' &middot; ' + escapeHtml(it.primaryVendor) : '') +
-          '</span>' +
-        '</div>';
-      }
     }
 
     // Save and continue later goes ABOVE Review order so the primary
@@ -4264,10 +4238,10 @@
       }
     }
 
-    // Update progress block (countable items only — secondaries aren't counted)
-    const countable = ctx.items.filter(it => !it.secondary);
+    // Update progress block
+    const items = ctx.items;
     let toOrder = 0, counted = 0;
-    for (const it of countable) {
+    for (const it of items) {
       if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) {
         counted++;
         const s = computeSuggested(it);
@@ -4275,7 +4249,7 @@
       }
     }
     const prog = $('view-count').querySelector('.count-progress-strong');
-    if (prog) prog.textContent = counted + ' ' + (state.lang === 'en' ? 'of' : 'de') + ' ' + countable.length;
+    if (prog) prog.textContent = counted + ' ' + (state.lang === 'en' ? 'of' : 'de') + ' ' + items.length;
     const orderEl = $('view-count').querySelector('.count-progress span:nth-child(2)');
     if (orderEl) orderEl.innerHTML = toOrder > 0 ? toOrder + ' ' + escapeHtml(t('itemsToOrder')) : '&nbsp;';
 
