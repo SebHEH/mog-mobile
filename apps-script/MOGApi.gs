@@ -606,6 +606,17 @@ function api_getVendorItems_(payload) {
     const itemName = meta.name;
     const pack     = meta.pack;
 
+    // Secondary/backup vendor: this item's PRIMARY is a different vendor
+    // (MASTER col C). It's still fully orderable from here — a backup exists
+    // precisely so you can order it when the primary isn't delivering today or
+    // is out of stock. The flag only drives a "Backup · <primary>" badge in the
+    // PWA so the KM knows this isn't the default source. On-Hand is per vendor
+    // tab, so counting it here (and not on the primary) is what routes the
+    // order to this vendor — nothing is double-counted unless the same item is
+    // deliberately counted on two tabs the same day.
+    const isSecondary = !!meta.primaryVendor &&
+      meta.primaryVendor.toLowerCase() !== vendor.toLowerCase();
+
     const onHand = (onHandRaw === '' || onHandRaw === null)
       ? null
       : (isNaN(Number(onHandRaw)) ? null : Number(onHandRaw));
@@ -649,16 +660,18 @@ function api_getVendorItems_(payload) {
     const pi = pickInfo.get(itemId) || { area: '', areaOrder: 999, shelfOrder: 999999 };
 
     items.push({
-      id:           itemId,
-      name:         itemName,
-      pack:         pack,
-      par:          (!isNaN(parNum) ? parNum : 0),
-      targetPar:    targetPar,
-      onHand:       onHand,
-      suggestedQty: suggested,
-      storageArea:  pi.area,
-      _areaOrder:   pi.areaOrder,
-      _shelfOrder:  pi.shelfOrder
+      id:            itemId,
+      name:          itemName,
+      pack:          pack,
+      par:           (!isNaN(parNum) ? parNum : 0),
+      targetPar:     targetPar,
+      onHand:        onHand,
+      suggestedQty:  suggested,
+      secondary:     isSecondary,
+      primaryVendor: meta.primaryVendor,
+      storageArea:   pi.area,
+      _areaOrder:    pi.areaOrder,
+      _shelfOrder:   pi.shelfOrder
     });
   }
 
@@ -1096,11 +1109,15 @@ function jsonResponse_(obj) {
 
 
 function readMasterItemMeta_() {
-  // Reads MASTER_ITEMS and returns Map<itemId, {useMult, par, name, pack}> —
-  // the per-item order-math inputs + display fields, keyed by item id (col A):
-  //   * par     = column G (Base Par Qty) — the canonical, per-item base par.
-  //   * useMult = column M (Use Multiplier).
-  //   * name    = column B (Item Name), pack = column E (Pack / Unit).
+  // Reads MASTER_ITEMS and returns
+  // Map<itemId, {useMult, par, name, pack, primaryVendor}> — the per-item
+  // order-math inputs + display fields, keyed by item id (col A):
+  //   * par           = column G (Base Par Qty) — canonical, per-item base par.
+  //   * useMult       = column M (Use Multiplier).
+  //   * name          = column B (Item Name), pack = column E (Pack / Unit).
+  //   * primaryVendor = column C — the active/primary vendor. An item can sit on
+  //     several vendor tabs (one pick-path row each); only the tab matching this
+  //     value actually orders. Others are secondaries (reference/backup).
   // All are read here in code so api_getVendorItems_ can build its payload
   // without reading the vendor tab's formula columns — col D (par), col A
   // (name), and col B (pack) are each just XLOOKUP(id, MASTER_ITEMS!A, …)
@@ -1140,10 +1157,11 @@ function readMasterItemMeta_() {
     // Column G (index 6) — base par. Number('') / Number(null) === 0, matching
     // the old vendor-tab col-D read (a blank par XLOOKUP'd to "" → 0).
     map.set(id, {
-      useMult: useMult,
-      par:     Number(r[6]),
-      name:    String(r[1] || '').trim(),   // B — Item Name
-      pack:    String(r[4] || '').trim()    // E — Pack / Unit
+      useMult:       useMult,
+      par:           Number(r[6]),
+      name:          String(r[1] || '').trim(),   // B — Item Name
+      pack:          String(r[4] || '').trim(),   // E — Pack / Unit
+      primaryVendor: String(r[2] || '').trim()    // C — active/primary vendor
     });
   }
   return map;

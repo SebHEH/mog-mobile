@@ -444,6 +444,7 @@ function onOpen(e) {
       .addItem("    Recalibrate Vendor Pars","showRecalibrateVendorSidebar")
       .addItem("    Audit Vendor Cadence",   "showVendorCadenceAuditSidebar")
       .addItem("    Sync Vendor Multiplier Formulas","syncVendorMultiplierFormulasMenu_")
+      .addItem("    Place Backup Vendors on Tabs","syncEligibleVendorsToPickPath")
       .addItem("    Clear Config (reset for setup)", "clearMobileApiConfig"))
     .addToUi();
 }

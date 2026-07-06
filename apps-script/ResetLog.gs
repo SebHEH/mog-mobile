@@ -206,6 +206,12 @@ function snapshotVendorOrders_(orderDate, timestamp) {
   const vendors = getVendorList();
   const rows    = [];
 
+  // Log every tab where an item was actually counted (On Hand entered) and its
+  // suggested qty > 0 — including backup/secondary vendors. On-Hand is per tab,
+  // so an item is only ordered from the vendor(s) it was counted on; there's no
+  // primary-only filter, so a legitimate backup order (primary out of stock or
+  // not delivering) is captured.
+
 
 
 
@@ -253,9 +259,6 @@ function snapshotVendorOrders_(orderDate, timestamp) {
 
 
       if (!itemName) return;
-
-
-
 
       const onHandNum    = Number(onHand)    || 0;
       const suggestedNum = Number(suggested) || 0;

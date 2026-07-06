@@ -335,6 +335,7 @@ function webeditDispatch_(name) {
     case 'runHealthFix':            return runHealthFix;
     case 'commitUpsertItem':        return commitUpsertItem;
     case 'commitSwitchActiveVendor':return commitSwitchActiveVendor;
+    case 'commitSetVendorItems':    return commitSetVendorItems;
     case 'commitDeleteItem':        return commitDeleteItem;
     // Manage Vendors
     case 'getVendorTableData':              return getVendorTableData;

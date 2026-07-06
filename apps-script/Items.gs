@@ -344,6 +344,9 @@ function commitUpsertItem(payload) {
     } else {
       reloadSetupIfVendorMatches_(vendor);
     }
+    // Place the item on every eligible vendor's tab (backups included), using
+    // the area just assigned to the primary. No-op if no area yet.
+    syncItemEligiblePickRows_(itemId);
     return { ok: true, mode: "add", row: newRow, id: itemId, assignedArea, areaError };
   }
 
@@ -415,24 +418,29 @@ function commitUpsertItem(payload) {
   } else {
     reloadSetupIfVendorMatches_(vendor);
   }
+  // Reconcile pick-path rows to the (possibly changed) eligible list: newly
+  // checked vendors are placed on their tabs, unchecked ones removed. Skipped
+  // when inactive — the block above already purged this item's rows.
+  if (active) syncItemEligiblePickRows_(existing.id);
   return { ok: true, mode: "edit", row, id: existing.id, assignedArea, areaError };
 }
 
 
 
 
-// Switch an item's ACTIVE vendor (the one that drives its order math) to
-// another vendor already in its eligible list. This moves the item between
-// vendor tabs: it rewrites MASTER_ITEMS column C and migrates the item's
-// pick-path row from the old vendor to the new one, carrying the storage area
-// over (storage areas are global, so the same area name is always valid for
-// the new vendor). Par is untouched -- the new vendor's day-multiplier on its
-// tab applies automatically.
+// Make another eligible vendor the PRIMARY (the one that drives order math).
+// This rewrites MASTER_ITEMS column C only; it does NOT move the item off any
+// tab. The previous primary keeps its pick-path row and stays as a secondary
+// (reference/backup) appearance. The new primary gets a pick-path row if it
+// didn't already have one, carrying the item's current storage area (areas are
+// global, so the name is always valid). Par is untouched -- the new primary's
+// day-multiplier on its tab applies automatically. In the two-vendor model an
+// item can sit on several tabs at once; only the col-C vendor actually orders.
 //
-// Returns { ok, id, vendor, area, needsArea }. needsArea is true when the
-// item had no storage area to carry over (it was unassigned), so the caller
-// should prompt for one; the item is still switched, it just won't appear on
-// the new vendor's order sheet until an area is assigned.
+// Returns { ok, id, vendor, area, needsArea }. needsArea is true when the item
+// had no storage area to carry over (it was unassigned), so the caller should
+// prompt for one; it's still promoted, it just won't appear on the new
+// primary's order sheet until an area is assigned.
 function commitSwitchActiveVendor(itemId, newVendorRaw) {
   bumpServerMutationTs_();
   const id = String(itemId || "").trim();
@@ -475,27 +483,33 @@ function commitSwitchActiveVendor(itemId, newVendorRaw) {
   // newVendor, so D needs no change.
   master.getRange(row, COL.VENDOR).setValue(newVendor);
 
-  // Pick-path surgery: drop every row for this item (it should only ever live
-  // under one vendor at a time), then re-add it under the new vendor if we
-  // have an area to carry. Spans two vendors, so we edit the DB directly
-  // rather than going through commitPickPathAreaAssignment (single-vendor).
-  const kept = db.filter(r => String(r[1] || "").trim() !== id);
-
+  // Promote to primary WITHOUT moving the item off any tab. In the two-vendor
+  // model an item can sit on several vendor tabs (one pick-path row each);
+  // column C just marks which one actually orders. So we KEEP every existing
+  // pick row — the old primary stays as a secondary/backup — and only ADD a row
+  // for the new primary if it doesn't already have one, carrying the item's
+  // current storage area so it lands on the new primary's order sheet.
   let assignedArea = "";
-  if (currentArea) {
+  const hasNewVendorRow = db.some(r =>
+    String(r[0] || "").trim().toLowerCase() === newVendor.toLowerCase() &&
+    String(r[1] || "").trim() === id);
+  if (hasNewVendorRow) {
+    assignedArea = currentArea;                 // already on the new primary's tab
+  } else if (currentArea) {
     const areaOrderMap = getAreaOrderMap_();
     const areaOrder    = areaOrderMap.has(currentArea) ? areaOrderMap.get(currentArea) : 999;
     let   maxShelf     = 0;
-    for (let j = 0; j < kept.length; j++) {
-      if (String(kept[j][0] || "").trim().toLowerCase() === newVendor.toLowerCase() &&
-          String(kept[j][3] || "").trim() === currentArea) {
-        maxShelf = Math.max(maxShelf, Number(kept[j][5]) || 0);
+    for (let j = 0; j < db.length; j++) {
+      if (String(db[j][0] || "").trim().toLowerCase() === newVendor.toLowerCase() &&
+          String(db[j][3] || "").trim() === currentArea) {
+        maxShelf = Math.max(maxShelf, Number(db[j][5]) || 0);
       }
     }
-    kept.push([newVendor, id, name, currentArea, areaOrder, maxShelf + 10]);
+    db.push([newVendor, id, name, currentArea, areaOrder, maxShelf + 10]);
     assignedArea = currentArea;
+    writePickDb_(setup, db);
   }
-  writePickDb_(setup, kept);
+  // (no area to carry → item is unassigned under the new primary; needsArea)
 
   // Refresh the SETUP working list if either vendor is the one selected there.
   reloadSetupIfVendorMatches_(oldVendor);
@@ -505,6 +519,290 @@ function commitSwitchActiveVendor(itemId, newVendorRaw) {
 }
 
 
+// Reconcile ONE item's pick-path rows to its eligible list (MASTER col O) — the
+// per-item "unify" that keeps col O and the vendor tabs in lockstep. Called by
+// commitUpsertItem after a save, so checking a vendor in the Manage Items
+// eligible list PLACES the item on that vendor's tab and unchecking REMOVES it:
+//   * add a pick-path row for each eligible vendor that lacks one, defaulting to
+//     the item's current storage area (so it lands next to its siblings);
+//   * remove rows whose vendor is no longer eligible.
+// The primary (col C) is always in the eligible list, so its row is never
+// removed. If the item has no area anywhere yet, nothing can be placed (it's
+// unassigned) — rows appear once an area is assigned. Returns {added, removed}.
+function syncItemEligiblePickRows_(itemId) {
+  const id = String(itemId || "").trim();
+  if (!id) return { added: 0, removed: 0 };
+  const found = findItemRow_(id);
+  if (!found) return { added: 0, removed: 0 };
+  const rv      = found.rowValues;
+  const name    = String(rv[COL.NAME   - 1] || "").trim();
+  const primary = String(rv[COL.VENDOR - 1] || "").trim();
+
+  const vendorMap = new Map(getVendorList().map(v => [v.toLowerCase(), v]));
+  const eligible  = normalizeEligibleList_(rv[COL.ELIGIBLE_VENDORS - 1], primary, vendorMap);
+  const eligLow   = new Set(eligible.map(v => v.toLowerCase()));
+
+  const setup = getSheet_(SHEET_SETUP);
+  const db    = readPickDb_(setup);
+
+  // The item's current storage area + which vendors already carry a row for it.
+  let currentArea = "";
+  const have = new Set();
+  for (const r of db) {
+    if (String(r[1] || "").trim() !== id) continue;
+    if (!currentArea && String(r[3] || "").trim()) currentArea = String(r[3]).trim();
+    const v = String(r[0] || "").trim();
+    if (v) have.add(v.toLowerCase());
+  }
+
+  // Remove this item's rows whose vendor is no longer eligible.
+  let removed = 0;
+  const kept = db.filter(r => {
+    if (String(r[1] || "").trim() !== id) return true;
+    if (eligLow.has(String(r[0] || "").trim().toLowerCase())) return true;
+    removed++;
+    return false;
+  });
+
+  // Add a row for each eligible vendor missing one (needs an area to place onto).
+  let added = 0;
+  if (currentArea) {
+    const areaOrderMap = getAreaOrderMap_();
+    const areaOrder    = areaOrderMap.has(currentArea) ? areaOrderMap.get(currentArea) : 999;
+    for (const vend of eligible) {
+      if (have.has(vend.toLowerCase())) continue;
+      let maxShelf = 0;
+      for (const r of kept) {
+        if (String(r[0] || "").trim().toLowerCase() === vend.toLowerCase() &&
+            String(r[3] || "").trim() === currentArea) {
+          maxShelf = Math.max(maxShelf, Number(r[5]) || 0);
+        }
+      }
+      kept.push([vend, id, name, currentArea, areaOrder, maxShelf + 10]);
+      added++;
+    }
+  }
+
+  if (added || removed) {
+    writePickDb_(setup, kept);
+    eligible.forEach(v => reloadSetupIfVendorMatches_(v));
+  }
+  return { added: added, removed: removed };
+}
+
+
+// Vendor-first bulk assign — backs the "Assign to Vendor" tab. Given a vendor
+// and the desired set of item IDs, reconciles that vendor's membership across
+// ALL active items in one pass:
+//   * items in `itemIds` (or where the vendor is their PRIMARY) → vendor added
+//     to col O + placed on its tab, defaulting to the item's current area;
+//   * items NOT in `itemIds` that list the vendor only as a BACKUP → vendor
+//     removed from col O + dropped from its tab.
+// An item's primary vendor (col C) is never removed here (that would orphan the
+// item) — such rows stay on regardless of the checkbox. Items with no storage
+// area yet are added to col O but can't be placed until assigned one; they're
+// counted in `unplaced` so the UI can flag them. Batched: one col-O range write
+// + one pick-DB write. Returns { ok, vendor, added, removed, unplaced }.
+function commitSetVendorItems(vendorRaw, itemIds) {
+  bumpServerMutationTs_();
+  const vendor = normalizeVendorOrThrow_(vendorRaw);
+  const vLow   = vendor.toLowerCase();
+  const wanted = new Set(
+    (Array.isArray(itemIds) ? itemIds : []).map(x => String(x || "").trim()).filter(Boolean));
+
+  const master  = getSheet_(SHEET_MASTER);
+  const lastRow = master.getLastRow();
+  if (lastRow < 2) return { ok: true, vendor: vendor, added: 0, removed: 0, unplaced: 0 };
+
+  const vendorMap = new Map(getVendorList().map(v => [v.toLowerCase(), v]));
+  const nRows    = lastRow - 1;
+  const idVals   = master.getRange(2, COL.ID,               nRows, 1).getValues();
+  const nameVals = master.getRange(2, COL.NAME,             nRows, 1).getValues();
+  const primVals = master.getRange(2, COL.VENDOR,           nRows, 1).getValues();
+  const actVals  = master.getRange(2, COL.ACTIVE,           nRows, 1).getValues();
+  const oRange   = master.getRange(2, COL.ELIGIBLE_VENDORS, nRows, 1);
+  const oVals    = oRange.getValues();
+
+  const setup = getSheet_(SHEET_SETUP);
+  const db    = readPickDb_(setup);
+
+  // Index: each item's current area + whether it already has a `vendor` row.
+  const itemArea = new Map();
+  const onVendor = new Set();
+  for (const r of db) {
+    const id   = String(r[1] || "").trim();
+    const area = String(r[3] || "").trim();
+    if (id && area && !itemArea.has(id)) itemArea.set(id, area);
+    if (id && String(r[0] || "").trim().toLowerCase() === vLow) onVendor.add(id);
+  }
+
+  let added = 0, removed = 0, unplaced = 0, oChanged = false;
+  const addRows   = [];
+  const removeIds = new Set();
+
+  for (let i = 0; i < nRows; i++) {
+    const id = String(idVals[i][0] || "").trim();
+    if (!id) continue;
+    const activeRaw = actVals[i][0];
+    const active = !(activeRaw === false ||
+      (typeof activeRaw === "string" && activeRaw.trim().toLowerCase() === "false"));
+    if (!active) continue;
+
+    const primary   = String(primVals[i][0] || "").trim();
+    const isPrimary  = primary.toLowerCase() === vLow;
+    const want       = isPrimary || wanted.has(id);
+    const eligible   = normalizeEligibleList_(oVals[i][0], primary, vendorMap);
+    const hasElig    = eligible.some(v => v.toLowerCase() === vLow);
+
+    if (want && !hasElig) {
+      eligible.push(vendor);
+      oVals[i][0] = serializeEligibleVendors_(eligible);
+      oChanged = true;
+    } else if (!want && hasElig && !isPrimary) {
+      oVals[i][0] = serializeEligibleVendors_(eligible.filter(v => v.toLowerCase() !== vLow));
+      oChanged = true;
+    }
+
+    const onTab = onVendor.has(id);
+    if (want && !onTab) {
+      const area = itemArea.get(id);
+      if (area) { addRows.push({ id: id, name: String(nameVals[i][0] || "").trim(), area: area }); added++; }
+      else      { unplaced++; }
+    } else if (!want && onTab && !isPrimary) {
+      removeIds.add(id);
+      removed++;
+    }
+  }
+
+  if (oChanged) oRange.setNumberFormat("@").setValues(oVals);
+
+  let newDb = db;
+  if (removeIds.size) {
+    newDb = newDb.filter(r =>
+      !(String(r[0] || "").trim().toLowerCase() === vLow && removeIds.has(String(r[1] || "").trim())));
+  }
+  if (addRows.length) {
+    const areaOrderMap = getAreaOrderMap_();
+    const maxShelf = new Map();   // area -> max shelf order (this vendor)
+    for (const r of newDb) {
+      if (String(r[0] || "").trim().toLowerCase() !== vLow) continue;
+      const a = String(r[3] || "").trim();
+      const s = Number(r[5]) || 0;
+      if ((maxShelf.get(a) || 0) < s) maxShelf.set(a, s);
+    }
+    for (const a of addRows) {
+      const areaOrder = areaOrderMap.has(a.area) ? areaOrderMap.get(a.area) : 999;
+      const shelf = (maxShelf.get(a.area) || 0) + 10;
+      maxShelf.set(a.area, shelf);
+      newDb.push([vendor, a.id, a.name, a.area, areaOrder, shelf]);
+    }
+  }
+  if (removeIds.size || addRows.length) writePickDb_(setup, newDb);
+  reloadSetupIfVendorMatches_(vendor);
+
+  return { ok: true, vendor: vendor, added: added, removed: removed, unplaced: unplaced };
+}
+
+
+// Reconcile pick-path rows to the eligible lists — the "unify" backfill.
+// Historically, adding a vendor to an item's eligible list (MASTER_ITEMS col O)
+// did NOT create a pick-path row, so those vendors' tabs stayed empty (a vendor
+// tab is built purely from SETUP pick-path rows). This places every eligible
+// vendor onto its tab: for each ACTIVE item that already has a storage area
+// somewhere, it ADDS a pick-path row (same area) for any eligible vendor that
+// doesn't have one yet. Additive + idempotent — it never removes rows and never
+// invents placements beyond what the eligible list already declares. Rows where
+// the vendor isn't the item's primary (col C) show as secondaries and are
+// excluded from ordering (api_getVendorItems_) and the recap (snapshotVendorOrders_).
+// Menu wrapper: syncEligibleVendorsToPickPath.
+function syncEligibleVendorsToPickPath_core_() {
+  const master  = getSheet_(SHEET_MASTER);
+  const lastRow = master.getLastRow();
+  if (lastRow < 2) return { added: 0, byVendor: {}, itemsAffected: 0 };
+
+  const vals      = master.getRange(2, 1, lastRow - 1, COL.ELIGIBLE_VENDORS).getValues(); // A..O
+  const vendorMap = new Map(getVendorList().map(v => [v.toLowerCase(), v]));
+
+  const setup = getSheet_(SHEET_SETUP);
+  const db    = readPickDb_(setup);
+
+  // Index existing pick-path state: which (vendor,id) rows exist, each item's
+  // current area (first non-blank), and the max shelf order per (vendor,area).
+  const have     = new Set();   // "vendorLower||id"
+  const itemArea = new Map();   // id -> area
+  const maxShelf = new Map();   // "vendorLower||area" -> max shelf order
+  for (const r of db) {
+    const v    = String(r[0] || "").trim();
+    const id   = String(r[1] || "").trim();
+    const area = String(r[3] || "").trim();
+    const shelf = Number(r[5]) || 0;
+    if (v && id) have.add(v.toLowerCase() + "||" + id);
+    if (id && area && !itemArea.has(id)) itemArea.set(id, area);
+    const mk = v.toLowerCase() + "||" + area;
+    if ((maxShelf.get(mk) || 0) < shelf) maxShelf.set(mk, shelf);
+  }
+
+  const areaOrderMap = getAreaOrderMap_();
+  const byVendor  = {};
+  const affected  = new Set();
+  const toAdd     = [];
+
+  for (const row of vals) {
+    const id = String(row[COL.ID - 1] || "").trim();
+    if (!id) continue;
+    const activeRaw = row[COL.ACTIVE - 1];
+    const active = !(activeRaw === false ||
+      (typeof activeRaw === "string" && activeRaw.trim().toLowerCase() === "false"));
+    if (!active) continue;
+
+    const area = itemArea.get(id);
+    if (!area) continue;   // item isn't placed anywhere yet — nothing to mirror
+
+    const name     = String(row[COL.NAME   - 1] || "").trim();
+    const primary  = String(row[COL.VENDOR - 1] || "").trim();
+    const eligible = normalizeEligibleList_(row[COL.ELIGIBLE_VENDORS - 1], primary, vendorMap);
+
+    for (const vend of eligible) {
+      const key = vend.toLowerCase() + "||" + id;
+      if (have.has(key)) continue;                       // already on that tab
+      const areaOrder = areaOrderMap.has(area) ? areaOrderMap.get(area) : 999;
+      const mk    = vend.toLowerCase() + "||" + area;
+      const shelf = (maxShelf.get(mk) || 0) + 10;
+      maxShelf.set(mk, shelf);
+      toAdd.push([vend, id, name, area, areaOrder, shelf]);
+      have.add(key);
+      byVendor[vend] = (byVendor[vend] || 0) + 1;
+      affected.add(id);
+    }
+  }
+
+  if (toAdd.length) {
+    writePickDb_(setup, db.concat(toAdd));
+    bumpServerMutationTs_();
+  }
+  return { added: toAdd.length, byVendor: byVendor, itemsAffected: affected.size };
+}
+
+// Menu wrapper for syncEligibleVendorsToPickPath_core_ (Ordering Guide →
+// 📱 Mobile API → Place Backup Vendors on Tabs). Run per store.
+function syncEligibleVendorsToPickPath() {
+  const r  = syncEligibleVendorsToPickPath_core_();
+  const ui = SpreadsheetApp.getUi();
+  if (!r.added) {
+    ui.alert("Place Backup Vendors on Tabs",
+      "Every eligible vendor already has a pick-path row. Nothing to add.",
+      ui.ButtonSet.OK);
+    return;
+  }
+  const lines = Object.keys(r.byVendor).sort()
+    .map(v => "  • " + v + ": " + r.byVendor[v]);
+  ui.alert("Place Backup Vendors on Tabs",
+    "Placed " + r.added + " item–vendor row(s) onto vendor tabs (" +
+    r.itemsAffected + " item(s)):\n\n" + lines.join("\n") +
+    "\n\nWhere the vendor isn't the item's primary, it appears as a secondary " +
+    "(reference only) — excluded from ordering and the recap.",
+    ui.ButtonSet.OK);
+}
 
 
 // One-time, idempotent backfill for the new Eligible Vendors column

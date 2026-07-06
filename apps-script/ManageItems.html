@@ -363,6 +363,35 @@
       .vendor-checklist .vc-empty { padding: 8px 10px; font-size: 12px; color: #aaa; font-style: italic; }
 
       /* ── Quick-switch active-vendor control (View detail) ── */
+      /* Primary + backup vendor list on the View detail. Primary is starred;
+         each backup gets a "Make primary" action wired to commitSwitchActiveVendor. */
+      .vendor-primary-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 4px; }
+      .vendor-primary-list .vp-row {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        padding: 7px 10px; border: 1px solid #e2e5ea; border-radius: var(--r-sm, 6px);
+        background: #fff; font-size: 14px;
+      }
+      .vendor-primary-list .vp-row.is-primary { border-color: var(--web-accent, #2c5d99); background: #eef4ff; }
+      .vendor-primary-list .vp-name { font-weight: 600; color: #333; }
+      .vendor-primary-list .vp-badge {
+        font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+        color: var(--web-accent, #2c5d99); border: 1px solid var(--web-accent, #2c5d99);
+        border-radius: 4px; padding: 1px 6px; margin-left: 8px; vertical-align: 1px; white-space: nowrap;
+      }
+      .vendor-primary-list .vp-make {
+        font-size: 12px; font-weight: 700; color: var(--web-accent, #2c5d99);
+        background: none; border: none; cursor: pointer; padding: 2px 4px; white-space: nowrap;
+      }
+      .vendor-primary-list .vp-make:hover { text-decoration: underline; }
+      .vendor-primary-list .vp-make:disabled { color: #bbb; cursor: default; text-decoration: none; }
+
+      /* "+N" badge on the item list marking items orderable from backup vendors. */
+      .alt-badge {
+        font-size: 9px; font-weight: 800; background: #eef1f6; color: #5a6b85;
+        border: 1px solid #d5dbe6; border-radius: 4px; padding: 1px 5px;
+        margin-left: 5px; vertical-align: 1px; white-space: nowrap;
+      }
+
       .switch-vendor-row { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e8eaed; }
       .switch-vendor-row > label {
         display: block; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 5px;
@@ -662,7 +691,7 @@
             <div class="detail-grid" id="view-detail-grid"></div>
             <div id="view-switch-row" class="switch-vendor-row" style="display:none">
               <label id="lbl-switch-vendor"></label>
-              <select id="view-switch-select" onchange="onQuickSwitch()"></select>
+              <div id="view-vendor-list" class="vendor-primary-list"></div>
               <div class="hint" id="hint-switch-vendor"></div>
               <div id="view-switch-status" class="status"></div>
             </div>
@@ -865,10 +894,13 @@
         hintArea:'Selecting an area places this item at the bottom of that group immediately after saving.',
         btnAdd:'Add Item',
         lblEligible:'Also orderable from', lblEligibleEdit:'Also orderable from',
-        hintEligible:'Check any other vendors this item can be ordered from. The active vendor (above) is always included.',
+        hintEligible:'Check any other vendors this item can be ordered from. The primary vendor (above) is always included.',
         eligibleNoOthers:'No other vendors to add.',
-        lblSwitchVendor:'Active vendor', switchOne:'Only orderable from one vendor.',
-        hintSwitchVendor:'Switch which vendor this item is ordered from — it moves to that vendor\'s order sheet. Par is unchanged.',
+        lblPrimaryVendor:'Primary vendor',
+        primaryBadge:'Primary', makePrimary:'Make primary',
+        altVendorTitle:'Also orderable from backup vendors',
+        lblSwitchVendor:'Vendors', switchOne:'No backup vendors yet — add more under Edit.',
+        hintSwitchVendor:'The primary is the vendor this item is ordered from now. Make whoever\'s cheapest this week the primary — the others stay as backups. Par is unchanged.',
         switching:'Switching…', switched:'Now ordered from ',
         switchNeedsArea:' — assign a Storage Area for this vendor via Shelf to Sheet so it shows on the order sheet.',
         phEdit:'Edit Item', lblVendorSel:'Vendor', lblItemSel:'Item',
@@ -935,10 +967,13 @@
         hintArea:'Seleccionar un área coloca este artículo al fondo de ese grupo al guardar.',
         btnAdd:'Agregar Artículo',
         lblEligible:'También se puede pedir de', lblEligibleEdit:'También se puede pedir de',
-        hintEligible:'Marca cualquier otro proveedor del que se pueda pedir este artículo. El proveedor activo (arriba) siempre se incluye.',
+        hintEligible:'Marca cualquier otro proveedor del que se pueda pedir este artículo. El proveedor principal (arriba) siempre se incluye.',
         eligibleNoOthers:'No hay otros proveedores que agregar.',
-        lblSwitchVendor:'Proveedor activo', switchOne:'Solo se puede pedir de un proveedor.',
-        hintSwitchVendor:'Cambia de qué proveedor se pide este artículo — se mueve a la hoja de pedido de ese proveedor. El par no cambia.',
+        lblPrimaryVendor:'Proveedor principal',
+        primaryBadge:'Principal', makePrimary:'Hacer principal',
+        altVendorTitle:'También se puede pedir de proveedores de respaldo',
+        lblSwitchVendor:'Proveedores', switchOne:'Aún no hay proveedores de respaldo — agrega más en Editar.',
+        hintSwitchVendor:'El principal es el proveedor del que se pide este artículo ahora. Haz principal al que esté más barato esta semana — los demás quedan como respaldo. El par no cambia.',
         switching:'Cambiando…', switched:'Ahora se pide de ',
         switchNeedsArea:' — asigna un Área de Almacén para este proveedor vía Estante a Hoja para que aparezca en la hoja.',
         phEdit:'Editar Artículo', lblVendorSel:'Proveedor', lblItemSel:'Artículo',
@@ -1548,6 +1583,18 @@
       return x.active;   // 'all' = all ACTIVE items; inactive show only under the Inactive chip
     }
 
+    // Vendor-filter match: an item belongs to a vendor if that vendor is its
+    // primary OR anywhere in its eligible (backup) list — so filtering by a
+    // backup-only vendor (e.g. B&T) still surfaces every item it can supply.
+    function itemHasVendor_(x, vLow) {
+      if (String(x.vendor || '').toLowerCase() === vLow) return true;
+      const elig = x.eligibleVendors || [];
+      for (let i = 0; i < elig.length; i++) {
+        if (String(elig[i] || '').toLowerCase() === vLow) return true;
+      }
+      return false;
+    }
+
     // "New" badge: client-side, per-store, per-device first-seen tracking. No
     // schema change — the browser remembers which IDs it has seen and badges any
     // that first appeared within the last NEW_WINDOW. On the very first load we
@@ -1639,7 +1686,7 @@
     function renderTable() {
       updateTabChips_();
       const vf = byId('view-vendor-filter').value.toLowerCase();
-      let rows = allItems.filter(x => (!vf || x.vendor.toLowerCase() === vf) && matchesViewFilter_(x));
+      let rows = allItems.filter(x => (!vf || itemHasVendor_(x, vf)) && matchesViewFilter_(x));
       rows = rows.slice().sort((a, b) => {
         let va = sortValue_(a, sortKey), vb = sortValue_(b, sortKey);
         if (typeof va === 'boolean') { va = va ? 1 : 0; vb = vb ? 1 : 0; }
@@ -1679,7 +1726,7 @@
           "<td class='td-name'>" + esc(item.name) +
             (newItemIds[item.id] ? " <span class='new-badge'>" + (LANG === 'es' ? 'Nuevo' : 'New') + "</span>" : "") +
             "<span class='td-id'>" + esc(item.id) + "</span></td>" +
-          "<td class='td-vendor'>" + esc(item.vendor) + "</td>" +
+          "<td class='td-vendor'>" + esc(item.vendor) + altVendorBadge_(item) + "</td>" +
           "<td class='td-pack'>" + esc(item.pack || '—') + "</td>" +
           "<td class='td-par'>" + (item.par !== '' ? item.par : '—') + "</td>" +
           "<td class='td-center'><span class='pill " + (item.active ? 'pill-active' : 'pill-inactive') + "'>" + (item.active ? t('yes') : t('no')) + "</span></td>" +
@@ -1734,7 +1781,7 @@
       byId('view-detail-grid').innerHTML =
         "<div class='dk'>ID</div><div class='dv'>"     + esc(item.id)         + "</div>" +
         "<div class='dk'>" + t('lblName')   + "</div><div class='dv'>" + esc(item.name)       + "</div>" +
-        "<div class='dk'>" + t('lblVendor') + "</div><div class='dv'>" + esc(item.vendor)     + "</div>" +
+        "<div class='dk'>" + t('lblPrimaryVendor') + "</div><div class='dv'>" + esc(item.vendor)     + "</div>" +
         "<div class='dk'>" + t('lblPack')   + "</div><div class='dv'>" + esc(item.pack || '—')+ "</div>" +
         "<div class='dk'>" + t('lblPar')    + "</div><div class='dv'>" + (item.par !== '' ? item.par : '—') + "</div>" +
         "<div class='dk'>" + t('lblEditActive') + "</div><div class='dv'>" + ab + "</div>" +
@@ -1743,6 +1790,16 @@
         flagDetail;
       byId('view-noarea-banner').style.display = (item.active && !item.hasArea) ? 'block' : 'none';
       renderQuickSwitch_(item);
+    }
+
+    // Small "+N" badge for items orderable from backup vendors (eligible list
+    // beyond the primary). N = count of eligible vendors other than the primary.
+    function altVendorBadge_(item) {
+      const elig = (item && item.eligibleVendors) ? item.eligibleVendors : [];
+      const prim = String(item.vendor || '').toLowerCase();
+      const others = elig.filter(v => String(v || '').toLowerCase() !== prim).length;
+      if (others < 1) return '';
+      return " <span class='alt-badge' title='" + esc(t('altVendorTitle')) + "'>+" + others + "</span>";
     }
 
     // ── Par Review flag helpers ───────────────────────────────────────────────
@@ -1834,47 +1891,63 @@
     function onAddVendorChange()  { buildVendorChecklist_('add-eligible',  byId('add-vendor').value,  getCheckedEligible_('add-eligible', '')); renderParPreview_('add'); }
     function onEditVendorChange() { buildVendorChecklist_('edit-eligible', byId('edit-vendor').value, getCheckedEligible_('edit-eligible', '')); renderParPreview_('edit'); }
 
+    // Renders the item's vendors as a list: the primary (col C) marked with a
+    // badge, each backup (the rest of the eligible list, col O) with a "Make
+    // primary" button. Promoting a backup calls commitSwitchActiveVendor, which
+    // flips the primary and demotes the old one to a backup (it stays eligible).
     function renderQuickSwitch_(item) {
       const row  = byId('view-switch-row');
-      const sel  = byId('view-switch-select');
+      const box  = byId('view-vendor-list');
       const hint = byId('hint-switch-vendor');
       setStatus('view-switch', '');
-      const elig = (item && item.eligibleVendors && item.eligibleVendors.length) ? item.eligibleVendors : [item.vendor];
-      sel.innerHTML = '';
-      elig.forEach(v => {
-        const o = document.createElement('option'); o.value = v; o.textContent = v;
-        if (v.toLowerCase() === String(item.vendor || '').toLowerCase()) o.selected = true;
-        sel.appendChild(o);
+      const primary = String(item.vendor || '');
+      // Primary first, then any other eligible vendors, deduped.
+      const elig = (item && item.eligibleVendors && item.eligibleVendors.length)
+        ? item.eligibleVendors.slice() : [primary];
+      const seen = {}; const ordered = [];
+      const push = v => { const k = String(v || '').toLowerCase(); if (!k || seen[k]) return; seen[k] = true; ordered.push(v); };
+      push(primary); elig.forEach(push);
+
+      box.innerHTML = '';
+      ordered.forEach(v => {
+        const isPrimary = v.toLowerCase() === primary.toLowerCase();
+        const vp = document.createElement('div');
+        vp.className = 'vp-row' + (isPrimary ? ' is-primary' : '');
+        const left = document.createElement('div');
+        left.innerHTML = "<span class='vp-name'>" + esc(v) + "</span>" +
+          (isPrimary ? "<span class='vp-badge'>" + esc(t('primaryBadge')) + "</span>" : "");
+        vp.appendChild(left);
+        if (!isPrimary) {
+          const btn = document.createElement('button');
+          btn.type = 'button'; btn.className = 'vp-make'; btn.textContent = t('makePrimary');
+          btn.addEventListener('click', () => onMakePrimary_(v));
+          vp.appendChild(btn);
+        }
+        box.appendChild(vp);
       });
-      // Always shown for consistency; disabled (grayed) when there's no other
-      // eligible vendor to switch to, with a hint explaining why.
-      const switchable = elig.length >= 2;
-      sel.disabled = !switchable;
-      if (hint) hint.textContent = switchable ? t('hintSwitchVendor') : t('switchOne');
+      if (hint) hint.textContent = ordered.length >= 2 ? t('hintSwitchVendor') : t('switchOne');
       row.style.display = 'block';
     }
 
-    function onQuickSwitch() {
+    function onMakePrimary_(newVendor) {
       if (!selectedItem) return;
-      const sel = byId('view-switch-select');
-      const newVendor = sel.value;
       if (!newVendor || newVendor.toLowerCase() === String(selectedItem.vendor || '').toLowerCase()) return;
-      sel.disabled = true;
+      const box = byId('view-vendor-list');
+      if (box) box.querySelectorAll('button.vp-make').forEach(b => { b.disabled = true; });
       setStatus('view-switch', t('switching'), 'info');
       bumpMutationTs_();
       MIRPC()
         .withSuccessHandler(res => {
-          selectedItem.vendor = res.vendor;
+          selectedItem.vendor = res.vendor;           // new primary; eligible list is unchanged (old stays a backup)
           const entry = allItems.find(x => x.id === res.id);
           if (entry) { entry.vendor = res.vendor; entry.hasArea = !res.needsArea; }
           const msg = t('switched') + res.vendor + (res.needsArea ? t('switchNeedsArea') : '');
           clearItemsCache_(); writeItemsCache_(allItems, parFlags);
-          selectItem(selectedItem);                   // re-render detail + table with the new vendor
+          selectItem(selectedItem);                   // re-render detail + table with the new primary
           setStatus('view-switch', msg, res.needsArea ? 'warn' : 'ok');
         })
         .withFailureHandler(err => {
-          sel.disabled = false;
-          sel.value = selectedItem.vendor;            // revert the dropdown
+          if (box) box.querySelectorAll('button.vp-make').forEach(b => { b.disabled = false; });
           setStatus('view-switch', err.message || String(err), 'warn');
         })
         .commitSwitchActiveVendor(selectedItem.id, newVendor);
