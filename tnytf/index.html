@@ -1191,15 +1191,6 @@
       font-size: 14px; color: var(--text-2);
       margin: 0 0 22px; max-width: 320px; line-height: 1.45;
     }
-    .stale-meta-card {
-      background: var(--bg-soft); border-radius: var(--r-md);
-      padding: 14px 16px; max-width: 320px; width: 100%;
-      margin-bottom: 22px; font-size: 13px; text-align: left;
-    }
-    .stale-meta-row { display: flex; justify-content: space-between; align-items: center; }
-    .stale-meta-row + .stale-meta-row { margin-top: 6px; }
-    .stale-meta-row .label { color: var(--text-2); }
-    .stale-meta-row .val { font-weight: 600; }
     .stale-cta {
       width: 100%; max-width: 320px;
       background: var(--teal); color: white;
@@ -1211,10 +1202,6 @@
     .stale-cta:active { background: var(--teal-dark); }
     .stale-cta:disabled { opacity: 0.6; }
     .stale-cta i { font-size: 18px; }
-    .stale-help {
-      margin-top: 18px; font-size: 12px; color: var(--text-3);
-      max-width: 320px; line-height: 1.45;
-    }
     .stale-error {
       color: var(--red); font-size: 13px; font-weight: 500;
       min-height: 18px; margin-top: 12px;
@@ -1580,37 +1567,21 @@
     <svg class="leid-logo" viewBox="0 0 600.000000 241.000000" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Lei'd Poke"> <g transform="translate(0.000000,241.000000) scale(0.050000,-0.050000)" fill="currentColor" stroke="none"> <path d="M7727 4688 c-63 -31 -99 -92 -112 -188 -4 -32 -16 -47 -35 -43 -308 78 -513 -367 -235 -509 36 -18 68 -35 71 -38 3 -3 -12 -36 -35 -73 -145 -239 249 -520 441 -315 54 58 56 59 78 19 63 -119 211 -137 348 -42 149 102 186 214 113 335 l-39 64 69 22 c261 86 157 534 -123 527 l-108 -2 0 69 c0 169 -245 267 -433 174z"/> <path d="M213 4607 c-7 -8 -13 -701 -13 -1540 l0 -1527 1165 5 1165 5 5 360 c5 321 2 363 -28 385 -26 19 -200 25 -711 25 l-676 0 0 1126 c0 849 -6 1132 -24 1150 -26 26 -857 36 -883 11z"/> <path d="M2962 4593 c-16 -20 -21 -438 -17 -1535 l5 -1508 1330 0 1330 0 5 360 c5 321 2 363 -28 385 -27 19 -234 25 -881 25 l-846 0 0 200 0 200 770 0 769 0 29 45 c43 68 45 581 2 647 l-31 48 -769 0 -770 0 0 190 0 190 846 0 c631 0 852 6 870 24 17 17 24 127 24 366 0 239 -7 349 -24 366 -38 38 -2582 34 -2614 -3z"/> <path d="M6089 4595 c-5 -14 -7 -704 -4 -1535 l5 -1510 450 0 450 0 5 1508 c4 1097 -1 1515 -17 1535 -32 38 -874 40 -889 2z"/> <path d="M8745 4603 c-20 -12 -24 -332 -20 -1534 l5 -1519 810 -6 c885 -6 1018 4 1310 97 623 200 962 668 985 1360 29 869 -476 1454 -1375 1590 -209 32 -1668 42 -1715 12z m1615 -794 c370 -87 550 -329 550 -739 0 -551 -218 -733 -895 -746 l-375 -7 0 761 0 762 295 0 c194 0 340 -11 425 -31z"/> <path d="M1814 812 c-296 -110 -240 -379 84 -406 153 -13 212 -39 185 -83 -32 -49 -173 -53 -221 -5 -67 67 -222 61 -222 -9 0 -216 505 -254 627 -48 93 157 -32 298 -267 299 -100 1 -160 20 -160 53 0 66 170 78 222 15 27 -33 170 -38 189 -7 77 125 -242 264 -437 191z"/> <path d="M7841 818 c-381 -115 -333 -636 64 -690 187 -26 395 95 395 230 0 91 -136 92 -220 2 -130 -139 -339 -19 -292 169 34 137 241 180 296 60 32 -71 216 -75 216 -4 0 165 -256 294 -459 233z"/> <path d="M1320 480 l0 -340 100 0 100 0 0 340 0 340 -100 0 -100 0 0 -340z"/> <path d="M2400 480 l0 -340 260 0 260 0 0 79 0 79 -155 6 -155 6 -6 255 -5 255 -100 0 -99 0 0 -340z"/> <path d="M3117 484 l-154 -334 104 -6 c86 -5 108 0 130 35 41 61 305 61 346 0 22 -35 44 -40 130 -35 l104 6 -154 335 -153 335 -100 -1 -100 0 -153 -335z m322 -79 c0 -16 -26 -25 -69 -25 -81 0 -81 0 -36 118 l34 89 34 -79 c19 -43 36 -89 37 -103z"/> <path d="M3860 480 l0 -340 100 0 100 0 0 185 0 184 185 -184 c176 -175 190 -185 270 -185 l85 0 0 340 0 340 -100 0 -100 0 0 -185 0 -184 -185 184 c-176 175 -190 185 -270 185 l-85 0 0 -340z"/> <path d="M4720 480 l0 -340 224 0 c350 0 476 91 476 345 0 235 -144 335 -484 335 l-216 0 0 -340z m455 109 c115 -131 18 -289 -178 -289 l-57 0 0 183 0 182 95 -12 c67 -9 108 -28 140 -64z"/> <path d="M5780 480 l0 -340 100 0 c100 0 100 0 100 67 0 44 16 81 48 111 l48 45 86 -112 87 -111 127 0 c117 0 124 2 100 36 -14 19 -79 105 -144 191 l-119 155 134 135 c161 163 161 163 19 163 l-115 0 -135 -134 -136 -135 0 135 0 134 -100 0 -100 0 0 -340z"/> <path d="M6580 480 l0 -340 100 0 100 0 0 340 0 340 -100 0 -100 0 0 -340z"/> <path d="M6860 740 l0 -80 100 -2 c55 -2 111 -4 125 -5 18 -2 27 -72 31 -258 l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/> <path d="M8420 480 l0 -340 100 0 100 0 0 120 0 120 160 0 160 0 0 -120 0 -120 100 0 100 0 0 340 0 340 -100 0 -100 0 0 -140 0 -140 -160 0 -160 0 0 140 0 140 -100 0 -100 0 0 -340z"/> <path d="M9280 480 l0 -340 300 0 300 0 0 79 0 80 -195 5 c-185 6 -195 8 -201 51 -7 44 -2 45 175 45 l181 0 0 80 0 80 -181 0 c-177 0 -182 1 -175 45 6 43 16 45 201 51 l195 5 0 80 0 79 -300 0 -300 0 0 -340z"/> <path d="M9980 480 l0 -340 100 0 100 0 0 185 0 184 185 -184 c176 -175 190 -185 270 -185 l85 0 0 340 0 340 -100 0 -100 0 0 -185 0 -184 -185 184 c-176 175 -190 185 -270 185 l-85 0 0 -340z"/> </g> </svg>
     <div class="stale-icon"><i class="ti ti-refresh-alert" aria-hidden="true"></i></div>
     <h1 class="stale-title">
-      <span class="lang-en">Start the new day</span>
-      <span class="lang-es">Empezar el día</span>
+      <span class="lang-en">Taking longer than usual</span>
+      <span class="lang-es">Está tardando más de lo normal</span>
     </h1>
     <p class="stale-sub">
-      <span class="lang-en">Reset On Hand to clear yesterday's counts and load today's pars before you begin counting.</span>
-      <span class="lang-es">Reinicia el inventario para borrar los conteos de ayer y cargar los pars de hoy antes de contar.</span>
+      <span class="lang-en">Starting the new day didn't finish. Tap Refresh — it may have already gone through, and you'll go straight in.</span>
+      <span class="lang-es">No se terminó de empezar el día. Toca Actualizar — puede que ya se haya hecho y entrarás directo.</span>
     </p>
-
-    <div class="stale-meta-card">
-      <div class="stale-meta-row">
-        <span class="label"><span class="lang-en">Last reset</span><span class="lang-es">&Uacute;ltimo reinicio</span></span>
-        <span class="val" id="stale-lastreset">—</span>
-      </div>
-      <div class="stale-meta-row">
-        <span class="label"><span class="lang-en">Today</span><span class="lang-es">Hoy</span></span>
-        <span class="val" id="stale-today">—</span>
-      </div>
-    </div>
 
     <button class="stale-cta" id="stale-reset-btn">
       <i class="ti ti-refresh" aria-hidden="true"></i>
-      <span class="lang-en">Reset On Hand</span>
-      <span class="lang-es">Reiniciar Inventario</span>
+      <span class="lang-en">Refresh</span>
+      <span class="lang-es">Actualizar</span>
     </button>
 
     <p class="stale-error" id="stale-error"></p>
-
-    <p class="stale-help">
-      <span class="lang-en">This logs yesterday's order, clears all On Hand counts, and updates the date so today's multipliers apply.</span>
-      <span class="lang-es">Esto registra el pedido de ayer, borra los conteos y actualiza la fecha para los multiplicadores de hoy.</span>
-    </p>
     <p class="pin-switch-store">
       <span class="lang-en">Wrong store?</span>
       <span class="lang-es">¿Tienda equivocada?</span>
@@ -2737,40 +2708,24 @@
     return switchTab('today');
   }
 
-  function showStaleScreen(status) {
+  // Shown only when the new-day auto-reset couldn't be confirmed (timeout or
+  // network). Offers a single Refresh action; reloading re-checks reset status,
+  // so if the reset actually completed server-side the app enters without
+  // re-running it — no double log, no double recap email.
+  function showResetRefreshScreen_() {
+    hideBusy();
     $('screen-pin').style.display = 'none';
     $('screen-main').style.display = 'none';
     $('screen-stale').style.display = 'flex';
-    $('stale-lastreset').textContent = status.lastReset
-      ? formatDateForStale(status.lastReset)
-      : (state.lang === 'en' ? 'Never' : 'Nunca');
-    $('stale-today').textContent = formatDateForStale(status.today);
-    $('stale-error').textContent = '';
-    $('stale-reset-btn').disabled = false;
-    $('stale-reset-btn').querySelector('span.lang-en').textContent = 'Reset On Hand';
-    $('stale-reset-btn').querySelector('span.lang-es').textContent = 'Reiniciar Inventario';
-  }
-
-  function formatDateForStale(yyyymmdd) {
-    if (!yyyymmdd) return '—';
-    const parts = yyyymmdd.split('-');
-    if (parts.length !== 3) return yyyymmdd;
-    const monthsEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const monthsEs = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-    const months = state.lang === 'en' ? monthsEn : monthsEs;
-    return months[+parts[1] - 1] + ' ' + (+parts[2]) + ', ' + parts[0];
   }
 
   async function proceedAfterAuth() {
     try {
       const status = await api('getResetStatus');
       if (status.isStale) {
-        // New day detected — show the stale screen for context, then
-        // auto-run the reset instead of waiting for a manual tap. The
-        // recap email fires server-side as part of commitReset, so the
-        // order is logged + emailed no matter what. The manual button
-        // remains as a fallback if the auto-reset fails.
-        showStaleScreen(status);
+        // New day detected — auto-run the reset behind the busy overlay (no
+        // manual screen). commitReset logs + emails server-side; on failure
+        // runStaleReset_ shows the Refresh screen.
         await autoRunStaleReset();
       } else {
         await showMainApp();
@@ -2793,11 +2748,6 @@
     );
   }
 
-  // Manual stale-screen button handler.
-  async function handleStaleReset() {
-    await runStaleReset_(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
-  }
-
   // commitReset is the heaviest call in the app — server-side it logs On
   // Hand to LOG_ORDERS, clears the columns, sends the recap email
   // synchronously, then stamps AE9. On a cold /exec invocation that can run
@@ -2807,10 +2757,6 @@
   // Shared reset core for both the manual button and the new-day auto-reset.
   // busyLabel is shown on the full-screen overlay while the reset runs.
   async function runStaleReset_(busyLabel) {
-    const btn   = $('stale-reset-btn');
-    const errEl = $('stale-error');
-    btn.disabled = true;
-    errEl.textContent = '';
     showBusy(busyLabel);
     try {
       await api('commitReset', null, RESET_TIMEOUT_MS);
@@ -2820,8 +2766,8 @@
       // The fetch may have been aborted (timeout) or failed mid-flight, but
       // Apps Script does NOT stop server execution when the client gives up —
       // the reset usually still completes server-side (AE9 gets stamped).
-      // Re-check status before stranding the user on this screen: if the day
-      // is no longer stale, the reset landed and we can just enter the app.
+      // Re-check status before surfacing anything: if the day is no longer
+      // stale, the reset landed and we can just enter the app.
       try {
         const recheck = await api('getResetStatus');
         if (recheck && !recheck.isStale) {
@@ -2830,17 +2776,13 @@
         }
       } catch (recheckErr) {
         // Re-poll itself failed (still offline) — fall through to the
-        // manual-retry fallback below.
+        // Refresh screen below.
         console.error('reset re-check error:', recheckErr);
       }
-      hideBusy();
-      btn.disabled = false;
-      btn.querySelector('span.lang-en').textContent = 'Reset On Hand';
-      btn.querySelector('span.lang-es').textContent = 'Reiniciar Inventario';
-      const m = String(err.message || '');
-      errEl.textContent = (m.indexOf('Failed to fetch') >= 0)
-        ? (state.lang === 'en' ? "Couldn't reach the server. Try again." : 'Sin conexión. Intenta de nuevo.')
-        : (m || (state.lang === 'en' ? 'Reset failed.' : 'Error al reiniciar.'));
+      // Still stale (or re-check failed) — offer a single Refresh. Reloading
+      // re-checks status, so a reset that finished server-side won't be re-run
+      // (no double log / double recap email), and a genuine failure retries.
+      showResetRefreshScreen_();
     }
   }
 
@@ -2950,7 +2892,6 @@
     })(), label);
 
     if (pendingStale) {
-      showStaleScreen(pendingStale);
       await autoRunStaleReset();
     }
   }
@@ -6403,21 +6344,11 @@
   // re-render of in-app views needed — flipping the body class is
   // enough because the screens use bilingual lang-en/lang-es spans
   // throughout. The PIN error text uses t() and re-renders on the
-  // next submit attempt; the stale-screen reset button text gets
-  // re-applied by showStaleScreen on its next call.
+  // next submit attempt; the Refresh screen uses static bilingual spans.
   function onPreAuthLangToggle_() {
+    // The Refresh screen uses static lang-en/lang-es spans, so setLang alone
+    // handles it — no dynamic text re-application needed.
     setLang(state.lang === 'en' ? 'es' : 'en');
-    // If the stale screen is visible, re-render its dynamic text bits
-    // (Reset On Hand button label, error text) so they update too.
-    if ($('screen-stale') && $('screen-stale').style.display !== 'none') {
-      const btn = $('stale-reset-btn');
-      if (btn) {
-        const en = btn.querySelector('span.lang-en');
-        const es = btn.querySelector('span.lang-es');
-        if (en) en.textContent = 'Reset On Hand';
-        if (es) es.textContent = 'Reiniciar Inventario';
-      }
-    }
   }
   if ($('pin-lang-btn'))   $('pin-lang-btn').addEventListener('click', onPreAuthLangToggle_);
   if ($('stale-lang-btn')) $('stale-lang-btn').addEventListener('click', onPreAuthLangToggle_);
@@ -6463,7 +6394,7 @@
   // is permanently in the DOM; .show class controls visibility).
   const mgrExitBtn = document.getElementById('manager-exit-btn');
   if (mgrExitBtn) mgrExitBtn.addEventListener('click', exitManagerMode);
-  $('stale-reset-btn').addEventListener('click', handleStaleReset);
+  $('stale-reset-btn').addEventListener('click', function () { location.reload(); });
   $('pin-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') handlePinSubmit();
   });
