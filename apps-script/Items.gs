@@ -41,11 +41,17 @@ function getAllItemsForView() {
 
 
 
-  const assignedIds = new Set(
-    readPickDb_(getSheet_(SHEET_SETUP))
-      .filter(r => String(r[1] || "").trim() && String(r[3] || "").trim())
-      .map(r => String(r[1] || "").trim())
-  );
+  // First storage area seen per item (from any pick-path row). Drives both the
+  // hasArea flag ("is it placed anywhere?") and the storageArea display used by
+  // the Assign-to-Vendor tab. Area is technically per (vendor,item); the item's
+  // first/primary area is the meaningful one here (and what a new backup row
+  // defaults to).
+  const areaById = new Map();
+  readPickDb_(getSheet_(SHEET_SETUP)).forEach(r => {
+    const id   = String(r[1] || "").trim();
+    const area = String(r[3] || "").trim();
+    if (id && area && !areaById.has(id)) areaById.set(id, area);
+  });
 
 
 
@@ -68,7 +74,8 @@ function getAllItemsForView() {
         par:     r[COL.PAR     - 1] !== "" ? Number(r[COL.PAR - 1]) : "",
         active:  r[COL.ACTIVE  - 1] === true,
         useMult: r[COL.USE_MULT - 1] === true,
-        hasArea: assignedIds.has(id)
+        hasArea: areaById.has(id),
+        storageArea: areaById.get(id) || ""
       };
     });
 }
@@ -98,7 +105,7 @@ function getAllItemsForView() {
 // items still render even if the par-flag computation throws.
 function getManageItemsBootstrap() {
   const ts = getServerMutationTs_();
-  const cacheKey = 'manageItems_v2_' + ts;
+  const cacheKey = 'manageItems_v3_' + ts;
 
   let cache = null;
   try { cache = CacheService.getDocumentCache(); } catch (e) { cache = null; }

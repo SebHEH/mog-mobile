@@ -362,6 +362,60 @@
       .vendor-checklist input[type="checkbox"] { width: auto; margin: 0; }
       .vendor-checklist .vc-empty { padding: 8px 10px; font-size: 12px; color: #aaa; font-style: italic; }
 
+      /* Assign-to-Vendor tab (full-width table) */
+      .body-split.assign-full .left-pane { display: none; }
+      .body-split.assign-full .right-pane { flex: 1 1 auto; width: auto; max-width: none; position: static; max-height: none; }
+      .assign-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--web-accent-soft, #eef4ff); border: 1px solid var(--web-accent, #2c5d99); border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; }
+      .assign-bar-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+      .assign-bar-label { font-size: 13px; color: var(--web-accent, #2c5d99); }
+      .assign-vendor-select { font-size: 18px; font-weight: 700; color: var(--web-accent, #2c5d99); border: 1px solid var(--web-accent, #2c5d99); background: #fff; border-radius: 8px; padding: 6px 10px; max-width: 340px; }
+      .assign-bar-count { font-size: 13px; color: var(--web-accent, #2c5d99); white-space: nowrap; }
+      .assign-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+      .assign-search-wrap { position: relative; flex: 1; }
+      .assign-search-ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 16px; }
+      .assign-search-wrap input { width: 100%; padding-left: 30px; }
+      .assign-filter { display: inline-flex; flex: 0 0 auto; }
+      .af-seg { font-size: 12px; padding: 8px 13px; border: 1px solid #d7dbe2; background: #fff; color: #667; cursor: pointer; }
+      .af-seg:not(:first-child) { border-left: none; }
+      .af-seg:first-child { border-radius: 6px 0 0 6px; }
+      .af-seg:last-child { border-radius: 0 6px 6px 0; }
+      .af-seg.active { background: var(--web-accent, #2c5d99); border-color: var(--web-accent, #2c5d99); color: #fff; }
+      .assign-table-wrap { border: 1px solid #e2e5ea; border-radius: 12px; overflow: auto; max-height: 58vh; }
+      .assign-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      .atc-check { width: 46px; } .atc-vendor { width: 22%; } .atc-area { width: 24%; }
+      .assign-table th { text-align: left; font-size: 12px; font-weight: 600; color: #778; background: #f7f9fc; padding: 9px 10px; cursor: pointer; user-select: none; border-bottom: 1px solid #e2e5ea; position: sticky; top: 0; z-index: 1; }
+      .assign-table th.at-check { cursor: default; }
+      .at-arrow { color: var(--web-accent, #2c5d99); }
+      .assign-trow td { padding: 8px 10px; font-size: 14px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .assign-trow:last-child td { border-bottom: none; }
+      .assign-trow:hover { background: #f7f9fc; }
+      .assign-trow.sel { background: var(--web-accent-soft, #eef4ff); }
+      .assign-trow.is-primary { color: #99a; }
+      .assign-table td.at-check { text-align: center; }
+      .assign-table td.at-check input { width: 16px; height: 16px; margin: 0; }
+      .at-lock { font-size: 13px; opacity: .7; }
+      .at-vendor, .at-area { color: #667; font-size: 13px; }
+      .at-unassigned { color: #b8860b; }
+      .assign-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap; }
+      .assign-tag.pri { color: var(--web-accent, #2c5d99); border: 1px solid var(--web-accent, #2c5d99); }
+      .assign-tag.warn { color: #9a6a00; border: 1px solid #e3c07a; }
+      .assign-empty { padding: 20px; text-align: center; color: #aaa; font-style: italic; }
+      .assign-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+      .assign-footer-actions { display: flex; align-items: center; gap: 12px; }
+      .assign-diff { font-size: 13px; color: #667; }
+
+      /* Unsaved-changes popup */
+      .ig-overlay { display: none; position: fixed; inset: 0; background: rgba(20,22,28,0.45); z-index: 60; align-items: center; justify-content: center; padding: 20px; }
+      .ig-overlay.open { display: flex; }
+      .ig-card { background: #fff; border-radius: 14px; max-width: 400px; width: 100%; padding: 22px 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.28); }
+      .ig-title { font-size: 17px; font-weight: 700; color: #1a1a2e; margin-bottom: 8px; }
+      .ig-msg { font-size: 14px; color: #556; line-height: 1.5; margin-bottom: 20px; }
+      .ig-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+      .ig-btn { padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; border: 1px solid transparent; cursor: pointer; }
+      .ig-cancel { background: #fff; border-color: #d7dbe2; color: #556; }
+      .ig-discard { background: #fff; border-color: #e0b4b4; color: #a13b3b; }
+      .ig-save { background: var(--web-accent, #2c5d99); color: #fff; }
+
       /* ── Quick-switch active-vendor control (View detail) ── */
       /* Primary + backup vendor list on the View detail. Primary is starred;
          each backup gets a "Make primary" action wired to commitSwitchActiveVendor. */
@@ -580,6 +634,9 @@
         <div class="top-tab warn-tab" onclick="switchTab('unassigned')">
           ⚠ <span class="en">Unassigned</span><span class="es">Sin Área</span><span class="tab-chip hidden" id="tab-chip-unassigned"></span>
         </div>
+        <div class="top-tab"          onclick="switchTab('assign')">
+          <span class="en">Assign to Vendor</span><span class="es">Asignar a Proveedor</span>
+        </div>
       </div>
       <div class="lang-group">
         <button class="help-btn" onclick="toggleHelp(true)" title="Help" aria-label="Help">?</button>
@@ -606,6 +663,19 @@
           <div class="help-step"><span class="en"><strong>4.</strong> The <strong>⚠ Unassigned</strong> tab lists active items with no storage area — assign them in <strong>Shelf to Sheet</strong> or they won't show on vendor tabs.</span><span class="es"><strong>4.</strong> La pestaña <strong>⚠ Sin Área</strong> lista artículos activos sin área — asígnalos en <strong>Estante a Hoja</strong> o no aparecerán en las pestañas.</span></div>
           <div class="help-tip"><span class="en">💡 The rightmost column flags items whose pars may need review — high On Hand (over-ordered) or always empty.</span><span class="es">💡 La columna derecha marca artículos cuyo par podría revisarse — En Stock alto (sobre-pedido) o siempre vacío.</span></div>
           <div class="tour-replay-wrap"><button type="button" class="mge-tour-btn primary" onclick="replayItemsTour()"><span class="en">↻ Replay walkthrough</span><span class="es">↻ Repetir el recorrido</span></button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Unsaved-changes popup (Assign to Vendor) -->
+    <div id="assign-guard" class="ig-overlay" onclick="if(event.target===this)closeAssignGuard_()">
+      <div class="ig-card">
+        <div class="ig-title"><span class="en">Unsaved changes</span><span class="es">Cambios sin guardar</span></div>
+        <div class="ig-msg" id="assign-guard-msg"></div>
+        <div class="ig-actions">
+          <button class="ig-btn ig-cancel" onclick="closeAssignGuard_()"><span class="en">Cancel</span><span class="es">Cancelar</span></button>
+          <button class="ig-btn ig-discard" onclick="assignGuardDiscard_()"><span class="en">Don't save</span><span class="es">No guardar</span></button>
+          <button class="ig-btn ig-save" onclick="assignGuardSave_()"><span class="en">Save changes</span><span class="es">Guardar</span></button>
         </div>
       </div>
     </div>
@@ -680,6 +750,7 @@
         <div class="panel-tabs" id="panel-tabs">
           <button class="ptab active" type="button" id="ptab-details" onclick="switchTab('view')"><span class="en">Item details</span><span class="es">Detalles</span></button>
           <button class="ptab" type="button" id="ptab-add" onclick="switchTab('add')">+ <span class="en">Add item</span><span class="es">Agregar</span></button>
+          <button class="ptab" type="button" id="ptab-assign" onclick="switchTab('assign')"><span class="en">Assign to Vendor</span><span class="es">Asignar</span></button>
         </div>
 
         <!-- VIEW ALL -->
@@ -862,6 +933,53 @@
           <div id="unassigned-status" class="status"></div>
         </div>
 
+        <!-- ASSIGN TO VENDOR (bulk, full-width) -->
+        <div id="panel-assign" class="panel">
+          <div class="assign-bar">
+            <div class="assign-bar-left">
+              <span class="assign-bar-label"><span class="en">Assigning items to</span><span class="es">Asignando artículos a</span></span>
+              <select id="assign-vendor" class="assign-vendor-select" onchange="onAssignVendorChange()"></select>
+            </div>
+            <span class="assign-bar-count" id="assign-count"></span>
+          </div>
+
+          <div class="assign-controls">
+            <div class="assign-search-wrap">
+              <span class="assign-search-ico">⌕</span>
+              <input id="assign-search" type="text" oninput="renderAssignList_()" />
+            </div>
+            <div class="assign-filter" id="assign-filter">
+              <button type="button" class="af-seg active" data-af="all" onclick="setAssignFilter('all')"><span class="en">All</span><span class="es">Todos</span></button>
+              <button type="button" class="af-seg" data-af="on"  onclick="setAssignFilter('on')"><span class="en">On vendor</span><span class="es">En proveedor</span></button>
+              <button type="button" class="af-seg" data-af="off" onclick="setAssignFilter('off')"><span class="en">Not on vendor</span><span class="es">Fuera</span></button>
+            </div>
+          </div>
+
+          <div class="assign-table-wrap">
+            <table class="assign-table">
+              <colgroup><col class="atc-check"><col class="atc-name"><col class="atc-vendor"><col class="atc-area"></colgroup>
+              <thead>
+                <tr>
+                  <th class="at-check"></th>
+                  <th onclick="setAssignSort('name')"><span class="en">Item</span><span class="es">Artículo</span><span class="at-arrow" id="at-arrow-name"></span></th>
+                  <th onclick="setAssignSort('vendor')"><span class="en">Primary vendor</span><span class="es">Proveedor principal</span><span class="at-arrow" id="at-arrow-vendor"></span></th>
+                  <th onclick="setAssignSort('area')"><span class="en">Storage area</span><span class="es">Área</span><span class="at-arrow" id="at-arrow-area"></span></th>
+                </tr>
+              </thead>
+              <tbody id="assign-tbody"></tbody>
+            </table>
+            <div id="assign-empty" class="assign-empty" style="display:none"></div>
+          </div>
+
+          <div class="assign-footer">
+            <span id="assign-diff" class="assign-diff"></span>
+            <div class="assign-footer-actions">
+              <div id="assign-status" class="status"></div>
+              <button class="btn-primary btn-save" id="assign-save-btn" onclick="doAssignSave()"><span id="assign-save-lbl"></span></button>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -893,6 +1011,18 @@
         areaLater:'— Assign later via Shelf to Sheet —',
         hintArea:'Selecting an area places this item at the bottom of that group immediately after saving.',
         btnAdd:'Add Item',
+        assignSearch:'Search items…',
+        btnAssignSave:'Save',
+        assignOnVendor:'on this vendor',
+        assignPrimaryTag:'primary',
+        assignNoArea:'no area',
+        assignSaving:'Saving…',
+        assignSaved:'Added {a} · removed {r}.',
+        assignUnplaced:'{u} need a storage area first.',
+        assignToAdd:'to add',
+        assignToRemove:'to remove',
+        assignUnassignedArea:'— unassigned',
+        assignGuardMsg:'You have unsaved changes to {v}. Save them before leaving?',
         lblEligible:'Also orderable from', lblEligibleEdit:'Also orderable from',
         hintEligible:'Check any other vendors this item can be ordered from. The primary vendor (above) is always included.',
         eligibleNoOthers:'No other vendors to add.',
@@ -966,6 +1096,18 @@
         areaLater:'— Asignar después vía Estante a Hoja —',
         hintArea:'Seleccionar un área coloca este artículo al fondo de ese grupo al guardar.',
         btnAdd:'Agregar Artículo',
+        assignSearch:'Buscar artículos…',
+        btnAssignSave:'Guardar',
+        assignOnVendor:'en este proveedor',
+        assignPrimaryTag:'principal',
+        assignNoArea:'sin área',
+        assignSaving:'Guardando…',
+        assignSaved:'Agregados {a} · quitados {r}.',
+        assignUnplaced:'{u} necesitan un área primero.',
+        assignToAdd:'para agregar',
+        assignToRemove:'para quitar',
+        assignUnassignedArea:'— sin asignar',
+        assignGuardMsg:'Tienes cambios sin guardar en {v}. ¿Guardarlos antes de salir?',
         lblEligible:'También se puede pedir de', lblEligibleEdit:'También se puede pedir de',
         hintEligible:'Marca cualquier otro proveedor del que se pueda pedir este artículo. El proveedor principal (arriba) siempre se incluye.',
         eligibleNoOthers:'No hay otros proveedores que agregar.',
@@ -1095,6 +1237,8 @@
       setText('opt-area-later',  t('areaLater'));
       setText('hint-add-area',   t('hintArea'));
       setText('btn-add-lbl',     t('btnAdd'));
+      setText('assign-save-lbl', t('btnAssignSave'));
+      setAttr('assign-search', 'placeholder', t('assignSearch'));
       setText('lbl-add-eligible',  t('lblEligible'));
       setText('hint-add-eligible', t('hintEligible'));
       // Edit panel
@@ -1159,7 +1303,7 @@
     // try/catch, and silently fall back to a network fetch on every open.
     // See readItemsCache_ / writeItemsCache_ / clearItemsCache_ further down
     // for the actual logic.
-    const ITEMS_CACHE_KEY = 'mog_manageItems_cache_v2';
+    const ITEMS_CACHE_KEY = 'mog_manageItems_cache_v3';
     const ITEMS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
     function byId(id) { return document.getElementById(id); }
@@ -1192,6 +1336,7 @@
         getUnassignedActiveItems: mk('getUnassignedActiveItems'),
         commitUpsertItem:         mk('commitUpsertItem'),
         commitSwitchActiveVendor: mk('commitSwitchActiveVendor'),
+        commitSetVendorItems:     mk('commitSetVendorItems'),
         commitDeleteItem:         mk('commitDeleteItem')
       };
       return proxy;
@@ -1441,21 +1586,266 @@
     else { initManageItems_(); }
 
     // ── Tab switching ─────────────────────────────────────────────────────────
-    const TAB_KEYS = ['view','add','inactive','unassigned'];
+    const TAB_KEYS = ['view','add','inactive','unassigned','assign'];
     function switchTab(key) {
+      // Guard: leaving the Assign tab with unsaved checkbox edits routes through
+      // the unsaved-changes popup; the actual switch runs on Save/Don't save.
+      const onAssign = byId('panel-assign') && byId('panel-assign').classList.contains('active');
+      if (onAssign && key !== 'assign' && assignHasPendingChanges_(assignCurrentVendor_)) {
+        openAssignGuard_(function () { doSwitchTab_(key); });
+        return;
+      }
+      doSwitchTab_(key);
+    }
+    function doSwitchTab_(key) {
       document.querySelectorAll('.top-tab').forEach((t, i) => t.classList.toggle('active', TAB_KEYS[i] === key));
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
       byId('panel-' + key).classList.add('active');
       if (key === 'inactive')   renderInactive();
       if (key === 'unassigned') loadUnassigned();
-      setWebPanelTab_(key === 'add' ? 'add' : 'details');
+      if (key === 'assign')     renderAssign();
+      // Assign tab takes over full width (hide the left item table); every
+      // other tab keeps the master-detail split.
+      const split = document.querySelector('.body-split');
+      if (split) split.classList.toggle('assign-full', key === 'assign');
+      setWebPanelTab_(key === 'add' ? 'add' : key === 'assign' ? 'assign' : 'details');
     }
-    // Web right-panel toggle highlight: 'details' covers view + edit (the selected
-    // item); 'add' is the add form. No-op in the Sheet (the toggle isn't shown).
+    // Web panel-toggle highlight: 'details' covers view + edit (the selected
+    // item), 'add' is the add form, 'assign' is the bulk vendor assign tab.
+    // No-op in the Sheet (the toggle isn't shown there).
     function setWebPanelTab_(which) {
-      const d = byId('ptab-details'), a = byId('ptab-add');
-      if (d) d.classList.toggle('active', which !== 'add');
-      if (a) a.classList.toggle('active', which === 'add');
+      const map = { details: 'ptab-details', add: 'ptab-add', assign: 'ptab-assign' };
+      ['ptab-details','ptab-add','ptab-assign'].forEach(id => {
+        const el = byId(id); if (el) el.classList.toggle('active', map[which] === id);
+      });
+    }
+
+    // ── Assign to Vendor (bulk, full-width table) ───────────────────────────────
+    // Vendor-first assignment: pick a vendor, check the items it can supply.
+    // Reads entirely from the already-loaded allItems; one commit on Save.
+    // Checkbox edits are held in assignPending_ (id -> desired backup boolean)
+    // so they survive filtering/search (rows leave the DOM but state persists).
+    let assignVendorInit_ = false;
+    let assignPending_ = {};                 // id -> desired membership (backup)
+    let assignCurrentVendor_ = '';           // vendor the pending edits belong to
+    let assignFilter_ = 'all';               // 'all' | 'on' | 'off'
+    let assignSort_ = 'name', assignSortAsc_ = true;
+
+    function assignVLow_()          { return String(byId('assign-vendor').value || '').toLowerCase(); }
+    function assignIsPrimary_(it, vLow) { return String(it.vendor || '').toLowerCase() === vLow; }
+    function assignBaseOn_(it, vLow)    { return assignIsPrimary_(it, vLow) || (it.eligibleVendors || []).some(v => String(v).toLowerCase() === vLow); }
+    function assignEffOn_(it, vLow) {
+      if (assignIsPrimary_(it, vLow)) return true;   // primary is always on
+      if (Object.prototype.hasOwnProperty.call(assignPending_, it.id)) return assignPending_[it.id];
+      return (it.eligibleVendors || []).some(v => String(v).toLowerCase() === vLow);
+    }
+
+    // Called on tab open + vendor change. Rebuilds the vendor dropdown once and
+    // resets pending edits for the (new) vendor.
+    function renderAssign() {
+      if (!assignVendorInit_) {
+        const sel = byId('assign-vendor'); sel.innerHTML = '';
+        VENDOR_LIST.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+        assignVendorInit_ = true;
+      }
+      assignPending_ = {};
+      assignCurrentVendor_ = byId('assign-vendor').value;
+      setStatus('assign', '');
+      renderAssignList_();
+    }
+    // Switching vendors discards pending checkbox edits — route through the
+    // unsaved-changes popup. Revert the dropdown first so the app stays on the
+    // current vendor (and a Save saves THAT vendor) while the user decides.
+    function onAssignVendorChange() {
+      const sel = byId('assign-vendor');
+      const target = sel.value;
+      if (assignHasPendingChanges_(assignCurrentVendor_)) {
+        sel.value = assignCurrentVendor_;
+        openAssignGuard_(function () { applyVendorSwitch_(target); });
+        return;
+      }
+      applyVendorSwitch_(target);
+    }
+    function applyVendorSwitch_(vendor) {
+      byId('assign-vendor').value = vendor;
+      assignPending_ = {};
+      assignCurrentVendor_ = vendor;
+      setStatus('assign', '');
+      renderAssignList_();
+    }
+
+    // Unsaved-changes popup — shared by the vendor-switch and tab-switch guards.
+    // onProceed runs after the user picks Save (post-save) or Don't save.
+    let assignGuardProceed_ = null;
+    function openAssignGuard_(onProceed) {
+      assignGuardProceed_ = onProceed || null;
+      byId('assign-guard-msg').textContent = t('assignGuardMsg').replace('{v}', assignCurrentVendor_);
+      byId('assign-guard').classList.add('open');
+    }
+    function closeAssignGuard_() {                 // Cancel — stay put
+      byId('assign-guard').classList.remove('open');
+      assignGuardProceed_ = null;
+    }
+    function assignGuardDiscard_() {               // Don't save — drop edits, proceed
+      const proceed = assignGuardProceed_;
+      assignGuardProceed_ = null;
+      assignPending_ = {};
+      byId('assign-guard').classList.remove('open');
+      renderAssignList_();
+      if (proceed) proceed();
+    }
+    function assignGuardSave_() {                  // Save, then proceed on success
+      const proceed = assignGuardProceed_;
+      assignGuardProceed_ = null;
+      byId('assign-guard').classList.remove('open');
+      doAssignSave(proceed);
+    }
+    // True if the user has toggled any (non-primary) item away from its saved
+    // membership for the given vendor.
+    function assignHasPendingChanges_(vendor) {
+      const vLow = String(vendor || '').toLowerCase();
+      return Object.keys(assignPending_).some(id => {
+        const it = allItems.find(x => x.id === id);
+        if (!it || !it.active || assignIsPrimary_(it, vLow)) return false;
+        const base = (it.eligibleVendors || []).some(v => String(v).toLowerCase() === vLow);
+        return assignPending_[id] !== base;
+      });
+    }
+    function setAssignFilter(f) {
+      assignFilter_ = f;
+      document.querySelectorAll('#assign-filter .af-seg').forEach(b => b.classList.toggle('active', b.getAttribute('data-af') === f));
+      renderAssignList_();
+    }
+    function setAssignSort(key) {
+      if (assignSort_ === key) assignSortAsc_ = !assignSortAsc_; else { assignSort_ = key; assignSortAsc_ = true; }
+      renderAssignList_();
+    }
+    function renderAssignList_() {
+      const vLow = assignVLow_();
+      const q    = (byId('assign-search').value || '').trim().toLowerCase();
+      const active = allItems.filter(it => it.active);
+
+      // Sort-indicator arrows (header labels are bilingual spans; only the arrow moves).
+      [['name','at-arrow-name'],['vendor','at-arrow-vendor'],['area','at-arrow-area']].forEach(pair => {
+        const el = byId(pair[1]); if (!el) return;
+        el.textContent = assignSort_ === pair[0] ? (assignSortAsc_ ? ' ▲' : ' ▼') : '';
+      });
+
+      let rows = active.filter(it => {
+        if (assignFilter_ === 'on'  && !assignEffOn_(it, vLow)) return false;
+        if (assignFilter_ === 'off' &&  assignEffOn_(it, vLow)) return false;
+        if (q && it.name.toLowerCase().indexOf(q) < 0 && String(it.id).toLowerCase().indexOf(q) < 0) return false;
+        return true;
+      });
+      rows.sort((a, b) => {
+        let va, vb;
+        if (assignSort_ === 'vendor')    { va = a.vendor || '';      vb = b.vendor || ''; }
+        else if (assignSort_ === 'area') { va = a.storageArea || a.area || ''; vb = b.storageArea || b.area || ''; }
+        else                             { va = a.name || '';        vb = b.name || ''; }
+        const c = String(va).localeCompare(String(vb));
+        return assignSortAsc_ ? c : -c;
+      });
+
+      const tbody = byId('assign-tbody');
+      const empty = byId('assign-empty');
+      if (!rows.length) {
+        tbody.innerHTML = '';
+        empty.textContent = t('noMatch');
+        empty.style.display = 'block';
+        updateAssignMeta_();
+        return;
+      }
+      empty.style.display = 'none';
+      let html = '';
+      rows.forEach(it => {
+        const isP    = assignIsPrimary_(it, vLow);
+        const on     = assignEffOn_(it, vLow);
+        const area   = it.storageArea || it.area || '';
+        const noArea = !it.hasArea;
+        const box = isP
+          ? "<span class='at-lock' title='" + esc(t('assignPrimaryTag')) + "'>🔒</span>"
+          : "<input type='checkbox' value='" + esc(it.id) + "'" + (on ? ' checked' : '') + " onchange='onAssignToggle_(this)'>";
+        html += "<tr class='assign-trow" + (on ? ' sel' : '') + (isP ? ' is-primary' : '') + "' data-id='" + esc(it.id) + "'>" +
+          "<td class='at-check'>" + box + "</td>" +
+          "<td class='at-name'>" + esc(it.name) +
+            (isP ? " <span class='assign-tag pri'>" + esc(t('assignPrimaryTag')) + "</span>" : "") +
+            (noArea ? " <span class='assign-tag warn'>" + esc(t('assignNoArea')) + "</span>" : "") +
+          "</td>" +
+          "<td class='at-vendor'>" + esc(it.vendor || '') + "</td>" +
+          "<td class='at-area'>" + (area ? esc(area) : "<span class='at-unassigned'>" + esc(t('assignUnassignedArea')) + "</span>") + "</td>" +
+        "</tr>";
+      });
+      tbody.innerHTML = html;
+      updateAssignMeta_();
+    }
+    // Toggle a row without a full re-render (so checking many in a row doesn't
+    // yank rows out from under the cursor even under an on/off filter).
+    function onAssignToggle_(cb) {
+      assignPending_[cb.value] = cb.checked;
+      const row = cb.closest('tr'); if (row) row.classList.toggle('sel', cb.checked);
+      updateAssignMeta_();
+    }
+    // Recompute the header count + the footer add/remove diff over ALL active
+    // items (not just the filtered rows).
+    function updateAssignMeta_() {
+      const vLow = assignVLow_();
+      let on = 0, add = 0, rem = 0;
+      allItems.forEach(it => {
+        if (!it.active) return;
+        const eff = assignEffOn_(it, vLow);
+        if (eff) on++;
+        if (assignIsPrimary_(it, vLow)) return;      // primaries aren't add/remove
+        const base = (it.eligibleVendors || []).some(v => String(v).toLowerCase() === vLow);
+        if (eff && !base) add++;
+        else if (!eff && base) rem++;
+      });
+      byId('assign-count').textContent = on + ' ' + t('assignOnVendor');
+      byId('assign-diff').innerHTML =
+        "<strong>" + add + "</strong> " + esc(t('assignToAdd')) + " &middot; <strong>" + rem + "</strong> " + esc(t('assignToRemove'));
+    }
+    function doAssignSave(onDone) {
+      const vendor = byId('assign-vendor').value;
+      if (!vendor) return;
+      const vLow = vendor.toLowerCase();
+      // Desired backups = effectively-on, non-primary items. Primaries are
+      // implicit — the server keeps them via its own primary check.
+      const checkedIds = [];
+      allItems.forEach(it => {
+        if (it.active && !assignIsPrimary_(it, vLow) && assignEffOn_(it, vLow)) checkedIds.push(it.id);
+      });
+
+      setSavingPanel_('panel-assign', true);
+      setStatus('assign', t('assignSaving'), 'info');
+      bumpMutationTs_();
+      MIRPC()
+        .withSuccessHandler(res => {
+          setSavingPanel_('panel-assign', false);
+          // Mirror the change into allItems so the list + main table stay in
+          // sync without a refetch (server logic: on = primary OR checked).
+          const want = new Set(checkedIds);
+          allItems.forEach(it => {
+            if (!it.active) return;
+            const isP = assignIsPrimary_(it, vLow);
+            const on  = isP || want.has(it.id);
+            let elig  = (it.eligibleVendors || []).slice();
+            const has = elig.some(v => String(v).toLowerCase() === vLow);
+            if (on && !has)               elig.push(vendor);
+            else if (!on && has && !isP)  elig = elig.filter(v => String(v).toLowerCase() !== vLow);
+            it.eligibleVendors = elig;
+          });
+          assignPending_ = {};
+          clearItemsCache_(); writeItemsCache_(allItems, parFlags);
+          renderAssignList_(); renderTable();
+          let msg = t('assignSaved').replace('{a}', res.added).replace('{r}', res.removed);
+          if (res.unplaced) msg += ' ' + t('assignUnplaced').replace('{u}', res.unplaced);
+          setStatus('assign', msg, res.unplaced ? 'warn' : 'ok');
+          if (typeof onDone === 'function') onDone();
+        })
+        .withFailureHandler(err => {
+          setSavingPanel_('panel-assign', false);
+          setStatus('assign', err.message || String(err), 'warn');
+        })
+        .commitSetVendorItems(vendor, checkedIds);
     }
 
     // ── Item table ────────────────────────────────────────────────────────────
