@@ -1359,6 +1359,16 @@
     // Close is Sheet-only (google.script.host). In the web app there's no host
     // dialog to close, so "Close" returns to the editor home dashboard.
     function editorClose() {
+      // Guard: closing with unsaved Assign-tab checkbox edits routes through the
+      // unsaved-changes popup first — same as the tab- and vendor-switch guards.
+      const onAssign = byId('panel-assign') && byId('panel-assign').classList.contains('active');
+      if (onAssign && typeof assignHasPendingChanges_ === 'function' && assignHasPendingChanges_(assignCurrentVendor_)) {
+        openAssignGuard_(function () { editorCloseNow_(); });
+        return;
+      }
+      editorCloseNow_();
+    }
+    function editorCloseNow_() {
       if (MOG_WEB) { window.open((BASE_URL || '') + '?page=editor', '_top'); }
       else { google.script.host.close(); }
     }
