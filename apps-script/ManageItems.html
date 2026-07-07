@@ -576,6 +576,37 @@
       body.mge-web .item-table thead th { padding: 11px 10px; }
       body.mge-web .left-toolbar { padding: 13px 16px; }
 
+      /* Scrollable, aligned column-header sort row (web only): give the columns
+         real px widths so the table overflows a narrow left card and scrolls
+         sideways instead of cramming 8 headers into no space. The header and
+         body tables scroll in lockstep (syncTableHeaderScroll_) so columns stay
+         aligned, and clicking a header centers it (centerSortHeader_). The
+         header's own scrollbar is hidden — the body carries the H-scrollbar. */
+      body.mge-web .table-head   { overflow-x: auto; scrollbar-width: none; }
+      body.mge-web .table-head::-webkit-scrollbar { height: 0; }
+      body.mge-web .table-scroll { overflow-x: auto; }
+      body.mge-web .item-table   { min-width: 995px; }
+      body.mge-web .col-item{width:210px}  body.mge-web .col-vendor{width:150px}
+      body.mge-web .col-pack{width:120px}  body.mge-web .col-par{width:80px}
+      body.mge-web .col-active{width:95px} body.mge-web .col-mult{width:80px}
+      body.mge-web .col-sheet{width:110px} body.mge-web .col-review{width:150px}
+
+      /* Freeze the Item column (web only) so it stays visible while you scroll
+         right to reach Par Review — otherwise the two columns you most want to
+         read together sit at opposite ends. Sticky cells need an opaque bg; a
+         hairline divider marks the frozen edge, and row-state tints are echoed
+         onto the pinned cell so hover/selected/no-area stay consistent. */
+      body.mge-web .item-table thead th:first-child {
+        position: sticky; left: 0; z-index: 3; background: #f5f6f8; box-shadow: 1px 0 0 #dde1e7;
+      }
+      body.mge-web .item-table tbody td:first-child {
+        position: sticky; left: 0; z-index: 1; background: #fff; box-shadow: 1px 0 0 #e4e7ec;
+      }
+      body.mge-web .item-table tbody tr:hover td:first-child      { background: #f0f4ff; }
+      body.mge-web .item-table tbody tr.selected td:first-child   { background: #dce6ff; }
+      body.mge-web .item-table tbody tr.no-area-row td:first-child { background: #fff8f8; }
+      body.mge-web .item-table tbody tr.no-area-row.selected td:first-child { background: #ffdada; }
+
       /* Footer: drop the dialog bar; a quiet back-link to the home. */
       body.mge-web .modal-footer {
         background: transparent; border-top: none;
@@ -2001,6 +2032,29 @@
       byId('sort-by-vendor').classList.toggle('active', sortKey === 'vendor');
       byId('sort-by-name').classList.toggle('active',   sortKey === 'name');
       renderTable();
+      centerSortHeader_(key);
+    }
+
+    // Scroll the clicked column header to the center of the (web) scrollable
+    // header row. No-op in the Sheet dialog (no horizontal overflow there).
+    function centerSortHeader_(key) {
+      const idByKey = { name:'th-item', vendor:'th-vendor', pack:'th-pack', par:'th-par',
+                        active:'th-active', useMult:'th-mult', onSheet:'th-sheet', flag:'th-flag' };
+      const th = byId(idByKey[key]);
+      if (th && th.scrollIntoView) th.scrollIntoView({ inline: 'center', block: 'nearest' });
+    }
+
+    // Keep the header row and the body scrolled together horizontally (web
+    // only) so the columns stay aligned; wired once. In the Sheet dialog
+    // neither overflows, so these listeners never fire.
+    function syncTableHeaderScroll_() {
+      const head = document.querySelector('.table-head');
+      const body = document.querySelector('.table-scroll');
+      if (!head || !body || head._hsync) return;
+      head._hsync = true;
+      let lock = false;
+      body.addEventListener('scroll', () => { if (lock) return; lock = true; head.scrollLeft = body.scrollLeft; lock = false; });
+      head.addEventListener('scroll', () => { if (lock) return; lock = true; body.scrollLeft = head.scrollLeft; lock = false; });
     }
 
     function applyFilters() { renderTable(); }
@@ -2105,21 +2159,22 @@
         if (!item.active) return 0;
         return item.hasArea ? 2 : 1;
       }
-      if (key === 'flag') {                    // inactive < no-data < adjusted < ok < under < over < both
-        if (!item.active) return -1;
-        if (parAdjustedIds[item.id]) return 0.5;   // shown as "Recently adjusted", overrides the flag
+      if (key === 'flag') {                    // over-ordering first, then under, then no-review, inactive last
+        if (!item.active) return 6;            // inactive → bottom
+        if (parAdjustedIds[item.id]) return 3; // "Recently adjusted" → no-review bucket
         const f = parFlags[item.id];
-        if (!f || f.timesOrdered < 5) return 0;
-        if (!f.flag) return 1;
-        if (f.flag === 'empty') return 2;
-        if (f.flag === 'over')  return 3;
-        return 4;                              // 'both'
+        if (!f || f.timesOrdered < MIN_FLAG_ORDERS_) return 5; // not enough data
+        if (f.flag === 'both')  return 0;      // over + under — most urgent
+        if (f.flag === 'over')  return 1;      // over-ordering
+        if (f.flag === 'empty') return 2;      // under-ordering ("always empty")
+        return 4;                              // reviewed, no flag (OK)
       }
       return item[key];
     }
 
     function renderTable() {
       updateTabChips_();
+      syncTableHeaderScroll_();
       const vf = byId('view-vendor-filter').value.toLowerCase();
       let rows = allItems.filter(x => (!vf || itemHasVendor_(x, vf)) && matchesViewFilter_(x));
       rows = rows.slice().sort((a, b) => {
@@ -2238,15 +2293,29 @@
     }
 
     // ── Par Review flag helpers ───────────────────────────────────────────────
+    // Minimum logged orders (in the server's rolling window) before a verdict
+    // shows — must match PAR_FLAG.MIN_ORDERS in History.gs.
+    const MIN_FLAG_ORDERS_ = 3;
+
+    // Avg On Hand as a % of par — the flag's severity, shown next to the verdict.
+    // High = over-ordering (shelf still full when you reorder); low = running
+    // empty. null when the item has no par to measure against.
+    function parPct_(f) {
+      const par = Number(f && f.par);
+      if (!par || par <= 0 || f.avgOnHand == null) return null;
+      return Math.round((Number(f.avgOnHand) / par) * 100);
+    }
+
     function buildFlagPill(itemId, active) {
       if (!active) return "<span style='color:#ddd'>—</span>";
       if (parAdjustedIds[itemId]) return "<span class='pill pill-adjusted'>✎ " + t('flagAdjusted') + "</span>";
       const f = parFlags[itemId];
-      if (!f || f.timesOrdered < 5) return "<span class='pill pill-nodata'>" + t('flagNoData') + "</span>";
+      if (!f || f.timesOrdered < MIN_FLAG_ORDERS_) return "<span class='pill pill-nodata'>" + t('flagNoData') + "</span>";
       if (!f.flag) return "<span class='pill pill-no'>✓ " + t('flagOk') + "</span>";
       const pillClass = f.flag === 'empty' ? 'pill-empty' : f.flag === 'over' ? 'pill-over' : 'pill-both';
       const label     = f.flag === 'empty' ? t('flagEmpty') : f.flag === 'over' ? t('flagOver') : t('flagBoth');
-      return "<span class='pill " + pillClass + "'>⚠ " + label + "</span>";
+      const pct = parPct_(f);
+      return "<span class='pill " + pillClass + "'>⚠ " + label + (pct == null ? '' : " · " + pct + "%") + "</span>";
     }
 
     function buildFlagDetail(itemId, active) {
@@ -2256,9 +2325,9 @@
       }
       const f = parFlags[itemId];
       if (!f) return '';
-      if (f.timesOrdered < 5) {
+      if (f.timesOrdered < MIN_FLAG_ORDERS_) {
         return "<div class='dk'>" + t('thFlag') + "</div><div class='dv' style='color:#bbb;font-style:italic'>" +
-          t('flagNoData') + " (" + f.timesOrdered + "/5 " + t('flagOrders') + ")</div>";
+          t('flagNoData') + " (" + f.timesOrdered + "/" + MIN_FLAG_ORDERS_ + " " + t('flagOrders') + ")</div>";
       }
       const label = !f.flag ? t('flagNone')
         : f.flag === 'empty' ? t('flagEmpty')
@@ -2267,7 +2336,8 @@
       const style = !f.flag ? 'color:#1a6b2e;font-weight:bold'
         : f.flag === 'over'  ? 'color:#7a1a1a;font-weight:bold'
         : 'color:#856404;font-weight:bold';
-      return "<div class='dk'>" + t('thFlag') + "</div><div class='dv' style='" + style + "'>⚠ " + label + "</div>" +
+      const pct = parPct_(f);
+      return "<div class='dk'>" + t('thFlag') + "</div><div class='dv' style='" + style + "'>⚠ " + label + (pct == null ? '' : " · " + pct + "%") + "</div>" +
         "<div class='dk'>" + t('flagOrders') + "</div><div class='dv'>" + f.timesOrdered + "</div>" +
         "<div class='dk'>" + t('flagAvgOnHand') + "</div><div class='dv'>" + f.avgOnHand + "</div>" +
         "<div class='dk'>" + t('flagEmptyCount') + "</div><div class='dv'>" + f.emptyCount + "</div>" +

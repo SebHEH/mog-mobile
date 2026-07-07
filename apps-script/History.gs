@@ -248,10 +248,13 @@ function toggleOrderLogVisibility() {
 // Thresholds — adjust here if requirements change.
 //
 // Design notes (set by Sebastian — Path A, 2026-05):
-//   • 2-week rolling window: aligns with realistic vendor frequency. A
-//     3x/week vendor lands ~6 data points; 2x/week lands ~4.
-//   • MIN_ORDERS=2: window already filters noise; the floor just prevents
-//     a single anomalous entry from triggering a flag.
+//   • 4-week rolling window (widened from 2 weeks, 2026-07-07): too many
+//     slower-moving items never accumulated enough orders in 2 weeks to get
+//     any verdict, so most of the catalog showed "No data yet". A 3x/week
+//     vendor now lands ~12 data points; 2x/week ~8; 1x/week ~4.
+//   • MIN_ORDERS=3 (raised from 2, 2026-07-07): the floor prevents a single
+//     anomalous entry from triggering a flag; matches the client display
+//     threshold in ManageItems.html (buildFlagPill / buildFlagDetail).
 //   • Under-ordered uses on-hand ≤ 10% of par (not on-hand=0 directly)
 //     because par=1 items would always read "empty" — at par=1 the only
 //     possible non-stockout value IS 1. The 10% threshold treats "running
@@ -262,8 +265,8 @@ function toggleOrderLogVisibility() {
 //     Sunday with as little inventory as possible. If on-hand sits at half
 //     the par half the time, the par should drop.
 const PAR_FLAG = {
-  MIN_ORDERS:        2,    // minimum logged orders within the window
-  WINDOW_DAYS:       14,   // only count orders from the last 14 days
+  MIN_ORDERS:        3,    // minimum logged orders within the window (2→3, 2026-07-07)
+  WINDOW_DAYS:       28,   // only count orders from the last 28 days (14→28, 2026-07-07)
 
   // Under-ordered ("Always Empty")
   UNDER_PAR_MIN:     3,    // par must be ≥ this for the flag to apply
