@@ -445,6 +445,11 @@ function api_getDashboard_compute_() {
   // vendors) so a KM can order from one that's off-schedule today.
   const emergencyOverride = readEmergencyOverride_();
 
+  // Shared read context for vendorOnHandSnapshot_ — built once so the per-vendor
+  // "to order" count reads MASTER_ITEMS / SETUP a single time, not per vendor.
+  const snapCtx = { masterMeta: readMasterItemMeta_(), vendorMults: vendorMults,
+                    emergencyOverride: emergencyOverride, dayOfWeek: dayOfWeek };
+
   const out = [];
   for (const vendorName of allVendors) {
     const mults = vendorMults.get(vendorName) || {};
@@ -470,7 +475,7 @@ function api_getDashboard_compute_() {
       toOrderCount = log.itemCount;
       enteredCount = itemCount; // a sent vendor implicitly has all items "entered"
     } else {
-      const inProgress = vendorOnHandSnapshot_(vendorName);
+      const inProgress = vendorOnHandSnapshot_(vendorName, snapCtx);
       enteredCount = inProgress.enteredCount;
       if (inProgress.any) {
         status       = 'in_progress';
@@ -641,21 +646,9 @@ function api_getVendorItems_(payload) {
       : null;
 
     // Suggested order qty — computed in code (was: read from the vendor tab's
-    // column F formula). This is a faithful replication of that formula, so
-    // the API no longer depends on reading F. The live F formula is:
-    //   F = IF(name="" OR H2=0 OR onHand="", "",
-    //          qty = ROUNDUP(par*(useMult?H2:1) - onHand); qty<=0 ? "" : qty)
-    // Here: targetPar already = par*(useMult?H2:1); dayMult > 0 mirrors F's
-    // H2=0 blank (vendor not delivering today); onHand !== null mirrors F's
-    // onHand="" blank; qty<=0 -> null mirrors F's "". Downstream (recap
-    // filter, PWA computeSuggested) treats null/0/absent alike, so behavior
-    // is unchanged. Keeping the math in code makes it versioned, uniform
-    // across stores, and portable off the sheet.
-    let suggested = null;
-    if (targetPar !== null && dayMult > 0 && onHand !== null) {
-      const qty = Math.ceil(targetPar - onHand);
-      suggested = qty > 0 ? qty : null;
-    }
+    // column F formula) via the shared computeSuggestedQty_ helper, the single
+    // source of this math across the count, order-log, and dashboard paths.
+    const suggested = computeSuggestedQty_(parNum, useMult, dayMult, onHand);
 
     const pi = pickInfo.get(itemId) || { area: '', areaOrder: 999, shelfOrder: 999999 };
 
@@ -1232,6 +1225,26 @@ function vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride)
 }
 
 
+// Suggested order qty for one item — THE single source of the count/order math,
+// replacing the vendor-tab column-F formula. Called by api_getVendorItems_ (the
+// PWA count/recap path), snapshotVendorOrders_ (the order log), and
+// vendorOnHandSnapshot_ (dashboard "to order" counts) so the math lives in one
+// place and can't drift. Faithful replication of the live F formula:
+//   F = IF(name="" OR H2=0 OR onHand="", "",
+//          qty = ROUNDUP(par*(useMult?H2:1) - onHand); qty<=0 ? "" : qty)
+// Inputs: par = MASTER_ITEMS!G, useMult = MASTER_ITEMS!M, dayMult = H2 (from
+// vendorDayMultiplier_), onHand = vendor-tab col E (null when nothing entered).
+// Returns a positive integer, or null for every blank case (vendor not
+// delivering today → dayMult 0; no On Hand entered; already at/above par).
+function computeSuggestedQty_(par, useMult, dayMult, onHand) {
+  if (isNaN(par) || dayMult <= 0 || onHand === null || onHand === undefined) return null;
+  const effectiveMult = useMult ? dayMult : 1;
+  if (effectiveMult <= 0) return null;
+  const qty = Math.ceil(par * effectiveMult - onHand);
+  return qty > 0 ? qty : null;
+}
+
+
 // SETUP column AA holds cutoff times paired by row with the vendor names
 // in column Z. Returns a Map<vendorName, "HH:MM"|null>. Stored as strings
 // for consistency with the API response format; null means "no cutoff."
@@ -1331,33 +1344,49 @@ function countActiveItemsByVendor_() {
 }
 
 
-function vendorOnHandSnapshot_(vendor) {
+function vendorOnHandSnapshot_(vendor, ctx) {
   // Returns { any, toOrder, enteredCount } for the dashboard's per-vendor
   // status detection.
   //   any          — at least one On Hand value entered for this vendor today
-  //   toOrder      — count of items where the vendor tab's Suggested formula > 0
+  //   toOrder      — count of items whose suggested order qty > 0
   //   enteredCount — count of items with a numeric On Hand value entered
   //
-  // Reads vendor tab columns E and F directly, since the F formula is
-  // already day-multiplier-aware via AE3 → AE9 indirection.
+  // Reads vendor-tab columns E (On Hand — real data) and M (Item ID — the
+  // roster spill) only; the suggested qty is computed in code via
+  // computeSuggestedQty_ (was: read from the col-F formula), so the dashboard
+  // no longer depends on any vendor-tab formula. `ctx` carries the shared read
+  // context built once by the caller — { masterMeta, vendorMults,
+  // emergencyOverride, dayOfWeek } — so MASTER_ITEMS / SETUP aren't re-read
+  // per vendor.
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(vendor);
   if (!sh) return { any: false, toOrder: 0, enteredCount: 0 };
 
   const lastRow = sh.getLastRow();
   if (lastRow < VENDOR_TAB.DATA_START_ROW) return { any: false, toOrder: 0, enteredCount: 0 };
 
-  const numRows = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
-  // Read E (5) and F (6) — two adjacent columns, one range read
-  const data = sh.getRange(VENDOR_TAB.DATA_START_ROW, VENDOR_TAB.ON_HAND_COL, numRows, 2).getValues();
+  const numRows  = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
+  // One range read spanning E (On Hand) through M (Item ID).
+  const startCol = VENDOR_TAB.ON_HAND_COL;                 // E (5)
+  const data     = sh.getRange(VENDOR_TAB.DATA_START_ROW, startCol, numRows, 13 - startCol + 1).getValues();
+  const ID_IDX   = 13 - startCol;                          // M, relative to E
+
+  const dayMult = vendorDayMultiplier_(ctx.vendorMults, vendor, ctx.dayOfWeek, ctx.emergencyOverride);
 
   let enteredCount = 0;
   let toOrder = 0;
   for (const r of data) {
-    const onHand    = r[0];
-    const suggested = r[1];
-    if (onHand !== '' && onHand !== null && !isNaN(Number(onHand))) enteredCount++;
-    const sNum = Number(suggested);
-    if (!isNaN(sNum) && sNum > 0) toOrder++;
+    const onHandRaw = r[0];
+    const entered   = (onHandRaw !== '' && onHandRaw !== null && !isNaN(Number(onHandRaw)));
+    if (entered) enteredCount++;
+
+    const itemId = String(r[ID_IDX] || '').trim();
+    if (!itemId) continue;
+    const meta = ctx.masterMeta.get(itemId);
+    if (!meta || !meta.name) continue;   // non-roster / blank row — same skip as the count path
+
+    const onHand    = entered ? Number(onHandRaw) : null;
+    const suggested = computeSuggestedQty_(meta.par, meta.useMult, dayMult, onHand);
+    if (suggested != null && suggested > 0) toOrder++;
   }
   return { any: enteredCount > 0, toOrder: toOrder, enteredCount: enteredCount };
 }

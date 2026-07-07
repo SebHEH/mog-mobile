@@ -215,63 +215,54 @@ function snapshotVendorOrders_(orderDate, timestamp) {
 
 
 
-  // Column layout based on actual VENDOR_TEMPLATE structure:
-  // A(1)=Item Name, B(2)=Pack, E(5)=On Hand, F(6)=Suggested Order Qty
-  // M(13)=Item ID (hidden, pulled from SETUP pick path via SORT/FILTER formula)
-  // Read range must extend to col 13 to capture Item ID from M.
-  const VTAB_ITEM_NAME_COL  = 1;  // A — Item Name
-  const VTAB_ITEM_ID_COL    = 13; // M — Item ID (hidden column)
-  const VTAB_ON_HAND_COL    = VENDOR_TAB.ON_HAND_COL; // E (5)
-  const VTAB_SUGGESTED_COL  = 6;  // F — Suggested Order Qty
-  const VTAB_READ_TO_COL    = 13; // must be >= largest column we need (M)
+  // Item Name and Suggested Qty are computed in code (Item Name from
+  // MASTER_ITEMS via readMasterItemMeta_; Suggested via the shared
+  // computeSuggestedQty_ helper) — NOT read from the vendor tab's col-A / col-F
+  // formulas. That's the same math the PWA count screen and daily recap use, so
+  // the logged order matches what the KM saw. The tab is read for On Hand
+  // (col E, real data) and Item ID (col M, the roster spill) only.
+  const VTAB_ITEM_ID_COL = 13;                        // M — Item ID (hidden)
+  const VTAB_ON_HAND_COL = VENDOR_TAB.ON_HAND_COL;    // E (5)
+  const VTAB_READ_TO_COL = 13;                        // read through M
 
-
-
+  // Shared read context, built once for all vendors.
+  const masterMeta        = readMasterItemMeta_();
+  const vendorMults       = readVendorMultipliers_(getSheet_(SHEET_SETUP));
+  const emergencyOverride = readEmergencyOverride_();
+  const dayOfWeek         = getActiveOrderDate_().dayOfWeek;
 
   vendors.forEach(vendor => {
     const sh = ss.getSheetByName(vendor);
     if (!sh) return;
 
-
-
-
     const lastRow = sh.getLastRow();
     if (lastRow < VENDOR_TAB.DATA_START_ROW) return;
-
-
-
 
     const numRows = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
     const data    = sh
       .getRange(VENDOR_TAB.DATA_START_ROW, 1, numRows, VTAB_READ_TO_COL)
       .getValues();
 
-
-
+    const dayMult = vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride);
 
     data.forEach(r => {
-      const itemName  = String(r[VTAB_ITEM_NAME_COL - 1] || "").trim();
-      const itemId    = String(r[VTAB_ITEM_ID_COL   - 1] || "").trim();
-      const onHand    = r[VTAB_ON_HAND_COL   - 1];
-      const suggested = r[VTAB_SUGGESTED_COL - 1];
+      const itemId = String(r[VTAB_ITEM_ID_COL - 1] || "").trim();
+      if (!itemId) return;
 
+      // Non-roster / blank-name row — same skip as the count path (old code
+      // skipped on a blank col-A, which is XLOOKUP(id,…)="" for these rows).
+      const meta = masterMeta.get(itemId);
+      if (!meta || !meta.name) return;
 
+      const onHandRaw = r[VTAB_ON_HAND_COL - 1];
+      const onHand = (onHandRaw === "" || onHandRaw === null || isNaN(Number(onHandRaw)))
+        ? null
+        : Number(onHandRaw);
 
+      const suggested = computeSuggestedQty_(meta.par, meta.useMult, dayMult, onHand);
+      if (suggested == null || suggested <= 0) return;
 
-      if (!itemName) return;
-
-      const onHandNum    = Number(onHand)    || 0;
-      const suggestedNum = Number(suggested) || 0;
-
-
-
-
-      if (suggestedNum <= 0) return;
-
-
-
-
-      rows.push([timestamp, orderDate, vendor, itemId || "", itemName, onHandNum, suggestedNum]);
+      rows.push([timestamp, orderDate, vendor, itemId, meta.name, (onHand === null ? 0 : onHand), suggested]);
     });
   });
 
