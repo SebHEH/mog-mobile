@@ -246,6 +246,35 @@ function bumpServerMutationTs_() {
 }
 
 
+// ── Pick-DB write lock ───────────────────────────────────────────────────────
+// Every pick-DB mutation is a read-modify-write of the whole SETUP K:P block
+// (readPickDb_ → filter/push → writePickDb_, which clears then rewrites), so
+// two concurrent writers silently lose whichever landed first — e.g. a web
+// editor save racing the in-sheet onEdit auto-save, or two KMs saving at once.
+// withPickDbLock_ serializes those windows with a document lock.
+//
+// REENTRANT per execution via a module-global depth counter (Apps Script
+// executions are single-threaded, so the counter is race-free): an entry
+// point that holds the lock can freely call helpers that also request it.
+// Convention: wrap the ENTRY POINTS (client-callable commits, onEdit paths,
+// menu/health-fix cores); leave inner helpers unwrapped — their callers hold
+// the lock. Locks auto-release when the execution ends, so an error path
+// can't strand the document locked.
+let __pickDbLockDepth = 0;
+function withPickDbLock_(fn) {
+  if (__pickDbLockDepth > 0) return fn();   // already inside a locked section
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(20000);   // throws after 20s — surfaced as a normal error
+  __pickDbLockDepth++;
+  try {
+    return fn();
+  } finally {
+    __pickDbLockDepth--;
+    try { lock.releaseLock(); } catch (e) { /* released at execution end anyway */ }
+  }
+}
+
+
 
 
 // =========================================================================
@@ -722,8 +751,10 @@ function normalizeAreaOrder_() {
       .filter(x => x.name !== "" && Number.isFinite(x.order));
     if (!entries.length) return;
     entries.sort((a, b) => a.order - b.order);
-    writeAreaList_(setup, entries);
-    syncPickDbAreaOrders_(setup);
+    withPickDbLock_(() => {
+      writeAreaList_(setup, entries);
+      syncPickDbAreaOrders_(setup);
+    });
   } catch (err) { console.error('normalizeAreaOrder_:', err); }
 }
 
@@ -736,7 +767,9 @@ function autoSavePickPathIfSafe_() {
     const vendor = String(setup.getRange(SETUP_VENDOR_CELL).getDisplayValue()).trim();
     if (!vendor) return;
     if (!isVendorOnHandClear_(vendor)) return;
-    savePickPathSilent_(vendor);
+    // Locked: the onEdit auto-save is the classic second writer racing a web
+    // commit. A lock timeout lands in this catch — the next edit retries.
+    withPickDbLock_(() => savePickPathSilent_(vendor));
   } catch (err) { console.error('autoSavePickPathIfSafe_:', err); }
 }
 

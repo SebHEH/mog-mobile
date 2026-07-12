@@ -150,13 +150,16 @@ function commitAddVendor(vendorName, mults, cutoffTime) {
   // 1b. Pre-emptive DB cleanup - if stale pick path rows exist for this vendor
   //     (e.g. from a previous remove + re-add cycle), clear them now so nothing
   //     carries over. Safe to call even if no rows exist for this vendor.
-  const setupForCleanup = getSheet_(VENDOR_TABLE.SHEET);
-  const existingDb      = readPickDb_(setupForCleanup);
-  const vLowClean       = name.toLowerCase();
-  const cleanedDb       = existingDb.filter(r => String(r[0] || "").trim().toLowerCase() !== vLowClean);
-  if (cleanedDb.length !== existingDb.length) {
-    writePickDb_(setupForCleanup, cleanedDb);
-  }
+  // Locked: read-filter-write of the whole pick DB (see withPickDbLock_).
+  withPickDbLock_(() => {
+    const setupForCleanup = getSheet_(VENDOR_TABLE.SHEET);
+    const existingDb      = readPickDb_(setupForCleanup);
+    const vLowClean       = name.toLowerCase();
+    const cleanedDb       = existingDb.filter(r => String(r[0] || "").trim().toLowerCase() !== vLowClean);
+    if (cleanedDb.length !== existingDb.length) {
+      writePickDb_(setupForCleanup, cleanedDb);
+    }
+  });
 
 
 

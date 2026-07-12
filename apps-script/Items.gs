@@ -254,6 +254,12 @@ function getItemForEdit(query) {
 
 
 function commitUpsertItem(payload) {
+  // Pick-DB write lock (see withPickDbLock_ in Core.gs) — serializes this
+  // save against concurrent pick-DB writers (other web commits, the in-sheet
+  // onEdit auto-save). Reentrant, so the helpers this calls stay unwrapped.
+  return withPickDbLock_(() => commitUpsertItem_locked_(payload));
+}
+function commitUpsertItem_locked_(payload) {
   bumpServerMutationTs_();
   const mode    = payload.mode;
   const name    = String(payload.name  || "").trim();
@@ -329,9 +335,8 @@ function commitUpsertItem(payload) {
 
     // Eligible Vendors lives in column O, past the A:G block, so it's a
     // separate write. The active vendor (C) is always forced into the list.
-    const eligibleStr = serializeEligibleVendors_(
-      normalizeEligibleList_(payload.eligibleVendors || [], vendor)
-    );
+    const eligibleAdd = normalizeEligibleList_(payload.eligibleVendors || [], vendor);
+    const eligibleStr = serializeEligibleVendors_(eligibleAdd);
     sh.getRange(newRow, COL.ELIGIBLE_VENDORS).setNumberFormat("@").setValue(eligibleStr);
 
     // Block L:N — apply checkbox validation to L:M as a single 2-cell range
@@ -349,7 +354,7 @@ function commitUpsertItem(payload) {
     let areaError    = "";
     if (payload.areaName) {
       try {
-        commitPickPathAreaAssignment(itemId, vendor, String(payload.areaName).trim());
+        commitPickPathAreaAssignment(itemId, vendor, String(payload.areaName).trim(), { itemName: name });
         assignedArea = String(payload.areaName).trim();
       } catch (err) {
         // Don't fail the add — the item row IS created. But surface the reason
@@ -362,8 +367,9 @@ function commitUpsertItem(payload) {
       reloadSetupIfVendorMatches_(vendor);
     }
     // Place the item on every eligible vendor's tab (backups included), using
-    // the area just assigned to the primary. No-op if no area yet.
-    syncItemEligiblePickRows_(itemId);
+    // the area just assigned to the primary. No-op if no area yet. ctx passes
+    // the values written above so the sync skips its full-MASTER re-read.
+    syncItemEligiblePickRows_(itemId, { name: name, primary: vendor, eligible: eligibleAdd });
     return { ok: true, mode: "add", row: newRow, id: itemId, assignedArea, areaError };
   }
 
@@ -435,7 +441,7 @@ function commitUpsertItem(payload) {
   let areaError    = "";
   if (active && payload.areaName) {
     try {
-      commitPickPathAreaAssignment(existing.id, vendor, String(payload.areaName).trim());
+      commitPickPathAreaAssignment(existing.id, vendor, String(payload.areaName).trim(), { itemName: editName });
       assignedArea = String(payload.areaName).trim();
     } catch (err) {
       // The item edits ARE saved; only the area reassignment failed. Surface
@@ -448,8 +454,10 @@ function commitUpsertItem(payload) {
   }
   // Reconcile pick-path rows to the (possibly changed) eligible list: newly
   // checked vendors are placed on their tabs, unchecked ones removed. Skipped
-  // when inactive — the block above already purged this item's rows.
-  if (active) syncItemEligiblePickRows_(existing.id);
+  // when inactive — the block above already purged this item's rows. ctx
+  // passes the values written above (incl. the promote-preserved eligible
+  // list) so the sync skips its full-MASTER re-read.
+  if (active) syncItemEligiblePickRows_(existing.id, { name: editName, primary: vendor, eligible: eligibleList });
   return { ok: true, mode: "edit", row, id: existing.id, assignedArea, areaError };
 }
 
@@ -470,6 +478,9 @@ function commitUpsertItem(payload) {
 // prompt for one; it's still promoted, it just won't appear on the new
 // primary's order sheet until an area is assigned.
 function commitSwitchActiveVendor(itemId, newVendorRaw) {
+  return withPickDbLock_(() => commitSwitchActiveVendor_locked_(itemId, newVendorRaw));
+}
+function commitSwitchActiveVendor_locked_(itemId, newVendorRaw) {
   bumpServerMutationTs_();
   const id = String(itemId || "").trim();
   if (!id) throw new Error("Item ID is required.");
@@ -557,18 +568,30 @@ function commitSwitchActiveVendor(itemId, newVendorRaw) {
 // The primary (col C) is always in the eligible list, so its row is never
 // removed. If the item has no area anywhere yet, nothing can be placed (it's
 // unassigned) — rows appear once an area is assigned. Returns {added, removed}.
-function syncItemEligiblePickRows_(itemId) {
+//
+// ctx (optional, ALL-OR-NOTHING): { name, primary, eligible } — passed by
+// commitUpsertItem, which JUST WROTE those exact values to MASTER, so the
+// full-MASTER findItemRow_ re-read (and col-O re-parse) is skipped. eligible
+// must be the freshly-written normalized array — never a pre-edit read, or
+// this reconciles the tabs to a stale list.
+function syncItemEligiblePickRows_(itemId, ctx) {
   const id = String(itemId || "").trim();
   if (!id) return { added: 0, removed: 0 };
-  const found = findItemRow_(id);
-  if (!found) return { added: 0, removed: 0 };
-  const rv      = found.rowValues;
-  const name    = String(rv[COL.NAME   - 1] || "").trim();
-  const primary = String(rv[COL.VENDOR - 1] || "").trim();
-
-  const vendorMap = new Map(getVendorList().map(v => [v.toLowerCase(), v]));
-  const eligible  = normalizeEligibleList_(rv[COL.ELIGIBLE_VENDORS - 1], primary, vendorMap);
-  const eligLow   = new Set(eligible.map(v => v.toLowerCase()));
+  let name, primary, eligible;
+  if (ctx) {
+    name     = String(ctx.name    || "").trim();
+    primary  = String(ctx.primary || "").trim();
+    eligible = ctx.eligible || [];
+  } else {
+    const found = findItemRow_(id);
+    if (!found) return { added: 0, removed: 0 };
+    const rv  = found.rowValues;
+    name      = String(rv[COL.NAME   - 1] || "").trim();
+    primary   = String(rv[COL.VENDOR - 1] || "").trim();
+    const vendorMap = new Map(getVendorList().map(v => [v.toLowerCase(), v]));
+    eligible  = normalizeEligibleList_(rv[COL.ELIGIBLE_VENDORS - 1], primary, vendorMap);
+  }
+  const eligLow = new Set(eligible.map(v => v.toLowerCase()));
 
   const setup = getSheet_(SHEET_SETUP);
   const db    = readPickDb_(setup);
@@ -632,6 +655,9 @@ function syncItemEligiblePickRows_(itemId) {
 // counted in `unplaced` so the UI can flag them. Batched: one col-O range write
 // + one pick-DB write. Returns { ok, vendor, added, removed, unplaced }.
 function commitSetVendorItems(vendorRaw, itemIds) {
+  return withPickDbLock_(() => commitSetVendorItems_locked_(vendorRaw, itemIds));
+}
+function commitSetVendorItems_locked_(vendorRaw, itemIds) {
   bumpServerMutationTs_();
   const vendor = normalizeVendorOrThrow_(vendorRaw);
   const vLow   = vendor.toLowerCase();
@@ -643,13 +669,14 @@ function commitSetVendorItems(vendorRaw, itemIds) {
   if (lastRow < 2) return { ok: true, vendor: vendor, added: 0, removed: 0, unplaced: 0 };
 
   const vendorMap = new Map(getVendorList().map(v => [v.toLowerCase(), v]));
-  const nRows    = lastRow - 1;
-  const idVals   = master.getRange(2, COL.ID,               nRows, 1).getValues();
-  const nameVals = master.getRange(2, COL.NAME,             nRows, 1).getValues();
-  const primVals = master.getRange(2, COL.VENDOR,           nRows, 1).getValues();
-  const actVals  = master.getRange(2, COL.ACTIVE,           nRows, 1).getValues();
-  const oRange   = master.getRange(2, COL.ELIGIBLE_VENDORS, nRows, 1);
-  const oVals    = oRange.getValues();
+  const nRows = lastRow - 1;
+  // One A:O block read replaces the five separate column reads this used to
+  // make (ID, NAME, VENDOR, ACTIVE, O) — same data, one API round-trip.
+  // oVals stays a standalone mutable array because col O is the only column
+  // written back (single-column setValues on oRange below).
+  const block  = master.getRange(2, 1, nRows, COL.ELIGIBLE_VENDORS).getValues();
+  const oRange = master.getRange(2, COL.ELIGIBLE_VENDORS, nRows, 1);
+  const oVals  = block.map(r => [r[COL.ELIGIBLE_VENDORS - 1]]);
 
   const setup = getSheet_(SHEET_SETUP);
   const db    = readPickDb_(setup);
@@ -669,14 +696,14 @@ function commitSetVendorItems(vendorRaw, itemIds) {
   const removeIds = new Set();
 
   for (let i = 0; i < nRows; i++) {
-    const id = String(idVals[i][0] || "").trim();
+    const id = String(block[i][COL.ID - 1] || "").trim();
     if (!id) continue;
-    const activeRaw = actVals[i][0];
+    const activeRaw = block[i][COL.ACTIVE - 1];
     const active = !(activeRaw === false ||
       (typeof activeRaw === "string" && activeRaw.trim().toLowerCase() === "false"));
     if (!active) continue;
 
-    const primary   = String(primVals[i][0] || "").trim();
+    const primary   = String(block[i][COL.VENDOR - 1] || "").trim();
     const isPrimary  = primary.toLowerCase() === vLow;
     const want       = isPrimary || wanted.has(id);
     const eligible   = normalizeEligibleList_(oVals[i][0], primary, vendorMap);
@@ -694,7 +721,7 @@ function commitSetVendorItems(vendorRaw, itemIds) {
     const onTab = onVendor.has(id);
     if (want && !onTab) {
       const area = itemArea.get(id);
-      if (area) { addRows.push({ id: id, name: String(nameVals[i][0] || "").trim(), area: area }); added++; }
+      if (area) { addRows.push({ id: id, name: String(block[i][COL.NAME - 1] || "").trim(), area: area }); added++; }
       else      { unplaced++; }
     } else if (!want && onTab && !isPrimary) {
       removeIds.add(id);
@@ -746,6 +773,11 @@ function commitSetVendorItems(vendorRaw, itemIds) {
 // Pass dryRun=true to COUNT the missing placements without writing (the
 // Store Health Check uses this to decide whether to offer the fix).
 function syncEligibleVendorsToPickPath_core_(dryRun) {
+  // Dry runs only read — no lock needed (the health check calls this).
+  if (dryRun) return syncEligibleVendorsToPickPath_run_(true);
+  return withPickDbLock_(() => syncEligibleVendorsToPickPath_run_(false));
+}
+function syncEligibleVendorsToPickPath_run_(dryRun) {
   const master  = getSheet_(SHEET_MASTER);
   const lastRow = master.getLastRow();
   if (lastRow < 2) return { added: 0, byVendor: {}, itemsAffected: 0 };
@@ -908,6 +940,9 @@ function migrateItemVendorsColumn_core_() {
 
 
 function commitDeleteItem(itemId) {
+  return withPickDbLock_(() => commitDeleteItem_locked_(itemId));
+}
+function commitDeleteItem_locked_(itemId) {
   bumpServerMutationTs_();
   const id = String(itemId || "").trim();
   if (!id) throw new Error("Item ID is required.");

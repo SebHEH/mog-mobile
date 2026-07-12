@@ -102,6 +102,9 @@ function showStorageAreasSidebar() {
 // Apps Script — if a later write throws mid-sequence the state can split; the
 // modal recovers by refetching server truth on failure.)
 function commitStorageAreasDraft(finalList) {
+  return withPickDbLock_(() => commitStorageAreasDraft_locked_(finalList));
+}
+function commitStorageAreasDraft_locked_(finalList) {
   bumpServerMutationTs_();
   if (!Array.isArray(finalList)) throw new Error("No areas provided.");
 
@@ -576,10 +579,11 @@ function buildPickPathRows_(vendor, setup, areaOrderMap) {
 
 
 
-  const saved     = [];
-  const skipped   = [];
-  const listedIds = new Set();   // every id the working list resolves, even blank-area rows
-  const counters  = new Map();
+  const saved       = [];
+  const skipped     = [];
+  const listedIds   = new Set();   // every id the working list resolves, even blank-area rows
+  const idBackfills = [];          // { i, id } — batched into one column write below
+  const counters    = new Map();
 
 
 
@@ -599,7 +603,7 @@ function buildPickPathRows_(vendor, setup, areaOrderMap) {
 
     if (!id) {
       id = idLookup.get(vendor.toLowerCase() + "||" + name.toLowerCase()) || "";
-      if (id) setup.getRange(SETUP_LIST_START_ROW + i, 4).setValue(id);
+      if (id) idBackfills.push({ i: i, id: id });
     }
 
 
@@ -619,6 +623,17 @@ function buildPickPathRows_(vendor, setup, areaOrderMap) {
 
 
 
+
+  // Write resolved IDs back to working-list col D in ONE column write (was a
+  // per-row setValue — one API round-trip per missing ID, painful on a
+  // bulk-pasted list). Rebuild the whole column from `data` + the backfills.
+  if (idBackfills.length) {
+    const dCol = data.map(r => [String(r[3] || "").trim()]);
+    idBackfills.forEach(b => { dCol[b.i][0] = b.id; });
+    const idRange = setup.getRange(SETUP_LIST_START_ROW, 4, dCol.length, 1);
+    idRange.setNumberFormat("@");
+    idRange.setValues(dCol);
+  }
 
   return { saved, skipped, listedIds };
 }
@@ -648,7 +663,11 @@ function reloadSetupIfVendorMatches_(savedVendor) {
 
 
 
-function commitPickPathAreaAssignment(itemId, vendor, areaName) {
+// opts (optional): { itemName } — passed by commitUpsertItem (which already
+// holds the name) to skip the full-MASTER findItemRow_ read below. Only
+// called from commitUpsertItem today; the lookup fallback keeps it safe for
+// any future direct caller.
+function commitPickPathAreaAssignment(itemId, vendor, areaName, opts) {
   bumpServerMutationTs_();
   const id = String(itemId  || "").trim();
   if (!id)       throw new Error("Item ID is required.");
@@ -694,8 +713,11 @@ function commitPickPathAreaAssignment(itemId, vendor, areaName) {
 
 
 
-  const found = findItemRow_(id);
-  const name  = found ? String(found.rowValues[COL.NAME - 1] || "").trim() : id;
+  let name = (opts && opts.itemName) ? String(opts.itemName).trim() : "";
+  if (!name) {
+    const found = findItemRow_(id);
+    name = found ? String(found.rowValues[COL.NAME - 1] || "").trim() : id;
+  }
 
 
 
@@ -859,6 +881,9 @@ function getPickPathForSidebar(vendor) {
 
 
 function commitReorderPickPath(vendor, payload) {
+  return withPickDbLock_(() => commitReorderPickPath_locked_(vendor, payload));
+}
+function commitReorderPickPath_locked_(vendor, payload) {
   bumpServerMutationTs_();
   if (!vendor) throw new Error("Vendor is required.");
   if (!Array.isArray(payload) || !payload.length) throw new Error("No items provided.");
@@ -997,6 +1022,11 @@ function purgeInactiveFromPickPath() {
 // MASTER out of the pick path DB, rebuilds vendor tabs when anything changed,
 // and returns { removed, removedNames, notFound }.
 function purgeInactiveFromPickPath_core_() {
+  // Lock spans the purge AND the rebuildAllPickPaths_ it triggers — one
+  // atomic pass over the pick DB (the rebuild itself stays unwrapped).
+  return withPickDbLock_(() => purgeInactiveFromPickPath_run_());
+}
+function purgeInactiveFromPickPath_run_() {
   const setup  = getSheet_(SHEET_SETUP);
   const master = getSheet_(SHEET_MASTER);
 
