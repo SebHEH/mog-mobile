@@ -3500,7 +3500,16 @@
           ' ' + escapeHtml(fmt12h(v.cutoffTime));
       }
     }
-    metaText = v.itemCount + ' ' + t('items') + cutoffSegment;
+    // Primary count headlines; backups get a quiet "+N backup" suffix so a
+    // vendor that's mostly a backup source (e.g. B&T) explains its own count
+    // screen. Older cached payloads may lack backupCount — treat as 0.
+    const backupSegment = v.backupCount
+      ? ' &middot; +' + v.backupCount + ' ' +
+        (state.lang === 'en'
+          ? (v.backupCount === 1 ? 'backup' : 'backups')
+          : (v.backupCount === 1 ? 'respaldo' : 'respaldos'))
+      : '';
+    metaText = v.itemCount + ' ' + t('items') + backupSegment + cutoffSegment;
 
     if (status === 'sent') {
       // Vendor already has a LOG_ORDERS row stamped with the current cycle
@@ -3517,7 +3526,9 @@
     } else if (status === 'in_progress') {
       statusClass = ' status-progress';
       const entered = (v.enteredCount != null) ? v.enteredCount : null;
-      const total   = v.itemCount || 0;
+      // Denominator = everything the count screen lists (primaries + backups)
+      // so "entered X / Y" can't overflow on a backup-heavy vendor.
+      const total   = (v.itemCount || 0) + (v.backupCount || 0);
       // Two sub-cases:
       //   (a) entered > 0  → show a tappable "Mark reviewed" button in
       //       place of the passive pill. Lets the KM finish a vendor
@@ -3633,6 +3644,8 @@
       if (ov.sentAt        !== nv.sentAt)        return true;
       if (ov.reference     !== nv.reference)     return true;
       if (ov.cutoffTime    !== nv.cutoffTime)    return true;
+      if ((ov.itemCount   || 0) !== (nv.itemCount   || 0)) return true;
+      if ((ov.backupCount || 0) !== (nv.backupCount || 0)) return true;
     }
     return false;
   }
