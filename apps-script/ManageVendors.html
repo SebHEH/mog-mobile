@@ -643,9 +643,9 @@
           edit:             'Edit', cancel: 'Cancel',
           saveMults:        'Save Multipliers',
           loading:          'Loading…',
+          loadErr:          'Error: ',
           cutoffLabel:      'Cutoff',
           noCutoff:         'No cutoff',
-          cutoffPlaceholder:'HH:MM',
           deliveryDaysLabel:'Delivery Days',
           deliveryDaysHint: 'Adjusting these recalculates the multipliers below.',
           multExample:      '<b>How multipliers work</b><br>You order the day <b>before</b> each delivery, sized to last until the next one. The arrow under each number shows the delivery it covers.<span class="ex-row" style="margin-top:4px">Example — delivers Mon, Thu, Sat:</span><span class="ex-row"><span class="ex-num">Wed 2</span> → arrives Thu, lasts until Sat</span><span class="ex-row"><span class="ex-num">Fri 2</span> → arrives Sat, lasts until Mon</span><span class="ex-row"><span class="ex-num">Sun 3</span> → arrives Mon, lasts until Thu</span><span class="ex-row" style="margin-top:4px">Adjust any number up or down if you\'re over- or under-ordering.</span>'
@@ -674,9 +674,9 @@
           edit:             'Editar', cancel: 'Cancelar',
           saveMults:        'Guardar Multiplicadores',
           loading:          'Cargando…',
+          loadErr:          'Error: ',
           cutoffLabel:      'Corte',
           noCutoff:         'Sin corte',
-          cutoffPlaceholder:'HH:MM',
           deliveryDaysLabel:'Días de Entrega',
           deliveryDaysHint: 'Ajustarlos recalcula los multiplicadores de abajo.',
           multExample:      '<b>Cómo funcionan los multiplicadores</b><br>Haces el pedido el día <b>antes</b> de cada entrega, calculado para durar hasta la siguiente. La flecha bajo cada número muestra la entrega que cubre.<span class="ex-row" style="margin-top:4px">Ejemplo — entrega Lun, Jue, Sáb:</span><span class="ex-row"><span class="ex-num">Mié 2</span> → llega Jue, dura hasta Sáb</span><span class="ex-row"><span class="ex-num">Vie 2</span> → llega Sáb, dura hasta Lun</span><span class="ex-row"><span class="ex-num">Dom 3</span> → llega Lun, dura hasta Jue</span><span class="ex-row" style="margin-top:4px">Ajusta cualquier número si pides de más o de menos.</span>'
@@ -903,6 +903,8 @@
       // 0=Mon..6=Sun), returns the 7 order-day multipliers. An order placed
       // on day i arrives the next day and must cover `gap` days until the
       // following delivery, so mult[i] = that gap (0 when nothing is due).
+      // ⚠ THREE COPIES exist and must stay in sync: here, RecalibrateVendor.html,
+      // and the server twins in Vendors.gs. Change one → change all three.
       function computeMultsFromDelivery(deliveryDays) {
         var mults = [0, 0, 0, 0, 0, 0, 0];
         var i, j, tomorrow, gap;
@@ -932,7 +934,6 @@
       }
 
       function recalcMultipliers() {
-        const shorts       = LANG === 'es' ? DAY_SHORT_ES : DAY_SHORT_EN;
         const names        = LANG === 'es' ? DAY_NAMES_ES : DAY_NAMES_EN;
         const deliveryDays = DAYS.map(d => byId('del-' + d) ? byId('del-' + d).checked : false);
         const count        = deliveryDays.filter(Boolean).length;
@@ -1017,7 +1018,7 @@
           })
           .withFailureHandler(function(err) {
             loadEl.style.padding = '';   // restore default for plain-text error
-            loadEl.textContent   = 'Error: ' + (err.message || String(err));
+            loadEl.textContent   = t('loadErr') + (err.message || String(err));
           })
           .getVendorTableData();
       }

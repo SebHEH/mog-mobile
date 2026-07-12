@@ -991,11 +991,11 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
 <script>
   /* Shared editor chrome. ES5 / Rhino-safe; functions are global so inline
      onclick + each page's init can call them. */
-  var MGE_CB = null, MGE_MODE = 'start';
+  var MGE_CB = null;
   var MGE_HELPBTN = null;   // the tool's ? button, relocated next to the breadcrumb title
 
   function mgeEl_(id) { return document.getElementById(id); }
-  function mgeEsc_(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function mgeEsc_(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
   function mgeIsPhone_() { return /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent || ''); }
 
   /* Shared language preference across editor pages. */
@@ -1160,7 +1160,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
   // land on a tool with an unverified session — a token flushed by a redeploy
   // or expired routes to the PIN, not a broken page.
   function mgeStartGate_(cb) {
-    MGE_CB = cb || null; MGE_MODE = 'start';
+    MGE_CB = cb || null;
     mgeApplyConcept_(); mgeApplyLang_();
     if (mgeIsPhone_()) { mgeShow_('device'); return; }
     // Validate-first, with a cross-page handoff. A token can reach this page two
@@ -1207,7 +1207,6 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
   }
   // Reprompt after a mid-session token expiry. Clear the dead token first.
   function mgeReshowGate_() {
-    MGE_MODE = 'reauth';
     mgeClearToken_(); MOG_TOKEN = null;
     mgeApplyConcept_(); mgeApplyLang_();
     if (mgeIsPhone_()) { mgeShow_('device'); return; }
@@ -1248,7 +1247,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     // reprompt left an empty table).
     mgeRunCb_();
   }
-  function mgeOnAuthFail_(err) {
+  function mgeOnAuthFail_() {
     var btn = mgeEl_('mge-btn'); if (btn) btn.disabled = false;
     mgeErr_('Something went wrong. Try again.', 'Algo salió mal. Inténtalo de nuevo.');
   }
@@ -1295,7 +1294,6 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
           stepDone: 'Listo con este paso', gateHint: 'Completa este paso para continuar.' }
   };
   function mgeTt_(k) { var l = mgeGetLang_(); return (MGE_TOUR_T[l] && MGE_TOUR_T[l][k]) || MGE_TOUR_T.en[k] || k; }
-  function mgeTourActive_() { return MGE_TOUR.active; }
   function mgeTourGateOk_() {
     var s = MGE_TOUR.steps[MGE_TOUR.step];
     if (MGE_TOUR.opts.mode !== 'gated' || !s || typeof s.gate !== 'function') return true;

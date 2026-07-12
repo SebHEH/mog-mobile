@@ -734,8 +734,8 @@
             <option value="" id="opt-all-vendors-items"></option>
           </select>
           <div class="sort-toggle">
-            <button id="sort-by-vendor" class="active" onclick="setSort('vendor')" id="btn-sort-vendor"></button>
-            <button id="sort-by-name"                  onclick="setSort('name')"   id="btn-sort-name"></button>
+            <button id="sort-by-vendor" class="active" onclick="setSort('vendor')"></button>
+            <button id="sort-by-name"                  onclick="setSort('name')"></button>
           </div>
           <span class="item-count-badge" id="view-count"></span>
         </div>
@@ -791,7 +791,7 @@
         <!-- VIEW ALL -->
         <div id="panel-view" class="panel active">
           <div class="panel-heading" id="ph-view"></div>
-          <div id="view-select-hint" class="select-hint" id="hint-view"></div>
+          <div id="view-select-hint" class="select-hint"></div>
           <div id="view-detail" style="display:none">
             <div id="view-detail-status" class="status"></div>
             <div class="detail-grid" id="view-detail-grid"></div>
@@ -933,7 +933,7 @@
               <div class="confirm-text" id="edit-delete-confirm-text"></div>
               <div class="form-actions" style="margin-top:0;">
                 <button class="btn-secondary" onclick="hideDeleteConfirm()" id="btn-cancel-delete"></button>
-                <button class="btn-danger"    onclick="doDeleteFromEdit()" id="edit-delete-btn" id="btn-confirm-delete"></button>
+                <button class="btn-danger"    onclick="doDeleteFromEdit()" id="edit-delete-btn"></button>
               </div>
             </div>
             <div id="edit-delete-status" class="status"></div>
@@ -1036,7 +1036,11 @@
         loadingItems:'Loading items…', noMatch:'No items match the filter.',
         item:'item', items:'items',
         legendNoArea:'No storage area',
-        legendInactive:'Inactive',
+        noareaBanner:'⚠ No storage area — assign via <strong>Shelf to Sheet</strong>.',
+        phItemName:'e.g., Roma Tomatoes',
+        phPack:'e.g., CASE (6), EA, BAG',
+        loadedItem:'Loaded: ',
+        loadListErr:'Error loading.',
         phView:'Item Details',
         hintView:'← Click any row in the list\nto see details\nand jump to Edit.',
         btnClear:'Clear', btnEditThis:'Edit This Item →',
@@ -1068,9 +1072,7 @@
         hintSwitchVendor:'The primary is the vendor this item is ordered from now. Make whoever\'s cheapest this week the primary — the others stay as backups. Par is unchanged.',
         switching:'Switching…', switched:'Now ordered from ',
         switchNeedsArea:' — assign a Storage Area for this vendor via Shelf to Sheet so it shows on the order sheet.',
-        phEdit:'Edit Item', lblVendorSel:'Vendor', lblItemSel:'Item',
-        optSelVendor:'-- Select a vendor --', optSelItem:'-- Select a vendor first --',
-        optSelItemReady:'-- Select an item --',
+        phEdit:'Edit Item',
         lblEditName:'Item Name', hintEditName:'Leave blank to keep current name.',
         lblReassignVendor:'Reassign to Vendor', lblEditPack:'Pack / Unit',
         lblEditPar:'Base Par', lblEditMult:'Use Multiplier',
@@ -1121,7 +1123,11 @@
         loadingItems:'Cargando artículos…', noMatch:'Ningún artículo coincide con el filtro.',
         item:'artículo', items:'artículos',
         legendNoArea:'Sin área de almacén',
-        legendInactive:'Inactivo',
+        noareaBanner:'⚠ Sin área de almacén — asígnala vía <strong>Estante a Hoja</strong>.',
+        phItemName:'p. ej., Tomates Roma',
+        phPack:'p. ej., CAJA (6), EA, BOLSA',
+        loadedItem:'Cargado: ',
+        loadListErr:'Error al cargar.',
         phView:'Detalles del Artículo',
         hintView:'← Haz clic en cualquier fila\npara ver detalles\ny saltar a Editar.',
         btnClear:'Limpiar', btnEditThis:'Editar Este Artículo →',
@@ -1153,9 +1159,7 @@
         hintSwitchVendor:'El principal es el proveedor del que se pide este artículo ahora. Haz principal al que esté más barato esta semana — los demás quedan como respaldo. El par no cambia.',
         switching:'Cambiando…', switched:'Ahora se pide de ',
         switchNeedsArea:' — asigna un Área de Almacén para este proveedor vía Estante a Hoja para que aparezca en la hoja.',
-        phEdit:'Editar Artículo', lblVendorSel:'Proveedor', lblItemSel:'Artículo',
-        optSelVendor:'-- Selecciona un proveedor --', optSelItem:'-- Selecciona un proveedor primero --',
-        optSelItemReady:'-- Selecciona un artículo --',
+        phEdit:'Editar Artículo',
         lblEditName:'Nombre del Artículo', hintEditName:'Deja en blanco para conservar el nombre actual.',
         lblReassignVendor:'Reasignar a Proveedor', lblEditPack:'Empaque / Unidad',
         lblEditPar:'Par Base', lblEditMult:'Usar Multiplicador',
@@ -1254,14 +1258,14 @@
       setText('btn-edit-this',   t('btnEditThis'));
       setText('lbl-switch-vendor',  t('lblSwitchVendor'));
       setText('hint-switch-vendor', t('hintSwitchVendor'));
-      byId('view-noarea-banner').innerHTML = '⚠ ' + t('legendNoArea') + ' — assign via <strong>Shelf to Sheet</strong>.';
+      byId('view-noarea-banner').innerHTML = t('noareaBanner');
       // Add panel
       setText('ph-add',          t('phAdd'));
       setText('lbl-add-name',    t('lblName'));
-      setAttr('add-name', 'placeholder', 'e.g., Roma Tomatoes');
+      setAttr('add-name', 'placeholder', t('phItemName'));
       setText('lbl-add-vendor',  t('lblVendor'));
       setText('lbl-add-pack',    t('lblPack'));
-      setAttr('add-pack', 'placeholder', 'e.g., CASE (6), EA, BAG');
+      setAttr('add-pack', 'placeholder', t('phPack'));
       setText('lbl-add-par',     t('lblPar'));
       setAttr('add-par', 'placeholder', '10');
       setText('lbl-add-mult',    t('lblMult'));
@@ -1419,7 +1423,7 @@
       // modals — currently only ManageItems' View All cache reads it.
       try { localStorage.setItem('mog_lastMutationTs', String(Date.now())); } catch (e) {}
     }
-    function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
     function setStatus(key, msg, type) {
       const el = byId(key + '-status'); if (!el) return;
       el.textContent = msg; el.className = 'status ' + (type || '');
@@ -1633,6 +1637,10 @@
     // ── Tab switching ─────────────────────────────────────────────────────────
     const TAB_KEYS = ['view','add','inactive','unassigned','assign'];
     function switchTab(key) {
+      // No-op when the target tab is already active — a same-tab re-click used
+      // to re-run renderAssign(), silently wiping unsaved checkbox edits.
+      const cur = document.querySelector('.panel.active');
+      if (cur && cur.id === 'panel-' + key) return;
       // Guard: leaving the Assign tab with unsaved checkbox edits routes through
       // the unsaved-changes popup; the actual switch runs on Save/Don't save.
       const onAssign = byId('panel-assign') && byId('panel-assign').classList.contains('active');
@@ -2504,8 +2512,8 @@
           byId('edit-area-new').value = '';
           setEditFormState_('loaded');
           renderParPreview_('edit');   // live per-delivery-day order target
-          setStatus('edit-load', 'Loaded: ' + data.id, 'ok'); setStatus('edit', '');
-          showDangerZone(data);
+          setStatus('edit-load', t('loadedItem') + data.id, 'ok'); setStatus('edit', '');
+          showDangerZone();
         })
         .withFailureHandler(err => {
           setEditFormState_('empty');
@@ -2550,7 +2558,8 @@
           allItems.push({
             id: res.id, name: name, vendor: vendor, eligibleVendors: eligible,
             pack: pack, par: (par === '' ? '' : Number(par)),
-            active: true, useMult: (useMult === 'true'), hasArea: !!res.assignedArea
+            active: true, useMult: (useMult === 'true'), hasArea: !!res.assignedArea,
+            storageArea: res.assignedArea || ''
           });
           clearItemsCache_(); writeItemsCache_(allItems, parFlags);
           computeNewIds_();
@@ -2634,7 +2643,7 @@
     }
 
     // ── Delete from Edit ──────────────────────────────────────────────────────
-    function showDangerZone(item) {
+    function showDangerZone() {
       byId('edit-danger-zone').style.display = 'block';
       byId('edit-delete-prompt').style.display = 'block';
       byId('edit-delete-confirm-zone').style.display = 'none';
@@ -2751,7 +2760,7 @@
         })
         .withFailureHandler(err => {
           setStatus('unassigned', err.message || String(err), 'warn');
-          byId('unassigned-list-wrap').innerHTML = "<div class='unassigned-empty'>Error loading.</div>";
+          byId('unassigned-list-wrap').innerHTML = "<div class='unassigned-empty'>" + t('loadListErr') + "</div>";
         })
         .getUnassignedActiveItems();
     }

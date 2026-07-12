@@ -255,7 +255,10 @@
 
       function setLang(lang) {
         LANG = lang;
-        document.body.className = 'lang-' + lang;
+        // Toggle only the lang-* class — a wholesale className assignment wipes
+        // any other body class (the clobber that broke the dual-host tools).
+        document.body.classList.remove('lang-en', 'lang-es');
+        document.body.classList.add('lang-' + lang);
         var btns = document.querySelectorAll('.lang-btn');
         for (var i = 0; i < btns.length; i++) {
           btns[i].classList.toggle('active', ['en','es'][i] === lang);
@@ -299,7 +302,8 @@
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;');
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
       }
 
       function render() {

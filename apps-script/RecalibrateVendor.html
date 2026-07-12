@@ -372,6 +372,7 @@
           confirmSave:     'Recalibrate ',
           confirmSaveEnd:  '?\n\nThis will update the multipliers AND divide each item par by the selected divisor. Continue?',
           saving:          'Saving…',
+          loading:         'Loading…',
           saved:           'Saved.',
           unsavedClose:    'You have unsaved changes. Close anyway?',
           loadFailed:      'Could not load vendor data.',
@@ -394,6 +395,7 @@
           confirmSave:     '¿Recalibrar ',
           confirmSaveEnd:  '?\n\nEsto actualizará los multiplicadores Y dividirá cada par de artículo por el divisor seleccionado. ¿Continuar?',
           saving:          'Guardando…',
+          loading:         'Cargando…',
           saved:           'Guardado.',
           unsavedClose:    'Tienes cambios sin guardar. ¿Cerrar de todos modos?',
           loadFailed:      'No se pudo cargar los datos del proveedor.',
@@ -486,7 +488,7 @@
       }
 
       function loadVendor(name) {
-        setStatus(t('saving'), 'info');
+        setStatus(t('loading'), 'info');
         google.script.run
           .withSuccessHandler(function(data) {
             setStatus('');
@@ -543,6 +545,8 @@
       // returns the 7 order-day multipliers. mult[i] = gap until next delivery
       // for an order placed on day i (i+1 arrives next, then count days until
       // following delivery).
+      // ⚠ THREE COPIES exist and must stay in sync: here, ManageVendors.html,
+      // and the server twins in Vendors.gs. Change one → change all three.
       function computeMultsFromDelivery(deliveryDays) {
         var mults = [0,0,0,0,0,0,0];
         var i, j, tomorrow, gap;
