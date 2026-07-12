@@ -206,7 +206,8 @@ function commitAddVendor(vendorName, mults, cutoffTime) {
   const templateSheet = ss.getSheetByName("VENDOR_TEMPLATE");
   if (!templateSheet) throw new Error(
     "VENDOR_TEMPLATE tab is missing on this store. Run Ordering Guide → " +
-    "📱 Mobile API → Re-establish Vendor Template before adding a vendor."
+    "📱 Mobile API → 🩺 Store Health Check and use its Re-establish Template " +
+    "fix before adding a vendor."
   );
 
 
@@ -610,6 +611,9 @@ function auditVendorCadence() {
 // 7-element boolean delivery-day array (Mon..Sun), returns the 7 order-day
 // multipliers under the 1-day-lead assumption: an order placed on day i
 // arrives the next day and must cover the gap until the following delivery.
+// ⚠ THREE COPIES of this cadence math exist and must stay in sync: here,
+// ManageVendors.html, and RecalibrateVendor.html (client copies — modals
+// can't call .gs helpers directly). Change one → change all three.
 function computeMultsFromDelivery_(deliveryDays) {
   const mults = [0, 0, 0, 0, 0, 0, 0];
   for (let i = 0; i < 7; i++) {
@@ -720,10 +724,10 @@ function auditVendorTabStructure() {
     "Vendor Tab Structure Audit\n" +
     "Reference: " + refLabel + "\n\n" +
     (templateMissing
-      ? "⚠ VENDOR_TEMPLATE is MISSING on this store. Add-vendor falls back\n" +
-        "to ss.getSheets()[3] (the 4th sheet) — fragile. Re-establishing the\n" +
-        "template is required before migrating. Audit below is tab-vs-tab\n" +
-        "consistency only.\n\n"
+      ? "⚠ VENDOR_TEMPLATE is MISSING on this store. Add-vendor refuses to\n" +
+        "run without it (fail-safe, no fallback). Re-establish it via the\n" +
+        "🩺 Store Health Check's Re-establish Template fix before adding\n" +
+        "vendors. Audit below is tab-vs-tab consistency only.\n\n"
       : "") +
     "Tabs audited: " + total + "\n" +
     "✓ Match reference: " + okCount + "\n" +

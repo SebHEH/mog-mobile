@@ -69,14 +69,6 @@ const PROP_PIN_LOCKOUT_UNTIL = 'MOG_PIN_LOCKOUT_UNTIL';
 const PIN_MAX_ATTEMPTS = 5;
 const PIN_LOCKOUT_MS   = 5 * 60 * 1000;  // 5 minutes
 
-// MOG-specific columns in MASTER_ITEMS not present in the existing COL object.
-// The COL object (Core.gs) only references columns through NOTES (14)
-// because On Hand and the formula columns live on vendor tabs in that workflow.
-// The mobile API reads On Hand straight from MASTER_ITEMS, so we declare it here.
-const MOG_COL = {
-  ON_HAND: 9 // I — "On Hand"
-};
-
 // Optional fallback vendor metadata. Cutoff times are now read primarily
 // from SETUP column AA (see VENDOR_CUTOFF_COL in Core.gs) —
 // edit them through the ManageVendors sidebar's Add tab or View All
@@ -529,8 +521,9 @@ function api_getVendorItems_(payload) {
   //   M(13)= Item ID (hidden, formula-driven from SETUP pick path)
   //   Data rows start at VENDOR_TAB.DATA_START_ROW (3).
   //
-  // Those are the ONLY two columns this function consumes. Everything else
-  // comes from code + canonical sources:
+  // Those are the ONLY two columns this function consumes (the range read
+  // below spans A:M for simplicity, but only E and M are used). Everything
+  // else comes from code + canonical sources:
   //   * On Hand lives on the vendor tab — that's where users enter counts
   //     (manually in the sheet, or via this API for the mobile app). The
   //     dashboard's "X / Y entered" counter reads vendor tab column E too.
@@ -1108,9 +1101,9 @@ function readMasterItemMeta_() {
   //   * par           = column G (Base Par Qty) — canonical, per-item base par.
   //   * useMult       = column M (Use Multiplier).
   //   * name          = column B (Item Name), pack = column E (Pack / Unit).
-  //   * primaryVendor = column C — the active/primary vendor. An item can sit on
-  //     several vendor tabs (one pick-path row each); only the tab matching this
-  //     value actually orders. Others are secondaries (reference/backup).
+  //   * primaryVendor = column C — the default order source. An item can sit on
+  //     several vendor tabs (one pick-path row each); every tab is fully
+  //     orderable — tabs not matching this value are badged as secondaries.
   // All are read here in code so api_getVendorItems_ can build its payload
   // without reading the vendor tab's formula columns — col D (par), col A
   // (name), and col B (pack) are each just XLOOKUP(id, MASTER_ITEMS!A, …)
@@ -1311,23 +1304,9 @@ function normalizeCutoffForApi_(raw) {
 }
 
 
-function countActiveItemsForVendor_(vendor) {
-  const sh = getSheet_(SHEET_MASTER);
-  const lastRow = sh.getLastRow();
-  if (lastRow < 2) return 0;
-  const data = sh.getRange(2, 1, lastRow - 1, COL.ACTIVE).getValues();
-  let count = 0;
-  for (const r of data) {
-    if (String(r[COL.VENDOR - 1] || '').trim() === vendor && r[COL.ACTIVE - 1] === true) count++;
-  }
-  return count;
-}
-
-
-// Bulk variant of countActiveItemsForVendor_ — one MASTER_ITEMS scan returns
-// counts for every vendor at once. The dashboard used to call the singular
-// form inside its per-vendor loop, rescanning master ~10x per hit; this
-// folds it into a single pass.
+// One MASTER_ITEMS scan returns active-item counts for every vendor at once.
+// (The dashboard used to call a per-vendor singular variant inside its loop,
+// rescanning master ~10x per hit; this folds it into a single pass.)
 function countActiveItemsByVendor_() {
   const sh = getSheet_(SHEET_MASTER);
   const lastRow = sh.getLastRow();

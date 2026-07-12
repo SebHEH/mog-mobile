@@ -92,7 +92,7 @@ function getAllItemsForView() {
 // sheet reads entirely and returns parsed JSON.
 //
 // Cache lifecycle:
-//   - Key is 'manageItems_v1_' + getServerMutationTs_()
+//   - Key is 'manageItems_v3_' + getServerMutationTs_()
 //   - Any commit* bumps the timestamp -> next call sees a new key -> miss
 //   - Stale entries (old timestamp) orphan and expire on their own TTL
 //   - 5-minute TTL caps how long any single key can live
@@ -486,13 +486,13 @@ function commitSwitchActiveVendor(itemId, newVendorRaw) {
     }
   }
 
-  // Flip the active vendor (column C). The eligible list (D) already contains
-  // newVendor, so D needs no change.
+  // Flip the primary vendor (column C). The eligible list (O) already contains
+  // newVendor, so O needs no change.
   master.getRange(row, COL.VENDOR).setValue(newVendor);
 
-  // Promote to primary WITHOUT moving the item off any tab. In the two-vendor
+  // Promote to primary WITHOUT moving the item off any tab. In the multi-vendor
   // model an item can sit on several vendor tabs (one pick-path row each);
-  // column C just marks which one actually orders. So we KEEP every existing
+  // column C just marks the default order source. So we KEEP every existing
   // pick row — the old primary stays as a secondary/backup — and only ADD a row
   // for the new primary if it doesn't already have one, carrying the item's
   // current storage area so it lands on the new primary's order sheet.
@@ -719,9 +719,9 @@ function commitSetVendorItems(vendorRaw, itemIds) {
 // somewhere, it ADDS a pick-path row (same area) for any eligible vendor that
 // doesn't have one yet. Additive + idempotent — it never removes rows and never
 // invents placements beyond what the eligible list already declares. Rows where
-// the vendor isn't the item's primary (col C) show as secondaries and are
-// excluded from ordering (api_getVendorItems_) and the recap (snapshotVendorOrders_).
-// Menu wrapper: syncEligibleVendorsToPickPath.
+// the vendor isn't the item's primary (col C) are flagged as secondaries but are
+// FULLY ORDERABLE — the badge only labels the default source (col C); On Hand
+// per tab routes the order. Menu wrapper: syncEligibleVendorsToPickPath.
 function syncEligibleVendorsToPickPath_core_() {
   const master  = getSheet_(SHEET_MASTER);
   const lastRow = master.getLastRow();
@@ -806,8 +806,8 @@ function syncEligibleVendorsToPickPath() {
   ui.alert("Place Backup Vendors on Tabs",
     "Placed " + r.added + " item–vendor row(s) onto vendor tabs (" +
     r.itemsAffected + " item(s)):\n\n" + lines.join("\n") +
-    "\n\nWhere the vendor isn't the item's primary, it appears as a secondary " +
-    "(reference only) — excluded from ordering and the recap.",
+    "\n\nWhere the vendor isn't the item's primary, it appears as a secondary — " +
+    "fully orderable; the badge just labels the default order source.",
     ui.ButtonSet.OK);
 }
 
@@ -876,46 +876,6 @@ function migrateItemVendorsColumn_core_() {
 
 
 
-
-
-
-function commitDeactivateItem(itemId) {
-  bumpServerMutationTs_();
-  const id = String(itemId || "").trim();
-  if (!id) throw new Error("Item ID is required.");
-  const found = findItemRow_(id);
-  if (!found) throw new Error("Item not found: " + id);
-  const sh     = getSheet_(SHEET_MASTER);
-  const r      = found.rowValues;
-  const name   = String(r[COL.NAME   - 1] || "").trim();
-  const vendor = String(r[COL.VENDOR - 1] || "").trim();
-
-
-
-
-  // 1. Mark inactive in MASTER_ITEMS — column L already has validation applied.
-  sh.getRange(found.sheetRow, COL.ACTIVE).setValue(false);
-
-
-
-
-  // 2. Remove from pick path database so vendor tab stops showing it
-  const setup    = getSheet_(SHEET_SETUP);
-  const existing = readPickDb_(setup);
-  const kept     = existing.filter(dbRow => String(dbRow[1] || "").trim() !== id);
-  if (kept.length !== existing.length) writePickDb_(setup, kept);
-
-
-
-
-  // 3. Reload SETUP working list so the vendor tab reflects the removal
-  reloadSetupIfVendorMatches_(vendor);
-
-
-
-
-  return { ok: true, name, id };
-}
 
 
 

@@ -112,7 +112,7 @@ function buildHomeDashboard() {
 
   // === COMPUTE DYNAMIC LAYOUT ===
   // Vendor tile section grows to fit the master vendor list (SETUP!Z).
-  // Always shows tiles in groups of 5 per row, minimum 2 rows (10 slots),
+  // Always shows tiles in groups of TILES_PER_ROW per row, minimum 2 rows,
   // even if the master list is shorter — keeps layout balanced on small
   // setups. Empty tile slots stay white via conditional formatting and
   // visually disappear into the sheet background.
@@ -261,17 +261,6 @@ function buildHomeDashboard() {
   // AE3 = day-of-week of TODAY (Mon/Tue/...). Vendor tab H2 formulas use
   // this for their multiplier column lookup.
   //
-  // IMPORTANT design note: the multiplier columns in SETUP (S:Y) represent
-  // the day the ORDER IS PLACED, not the delivery day. So if today is Wed
-  // and Wed's column has a 1, that means "order this item on Wed" (which
-  // implicitly is for whatever delivery cycle that vendor runs on).
-  //
-  // Order day comes from the LAST RESET DATE (AE9), not today (AE2). This
-  // keeps the active ordering cycle locked to whatever day was last reset
-  // until the user resets again. Without this, midnight rollover would
-  // silently switch every vendor's multipliers to the new day before
-  // yesterday's order was actually placed and logged. Falls back to today
-  // when AE9 is blank (fresh setup, never reset yet).
   // IMPORTANT design note: the multiplier columns in SETUP (S:Y) represent
   // the day the ORDER IS PLACED, not the delivery day. So if today is Wed
   // and Wed's column has a 1, that means "order this item on Wed" (which

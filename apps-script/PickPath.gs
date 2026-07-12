@@ -512,6 +512,9 @@ function savePickPathSilent_(vendor) {
   const existing = readPickDb_(setup);
   const kept     = existing.filter(r => String(r[0] || "").trim() !== vendor);
   writePickDb_(setup, kept.concat(result.saved));
+  // Pick-path rows changed — bump like commitReorderPickPath does, so cached
+  // manageItems/dashboard payloads refresh instead of waiting out the TTL.
+  bumpServerMutationTs_();
 }
 
 

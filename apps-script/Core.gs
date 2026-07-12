@@ -386,6 +386,9 @@ function resetEmergencyOverrideOnOpen_() {
   if (props.getProperty(EMERGENCY_OVERRIDE_LASTDATE_PROP) !== today) {
     overrideRange.setValue(false);
     props.setProperty(EMERGENCY_OVERRIDE_LASTDATE_PROP, today);
+    // The override state changed outside the API layer — bump the mutation
+    // ts so the PWA's cached dashboard reflects it promptly, not TTL-later.
+    bumpServerMutationTs_();
   }
 }
 
@@ -616,8 +619,10 @@ function getQuickActionDispatch_() {
 
 // Handles edits on the HOME dashboard (ORDER_ENTRY tab). Routes the seven
 // dashboard checkboxes (6 quick actions + Reset On Hand) to their handlers
-// and resets the checkbox after each. Other edits (e.g. Emergency Override
-// toggle) flow through to formula recalc with no script action.
+// and resets the checkbox after each. An Emergency Override hand-toggle
+// (AD2) needs no script action for the formulas, but bumps the mutation ts
+// so the PWA's cached dashboard refreshes promptly. Other edits flow
+// through to formula recalc with no script action.
 function handleDashboardEdit_(e) {
   const a1     = e.range.getA1Notation();
   const col    = e.range.getColumn();
@@ -647,6 +652,10 @@ function handleDashboardEdit_(e) {
     resetOnHandAllVendors();
     return;
   }
+
+  // Emergency Override hand-toggled in the sheet — the PWA-side toggle
+  // (api_setEmergencyOverride_) bumps; mirror that for in-sheet edits.
+  if (a1 === EMERGENCY_OVERRIDE_CELL) bumpServerMutationTs_();
 }
 
 

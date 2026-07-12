@@ -295,7 +295,7 @@ const PAR_FLAG = {
 // Called by ManageItems on load.
 // Reads LOG_ORDERS and MASTER_ITEMS (for par values), computes flags per item.
 //
-// Window: only orders from the last PAR_FLAG.WINDOW_DAYS (default 14) are
+// Window: only orders from the last PAR_FLAG.WINDOW_DAYS (currently 28) are
 // counted. Older entries are excluded so a recent par adjustment isn't
 // dragged down by stale behavior.
 //
@@ -356,8 +356,8 @@ function getParReviewFlags() {
 
   // Rolling window cutoff: only count orders from the last WINDOW_DAYS.
   // Anything older is excluded from the aggregation, so a par change made
-  // recently isn't dragged down by old behavior. A 2-week window gives
-  // 3x/week vendors ~6 data points and daily vendors ~14.
+  // recently isn't dragged down by old behavior. A 4-week window gives
+  // 3x/week vendors ~12 data points and daily vendors ~28.
   const cutoff = new Date();
   cutoff.setHours(0, 0, 0, 0);
   cutoff.setDate(cutoff.getDate() - PAR_FLAG.WINDOW_DAYS);
