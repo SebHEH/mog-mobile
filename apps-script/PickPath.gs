@@ -276,6 +276,17 @@ function writePickDb_(setupSheet, rows) {
 /***********************
  * 8) PICK PATH LOGIC
  ***********************/
+// Re-derives every vendor's pick-path rows: re-sorted by area order, shelf
+// numbers renumbered (10, 20, 30…), names refreshed from MASTER, rows for
+// inactive/deleted items dropped.
+//
+// The pick DB ITSELF is the roster truth (multi-vendor, 2026-07-06): a row
+// means "this item sits on this vendor's tab", whether the vendor is the
+// item's primary (MASTER col C) or a backup (col O). So each vendor's roster
+// is rebuilt from the vendor's OWN existing rows — NOT from a MASTER
+// primary-vendor filter, which would silently drop every backup placement
+// (the bug that made the purge undo "Place Backup Vendors on Tabs").
+// MASTER is consulted only for activity and canonical names.
 function rebuildAllPickPaths_() {
   bumpServerMutationTs_();
   const setup        = getSheet_(SHEET_SETUP);
@@ -291,6 +302,15 @@ function rebuildAllPickPaths_() {
   const masterLastRow = master.getLastRow();
   if (masterLastRow < 2) return;
   const masterData = master.getRange(2, 1, masterLastRow - 1, COL.ACTIVE).getValues();
+
+  const activeById = new Map();
+  const nameById   = new Map();
+  for (const r of masterData) {
+    const id = String(r[COL.ID - 1] || "").trim();
+    if (!id) continue;
+    activeById.set(id, r[COL.ACTIVE - 1] === true);
+    nameById.set(id, String(r[COL.NAME - 1] || "").trim());
+  }
 
 
 
@@ -313,30 +333,36 @@ function rebuildAllPickPaths_() {
 
   vendors.forEach(vendor => {
     const vendorRows = dbByVendor.get(vendor) || [];
+    if (!vendorRows.length) return;
 
 
 
 
-    const savedMap   = new Map();
     const savedOrder = new Map();
     for (const r of vendorRows) {
       const itemId = String(r[1] || "").trim();
       if (!itemId) continue;
-      savedMap.set(itemId, String(r[3] || "").trim());
       savedOrder.set(itemId, { areaOrder: Number(r[4]), shelfOrder: Number(r[5]) });
     }
 
 
 
 
-    const items = masterData
-      .filter(r => String(r[COL.VENDOR - 1] || "").trim() === vendor && r[COL.ACTIVE - 1] === true)
-      .map(r => ({
-        id:   String(r[COL.ID   - 1] || "").trim(),
-        name: String(r[COL.NAME - 1] || "").trim(),
-        area: savedMap.get(String(r[COL.ID - 1] || "").trim()) || ""
-      }))
-      .filter(x => x.id && x.name && x.area);
+    // Roster = this vendor's own rows (primary AND backup). Keep a row when
+    // the item is still active in MASTER and has an area; refresh the name
+    // from MASTER so renames propagate; dedupe defensively on item id.
+    const seen  = new Set();
+    const items = [];
+    for (const r of vendorRows) {
+      const id   = String(r[1] || "").trim();
+      const area = String(r[3] || "").trim();
+      if (!id || !area || seen.has(id)) continue;
+      if (activeById.get(id) !== true) continue;
+      const name = nameById.get(id) || String(r[2] || "").trim();
+      if (!name) continue;
+      seen.add(id);
+      items.push({ id: id, name: name, area: area });
+    }
 
 
 
@@ -369,10 +395,15 @@ function rebuildAllPickPaths_() {
 
 
 
-  const itemsWithArea = new Set(newDb.map(r => String(r[1] || "").trim()));
+  // Rows whose vendor is no longer in the vendor list (a removed vendor's
+  // leftovers) pass through unchanged — no tab spills from them, and re-adding
+  // the vendor reconciles them. Rows for IN-list vendors were either rebuilt
+  // above or deliberately dropped (inactive/deleted item, blank area).
   for (const r of existingDb) {
+    const v      = String(r[0] || "").trim();
     const itemId = String(r[1] || "").trim();
-    if (itemId && !itemsWithArea.has(itemId)) newDb.push(r);
+    if (!v || !itemId) continue;
+    if (vendors.indexOf(v) === -1) newDb.push(r);
   }
 
 
@@ -439,6 +470,11 @@ function loadSetupVendorItems_() {
 
 
 
+  // Deliberately PRIMARY-only (MASTER col C): the in-sheet working list is the
+  // simple per-vendor view; backup placements (eligible-vendor rows) are
+  // managed in the web editor (Manage Items / Shelf to Sheet). Because this
+  // list omits backups, savePickPathSilent_ must scope its deletions to the
+  // ids listed here — never wholesale-replace the vendor's rows.
   const items = master
     .getRange(2, 1, lastRow - 1, COL.ACTIVE)
     .getValues()
@@ -510,7 +546,15 @@ function savePickPathSilent_(vendor) {
   const result = buildPickPathRows_(vendor, setup, areaOrderMap);
   if (!result.saved.length) return;
   const existing = readPickDb_(setup);
-  const kept     = existing.filter(r => String(r[0] || "").trim() !== vendor);
+  // Replace ONLY rows for items the working list actually contains. The list
+  // shows the vendor's PRIMARY items only (see loadSetupVendorItems_), so the
+  // vendor's backup rows — items primaried elsewhere but placed on this tab —
+  // must survive this save. A wholesale "drop all of this vendor's rows"
+  // replace here used to wipe them (fixed 2026-07-12).
+  const kept = existing.filter(r =>
+    String(r[0] || "").trim() !== vendor ||
+    !result.listedIds.has(String(r[1] || "").trim())
+  );
   writePickDb_(setup, kept.concat(result.saved));
   // Pick-path rows changed — bump like commitReorderPickPath does, so cached
   // manageItems/dashboard payloads refresh instead of waiting out the TTL.
@@ -532,9 +576,10 @@ function buildPickPathRows_(vendor, setup, areaOrderMap) {
 
 
 
-  const saved    = [];
-  const skipped  = [];
-  const counters = new Map();
+  const saved     = [];
+  const skipped   = [];
+  const listedIds = new Set();   // every id the working list resolves, even blank-area rows
+  const counters  = new Map();
 
 
 
@@ -561,6 +606,7 @@ function buildPickPathRows_(vendor, setup, areaOrderMap) {
 
 
     if (!id) return;
+    listedIds.add(id);
     if (!area) { skipped.push(name); return; }
 
 
@@ -574,7 +620,7 @@ function buildPickPathRows_(vendor, setup, areaOrderMap) {
 
 
 
-  return { saved, skipped };
+  return { saved, skipped, listedIds };
 }
 
 
