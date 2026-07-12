@@ -174,6 +174,42 @@ function getStoreHealthReport() {
     }
   } catch (e) { add('pickdb', 'Pick path consistency', 'warn', 'Check errored: ' + e.message); }
 
+  // ── 7) Backup vendor placement (eligible list ↔ pick-path rows) ─────────
+  // An item's eligible vendors (MASTER col O) should each have a pick-path
+  // row so the item shows on that vendor's tab. Dry-run of the backfill
+  // counts what's missing without writing.
+  try {
+    const r = syncEligibleVendorsToPickPath_core_(true);
+    if (r.added) {
+      add('backups_placed', 'Backup vendor placement', 'warn',
+        r.added + ' eligible placement(s) across ' + r.itemsAffected +
+        ' item(s) are not on their vendor tab(s) yet: ' +
+        Object.keys(r.byVendor).sort().map(v => v + ' (' + r.byVendor[v] + ')').join(', ') + '.',
+        "Places every eligible vendor's items onto its tab. Adds rows only — nothing is removed.",
+        'place_backups');
+    } else {
+      add('backups_placed', 'Backup vendor placement', 'pass',
+        'Every eligible vendor is on its tab.');
+    }
+  } catch (e) { add('backups_placed', 'Backup vendor placement', 'warn', 'Check errored: ' + e.message); }
+
+  // ── 8) PIN lockout ───────────────────────────────────────────────────────
+  // Read the raw property (not getPinLockoutState_, which self-heals by
+  // deleting expired keys — this report must stay write-free).
+  try {
+    const until     = parseInt(props.getProperty(PROP_PIN_LOCKOUT_UNTIL) || '0', 10);
+    const remaining = until - Date.now();
+    if (remaining > 0) {
+      add('pin_lockout', 'PIN lockout', 'warn',
+        'PIN entry is locked for ~' + Math.ceil(remaining / 60000) +
+        ' more minute(s) after repeated failed attempts. It self-clears, or fix now.',
+        'Clears the failure counter so the next PIN attempt works immediately.',
+        'clear_lockout');
+    } else {
+      add('pin_lockout', 'PIN lockout', 'pass', 'No active PIN lockout.');
+    }
+  } catch (e) { add('pin_lockout', 'PIN lockout', 'warn', 'Check errored: ' + e.message); }
+
   // ── Summary ──────────────────────────────────────────────────────────────
   const summary = { pass: 0, warn: 0, fail: 0 };
   checks.forEach(c => { if (summary[c.status] != null) summary[c.status]++; });
@@ -232,6 +268,25 @@ function runHealthFix(fixId) {
         message: r.hadRows
           ? 'Seeded the Eligible Vendors column (' + r.changed + ' row(s) updated).'
           : 'Header set; there were no item rows to seed.'
+      };
+    }
+    case 'place_backups': {
+      const r = syncEligibleVendorsToPickPath_core_();
+      return {
+        ok: true,
+        message: r.added
+          ? 'Placed ' + r.added + ' item–vendor row(s) onto vendor tabs (' +
+            r.itemsAffected + ' item(s)). Secondaries are fully orderable.'
+          : 'Every eligible vendor already has a pick-path row — nothing to add.'
+      };
+    }
+    case 'clear_lockout': {
+      const r = clearPinLockout_core_();
+      return {
+        ok: true,
+        message: r.cleared
+          ? 'PIN lockout cleared — the next attempt starts a fresh counter.'
+          : 'No lockout was active.'
       };
     }
     default:

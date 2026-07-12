@@ -876,6 +876,7 @@
             <div class="hint" id="hint-edit-name"></div>
           </div>
           <div class="row"><label id="lbl-edit-vendor"></label><select id="edit-vendor" onchange="onEditVendorChange()"></select></div>
+          <div class="hint" id="hint-edit-vendor"></div>
           <div class="row">
             <label id="lbl-edit-eligible"></label>
             <div id="edit-eligible" class="vendor-checklist"></div>
@@ -1074,7 +1075,8 @@
         switchNeedsArea:' — assign a Storage Area for this vendor via Shelf to Sheet so it shows on the order sheet.',
         phEdit:'Edit Item',
         lblEditName:'Item Name', hintEditName:'Leave blank to keep current name.',
-        lblReassignVendor:'Reassign to Vendor', lblEditPack:'Pack / Unit',
+        lblReassignVendor:'Reassign to Vendor', hintReassign:'Picking a new vendor makes it the primary — the current one stays as a backup.',
+        lblEditPack:'Pack / Unit',
         lblEditPar:'Base Par', lblEditMult:'Use Multiplier',
         lblEditActive:'Active', optActive:'Active', optInactive:'Inactive',
         slPickPath:'Shelf to Sheet', lblCurrentArea:'Current Area', lblNewArea:'Reassign to',
@@ -1161,7 +1163,8 @@
         switchNeedsArea:' — asigna un Área de Almacén para este proveedor vía Estante a Hoja para que aparezca en la hoja.',
         phEdit:'Editar Artículo',
         lblEditName:'Nombre del Artículo', hintEditName:'Deja en blanco para conservar el nombre actual.',
-        lblReassignVendor:'Reasignar a Proveedor', lblEditPack:'Empaque / Unidad',
+        lblReassignVendor:'Reasignar a Proveedor', hintReassign:'Elegir otro proveedor lo hace el principal — el actual queda como respaldo.',
+        lblEditPack:'Empaque / Unidad',
         lblEditPar:'Par Base', lblEditMult:'Usar Multiplicador',
         lblEditActive:'Activo', optActive:'Activo', optInactive:'Inactivo',
         slPickPath:'Estante a Hoja', lblCurrentArea:'Área Actual', lblNewArea:'Reasignar a',
@@ -1286,6 +1289,7 @@
       setAttr('edit-name', 'placeholder', t('hintEditName'));
       setText('hint-edit-name',     t('hintEditName'));
       setText('lbl-edit-vendor',    t('lblReassignVendor'));
+      setText('hint-edit-vendor',   t('hintReassign'));
       setText('lbl-edit-eligible',  t('lblEligibleEdit'));
       setText('hint-edit-eligible', t('hintEligible'));
       setText('lbl-edit-pack',      t('lblEditPack'));

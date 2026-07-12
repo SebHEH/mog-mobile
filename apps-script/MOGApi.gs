@@ -441,6 +441,7 @@ function api_getDashboard_compute_() {
   // "to order" count reads MASTER_ITEMS / SETUP a single time, not per vendor.
   const snapCtx = { masterMeta: readMasterItemMeta_(), vendorMults: vendorMults,
                     emergencyOverride: emergencyOverride, dayOfWeek: dayOfWeek };
+  const backupCounts = countBackupItemsByVendor_(snapCtx.masterMeta);
 
   const out = [];
   for (const vendorName of allVendors) {
@@ -450,9 +451,10 @@ function api_getDashboard_compute_() {
     // next-delivery coverage.
     if (!emergencyOverride && (Number(mults[dayOfWeek]) || 0) <= 0) continue;
 
-    const meta      = VENDOR_META[vendorName] || {};
-    const itemCount = itemCounts.get(vendorName) || 0;
-    const log       = todaysLog.get(vendorName);
+    const meta        = VENDOR_META[vendorName] || {};
+    const itemCount   = itemCounts.get(vendorName) || 0;
+    const backupCount = backupCounts.get(vendorName) || 0;
+    const log         = todaysLog.get(vendorName);
 
     let status       = 'not_started';
     let sentAt       = null;
@@ -465,7 +467,10 @@ function api_getDashboard_compute_() {
       sentAt       = log.sentAt;
       reference    = log.reference;
       toOrderCount = log.itemCount;
-      enteredCount = itemCount; // a sent vendor implicitly has all items "entered"
+      // A sent vendor implicitly has all items "entered" — primaries AND
+      // backups, matching the count screen's roster (the client denominator
+      // is itemCount + backupCount).
+      enteredCount = itemCount + backupCount;
     } else {
       const inProgress = vendorOnHandSnapshot_(vendorName, snapCtx);
       enteredCount = inProgress.enteredCount;
@@ -486,6 +491,7 @@ function api_getDashboard_compute_() {
     out.push({
       name:         vendorName,
       itemCount:    itemCount,
+      backupCount:  backupCount,
       cutoffTime:   cutoff,
       status:       status,
       sentAt:       sentAt,
@@ -1147,7 +1153,8 @@ function readMasterItemMeta_() {
       par:           Number(r[6]),
       name:          String(r[1] || '').trim(),   // B — Item Name
       pack:          String(r[4] || '').trim(),   // E — Pack / Unit
-      primaryVendor: String(r[2] || '').trim()    // C — active/primary vendor
+      primaryVendor: String(r[2] || '').trim(),   // C — active/primary vendor
+      active:        r[11] === true               // L — Active flag
     });
   }
   return map;
@@ -1301,6 +1308,32 @@ function normalizeCutoffForApi_(raw) {
     return (h < 10 ? '0' : '') + h + ':' + (mins < 10 ? '0' : '') + mins;
   }
   return null;
+}
+
+
+// One pick-DB scan returns, per vendor, how many ACTIVE items sit on its tab
+// as BACKUPS — rows where the vendor is not the item's primary (MASTER col C).
+// Complements countActiveItemsByVendor_ (primary counts). The dashboard card
+// shows the two side by side ("N items · +M backup").
+function countBackupItemsByVendor_(masterMeta) {
+  const setup = getSheet_(SHEET_SETUP);
+  const db    = readPickDb_(setup);
+  const map   = new Map();
+  const seen  = new Set();   // "vendorLower||id" — defensive dedupe
+  for (const r of db) {
+    const v  = String(r[0] || '').trim();
+    const id = String(r[1] || '').trim();
+    if (!v || !id) continue;
+    const key = v.toLowerCase() + '||' + id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const meta = masterMeta.get(id);
+    if (!meta || meta.active !== true) continue;   // deleted or inactive item
+    const primary = String(meta.primaryVendor || '').trim();
+    if (primary.toLowerCase() === v.toLowerCase()) continue;   // primary row
+    map.set(v, (map.get(v) || 0) + 1);
+  }
+  return map;
 }
 
 
@@ -2057,21 +2090,28 @@ function showMobileApiStatus() {
 }
 
 
+// UI-free core — shared by the Sheet menu wrapper (below) and the web
+// health-check fix (runHealthFix 'clear_lockout'). Returns { cleared }.
+function clearPinLockout_core_() {
+  const props = PropertiesService.getScriptProperties();
+  const had = !!(props.getProperty(PROP_PIN_FAIL_COUNT) ||
+                 props.getProperty(PROP_PIN_LOCKOUT_UNTIL));
+  if (had) {
+    props.deleteProperty(PROP_PIN_FAIL_COUNT);
+    props.deleteProperty(PROP_PIN_LOCKOUT_UNTIL);
+  }
+  return { cleared: had };
+}
+
 function clearPinLockout() {
   // Manual unlock — for when a legitimate manager gets locked out and
   // can't wait 5 minutes, or when testing. Wired into the Mobile API
   // menu in Core.gs.
   const ui = SpreadsheetApp.getUi();
-  const props = PropertiesService.getScriptProperties();
-  const had = props.getProperty(PROP_PIN_FAIL_COUNT) ||
-              props.getProperty(PROP_PIN_LOCKOUT_UNTIL);
-  if (!had) {
-    ui.alert('No lockout active. Failure counter is already clear.');
-    return;
-  }
-  props.deleteProperty(PROP_PIN_FAIL_COUNT);
-  props.deleteProperty(PROP_PIN_LOCKOUT_UNTIL);
-  ui.alert('PIN lockout cleared. Next attempt starts a fresh counter.');
+  const r  = clearPinLockout_core_();
+  ui.alert(r.cleared
+    ? 'PIN lockout cleared. Next attempt starts a fresh counter.'
+    : 'No lockout active. Failure counter is already clear.');
 }
 
 

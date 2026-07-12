@@ -385,9 +385,20 @@ function commitUpsertItem(payload) {
   const eligibleSource = (payload.eligibleVendors !== undefined && payload.eligibleVendors !== null)
     ? payload.eligibleVendors
     : eligibleCell.getValue();
-  eligibleCell.setNumberFormat("@").setValue(
-    serializeEligibleVendors_(normalizeEligibleList_(eligibleSource, vendor))
-  );
+  const eligibleList = normalizeEligibleList_(eligibleSource, vendor);
+  // Reassign = PROMOTE, not move (decision 2026-07-12): when the primary
+  // changes, the old primary automatically stays as a secondary — the same
+  // semantics as the View-detail "Make primary" quick-switch. Primaries swap
+  // week to week on price/stock; the old source must stay orderable and its
+  // pick row (with its area) survives via syncItemEligiblePickRows_ below.
+  // To drop the old vendor entirely, uncheck it in a follow-up edit.
+  const oldPrimary = String((existing && existing.vendor) || "").trim();
+  if (oldPrimary &&
+      oldPrimary.toLowerCase() !== vendor.toLowerCase() &&
+      !eligibleList.some(v => v.toLowerCase() === oldPrimary.toLowerCase())) {
+    eligibleList.push(oldPrimary);
+  }
+  eligibleCell.setNumberFormat("@").setValue(serializeEligibleVendors_(eligibleList));
 
   // Block L:N — cells L and M already have checkbox validation applied
   // from the Add path, so no need to re-apply. Single setValues writes
@@ -722,7 +733,9 @@ function commitSetVendorItems(vendorRaw, itemIds) {
 // the vendor isn't the item's primary (col C) are flagged as secondaries but are
 // FULLY ORDERABLE — the badge only labels the default source (col C); On Hand
 // per tab routes the order. Menu wrapper: syncEligibleVendorsToPickPath.
-function syncEligibleVendorsToPickPath_core_() {
+// Pass dryRun=true to COUNT the missing placements without writing (the
+// Store Health Check uses this to decide whether to offer the fix).
+function syncEligibleVendorsToPickPath_core_(dryRun) {
   const master  = getSheet_(SHEET_MASTER);
   const lastRow = master.getLastRow();
   if (lastRow < 2) return { added: 0, byVendor: {}, itemsAffected: 0 };
@@ -783,7 +796,7 @@ function syncEligibleVendorsToPickPath_core_() {
     }
   }
 
-  if (toAdd.length) {
+  if (toAdd.length && !dryRun) {
     writePickDb_(setup, db.concat(toAdd));
     bumpServerMutationTs_();
   }
