@@ -2145,12 +2145,20 @@
     refreshBanner_();
   }
 
-  let draining = false;
-  async function drainSaveQueue_() {
-    if (draining) return;
+  // In-flight drain promise. A second caller JOINS the running drain (awaits
+  // the same promise) instead of returning immediately — the new-day
+  // auto-reset depends on this: it must not fire commitReset while a
+  // boot-kicked drain is mid-flight, or yesterday's queued counts either get
+  // wiped unlogged or land on the freshly-cleared sheet.
+  let drainPromise_ = null;
+  function drainSaveQueue_() {
+    if (drainPromise_) return drainPromise_;
+    drainPromise_ = drainSaveQueueRun_().finally(() => { drainPromise_ = null; });
+    return drainPromise_;
+  }
+  async function drainSaveQueueRun_() {
     const queue = readSaveQueue_();
     if (!queue.length) return;
-    draining = true;
     let drained = 0;
     let toastShown = false;
     try {
@@ -2183,7 +2191,6 @@
         }
       }
     } finally {
-      draining = false;
       refreshBanner_();
       if (drained > 0) {
         showToast(t('synced'), 'success');
@@ -2771,6 +2778,15 @@
   async function runStaleReset_(busyLabel) {
     showBusy(busyLabel);
     try {
+      // Flush any offline-queued counts FIRST — they're previous-cycle data
+      // and must be on the sheet before commitReset logs and clears it.
+      // Joins the boot-kicked drain when one is already in flight. If the
+      // drain fails on network, commitReset fails the same way → the
+      // Refresh screen; entries stay queued for the next attempt. Entries
+      // that fail on a server error were unsendable either way — don't
+      // hold the store's reset hostage to them.
+      try { await drainSaveQueue_(); }
+      catch (e) { console.warn('[reset] pre-reset drain error (continuing):', e); }
       await api('commitReset', null, RESET_TIMEOUT_MS);
       finishResetAndEnterApp_();
     } catch (err) {
