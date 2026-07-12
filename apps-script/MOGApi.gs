@@ -519,7 +519,7 @@ function api_getDashboard_compute_() {
 }
 
 
-function api_getVendorItems_(payload) {
+function api_getVendorItems_(payload, ctx) {
   // Reads the vendor tab for On Hand + the item roster only.
   //
   // Vendor tab structure (per VENDOR_TAB constant + script comments):
@@ -547,6 +547,14 @@ function api_getVendorItems_(payload) {
   //
   // Storage area / pick path order still come from SETUP's pick path DB
   // because the vendor tab itself doesn't carry that metadata.
+  //
+  // ctx (optional, ALL-OR-NOTHING): a shared read context for callers that
+  // loop over many vendors (buildRecapSections_) so the pick DB / MASTER /
+  // multiplier / override / cutoff reads happen once, not per vendor. When
+  // provided it MUST carry every field — { pickDb, vendorMults,
+  // emergencyOverride, dayOfWeek, masterMeta, cutoffs } — a partial ctx
+  // would silently mix fresh and stale reads. Single-vendor callers (the
+  // PWA dispatch) pass nothing and behave exactly as before.
   const vendor = normalizeVendorOrThrow_(payload.vendor);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(vendor);
@@ -560,7 +568,7 @@ function api_getVendorItems_(payload) {
   // Pick path metadata — area + ordering — keyed by item ID
   const setup = getSheet_(SHEET_SETUP);
   const pickInfo = new Map();
-  for (const r of readPickDb_(setup)) {
+  for (const r of (ctx ? ctx.pickDb : readPickDb_(setup))) {
     if (String(r[0] || '').trim() !== vendor) continue;
     const id = String(r[1] || '').trim();
     if (!id) continue;
@@ -583,16 +591,16 @@ function api_getVendorItems_(payload) {
   // by bridging to the vendor's next scheduled delivery (see
   // vendorDayMultiplier_). The in-Sheet H2 formula is unchanged and still
   // drives the human view.
-  const vendorMults       = readVendorMultipliers_(setup);
-  const emergencyOverride = readEmergencyOverride_();
-  const dayMult = vendorDayMultiplier_(
-    vendorMults, vendor, getActiveOrderDate_().dayOfWeek, emergencyOverride);
+  const vendorMults       = ctx ? ctx.vendorMults : readVendorMultipliers_(setup);
+  const emergencyOverride = ctx ? ctx.emergencyOverride : readEmergencyOverride_();
+  const dayOfWeek         = ctx ? ctx.dayOfWeek : getActiveOrderDate_().dayOfWeek;
+  const dayMult = vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride);
 
   // Map<itemId, {useMult, par, name, pack}> from MASTER_ITEMS. par (col G) is
   // the canonical per-item base par; useMult (col M) gates the day multiplier;
   // name/pack (cols B/E) are the display fields the tab's A/B XLOOKUPs mirror.
   // Consulted per-item below.
-  const masterMeta = readMasterItemMeta_();
+  const masterMeta = ctx ? ctx.masterMeta : readMasterItemMeta_();
 
   const items = [];
   for (const r of data) {
@@ -681,7 +689,7 @@ function api_getVendorItems_(payload) {
   // shared helper because we only need one vendor's value here.
   let cutoff = null;
   try {
-    const cutoffMap = readVendorCutoffs_(getSheet_(SHEET_SETUP));
+    const cutoffMap = ctx ? ctx.cutoffs : readVendorCutoffs_(getSheet_(SHEET_SETUP));
     cutoff = cutoffMap.get(vendor) || null;
   } catch (e) {
     // If SETUP read fails for any reason, fall through to VENDOR_META.
@@ -916,10 +924,23 @@ function buildRecapSections_(requestedVendors) {
     });
   }
 
+  // Shared read context — built ONCE and passed into api_getVendorItems_ so
+  // the pick DB / MASTER / multiplier / override / cutoff reads don't repeat
+  // per vendor (they used to: ~5 redundant range reads × N vendors per
+  // recap). Must be all-or-nothing per the ctx contract on that function.
+  const recapCtx = {
+    pickDb:            readPickDb_(setup),
+    vendorMults:       vendorMults,
+    emergencyOverride: readEmergencyOverride_(),
+    dayOfWeek:         dayOfWeek,
+    masterMeta:        readMasterItemMeta_(),
+    cutoffs:           readVendorCutoffs_(setup)
+  };
+
   const sections = [];
   let totalItems = 0;
   for (const vendor of vendorsToCheck) {
-    const result = api_getVendorItems_({ vendor: vendor });
+    const result = api_getVendorItems_({ vendor: vendor }, recapCtx);
     const lines = result.items
       .filter(it => it.suggestedQty != null && it.suggestedQty > 0)
       .map(it => ({

@@ -3849,7 +3849,12 @@
     if (!opts.force && state.cache.vendorItems[vendor]) {
       return Promise.resolve(state.cache.vendorItems[vendor]);
     }
-    if (!opts.force && state.inflightVendorFetches[vendor]) {
+    // An in-flight server fetch satisfies BOTH normal and forced callers —
+    // it's already going to the server, so a second concurrent invocation of
+    // the same read is pure waste (this is what made a cold count-open fire
+    // getVendorItems twice: the persisted-cache branch's background refresh
+    // raced revalidateCountItems_'s forced fetch).
+    if (state.inflightVendorFetches[vendor]) {
       return state.inflightVendorFetches[vendor];
     }
     // Try localStorage before the network so a freshly-opened app
@@ -3859,16 +3864,25 @@
       const persisted = readVendorOfflineCache_(vendor);
       if (persisted) {
         state.cache.vendorItems[vendor] = persisted;
-        // Still kick a background refresh so the cache catches up
-        // with any server-side changes — but we don't await it. The
-        // returned promise resolves immediately with persisted data.
+        // Still kick a background refresh so the cache catches up with any
+        // server-side changes — but we don't await it. The returned promise
+        // resolves immediately with persisted data. The refresh registers in
+        // inflightVendorFetches so a follow-up (e.g. the count screen's
+        // revalidate) JOINS it instead of fetching again.
         if (navigator.onLine !== false) {
-          api('getVendorItems', { vendor: vendor })
-            .then(fresh => {
-              state.cache.vendorItems[vendor] = fresh;
-              writeVendorOfflineCache_(vendor, fresh);
-            })
-            .catch(() => { /* offline or transient; ignore */ });
+          const bg = api('getVendorItems', { vendor: vendor }).then(fresh => {
+            state.cache.vendorItems[vendor] = fresh;
+            writeVendorOfflineCache_(vendor, fresh);
+            delete state.inflightVendorFetches[vendor];
+            return fresh;
+          }).catch(err => {
+            delete state.inflightVendorFetches[vendor];
+            throw err;
+          });
+          state.inflightVendorFetches[vendor] = bg;
+          // Handled here so an unjoined background failure never surfaces as
+          // an unhandled rejection; joiners still see the rejection via bg.
+          bg.catch(() => { /* offline or transient; ignore */ });
         }
         return Promise.resolve(persisted);
       }

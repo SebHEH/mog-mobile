@@ -1346,7 +1346,7 @@
     // try/catch, and silently fall back to a network fetch on every open.
     // See readItemsCache_ / writeItemsCache_ / clearItemsCache_ further down
     // for the actual logic.
-    const ITEMS_CACHE_KEY = 'mog_manageItems_cache_v3';
+    const ITEMS_CACHE_KEY = 'mog_manageItems_cache_v4';
     const ITEMS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
     function byId(id) { return document.getElementById(id); }
@@ -1608,31 +1608,13 @@
       buildVendorChecklist_('add-eligible', '', []);  // no active vendor picked yet
       updatePrereqBanner_();   // vendors are known synchronously (injected)
 
-      MIRPC()
-        .withSuccessHandler(areas => {
-          areaList = areas;
-          ['add-area','edit-area-new'].forEach(id => {
-            const sel = byId(id);
-            while (sel.options.length > 1) sel.remove(1);
-            areas.forEach(a => { const o = document.createElement('option'); o.value = a.name; o.textContent = a.name; sel.appendChild(o); });
-          });
-          updatePrereqBanner_();   // areas now known — may flip block→tip→hidden
-        })
-        .withFailureHandler(() => {})
-        .getStorageAreaList();
-
+      // Storage areas + vendor multipliers now RIDE the bootstrap payload
+      // (or the client items cache) — no separate getStorageAreaList /
+      // getVendorTableData calls on open. See applyBootstrapExtras_.
       setLang(MOG_WEB ? mgeGetLang_() : 'en');   // web: open in the language chosen at the gate
       loadAllItems();
-      if (MOG_WEB) {
-        // Live per-day par preview needs each vendor's 7-day multipliers. Fetched
-        // AFTER loadAllItems so an issue here can never block the item list.
-        MIRPC()
-          .withSuccessHandler(rows => { (rows || []).forEach(r => { VENDOR_MULTS[r.name] = r.mults || []; }); })
-          .withFailureHandler(() => {})
-          .getVendorTableData();
-        // Per-tool mini-tour is REPLAY-ONLY by design (via the ? help "↻ Replay" button).
-        // Home flow-tour + setup wizard cover first-run orientation. Re-enable: maybeAutoStartItemsTour_();
-      }
+      // Per-tool mini-tour is REPLAY-ONLY by design (via the ? help "↻ Replay" button).
+      // Home flow-tour + setup wizard cover first-run orientation. Re-enable: maybeAutoStartItemsTour_();
     }
     // Sheet mode: init immediately. Web mode: gate (device + PIN) first, then init.
     if (MOG_WEB) { mgeStartGate_(initManageItems_); }
@@ -1953,7 +1935,12 @@
         localStorage.setItem(ITEMS_CACHE_KEY, JSON.stringify({
           ts: Date.now(),
           items: items,
-          flags: flags || {}
+          flags: flags || {},
+          // Areas + vendor multipliers ride along (from the current globals)
+          // so a cache-hit open needs ZERO round-trips — the bootstrap
+          // carries them on the network path (RPC consolidation, 2026-07-12).
+          areas: areaList,
+          vendorMults: VENDOR_MULTS
         }));
       } catch (e) {
         // localStorage may be disabled (private browsing, full quota, etc.).
@@ -1965,14 +1952,31 @@
       try { localStorage.removeItem(ITEMS_CACHE_KEY); } catch (e) {}
     }
 
+    // Applies the bootstrap's side payloads — storage areas + per-vendor
+    // multipliers — to the UI: fills the area dropdowns, updates the prereq
+    // banner, and seeds the par-preview mults. Fed by the network bootstrap
+    // AND the client items cache, so both open paths populate identically.
+    function applyBootstrapExtras_(areas, vendorMults) {
+      areaList = areas || [];
+      ['add-area','edit-area-new'].forEach(id => {
+        const sel = byId(id); if (!sel) return;
+        while (sel.options.length > 1) sel.remove(1);
+        areaList.forEach(a => { const o = document.createElement('option'); o.value = a.name; o.textContent = a.name; sel.appendChild(o); });
+      });
+      VENDOR_MULTS = vendorMults || {};
+      updatePrereqBanner_();   // areas now known — may flip block→tip→hidden
+    }
+
     function loadAllItems() {
-      // Cache hit: render synchronously, skip both round-trips. The render
-      // path matches a fresh fetch — renderTable() respects the current
-      // vendor filter, sort order, and selectedItem state.
+      // Cache hit: render synchronously, ZERO round-trips (areas + mults are
+      // cached alongside the items). The render path matches a fresh fetch —
+      // renderTable() respects the current vendor filter, sort order, and
+      // selectedItem state.
       const cached = readItemsCache_();
       if (cached) {
         allItems = cached.items;
         parFlags = cached.flags || {};
+        applyBootstrapExtras_(cached.areas || [], cached.vendorMults || {});
         byId('table-loading').style.display = 'none';
         computeNewIds_();
         computeParAdjustedIds_();
@@ -1986,16 +1990,18 @@
       byId('item-table').style.display = 'none';
       byId('table-empty').style.display = 'none';
 
-      // Single combined round-trip: server returns { items, flags } via the
-      // getManageItemsBootstrap endpoint (server-side wrapped with
-      // CacheService keyed by the document mutation timestamp). Saves one
-      // full network round-trip vs the previous parallel pair, and skips
-      // the sheet read entirely when the server cache hits.
+      // Single combined round-trip: server returns { items, flags, areas,
+      // vendorTable } via the getManageItemsBootstrap endpoint (server-side
+      // wrapped with CacheService keyed by the document mutation timestamp).
+      // ONE call covers what used to be 2 (Sheet) / 3 (web) opens.
       MIRPC()
         .withSuccessHandler(result => {
           allItems = (result && result.items) || [];
           parFlags = (result && result.flags) || {};
-          writeItemsCache_(allItems, parFlags); // populate client cache for next open
+          const vm = {};
+          ((result && result.vendorTable) || []).forEach(r => { vm[r.name] = r.mults || []; });
+          applyBootstrapExtras_((result && result.areas) || [], vm);
+          writeItemsCache_(allItems, parFlags); // populate client cache for next open (persists areas/mults from globals)
           byId('table-loading').style.display = 'none';
           computeNewIds_();
           computeParAdjustedIds_();
@@ -2019,6 +2025,9 @@
         .withSuccessHandler(result => {
           allItems = (result && result.items) || [];
           parFlags = (result && result.flags) || {};
+          const vm = {};
+          ((result && result.vendorTable) || []).forEach(r => { vm[r.name] = r.mults || []; });
+          applyBootstrapExtras_((result && result.areas) || [], vm);
           writeItemsCache_(allItems, parFlags);
           computeNewIds_(); computeParAdjustedIds_();
           const entry = allItems.find(x => String(x.id) === String(id));

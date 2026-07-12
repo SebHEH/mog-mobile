@@ -92,7 +92,7 @@ function getAllItemsForView() {
 // sheet reads entirely and returns parsed JSON.
 //
 // Cache lifecycle:
-//   - Key is 'manageItems_v3_' + getServerMutationTs_()
+//   - Key is 'manageItems_v4_' + getServerMutationTs_()
 //   - Any commit* bumps the timestamp -> next call sees a new key -> miss
 //   - Stale entries (old timestamp) orphan and expire on their own TTL
 //   - 5-minute TTL caps how long any single key can live
@@ -105,7 +105,7 @@ function getAllItemsForView() {
 // items still render even if the par-flag computation throws.
 function getManageItemsBootstrap() {
   const ts = getServerMutationTs_();
-  const cacheKey = 'manageItems_v3_' + ts;
+  const cacheKey = 'manageItems_v4_' + ts;
 
   let cache = null;
   try { cache = CacheService.getDocumentCache(); } catch (e) { cache = null; }
@@ -122,7 +122,17 @@ function getManageItemsBootstrap() {
   const items = getAllItemsForView();
   let flags = {};
   try { flags = getParReviewFlags(); } catch (e) { flags = {}; }
-  const payload = { items: items, flags: flags };
+  // Areas + vendor multipliers ride the same response so the modal opens on
+  // ONE round-trip (they used to be 1–2 separate calls: getStorageAreaList
+  // always, getVendorTableData on the web host for the par preview). Same
+  // failure tolerance as flags — the item list must render even if these
+  // side reads throw. Both are invalidated correctly by the mutation-ts key:
+  // area and vendor commits all bump the ts.
+  let areas = [];
+  try { areas = getStorageAreaList(); } catch (e) { areas = []; }
+  let vendorTable = [];
+  try { vendorTable = getVendorTableData(); } catch (e) { vendorTable = []; }
+  const payload = { items: items, flags: flags, areas: areas, vendorTable: vendorTable };
 
   if (cache) {
     try {
