@@ -321,28 +321,6 @@
     }
     .hero-loc i { font-size: 17px; color: var(--text-2); }
 
-    /* Tiny red reset button in the hero row — visually quiet but
-       discoverable for the "I messed up" case. Real safety comes from
-       the strong confirm modal, not from hiding the button. */
-    .hero-reset {
-      flex-shrink: 0;
-      display: inline-flex; align-items: center; gap: 5px;
-      background: transparent;
-      color: var(--red);
-      border: 1px solid rgba(163,45,45,0.35);
-      border-radius: 999px;
-      padding: 6px 10px;
-      font-size: 12px; font-weight: 600;
-      margin-top: 4px;
-    }
-    .hero-reset:active { background: var(--red-light); }
-    .hero-reset i { font-size: 14px; }
-    .hero-reset-label { /* hidden on very narrow screens */ }
-    @media (max-width: 340px) {
-      .hero-reset-label { display: none; }
-      .hero-reset { padding: 6px 8px; }
-    }
-
     /* "View full order list" pinned at top once any vendor is reviewed.
        Slightly bolder than the default secondary CTA to stand out as a
        top-of-page anchor without competing with the all-done panel. */
@@ -2344,19 +2322,6 @@
       emailMyCopy:      { en: 'Email me the daily summary', es: 'Env\u00edame el resumen' },
       emailing:         { en: 'Sending…', es: 'Enviando…' },
       refreshing:       { en: 'Refreshing…', es: 'Actualizando…' },
-      // Reset card on home
-      resetHomeTitle:   { en: 'Reset on hand', es: 'Reiniciar inventario' },
-      resetHomeSub: {
-        en: 'Logs all current counts and clears on hand for every vendor. Use only if you need to start over.',
-        es: 'Registra todo y borra el stock de todos los proveedores. Usar solo si necesitas reiniciar.'
-      },
-      resetHomeCta:     { en: 'Reset on hand', es: 'Reiniciar inventario' },
-      confirmReset:     { en: 'Reset on hand for everyone?', es: '¿Reiniciar inventario para todos?' },
-      confirmResetMsg: {
-        en: "This logs every vendor's current counts to history and clears on hand across the whole sheet. This affects everyone, not just one vendor.",
-        es: 'Esto registra todos los conteos actuales y borra el inventario de todo el sistema. Afecta a todos los proveedores, no solo a uno.'
-      },
-      yesReset:         { en: 'Yes, reset everything', es: 'S\u00ed, reiniciar todo' },
       // Emergency override (home)
       overrideCta:      { en: 'Emergency override', es: 'Anulaci\u00f3n de emergencia' },
       overrideOnTitle:  { en: 'Emergency override on', es: 'Anulaci\u00f3n de emergencia activada' },
@@ -2444,7 +2409,6 @@
       // Recap UI
       recapStaleText: { en: 'Daily summary is out of date', es: 'El resumen diario está desactualizado' },
       recapStaleCta: { en: 'Resend', es: 'Reenviar' },
-      autoSendingSummary: { en: 'Sending order summary…', es: 'Enviando resumen…' },
       autoSendFailed: { en: 'Daily summary email failed. Retry from home.', es: 'No se envió el resumen. Reinténtalo desde inicio.' },
       flushPartialFail: {
         en: 'Some counts didn\'t save — email may show partial data.',
@@ -3152,21 +3116,16 @@
 
     let html = '';
 
-    // Hero row: day + location on the left, small reset affordance on the
-    // right. The reset is small, red, and intentionally less prominent
-    // than the vendor cards — it's a "fix-it" button, not a default flow.
-    // Hidden initially and revealed via a long-press gesture / tap? No:
-    // it stays visible but visually quiet. The strong confirm modal does
-    // the heavy lifting on safety.
+    // Hero row: day + location. (The manual reset button that used to sit
+    // on the right was removed 2026-07-12 — the new-day reset auto-runs on
+    // open, so a KM-facing manual reset was pure friction plus an
+    // accidental-tap hazard. The Sheet dashboard's Reset On Hand checkbox
+    // remains as the admin path.)
     html += '<div class="hero-row">' +
       '<div class="hero-row-text">' +
         '<p class="hero-day">' + escapeHtml(formatDateLong(data.date, data.dayOfWeek)) + '</p>' +
         '<p class="hero-loc"><i class="ti ti-map-pin" aria-hidden="true"></i>' + escapeHtml(data.location) + '</p>' +
       '</div>' +
-      '<button class="hero-reset" id="home-reset-btn" aria-label="' + escapeHtml(t('resetHomeTitle')) + '">' +
-        '<i class="ti ti-refresh" aria-hidden="true"></i>' +
-        '<span class="hero-reset-label">' + escapeHtml(t('resetHomeCta')) + '</span>' +
-      '</button>' +
     '</div>';
 
     // Emergency override control. Off → a quiet dashed pill to turn it on
@@ -3341,7 +3300,6 @@
     if ($('alldone-email-btn'))  $('alldone-email-btn').addEventListener('click', onSendDailyRecap);
     if ($('alldone-resend-btn')) $('alldone-resend-btn').addEventListener('click', onSendDailyRecap);
     if ($('view-full-btn'))      $('view-full-btn').addEventListener('click', openRecap);
-    if ($('home-reset-btn'))     $('home-reset-btn').addEventListener('click', onHomeResetClick);
     if ($('stale-resend-btn'))   $('stale-resend-btn').addEventListener('click', onStaleResendClick);
     if ($('override-on-btn'))    $('override-on-btn').addEventListener('click', () => onOverrideToggle_(true));
     if ($('override-off-btn'))   $('override-off-btn').addEventListener('click', () => onOverrideToggle_(false));
@@ -5966,98 +5924,10 @@
     }
   }
 
-  async function onHomeResetClick() {
-    // Strong confirm — this is destructive and affects every vendor.
-    const ok = await showConfirm({
-      kind: 'danger',
-      icon: 'alert-triangle',
-      title: t('confirmReset'),
-      msg:   t('confirmResetMsg'),
-      confirmLabel: t('yesReset'),
-      cancelLabel:  t('cancel')
-    });
-    if (!ok) return;
-
-    // Backup auto-send: if no email has been sent for this cycle yet,
-    // send it now BEFORE commitReset clears the live on-hand state.
-    // Best-effort — a failure does NOT block reset, since stranding the
-    // KM on a flaky network is worse than missing an email they can
-    // resend manually.
-    //
-    // No userEmail gate anymore — recipients live in SETUP. Server's
-    // PROP_LAST_RECAP_SENT_DATE dedupe and the local recap_sent_ flag
-    // (checked inside autoSendDailyRecap_) handle the "already sent
-    // this cycle" case. If no recipients exist, the server returns a
-    // "No recipients configured" error which autoSendDailyRecap_
-    // swallows silently — auto paths shouldn't blow up just because
-    // someone forgot to set up the recipient list.
-    try {
-      showBusy(t('autoSendingSummary'));
-      await autoSendDailyRecap_('pre-reset');
-    } catch (e) {
-      console.warn('[reset] pre-reset auto-send error (continuing):', e);
-    }
-
-    showBusy(state.lang === 'en' ? 'Resetting…' : 'Reiniciando…');
-    try {
-      // Same generous timeout as the auto-reset path — on a cold /exec the
-      // reset routinely outruns the default 15s and the client would abort
-      // while the server finishes, skipping all the cleanup below.
-      await api('commitReset', null, RESET_TIMEOUT_MS);
-
-      // Wipe caches and per-cycle localStorage BEFORE the reload so the
-      // self-heal in loadToday has the cleanest possible starting state.
-      state.cache.dashboard       = null;
-      setDashboardFetchedAt_(null);
-      state.cache.historyDates    = null;
-      state.cache.historyVendors  = {};
-      state.cache.recap           = null;
-      state.cache.vendorItems = {};
-      clearAllPerCycleLocalState_();
-      clearAllOfflineState_();
-
-      // Sanity-check the cleanup actually worked. If a key with one of
-      // our prefixes is still around, force-delete by direct scan.
-      // This shouldn't be needed but guards against any subtle bug in
-      // the prefix loop above. Scoped to the current deployment's
-      // namespace — other stores' keys are not touched.
-      try {
-        const sPrefixes = [
-          nsKey_('reviewed_'),
-          nsKey_('recap_sent_'),
-          nsKey_('recap_stale_'),
-          nsKey_('draft_')
-        ];
-        const survivors = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && sPrefixes.some(p => k.startsWith(p))) {
-            survivors.push(k);
-          }
-        }
-        if (survivors.length) {
-          console.warn('[reset] cleanup survivors, force-removing:', survivors);
-          survivors.forEach(k => localStorage.removeItem(k));
-        }
-      } catch (e) { /* non-fatal */ }
-
-      await loadToday();
-      showToast(state.lang === 'en' ? 'Reset complete' : 'Reinicio completo', 'success');
-    } catch (err) {
-      console.error('home reset error:', err);
-      // A network/timeout failure usually means the server finished anyway
-      // (Apps Script keeps running after the client gives up) — say so in
-      // the KM's language instead of surfacing a raw AbortError string.
-      const msg = isNetworkError_(err)
-        ? (state.lang === 'en'
-            ? 'Connection problem — the reset may have finished anyway. Close and reopen the app to check.'
-            : 'Problema de conexión — el reinicio pudo haberse completado. Cierra y vuelve a abrir la app para verificar.')
-        : String(err.message || 'Error');
-      showToast(msg, 'error');
-    } finally {
-      hideBusy();
-    }
-  }
+  // (onHomeResetClick removed 2026-07-12 along with the home-screen manual
+  // reset button — the new-day reset auto-runs in proceedAfterAuth via
+  // autoRunStaleReset/runStaleReset_; the Sheet dashboard's Reset On Hand
+  // checkbox remains as the admin-side manual path.)
 
   async function onDailySummaryClick() {
     const row = $('settings-summary');
