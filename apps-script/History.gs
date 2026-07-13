@@ -285,7 +285,8 @@ const PAR_FLAG = {
   OVER_ONHAND_PCT:   0.75, // On Hand ≥ 75% of par counts as "over" (50%→75%, 2026-07-08: counts are post-lunch, ~half a daily par is reserved for dinner + PM prep)
   OVER_FREQ_PCT:     0.50, // ≥ 50% of orders were "over"  → flag
   OVER_MIN_BASE_PAR: 1,    // skip over-flag when base par < 1 unit (nothing to trim, 2026-07-07)
-  OVER_MIN_EFF_PAR:  2     // skip over-flag when avg multiplied order (qty+onHand) < 2 units
+  OVER_MIN_EFF_PAR:  2,    // skip over-flag when avg multiplied order (qty+onHand) < 2 units
+  OVER_MIN_AVG_ONHAND: 1   // skip over-flag when avg On Hand left < 1 unit (2026-07-08: base-par detection can flag a case-pack item on a fraction of a unit)
 };
 
 
@@ -472,14 +473,24 @@ function getParReviewFlags() {
 
     const isUnder = underRate >= PAR_FLAG.UNDER_FREQ_PCT;
 
-    // Over-ordering is only actionable when there's a whole unit to trim: skip
-    // the flag when the base par is sub-unit (< OVER_MIN_BASE_PAR, pre-calc) or
-    // the typical multiplied order (qty + on hand) averages below
-    // OVER_MIN_EFF_PAR units (post-calc). You can't order a fraction, so a
-    // low-volume item reading "over" isn't a par problem.
+    // Over-ordering is only actionable when there's a whole unit to trim, so
+    // skip the flag when:
+    //   • base par is sub-unit (< OVER_MIN_BASE_PAR, pre-calc), or
+    //   • the typical multiplied order (qty + on hand) averages below
+    //     OVER_MIN_EFF_PAR units (post-calc), or
+    //   • the average On Hand actually left on the shelf is below
+    //     OVER_MIN_AVG_ONHAND units — the detection compares On Hand to the
+    //     BASE par, so a small-base-par / high-multiplier item (e.g. a case of
+    //     Pellegrino) can trip "over" on a fraction of a unit even though
+    //     there's nothing to trim. This absolute floor catches that.
+    // You can't order a fraction, so a low-volume item reading "over" isn't a
+    // par problem.
     const basePar        = Number(entry.par) || 0;
+    const avgOnHand      = entry.totalOnHand / entry.timesOrdered;
     const avgEffPar      = entry.totalEffPar / entry.timesOrdered;
-    const overActionable = basePar >= PAR_FLAG.OVER_MIN_BASE_PAR && avgEffPar >= PAR_FLAG.OVER_MIN_EFF_PAR;
+    const overActionable = basePar    >= PAR_FLAG.OVER_MIN_BASE_PAR
+                        && avgEffPar   >= PAR_FLAG.OVER_MIN_EFF_PAR
+                        && avgOnHand   >= PAR_FLAG.OVER_MIN_AVG_ONHAND;
     const isOver = (overRate >= PAR_FLAG.OVER_FREQ_PCT) && overActionable;
 
 
