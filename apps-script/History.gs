@@ -261,9 +261,17 @@ function toggleOrderLogVisibility() {
 //     out" as a meaningful signal only when par is ≥ 3 (so 10% rounds to
 //     a value that 0 actually distinguishes from). Items at par 1 or 2
 //     are excluded from the under flag entirely.
-//   • Over-ordered tightened to 50%/50%: aligns with the goal of ending
-//     Sunday with as little inventory as possible. If on-hand sits at half
-//     the par half the time, the par should drop.
+//   • Over-ordered at 75%/50% (on-hand cutoff raised 50% → 75%, 2026-07-08):
+//     On Hand is counted post-lunch, so ~half a daily par is legitimately
+//     reserved for dinner service + PM prep — half-full at count time is
+//     normal, not over. Only when 75%+ of par is still on the shelf, on ≥50%
+//     of orders, is the par genuinely too high. Biased conservative on
+//     purpose ("don't cut a par you might need"); the KM makes the final call.
+//   • Over-ordered floor (2026-07-07): skip the flag on low-volume items —
+//     base par < 1 unit (pre-calc), or the typical multiplied order averages
+//     < 2 units (post-calc, reconstructed as qty + on hand). You can't order a
+//     fraction of a unit, so trimming a 1–2-unit item's par isn't actionable
+//     (mirrors UNDER_PAR_MIN on the under side).
 const PAR_FLAG = {
   MIN_ORDERS:        3,    // minimum logged orders within the window (2→3, 2026-07-07)
   WINDOW_DAYS:       28,   // only count orders from the last 28 days (14→28, 2026-07-07)
@@ -274,8 +282,10 @@ const PAR_FLAG = {
   UNDER_FREQ_PCT:    0.75, // ≥ 75% of orders were "under" → flag
 
   // Over-ordered
-  OVER_ONHAND_PCT:   0.50, // On Hand ≥ 50% of par counts as "over"
-  OVER_FREQ_PCT:     0.50  // ≥ 50% of orders were "over"  → flag
+  OVER_ONHAND_PCT:   0.75, // On Hand ≥ 75% of par counts as "over" (50%→75%, 2026-07-08: counts are post-lunch, ~half a daily par is reserved for dinner + PM prep)
+  OVER_FREQ_PCT:     0.50, // ≥ 50% of orders were "over"  → flag
+  OVER_MIN_BASE_PAR: 1,    // skip over-flag when base par < 1 unit (nothing to trim, 2026-07-07)
+  OVER_MIN_EFF_PAR:  2     // skip over-flag when avg multiplied order (qty+onHand) < 2 units
 };
 
 
@@ -392,6 +402,7 @@ function getParReviewFlags() {
         underCount:   0,
         overCount:    0,
         totalOnHand:  0,
+        totalEffPar:  0,
         par:          parMap.get(itemId) || ""
       });
     }
@@ -402,6 +413,9 @@ function getParReviewFlags() {
     const entry = agg.get(itemId);
     entry.timesOrdered++;
     entry.totalOnHand += onHand;
+    // Effective (multiplied) par for this order ≈ qty ordered + on hand, since
+    // qty = ceil(par×mult − onHand). Averaged later to gate the over flag.
+    entry.totalEffPar += (qtyOrdered + onHand);
 
 
 
@@ -457,7 +471,16 @@ function getParReviewFlags() {
 
 
     const isUnder = underRate >= PAR_FLAG.UNDER_FREQ_PCT;
-    const isOver  = overRate  >= PAR_FLAG.OVER_FREQ_PCT;
+
+    // Over-ordering is only actionable when there's a whole unit to trim: skip
+    // the flag when the base par is sub-unit (< OVER_MIN_BASE_PAR, pre-calc) or
+    // the typical multiplied order (qty + on hand) averages below
+    // OVER_MIN_EFF_PAR units (post-calc). You can't order a fraction, so a
+    // low-volume item reading "over" isn't a par problem.
+    const basePar        = Number(entry.par) || 0;
+    const avgEffPar      = entry.totalEffPar / entry.timesOrdered;
+    const overActionable = basePar >= PAR_FLAG.OVER_MIN_BASE_PAR && avgEffPar >= PAR_FLAG.OVER_MIN_EFF_PAR;
+    const isOver = (overRate >= PAR_FLAG.OVER_FREQ_PCT) && overActionable;
 
 
 
