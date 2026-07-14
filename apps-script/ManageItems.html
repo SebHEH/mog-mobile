@@ -1352,64 +1352,20 @@
     function byId(id) { return document.getElementById(id); }
 
     // ── Server-call indirection (one source of truth, two hosts) ───────────────
-    // Every server call in this modal goes through MIRPC() instead of
-    // google.script.run. In the Sheet it returns google.script.run unchanged.
-    // In the web app it returns a chainable proxy that prepends the session
-    // token and routes through the token-guarded webedit_call dispatcher
-    // (Editor.gs). The proxy exposes exactly the functions this modal uses.
-    function MIRPC() {
-      if (!MOG_WEB) return google.script.run;
-      var ok = null, fail = null;
-      function mk(fnName) {
-        return function () {
-          var args = [].slice.call(arguments);
-          google.script.run
-            .withSuccessHandler(function (r) { if (ok) ok(r); })
-            .withFailureHandler(function (e) { webHandleFail(e, fail); })
-            .webedit_call(MOG_TOKEN, fnName, args);
-        };
-      }
-      var proxy = {
-        withSuccessHandler: function (f) { ok = f; return proxy; },
-        withFailureHandler: function (g) { fail = g; return proxy; },
-        getManageItemsBootstrap:  mk('getManageItemsBootstrap'),
-        getStorageAreaList:       mk('getStorageAreaList'),
-        getVendorTableData:       mk('getVendorTableData'),
-        getItemForEdit:           mk('getItemForEdit'),
-        getUnassignedActiveItems: mk('getUnassignedActiveItems'),
-        commitUpsertItem:         mk('commitUpsertItem'),
-        commitSwitchActiveVendor: mk('commitSwitchActiveVendor'),
-        commitSetVendorItems:     mk('commitSetVendorItems'),
-        commitDeleteItem:         mk('commitDeleteItem')
-      };
-      return proxy;
-    }
-    // Web failure handler: an expired token throws SESSION_EXPIRED server-side
-    // → reprompt for the PIN (the user retries their action). Anything else is
-    // passed through to the call site's own failure handler.
-    function webHandleFail(err, fail) {
-      var msg = (err && err.message) ? err.message : '';
-      if (msg.indexOf('SESSION_EXPIRED') !== -1) {
-        if (typeof mgeReshowGate_ === 'function') mgeReshowGate_();
-        return;
-      }
-      if (fail) fail(err);
-    }
-    // Close is Sheet-only (google.script.host). In the web app there's no host
-    // dialog to close, so "Close" returns to the editor home dashboard.
+    // Every server call goes through MIRPC() → the shared mgeRpc_ (EditorShell):
+    // google.script.run in the Sheet, a token-proxied generic dispatcher in the
+    // web app. No per-modal function allowlist — the server's webeditDispatch_
+    // switch gates what's callable.
+    function MIRPC() { return mgeRpc_(); }
+    // Close: guard against losing unsaved Assign-tab edits, then hand off to the
+    // shared base close (mgeEditorClose_: editor home in web, host.close in Sheet).
     function editorClose() {
-      // Guard: closing with unsaved Assign-tab checkbox edits routes through the
-      // unsaved-changes popup first — same as the tab- and vendor-switch guards.
       const onAssign = byId('panel-assign') && byId('panel-assign').classList.contains('active');
       if (onAssign && typeof assignHasPendingChanges_ === 'function' && assignHasPendingChanges_(assignCurrentVendor_)) {
-        openAssignGuard_(function () { editorCloseNow_(); });
+        openAssignGuard_(function () { mgeEditorClose_(); });
         return;
       }
-      editorCloseNow_();
-    }
-    function editorCloseNow_() {
-      if (MOG_WEB) { window.open((BASE_URL || '') + '?page=editor', '_top'); }
-      else { google.script.host.close(); }
+      mgeEditorClose_();
     }
 
     // ── Help panel ──

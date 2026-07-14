@@ -739,10 +739,7 @@
         if (isDirty && !window.confirm(t('unsavedClose'))) return;
         editorClose();
       }
-      function editorClose() {
-        if (MOG_WEB) { window.open((BASE_URL || '') + '?page=editor', '_top'); }
-        else { google.script.host.close(); }
-      }
+      function editorClose() { mgeEditorClose_(); }
 
       // ── Refresh from server (recovery after a failed save) ────────────────────
       function refreshAreas(callback) {
@@ -768,34 +765,8 @@
       });
 
       // ── Server-call indirection (one source of truth, two hosts) ──────────────
-      function MIRPC() {
-        if (!MOG_WEB) return google.script.run;
-        var ok = null, fail = null;
-        function mk(fnName) {
-          return function () {
-            var args = [].slice.call(arguments);
-            google.script.run
-              .withSuccessHandler(function (r) { if (ok) ok(r); })
-              .withFailureHandler(function (e) { webHandleFail(e, fail); })
-              .webedit_call(MOG_TOKEN, fnName, args);
-          };
-        }
-        var proxy = {
-          withSuccessHandler: function (f) { ok = f; return proxy; },
-          withFailureHandler: function (g) { fail = g; return proxy; },
-          getStorageAreaList:      mk('getStorageAreaList'),
-          commitStorageAreasDraft: mk('commitStorageAreasDraft')
-        };
-        return proxy;
-      }
-      function webHandleFail(err, fail) {
-        var msg = (err && err.message) ? err.message : '';
-        if (msg.indexOf('SESSION_EXPIRED') !== -1) {
-          if (typeof mgeReshowGate_ === 'function') mgeReshowGate_();
-          return;
-        }
-        if (fail) fail(err);
-      }
+      // MIRPC() → shared mgeRpc_ (EditorShell); server webeditDispatch_ gates calls.
+      function MIRPC() { return mgeRpc_(); }
 
       // ── Init ──────────────────────────────────────────────────────────────────
       // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──

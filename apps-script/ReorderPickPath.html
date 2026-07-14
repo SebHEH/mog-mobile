@@ -477,6 +477,19 @@
       body.mge-web button.btn-close:hover { color: var(--web-accent-dark); opacity: 1; }
       body.mge-web button.btn-save { flex: 0 0 auto; background: var(--web-accent); padding: 12px 24px; border-radius: var(--r-sm); }
       body.mge-web button.btn-save:hover { opacity: .9; }
+
+      /* Unsaved-changes dialog — a real Save / Don't save / Cancel choice
+         (replaces window.confirm, which is unreliable in the HtmlService iframe
+         and offered no in-dialog Save). */
+      .rpp-guard-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; align-items: center; justify-content: center; }
+      .rpp-guard-overlay.open { display: flex; }
+      .rpp-guard-card { background: #fff; border-radius: var(--r-card, 8px); padding: 22px 24px; max-width: 400px; margin: 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.25); }
+      .rpp-guard-title { font-size: 16px; font-weight: 700; color: var(--brand, #1a1a2e); margin-bottom: 8px; }
+      .rpp-guard-msg { font-size: 14px; color: #444; line-height: 1.5; margin-bottom: 18px; }
+      .rpp-guard-btns { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+      .rpp-guard-btn { padding: 8px 14px; border-radius: var(--r-control, 6px); border: 1px solid var(--border-2, #ccc); background: #fff; cursor: pointer; font-size: 13px; }
+      .rpp-guard-save { background: var(--brand-green, #2d8c6b); color: #fff; border-color: transparent; font-weight: 700; }
+      .rpp-guard-discard { color: var(--danger, #a32d2d); }
     </style>
   </head>
   <body class="lang-en">
@@ -487,6 +500,19 @@
       <button class="help-btn" onclick="toggleHelp(true)" title="Help" aria-label="Help">?</button>
       <button class="lang-btn active" onclick="setLang('en')">EN</button>
       <button class="lang-btn"        onclick="setLang('es')">ES</button>
+    </div>
+
+    <!-- ── Unsaved-changes dialog (Save / Don't save / Cancel) ── -->
+    <div id="rpp-guard" class="rpp-guard-overlay" onclick="if(event.target===this)rppGuardCancel_()">
+      <div class="rpp-guard-card">
+        <div class="rpp-guard-title"><span class="en">Unsaved changes</span><span class="es">Cambios sin guardar</span></div>
+        <div class="rpp-guard-msg"><span class="en">Save your changes to this vendor's pick path before leaving?</span><span class="es">¿Guardar los cambios en la ruta de este proveedor antes de salir?</span></div>
+        <div class="rpp-guard-btns">
+          <button class="rpp-guard-btn rpp-guard-cancel" onclick="rppGuardCancel_()"><span class="en">Cancel</span><span class="es">Cancelar</span></button>
+          <button class="rpp-guard-btn rpp-guard-discard" onclick="rppGuardDiscard_()"><span class="en">Don't save</span><span class="es">No guardar</span></button>
+          <button class="rpp-guard-btn rpp-guard-save" onclick="rppGuardSave_()"><span class="en">Save changes</span><span class="es">Guardar</span></button>
+        </div>
+      </div>
     </div>
 
     <!-- ── Help panel (toggled by the [?] header button) ── -->
@@ -739,17 +765,13 @@
         if (newVendor === currentVendor) return;
 
         if (isDirty) {
-          const choice = window.confirm(
-            t('unsavedSwitch') + currentVendor + t('unsavedSwitchEnd')
-          );
-          if (choice) {
-            doSave(function() { loadVendor(newVendor); });
-          } else {
-            loadVendor(newVendor);
-          }
-        } else {
-          loadVendor(newVendor);
+          // Revert the dropdown while the dialog is up so Cancel = stay put;
+          // Save/Don't save then proceed to the new vendor.
+          byId('vendorSelect').value = currentVendor;
+          rppGuardOpen_(function () { loadVendor(newVendor); });
+          return;
         }
+        loadVendor(newVendor);
       }
 
       function loadVendor(vendor) {
@@ -1205,45 +1227,31 @@
 
       // ── Close ─────────────────────────────────────────────────────────────────
       function doClose() {
-        if (isDirty) {
-          if (!window.confirm(t('unsavedClose'))) return;
-        }
-        editorClose();
+        if (isDirty) { rppGuardOpen_(function () { mgeEditorClose_(); }); return; }
+        mgeEditorClose_();
       }
-      function editorClose() {
-        if (MOG_WEB) { window.open((BASE_URL || '') + '?page=editor', '_top'); }
-        else { google.script.host.close(); }
+      function editorClose() { mgeEditorClose_(); }
+
+      // Unsaved-changes dialog: Save (then proceed), Don't save (proceed), or
+      // Cancel (stay) — replaces the sandbox-unreliable window.confirm and adds
+      // an in-dialog Save. onProceed runs after a successful Save or Don't save.
+      var rppGuardProceed_ = null;
+      function rppGuardOpen_(onProceed) { rppGuardProceed_ = onProceed || null; byId('rpp-guard').classList.add('open'); }
+      function rppGuardCancel_() { byId('rpp-guard').classList.remove('open'); rppGuardProceed_ = null; }
+      function rppGuardDiscard_() {
+        var p = rppGuardProceed_; rppGuardProceed_ = null;
+        byId('rpp-guard').classList.remove('open');
+        if (p) p();
+      }
+      function rppGuardSave_() {
+        var p = rppGuardProceed_; rppGuardProceed_ = null;
+        byId('rpp-guard').classList.remove('open');
+        doSave(p);   // save, then proceed on success
       }
 
       // ── Server-call indirection (one source of truth, two hosts) ──────────────
-      function MIRPC() {
-        if (!MOG_WEB) return google.script.run;
-        var ok = null, fail = null;
-        function mk(fnName) {
-          return function () {
-            var args = [].slice.call(arguments);
-            google.script.run
-              .withSuccessHandler(function (r) { if (ok) ok(r); })
-              .withFailureHandler(function (e) { webHandleFail(e, fail); })
-              .webedit_call(MOG_TOKEN, fnName, args);
-          };
-        }
-        var proxy = {
-          withSuccessHandler: function (f) { ok = f; return proxy; },
-          withFailureHandler: function (g) { fail = g; return proxy; },
-          getPickPathForSidebar: mk('getPickPathForSidebar'),
-          commitReorderPickPath: mk('commitReorderPickPath')
-        };
-        return proxy;
-      }
-      function webHandleFail(err, fail) {
-        var msg = (err && err.message) ? err.message : '';
-        if (msg.indexOf('SESSION_EXPIRED') !== -1) {
-          if (typeof mgeReshowGate_ === 'function') mgeReshowGate_();
-          return;
-        }
-        if (fail) fail(err);
-      }
+      // MIRPC() → shared mgeRpc_ (EditorShell); server webeditDispatch_ gates calls.
+      function MIRPC() { return mgeRpc_(); }
 
       // ── Init ──────────────────────────────────────────────────────────────────
       // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──

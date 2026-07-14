@@ -579,9 +579,12 @@ function api_getVendorItems_(payload, ctx) {
     });
   }
 
-  // Pull A:M (1..13) for every data row. targetPar = par * dayMult.
-  const numRows = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
-  const data    = sh.getRange(VENDOR_TAB.DATA_START_ROW, 1, numRows, 13).getValues();
+  // Pull E:M for every data row — On Hand (E) and Item ID (M) are the only
+  // vendor-tab cells this path needs (name/par/suggested come from MASTER_ITEMS
+  // + code below). Narrowed from A:M to skip 4 unused leading columns.
+  const numRows  = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
+  const startCol = VENDOR_TAB.ON_HAND_COL;             // E (5)
+  const data     = sh.getRange(VENDOR_TAB.DATA_START_ROW, startCol, numRows, 13 - startCol + 1).getValues();
 
   // Day-of-week multiplier — computed in code (was: read from the vendor tab's
   // H2 formula). H2 = IF(AD2=TRUE, <emergency>, <today's SETUP mult>); we now
@@ -604,8 +607,8 @@ function api_getVendorItems_(payload, ctx) {
 
   const items = [];
   for (const r of data) {
-    const onHandRaw = r[VENDOR_TAB.ON_HAND_COL - 1]; // E (5)
-    const itemId    = String(r[12] || '').trim();    // M (13 → index 12)
+    const onHandRaw = r[0];                                  // E (range starts at E)
+    const itemId    = String(r[13 - startCol] || '').trim(); // M, relative to E
     if (!itemId) continue;
 
     // Name/pack from MASTER_ITEMS (via masterMeta), not the tab's A/B — those

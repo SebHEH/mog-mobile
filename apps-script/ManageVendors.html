@@ -1503,44 +1503,11 @@
       }
 
       // ── Server-call indirection (one source of truth, two hosts) ──────────────
-      // In the Sheet, MIRPC() === google.script.run. In the web app it returns a
-      // chainable proxy that prepends the session token and routes through the
-      // token-guarded webedit_call dispatcher (Editor.gs).
-      function MIRPC() {
-        if (!MOG_WEB) return google.script.run;
-        var ok = null, fail = null;
-        function mk(fnName) {
-          return function () {
-            var args = [].slice.call(arguments);
-            google.script.run
-              .withSuccessHandler(function (r) { if (ok) ok(r); })
-              .withFailureHandler(function (e) { webHandleFail(e, fail); })
-              .webedit_call(MOG_TOKEN, fnName, args);
-          };
-        }
-        var proxy = {
-          withSuccessHandler: function (f) { ok = f; return proxy; },
-          withFailureHandler: function (g) { fail = g; return proxy; },
-          getVendorTableData:               mk('getVendorTableData'),
-          commitUpdateVendorMultsAndCutoff: mk('commitUpdateVendorMultsAndCutoff'),
-          commitAddVendor:                  mk('commitAddVendor'),
-          commitImportVendor:               mk('commitImportVendor'),
-          commitRemoveVendor:               mk('commitRemoveVendor')
-        };
-        return proxy;
-      }
-      function webHandleFail(err, fail) {
-        var msg = (err && err.message) ? err.message : '';
-        if (msg.indexOf('SESSION_EXPIRED') !== -1) {
-          if (typeof mgeReshowGate_ === 'function') mgeReshowGate_();
-          return;
-        }
-        if (fail) fail(err);
-      }
-      function editorClose() {
-        if (MOG_WEB) { window.open((BASE_URL || '') + '?page=editor', '_top'); }
-        else { google.script.host.close(); }
-      }
+      // MIRPC() → shared mgeRpc_ (EditorShell): google.script.run in the Sheet,
+      // a token-proxied generic dispatcher in the web app. The server's
+      // webeditDispatch_ switch gates what's callable — no per-modal allowlist.
+      function MIRPC() { return mgeRpc_(); }
+      function editorClose() { mgeEditorClose_(); }
 
       // ── Init ──────────────────────────────────────────────────────────────────
       // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──

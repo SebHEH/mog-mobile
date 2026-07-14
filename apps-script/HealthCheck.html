@@ -75,34 +75,10 @@
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
-    // Sheet → google.script.run; web → token-guarded webedit_call dispatcher.
-    function MIRPC() {
-      if (!MOG_WEB) return google.script.run;
-      var ok = null, fail = null;
-      function mk(fn) {
-        return function () {
-          var a = [].slice.call(arguments);
-          google.script.run
-            .withSuccessHandler(function (r) { if (ok) ok(r); })
-            .withFailureHandler(function (e) {
-              // An expired token (redeploy flush / TTL) → EditorShell reprompts.
-              var msg = (e && e.message) ? e.message : '';
-              if (msg.indexOf('SESSION_EXPIRED') !== -1 && typeof mgeReshowGate_ === 'function') {
-                mgeReshowGate_(); return;
-              }
-              if (fail) fail(e);
-            })
-            .webedit_call(MOG_TOKEN, fn, a);
-        };
-      }
-      var p = {
-        withSuccessHandler: function (f) { ok = f; return p; },
-        withFailureHandler: function (g) { fail = g; return p; },
-        getStoreHealthReport: mk('getStoreHealthReport'),
-        runHealthFix:         mk('runHealthFix')
-      };
-      return p;
-    }
+    // MIRPC() → shared mgeRpc_ (EditorShell): google.script.run in the Sheet, a
+    // token-proxied generic dispatcher in the web app. Server webeditDispatch_
+    // gates what's callable — no per-modal allowlist.
+    function MIRPC() { return mgeRpc_(); }
 
     function run() {
       byId('hc-loading').textContent = 'Running health check…';
