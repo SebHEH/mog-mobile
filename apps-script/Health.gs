@@ -79,13 +79,17 @@ function getStoreHealthReport() {
   // ── 4) Per-vendor tabs: present + H2 canonical + item-id (M) formula ────
   try {
     const vendors = getVendorList();
-    const missingTab = [], staleH2 = [], noItemFormula = [];
+    const missingTab = [], staleH2 = [], noItemFormula = [], badHeader = [];
     vendors.forEach(v => {
       const sh = ss.getSheetByName(v);
       if (!sh) { missingTab.push(v); return; }
       if (canonicalH2 && String(sh.getRange('H2').getFormula()).trim() !== canonicalH2) staleH2.push(v);
       const mF = String(sh.getRange(VENDOR_TAB.DATA_START_ROW, 13).getFormula()).trim();   // M = col 13
       if (!mF) noItemFormula.push(v);
+      // B1 (the header) must equal the vendor name: it drives both the H2
+      // multiplier match and the M-spine FILTER, so a wrong B1 (e.g. a clone
+      // that kept "VENDOR TEMPLATE") shows a count but an empty list.
+      if (String(sh.getRange('B1').getValue()).trim() !== String(v).trim()) badHeader.push(v);
     });
 
     if (missingTab.length) {
@@ -115,6 +119,16 @@ function getStoreHealthReport() {
         'Re-establish the tab from VENDOR_TEMPLATE (Setup).');
     } else if (vendors.length) {
       add('vendor_items', 'Vendor item formulas', 'pass', 'All vendor tabs resolve their item list.');
+    }
+
+    if (badHeader.length) {
+      add('vendor_headers', 'Vendor tab headers', 'fail',
+        badHeader.length + " tab(s) have a B1 header that doesn't match the vendor name, so the tab shows an " +
+        "item count but an empty list: " + badHeader.join(', ') + '.',
+        "Sets each of those tabs' B1 header to its vendor name so the items spill in.",
+        'fix_vendor_headers');
+    } else if (vendors.length) {
+      add('vendor_headers', 'Vendor tab headers', 'pass', 'Every vendor tab header (B1) matches its vendor.');
     }
   } catch (e) { add('vendor_tabs', 'Vendor tabs', 'fail', 'Check errored: ' + e.message); }
 
@@ -287,6 +301,16 @@ function runHealthFix(fixId) {
         message: r.cleared
           ? 'PIN lockout cleared — the next attempt starts a fresh counter.'
           : 'No lockout was active.'
+      };
+    }
+    case 'fix_vendor_headers': {
+      const r = fixVendorHeaders_core_();
+      return {
+        ok: true,
+        message: r.fixed
+          ? 'Repaired the B1 header on ' + r.fixed + ' vendor tab(s): ' + r.names.join(', ') +
+            '. Their items should now appear.'
+          : 'All vendor tab headers already match — nothing to fix.'
       };
     }
     default:

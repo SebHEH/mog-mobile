@@ -250,8 +250,13 @@ function commitAddVendor(vendorName, mults, cutoffTime) {
 
 
 
-  // Update B1 — merged across B1:F1, holds the vendor header label.
-  newSheet.getRange("B1").setValue(name);
+  // Update B1 (merged B1:F1) — the vendor header. B1 drives BOTH the H2
+  // multiplier match AND the M-spine FILTER, so if it doesn't land the tab
+  // renders EMPTY (a plain setValue was seen not to persist on some clones —
+  // the tab kept the template's "VENDOR TEMPLATE" header, silently breaking it).
+  // setVendorHeaderB1_ writes it robustly (break-merge / write / re-merge /
+  // flush / read-back-retry) so it can't quietly fail.
+  setVendorHeaderB1_(newSheet, name);
 
 
 
@@ -265,6 +270,48 @@ function commitAddVendor(vendorName, mults, cutoffTime) {
 
 
   return { ok: true, name };
+}
+
+
+// Write a vendor tab's B1 header (merged B1:F1) reliably. B1 drives BOTH the H2
+// multiplier match and the M-spine FILTER, so a wrong/stale B1 silently empties
+// the whole tab. A plain setValue on the merged cell has been observed NOT to
+// persist on freshly-cloned tabs (they kept "VENDOR TEMPLATE"), so: break the
+// merge, write, re-merge, flush, then read back and retry once. Returns true if
+// B1 ends up correct. Shared by commitAddVendor and the Health Check fix.
+function setVendorHeaderB1_(sheet, name) {
+  const want = String(name).trim();
+  const hdr  = sheet.getRange("B1:F1");
+  const merged = hdr.isPartOfMerge();
+  if (merged) hdr.breakApart();
+  sheet.getRange("B1").setValue(want);
+  if (merged) hdr.merge();
+  SpreadsheetApp.flush();
+  if (String(sheet.getRange("B1").getValue()).trim() !== want) {
+    sheet.getRange("B1").setValue(want);
+    SpreadsheetApp.flush();
+  }
+  return String(sheet.getRange("B1").getValue()).trim() === want;
+}
+
+
+// Health Check fix (fix_vendor_headers): repair any vendor tab whose B1 header
+// drifted from its vendor name (e.g. a clone that kept "VENDOR TEMPLATE"), which
+// makes the tab show a count but an empty list. UI-free core — callable from the
+// web editor. Bumps the mutation ts so the PWA/dashboard caches refresh.
+function fixVendorHeaders_core_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const fixed = [];
+  getVendorList().forEach(function (v) {
+    const sh = ss.getSheetByName(v);
+    if (!sh) return;
+    if (String(sh.getRange("B1").getValue()).trim() !== String(v).trim()) {
+      setVendorHeaderB1_(sh, v);
+      fixed.push(v);
+    }
+  });
+  if (fixed.length && typeof bumpServerMutationTs_ === 'function') bumpServerMutationTs_();
+  return { fixed: fixed.length, names: fixed };
 }
 
 
