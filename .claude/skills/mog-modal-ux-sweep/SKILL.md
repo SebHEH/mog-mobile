@@ -25,6 +25,12 @@ The MOG modals weren't built in lockstep — they drift apart between sessions. 
 
 When a sweep is about save feedback, apply to the 5. When it's about a Close button or layout chrome, apply to all 7. State which set you're sweeping before editing.
 
+## The RPC shim is now centralized — do NOT re-fork it per modal (2026-07-14, #19)
+
+The web-editor RPC plumbing (`MIRPC()` / web-fail handling / editor-close) used to be **copy-pasted into every dual-host modal**, each with its own hand-maintained function allowlist — and those lists drifted (it once broke `getVendorTableData`). The #19 refactor moved it into **`EditorShell.html`** as shared helpers `mgeRpc_` / `mgeWebFail_` / `mgeEditorClose_`, where **`mgeRpc_` is a generic `Proxy`** so the server's `webeditDispatch_` switch is the *only* allowlist. Each modal keeps just a one-line `MIRPC` delegate to the shared helper (ManageItems wraps `mgeEditorClose_` for its Assign-tab close guard).
+
+**Sweep implication:** if a sweep touches RPC calls, close behavior, or web-fail UX, change it **once in `EditorShell`**, not per modal — and never re-introduce a per-modal function allowlist. A sweep that copies a shim body back into individual modals is re-creating exactly the drift #19 removed.
+
 ## The "Saved" feedback block (canonical, copy verbatim)
 
 This CSS block is shared across all 5 save-capable modals as of 2026-05-27. If a sweep adjusts it, change all five identically:

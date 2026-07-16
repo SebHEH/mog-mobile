@@ -34,6 +34,18 @@ These are the load-bearing in-sheet formulas. Re-confirm against the actual stor
 4. **Confirm par semantics** if the change re-applies a multiplier: are this store's pars 1-day? If you can't confirm, treat it as the rpr caveat — flag it, don't assume.
 5. **State the finding explicitly** before writing code: "Column X is referenced by <formulas> / is referenced by nothing → (un)safe." Sebastian decided SKU didn't need scrubbing because it's hidden — surface the finding and let him make that call.
 
+## Tier-3 recipe: moving a sheet formula INTO code as a verified no-op
+
+A recurring MOG move (see `[[project_architecture_direction]]` — "Sheet = engine, not UI"): take a computation that currently lives in an in-sheet formula and **replicate it in `.gs`** so the backend stops reading that formula. Done across 2026-07-02 / 07-06 / 07-14; the count/order path (suggested-qty, par, day-multiplier, name/pack, order-log + dashboard snapshots) is now **fully formula-free**. The discipline that kept each bite safe:
+
+1. **Read the LIVE formula first** (this skill's core procedure). Pull a fresh `.xlsx` from the store's Drive — not memory. Example finding: vendor-tab `F` = `ROUNDUP(par×H2 − onHand)` and it **already honored** the Use-Multiplier, so the code comment claiming it ignored it was *stale* — replicating faithfully was a true no-op, and trusting the comment would have introduced a bug.
+2. **One bite at a time.** Move a single term (suggested-qty, then par, then H2), not the whole formula at once — each bite gets its own verify + canary.
+3. **Value cross-check, not just logic review.** After coding the replacement, compare the code's output against the sheet's computed values for a real vendor/day sample (6/6 cross-check on Webstaurant+Amazon was the 07-06 bar). "Byte-identical under normal ops" is the pass condition.
+4. **Watch for row-alignment / equivalent-source assumptions.** The H2 bite read SETUP col Z where the formula keyed col R — safe only because R and Z hold the same vendors row-aligned; that had to be *verified*, not assumed.
+5. **Canary rpfrf, then fan out** — and prefer the more-correct behavior when in-code and in-sheet legitimately diverge (e.g. Emergency Override: the in-sheet H2 stays flat 1× while the code does next-delivery coverage — an accepted, documented divergence, not a bug).
+
+The point: replicating a formula in code is a **data-model change**, so it runs through this skill exactly like repurposing a column does — prove equivalence against the live sheet before shipping.
+
 ## Anti-patterns (the near-misses this skill exists to prevent)
 
 - **Assuming a blank column is unused.** D was blank for items but XLOOKUP'd by every vendor tab. Blank ≠ free.
