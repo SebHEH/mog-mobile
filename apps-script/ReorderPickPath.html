@@ -750,7 +750,8 @@
       // ── Vendor dropdown ────────────────────────────────────────────────────────
       (function populateVendors() {
         const sel = byId('vendorSelect');
-        VENDOR_LIST.forEach(function(v) {
+        // Vendors have no user-defined order — show the picker A–Z (sorted copy).
+        VENDOR_LIST.slice().sort(function(a, b) { return String(a).localeCompare(String(b)); }).forEach(function(v) {
           const opt       = document.createElement('option');
           opt.value       = v;
           opt.textContent = v;

@@ -726,7 +726,8 @@
         var vendors = (res && res.vendors) || [];
         var rows    = (res && res.rows)    || [];
         var sel = document.getElementById('vendor-filter');
-        vendors.forEach(function(v) {
+        // Filter dropdown has no meaningful order (built from log data) — sort A–Z.
+        vendors.slice().sort(function(a, b) { return String(a).localeCompare(String(b)); }).forEach(function(v) {
           var o = document.createElement('option');
           o.value = v; o.textContent = v; sel.appendChild(o);
         });
