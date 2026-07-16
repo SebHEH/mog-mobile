@@ -190,9 +190,6 @@ function getLogOrderDate_() {
 
 
 
-// Property key for the most recent log date — lets the duplicate guard
-// short-circuit without scanning the entire LOG_ORDERS date column.
-const LAST_LOG_DATE_PROP = "LAST_LOG_DATE";
 
 
 
@@ -221,9 +218,9 @@ function snapshotVendorOrders_(orderDate, timestamp) {
   // formulas. That's the same math the PWA count screen and daily recap use, so
   // the logged order matches what the KM saw. The tab is read for On Hand
   // (col E, real data) and Item ID (col M, the roster spill) only.
-  const VTAB_ITEM_ID_COL = 13;                        // M — Item ID (hidden)
+  const VTAB_ITEM_ID_COL = VENDOR_TAB.ITEM_ID_COL;    // M — Item ID (hidden)
   const VTAB_ON_HAND_COL = VENDOR_TAB.ON_HAND_COL;    // E (5)
-  const VTAB_READ_TO_COL = 13;                        // read through M
+  const VTAB_READ_TO_COL = VENDOR_TAB.ITEM_ID_COL;    // read through M
 
   // Shared read context, built once for all vendors.
   const masterMeta        = readMasterItemMeta_();
@@ -451,10 +448,6 @@ function commitLogAndReset() {
     logSheet
       .getRange(startRow, 1, rows.length, rows[0].length)
       .setValues(rows);
-    // Cache the date so the next duplicate-guard call (used elsewhere)
-    // can short-circuit. We keep this property up to date even with the
-    // new overwrite semantics so callers depending on it stay correct.
-    PropertiesService.getDocumentProperties().setProperty(LAST_LOG_DATE_PROP, orderDate);
   }
 
   // Send the daily recap email BEFORE clearing on-hand — the email is

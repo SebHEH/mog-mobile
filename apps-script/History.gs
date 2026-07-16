@@ -206,9 +206,6 @@ function getOrderHistory(filters) {
 function clearOrderLog() {
   const logSheet = ensureLogSheet_();
   const lastRow  = logSheet.getLastRow();
-  // Always clear the cached last-log-date so the next duplicate-guard call
-  // doesn't false-positive against an empty log.
-  PropertiesService.getDocumentProperties().deleteProperty(LAST_LOG_DATE_PROP);
   if (lastRow < 2) return { ok: true, cleared: 0 };
 
 
@@ -295,7 +292,7 @@ const PAR_FLAG = {
 // FLAG VALUES returned in the map:
 //   "empty"    → Always Empty  (under-ordered: on hand consistently near zero,
 //                                par must be ≥ UNDER_PAR_MIN to qualify)
-//   "over"     → Over-Ordered  (on hand ≥ 50% of par in ≥ 50% of orders)
+//   "over"     → Over-Ordered  (on hand ≥ 75% of par in ≥ 50% of orders)
 //   "both"     → both conditions true simultaneously
 //   null       → not enough data or no flag
 
@@ -436,8 +433,9 @@ function getParReviewFlags() {
 
 
 
-    // Over-ordered: on hand ≥ 50% of par. Tighter than before to align
-    // with the goal of ending the week with as little inventory as possible.
+    // Over-ordered: on hand ≥ 75% of par (raised from 50%, 2026-07-08). Counts
+    // are post-lunch, so ~half a daily par is legitimately reserved for dinner +
+    // PM prep; only 75%+ still on the shelf reads as a genuinely high par.
     if (onHand >= par * PAR_FLAG.OVER_ONHAND_PCT) {
       entry.overCount++;
     }

@@ -111,7 +111,8 @@ const VENDOR_CUTOFF_COL = 27; // AA
 
 
 const VENDOR_TAB = {
-  ON_HAND_COL:    5, // E
+  ON_HAND_COL:    5,  // E
+  ITEM_ID_COL:    13, // M — Item ID (hidden roster spill; the only other col read post-Tier-3)
   DATA_START_ROW: 3
 };
 

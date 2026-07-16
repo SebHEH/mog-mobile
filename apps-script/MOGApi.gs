@@ -332,7 +332,7 @@ function api_commitReset_() {
 
   const oe = getSheet_(SHEET_ORDER_ENTRY);
   const today = new Date();
-  oe.getRange('AE9').setValue(today);
+  oe.getRange(LAST_RESET_DATE_CELL).setValue(today);
 
   const tz = Session.getScriptTimeZone();
   const overrideRange = oe.getRange(EMERGENCY_OVERRIDE_CELL);
@@ -422,7 +422,6 @@ function api_getDashboard_() {
 
 
 function api_getDashboard_compute_() {
-  const tz        = Session.getScriptTimeZone();
   const active    = getActiveOrderDate_();
   const dateStr   = active.dateStr;
   const dayOfWeek = active.dayOfWeek;
@@ -584,7 +583,7 @@ function api_getVendorItems_(payload, ctx) {
   // + code below). Narrowed from A:M to skip 4 unused leading columns.
   const numRows  = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
   const startCol = VENDOR_TAB.ON_HAND_COL;             // E (5)
-  const data     = sh.getRange(VENDOR_TAB.DATA_START_ROW, startCol, numRows, 13 - startCol + 1).getValues();
+  const data     = sh.getRange(VENDOR_TAB.DATA_START_ROW, startCol, numRows, VENDOR_TAB.ITEM_ID_COL - startCol + 1).getValues();
 
   // Day-of-week multiplier — computed in code (was: read from the vendor tab's
   // H2 formula). H2 = IF(AD2=TRUE, <emergency>, <today's SETUP mult>); we now
@@ -608,7 +607,7 @@ function api_getVendorItems_(payload, ctx) {
   const items = [];
   for (const r of data) {
     const onHandRaw = r[0];                                  // E (range starts at E)
-    const itemId    = String(r[13 - startCol] || '').trim(); // M, relative to E
+    const itemId    = String(r[VENDOR_TAB.ITEM_ID_COL - startCol] || '').trim(); // M, relative to E
     if (!itemId) continue;
 
     // Name/pack from MASTER_ITEMS (via masterMeta), not the tab's A/B — those
@@ -737,7 +736,7 @@ function api_saveOnHand_(payload) {
 
   // Build itemId → row map from column M (item ID, hidden)
   const numRows = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
-  const idCol   = sh.getRange(VENDOR_TAB.DATA_START_ROW, 13, numRows, 1).getValues();
+  const idCol   = sh.getRange(VENDOR_TAB.DATA_START_ROW, VENDOR_TAB.ITEM_ID_COL, numRows, 1).getValues();
   const idRowMap = new Map();
   for (let i = 0; i < idCol.length; i++) {
     const id = String(idCol[i][0] || '').trim();
@@ -1403,8 +1402,8 @@ function vendorOnHandSnapshot_(vendor, ctx) {
   const numRows  = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
   // One range read spanning E (On Hand) through M (Item ID).
   const startCol = VENDOR_TAB.ON_HAND_COL;                 // E (5)
-  const data     = sh.getRange(VENDOR_TAB.DATA_START_ROW, startCol, numRows, 13 - startCol + 1).getValues();
-  const ID_IDX   = 13 - startCol;                          // M, relative to E
+  const data     = sh.getRange(VENDOR_TAB.DATA_START_ROW, startCol, numRows, VENDOR_TAB.ITEM_ID_COL - startCol + 1).getValues();
+  const ID_IDX   = VENDOR_TAB.ITEM_ID_COL - startCol;      // M, relative to E
 
   const dayMult = vendorDayMultiplier_(ctx.vendorMults, vendor, ctx.dayOfWeek, ctx.emergencyOverride);
 
@@ -1434,7 +1433,7 @@ function getTodaysLogByVendor_(dateStr) {
   const map = new Map();
   if (lastRow < 2) return map;
   const data = log.getRange(2, 1, lastRow - 1, 7).getValues();
-  const tz = Session.getScriptTimeZone();
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
 
   for (const r of data) {
     const orderDateRaw = r[LOG_COL.ORDER_DATE - 1];
