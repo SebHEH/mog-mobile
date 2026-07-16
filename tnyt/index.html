@@ -5367,6 +5367,15 @@
   function renderRecipients_() {
     const view = $('view-recipients');
     const recipients = state.recipients || [];
+    // Recipients have no user-defined order — sort alphabetically by name for a
+    // predictable list, GM/locked row(s) pinned first. Sorted in place (same ref
+    // as state.recipients) so the data-idx wiring below still maps correctly;
+    // recipientsDirty is a flag set only on add/toggle/remove, so reordering
+    // here never marks the list dirty.
+    recipients.sort(function(a, b) {
+      if (!!a.gm !== !!b.gm) return a.gm ? -1 : 1;
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
 
     let html = '<p class="hero-day" style="margin-bottom:18px">' +
                escapeHtml(t('recipientsTitle')) + '</p>';
