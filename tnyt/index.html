@@ -2260,6 +2260,7 @@
       recipients:       { en: 'Email recipients', es: 'Destinatarios' }
     },
     msg: {
+      settings:         { en: 'Settings', es: 'Ajustes' },
       noVendors:        { en: 'No vendors today', es: 'No hay proveedores hoy' },
       noVendorsSub:     { en: "Nothing scheduled for today.", es: 'No hay entregas programadas hoy.' },
       noHistory:        { en: 'No orders yet', es: 'Aún no hay pedidos' },
@@ -5630,7 +5631,7 @@
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
-      '<p class="hero-day" style="margin-bottom:18px">' + escapeHtml(t('settings') || 'Settings') + '</p>' +
+      '<p class="hero-day" style="margin-bottom:18px">' + escapeHtml(t('settings')) + '</p>' +
 
       '<div class="profile-card">' +
         '<div class="avatar">' + escapeHtml(initials) + '</div>' +
