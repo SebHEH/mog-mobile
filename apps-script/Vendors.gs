@@ -228,17 +228,21 @@ function commitAddVendor(vendorName, mults, cutoffTime) {
   newSheet.showSheet();
 
   // copyTo() leaves the new sheet active. moveActiveSheet uses 1-based positions.
-  ss.moveActiveSheet(ss.getSheets().length);
+  // Tab reordering is cosmetic and only works from the Sheet UI — a web-app
+  // (/exec editor) execution has no active sheet, so moveActiveSheet/
+  // setActiveSheet throw "Please create an active sheet first". That throw used
+  // to abort the add AFTER the vendor was already created (empty client refresh,
+  // duplicate on retry). Best-effort: swallow the web-context failure.
+  try { ss.moveActiveSheet(ss.getSheets().length); } catch (e) {}
 
 
 
 
-  // Re-pin ORDER_ENTRY to position 1.
-  const orderEntry = ss.getSheetByName(SHEET_ORDER_ENTRY);
-  if (orderEntry) {
-    ss.setActiveSheet(orderEntry);
-    ss.moveActiveSheet(1);
-  }
+  // Re-pin ORDER_ENTRY to position 1 (cosmetic; see the note above — best-effort).
+  try {
+    const orderEntry = ss.getSheetByName(SHEET_ORDER_ENTRY);
+    if (orderEntry) { ss.setActiveSheet(orderEntry); ss.moveActiveSheet(1); }
+  } catch (e) {}
 
 
 
@@ -844,9 +848,12 @@ function reestablishVendorTemplate_() {
 
   tmpl.hideSheet();
 
-  // copyTo() leaves the new sheet active; re-pin ORDER_ENTRY to position 1.
-  const orderEntry = ss.getSheetByName(SHEET_ORDER_ENTRY);
-  if (orderEntry) { ss.setActiveSheet(orderEntry); ss.moveActiveSheet(1); }
+  // Re-pin ORDER_ENTRY to position 1 — cosmetic, and only works from the Sheet
+  // UI (a web-app execution has no active sheet and would throw). Best-effort.
+  try {
+    const orderEntry = ss.getSheetByName(SHEET_ORDER_ENTRY);
+    if (orderEntry) { ss.setActiveSheet(orderEntry); ss.moveActiveSheet(1); }
+  } catch (e) {}
 
   return { created: true, source: source.getName() };
 }
