@@ -1954,6 +1954,7 @@
         .withSuccessHandler(result => {
           allItems = (result && result.items) || [];
           parFlags = (result && result.flags) || {};
+          if (result && result.minOrders) MIN_FLAG_ORDERS_ = result.minOrders;
           const vm = {};
           ((result && result.vendorTable) || []).forEach(r => { vm[r.name] = r.mults || []; });
           applyBootstrapExtras_((result && result.areas) || [], vm);
@@ -1981,6 +1982,7 @@
         .withSuccessHandler(result => {
           allItems = (result && result.items) || [];
           parFlags = (result && result.flags) || {};
+          if (result && result.minOrders) MIN_FLAG_ORDERS_ = result.minOrders;
           const vm = {};
           ((result && result.vendorTable) || []).forEach(r => { vm[r.name] = r.mults || []; });
           applyBootstrapExtras_((result && result.areas) || [], vm);
@@ -2271,8 +2273,9 @@
 
     // ── Par Review flag helpers ───────────────────────────────────────────────
     // Minimum logged orders (in the server's rolling window) before a verdict
-    // shows — must match PAR_FLAG.MIN_ORDERS in History.gs.
-    const MIN_FLAG_ORDERS_ = 3;
+    // shows. Sourced from the bootstrap payload (server PAR_FLAG.MIN_ORDERS) so
+    // it can't drift from the backend; the 3 is just a pre-fetch default.
+    let MIN_FLAG_ORDERS_ = 3;
 
     // Avg On Hand as a % of par — the flag's severity, shown next to the verdict.
     // High = over-ordering (shelf still full when you reorder); low = running

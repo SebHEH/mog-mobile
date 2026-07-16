@@ -625,6 +625,7 @@
           selectDelivery:   'Select at least one delivery day.',
           creating:         'Creating vendor and tab… this may take a moment.',
           added:            'Added "', addedEnd: '" and created tab successfully.',
+          addedB1WarnEnd:   '" but the tab header may not have saved — run 📱 Mobile API → Store Health Check → Vendor tab headers to fix.',
           importing:        'Importing vendor and items… this may take a moment.',
           imported:         'Imported "', importedMid: '" with ', importedEnd: ' items.',
           importedSkipped:  ' skipped',
@@ -656,6 +657,7 @@
           selectDelivery:   'Selecciona al menos un día de entrega.',
           creating:         'Creando proveedor y pestaña… puede tomar un momento.',
           added:            'Agregado "', addedEnd: '" y pestaña creada correctamente.',
+          addedB1WarnEnd:   '" pero el encabezado de la pestaña puede no haberse guardado — usa 📱 Mobile API → Verificación de salud → Encabezados de pestañas.',
           importing:        'Importando proveedor y artículos… puede tomar un momento.',
           imported:         'Importado "', importedMid: '" con ', importedEnd: ' artículos.',
           importedSkipped:  ' omitidos',
@@ -1297,9 +1299,13 @@
 
         bumpMutationTs_();
         MIRPC()
-          .withSuccessHandler(function() {
+          .withSuccessHandler(function(res) {
             setSavingCard_('body-add', false);
-            setStatus('add', t('added') + name + t('addedEnd'), 'ok');
+            if (res && res.b1ok === false) {
+              setStatus('add', t('added') + name + t('addedB1WarnEnd'), 'warn');
+            } else {
+              setStatus('add', t('added') + name + t('addedEnd'), 'ok');
+            }
             VENDOR_LIST.push(name);
             byId('add-btn').disabled = false;
             resetAddForm();

@@ -256,7 +256,7 @@ function commitAddVendor(vendorName, mults, cutoffTime) {
   // the tab kept the template's "VENDOR TEMPLATE" header, silently breaking it).
   // setVendorHeaderB1_ writes it robustly (break-merge / write / re-merge /
   // flush / read-back-retry) so it can't quietly fail.
-  setVendorHeaderB1_(newSheet, name);
+  const b1ok = setVendorHeaderB1_(newSheet, name);
 
 
 
@@ -269,7 +269,10 @@ function commitAddVendor(vendorName, mults, cutoffTime) {
 
 
 
-  return { ok: true, name };
+  // b1ok = did the tab header (B1) actually land? A false here means the tab
+  // was created but would render empty; the caller surfaces a warning and the
+  // Store Health Check "Vendor tab headers" fix is the backstop.
+  return { ok: true, name, b1ok };
 }
 
 

@@ -132,7 +132,11 @@ function getManageItemsBootstrap() {
   try { areas = getStorageAreaList(); } catch (e) { areas = []; }
   let vendorTable = [];
   try { vendorTable = getVendorTableData(); } catch (e) { vendorTable = []; }
-  const payload = { items: items, flags: flags, areas: areas, vendorTable: vendorTable };
+  // minOrders: the server's par-review flag threshold (PAR_FLAG.MIN_ORDERS),
+  // carried to the client so ManageItems doesn't re-declare it as a literal that
+  // silently desyncs when the threshold is tuned (audit #3).
+  const payload = { items: items, flags: flags, areas: areas, vendorTable: vendorTable,
+                    minOrders: (typeof PAR_FLAG !== 'undefined' ? PAR_FLAG.MIN_ORDERS : 3) };
 
   if (cache) {
     try {
