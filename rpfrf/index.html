@@ -2261,6 +2261,7 @@
     },
     msg: {
       settings:         { en: 'Settings', es: 'Ajustes' },
+      errGeneric:       { en: 'Something went wrong', es: 'Algo salió mal' },
       noVendors:        { en: 'No vendors today', es: 'No hay proveedores hoy' },
       noVendorsSub:     { en: "Nothing scheduled for today.", es: 'No hay entregas programadas hoy.' },
       noHistory:        { en: 'No orders yet', es: 'Aún no hay pedidos' },
@@ -2915,7 +2916,7 @@
           await showMainApp();
         }
       } catch (err) {
-        console.error('proceedAfterAuth error:', err);
+        console.error('handlePinSubmit error:', err);
         await showMainApp();
       }
     })(), label);
@@ -3350,7 +3351,7 @@
     } catch (e) {
       hideBusy();
       if (isNetworkError_(e)) showToast(t('offlineRetry'), 'error');
-      else showToast(String((e && e.message) || 'Error'), 'error');
+      else showToast(String((e && e.message) || t('errGeneric')), 'error');
     }
   }
 
@@ -3384,7 +3385,7 @@
       if (result.offline) showToast(t('offlineRetry'), 'error');
       else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
       else if (m.indexOf('No recipients') >= 0) showToast(t('summaryNoRecipients'), 'error');
-      else showToast(m || 'Error', 'error');
+      else showToast(m || t('errGeneric'), 'error');
       if (btn) {
         btn.disabled = false;
         btn.querySelector('span').textContent = t('recapStaleCta');
@@ -5295,7 +5296,7 @@
       if (result.offline) showToast(t('offlineRetry'), 'error');
       else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
       else if (m.indexOf('No recipients') >= 0) showToast(t('summaryNoRecipients'), 'error');
-      else showToast(m || 'Error', 'error');
+      else showToast(m || t('errGeneric'), 'error');
       if (btn) {
         btn.disabled = false;
         btn.querySelector('span').textContent = t('emailMyCopy');
@@ -5969,7 +5970,7 @@
       if (result.offline) showToast(t('offlineRetry'), 'error');
       else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
       else if (m.indexOf('No recipients') >= 0) showToast(t('summaryNoRecipients'), 'error');
-      else showToast(m || 'Error', 'error');
+      else showToast(m || t('errGeneric'), 'error');
       if (btn) {
         btn.disabled = false;
         btn.querySelector('span').textContent = t('emailMyCopy');
@@ -6001,7 +6002,7 @@
       const m = String((result.error && result.error.message) || '');
       if (result.offline) showToast(t('offlineRetry'), 'error');
       else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
-      else showToast(m || 'Error', 'error');
+      else showToast(m || t('errGeneric'), 'error');
     }
     row.classList.remove('disabled');
     labelEl.innerHTML = original;
