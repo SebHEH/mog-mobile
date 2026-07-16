@@ -120,8 +120,18 @@ function getManageItemsBootstrap() {
   }
 
   const items = getAllItemsForView();
+  // Build the par map from the items we just read (getAllItemsForView already
+  // read MASTER) and hand it to getParReviewFlags so it doesn't read MASTER a
+  // second time on this cold path (audit #13). Same par>0 filter as the standalone
+  // read; the modal only renders these (named) items, so omitting blank-name rows
+  // is observably identical.
+  const parMap = new Map();
+  items.forEach(it => {
+    const par = Number(it.par);
+    if (it.id && !isNaN(par) && par > 0) parMap.set(it.id, par);
+  });
   let flags = {};
-  try { flags = getParReviewFlags(); } catch (e) { flags = {}; }
+  try { flags = getParReviewFlags(parMap); } catch (e) { flags = {}; }
   // Areas + vendor multipliers ride the same response so the modal opens on
   // ONE round-trip (they used to be 1–2 separate calls: getStorageAreaList
   // always, getVendorTableData on the web host for the par preview). Same

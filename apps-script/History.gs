@@ -33,10 +33,23 @@ function getOrderHistoryBootstrap(filters) {
   const lastRow  = logSheet.getLastRow();
   if (lastRow < 2) return { vendors: getVendorList(), rows: [] };
 
-  const tz   = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-  const data = logSheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  const data  = logSheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  const built = buildHistoryRows_(data, filters);
+  return {
+    vendors: built.vendors.length ? built.vendors : getVendorList(),
+    rows:    built.rows
+  };
+}
 
-  // itemId -> current pack from MASTER_ITEMS, batched once.
+
+// Shared enrich + filter + sort for the two order-history readers. Takes the
+// raw LOG_ORDERS data rows (7 cols) + the filter object; returns { rows, vendors }
+// — rows enriched, filtered, and date-desc (bootstrap shape); vendors the full
+// UNFILTERED vendor set (for the dropdown). itemPack is the CURRENT pack from
+// MASTER_ITEMS (the log doesn't store pack) — rare pack changes are fine.
+function buildHistoryRows_(data, filters) {
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+
   const master     = getSheet_(SHEET_MASTER);
   const masterLast = master.getLastRow();
   const packMap    = new Map();
@@ -67,113 +80,15 @@ function getOrderHistoryBootstrap(filters) {
   const dateTo       = String(filters && filters.dateTo       || "").trim();
 
   const vendorSet = new Set();
-  const enriched  = data.map(r => {
-    const itemId = String(r[LOG_COL.ITEM_ID - 1] || "").trim();
-    const vendor = String(r[LOG_COL.VENDOR  - 1] || "").trim();
-    if (vendor) vendorSet.add(vendor);
-    return {
-      timestamp:  fmtTimestamp(r[LOG_COL.TIMESTAMP   - 1]),
-      orderDate:  fmtDate(r[LOG_COL.ORDER_DATE   - 1]),
-      vendor:     vendor,
-      itemId:     itemId,
-      itemName:   String(r[LOG_COL.ITEM_NAME   - 1] || "").trim(),
-      itemPack:   packMap.get(itemId) || "",
-      onHandPrev: Number(r[LOG_COL.ON_HAND_PRV - 1]) || 0,
-      qtyOrdered: Number(r[LOG_COL.QTY_ORDERED - 1]) || 0
-    };
-  });
-
-  const rows = enriched
-    .filter(row => {
-      if (!row.vendor && !row.itemName) return false;
-      if (vendorFilter !== "ALL" && row.vendor.toLowerCase() !== vendorFilter.toLowerCase()) return false;
-      if (dateFrom && row.orderDate < dateFrom) return false;
-      if (dateTo   && row.orderDate > dateTo)   return false;
-      return true;
-    })
-    .sort((a, b) => b.orderDate.localeCompare(a.orderDate));
-
-  const vendors = Array.from(vendorSet).sort();
-  return {
-    vendors: vendors.length ? vendors : getVendorList(),
-    rows:    rows
-  };
-}
-
-
-
-
-// Serves Tab 1 (Recent Orders) and Tab 2 (Item History) in the modal.
-// filters: { vendorFilter, dateFrom, dateTo }
-function getOrderHistory(filters) {
-  const logSheet = ensureLogSheet_();
-  const lastRow  = logSheet.getLastRow();
-  if (lastRow < 2) return [];
-
-
-
-
-  const tz   = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-  const data = logSheet.getRange(2, 1, lastRow - 1, 7).getValues();
-
-
-
-
-  // Build itemId -> current pack lookup from MASTER_ITEMS in one batched
-  // read so every log row can be enriched without a per-row sheet query.
-  // Note: this is the CURRENT pack from MASTER_ITEMS, not the pack as it
-  // was at order time (the log doesn't store pack). If pack changes are
-  // rare this is fine; if pack changed after the order, the displayed
-  // unit reflects today's value — which is what the user is buying now.
-  const master     = getSheet_(SHEET_MASTER);
-  const masterLast = master.getLastRow();
-  const packMap    = new Map();
-  if (masterLast >= 2) {
-    master
-      .getRange(2, COL.ID, masterLast - 1, COL.PACK - COL.ID + 1)
-      .getValues()
-      .forEach(r => {
-        const id = String(r[0] || "").trim();
-        const pk = String(r[COL.PACK - COL.ID] || "").trim();
-        if (id) packMap.set(id, pk);
-      });
-  }
-
-
-
-
-  const fmtDate = (v) => {
-    if (!v) return "";
-    const d = (v instanceof Date) ? v : new Date(v);
-    return isNaN(d.getTime()) ? String(v).trim() : Utilities.formatDate(d, tz, "yyyy-MM-dd");
-  };
-
-
-
-
-  const fmtTimestamp = (v) => {
-    if (!v) return "";
-    const d = (v instanceof Date) ? v : new Date(v);
-    return isNaN(d.getTime()) ? String(v).trim() : Utilities.formatDate(d, tz, "yyyy-MM-dd HH:mm");
-  };
-
-
-
-
-  const vendorFilter = String(filters.vendorFilter || "ALL").trim();
-  const dateFrom     = String(filters.dateFrom || "").trim();
-  const dateTo       = String(filters.dateTo   || "").trim();
-
-
-
-
-  return data
+  const rows = data
     .map(r => {
       const itemId = String(r[LOG_COL.ITEM_ID - 1] || "").trim();
+      const vendor = String(r[LOG_COL.VENDOR  - 1] || "").trim();
+      if (vendor) vendorSet.add(vendor);
       return {
         timestamp:  fmtTimestamp(r[LOG_COL.TIMESTAMP   - 1]),
         orderDate:  fmtDate(r[LOG_COL.ORDER_DATE   - 1]),
-        vendor:     String(r[LOG_COL.VENDOR      - 1] || "").trim(),
+        vendor:     vendor,
         itemId:     itemId,
         itemName:   String(r[LOG_COL.ITEM_NAME   - 1] || "").trim(),
         itemPack:   packMap.get(itemId) || "",
@@ -189,6 +104,21 @@ function getOrderHistory(filters) {
       return true;
     })
     .sort((a, b) => b.orderDate.localeCompare(a.orderDate));
+
+  return { rows: rows, vendors: Array.from(vendorSet).sort() };
+}
+
+
+
+
+// Serves Tab 1 (Recent Orders) and Tab 2 (Item History) in the modal.
+// filters: { vendorFilter, dateFrom, dateTo }
+function getOrderHistory(filters) {
+  const logSheet = ensureLogSheet_();
+  const lastRow  = logSheet.getLastRow();
+  if (lastRow < 2) return [];
+  const data = logSheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  return buildHistoryRows_(data, filters).rows;
 }
 
 
@@ -323,7 +253,7 @@ const PAR_FLAG = {
 //     par:          number | ""
 //   }
 // }
-function getParReviewFlags() {
+function getParReviewFlags(parMap) {
   const logSheet = ensureLogSheet_();
   const lastRow  = logSheet.getLastRow();
   if (lastRow < 2) return {};
@@ -339,18 +269,25 @@ function getParReviewFlags() {
 
 
 
-  // Build par lookup from MASTER_ITEMS so we can compute 75% of par per item
-  const master     = getSheet_(SHEET_MASTER);
-  const masterLast = master.getLastRow();
-  const parMap     = new Map(); // itemId → par number
-  if (masterLast >= 2) {
-    master.getRange(2, COL.ID, masterLast - 1, COL.PAR - COL.ID + 1)
-      .getValues()
-      .forEach(r => {
-        const id  = String(r[0] || "").trim();
-        const par = Number(r[COL.PAR - COL.ID]);
-        if (id && !isNaN(par) && par > 0) parMap.set(id, par);
-      });
+  // Par lookup (itemId → par number, par>0 only) so we can compute % of par per
+  // item. getManageItemsBootstrap passes a prebuilt map — it already read MASTER
+  // via getAllItemsForView, so this avoids a second MASTER read on the modal-open
+  // path (audit #13). Called standalone (parMap omitted) it reads MASTER here, as
+  // before. The map is only used to look up par for logged item IDs, so the extra
+  // blank-name MASTER rows the bootstrap map omits are never referenced.
+  if (!parMap) {
+    parMap = new Map();
+    const master     = getSheet_(SHEET_MASTER);
+    const masterLast = master.getLastRow();
+    if (masterLast >= 2) {
+      master.getRange(2, COL.ID, masterLast - 1, COL.PAR - COL.ID + 1)
+        .getValues()
+        .forEach(r => {
+          const id  = String(r[0] || "").trim();
+          const par = Number(r[COL.PAR - COL.ID]);
+          if (id && !isNaN(par) && par > 0) parMap.set(id, par);
+        });
+    }
   }
 
 
