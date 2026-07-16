@@ -10,10 +10,10 @@ Resumable audit manifest (per `codebase-audit-method`). Each area records the co
 
 | Area | Files | last_swept | Verdict |
 |---|---|---|---|
-| Backend — core/order/reset/dashboard/recap | `Core.gs`, `ResetLog.gs`, `Dashboard.gs`, `MOGApi.gs` | `3577650` (2026-07-16) | Clean; minor drift/dead-code |
-| Backend — vendor/items/pickpath/history/health | `Vendors.gs`, `Items.gs`, `PickPath.gs`, `History.gs`, `Health.gs` | `3577650` (2026-07-16) | Clean; drift + 1 verify |
-| Web editor + modals | `Editor.gs`, `EditorShell.html`, `EditorHome.html`, all dual-host `*.html` | `3577650` (2026-07-16) | Essentially clean (post-#19) |
-| PWA + deploy infra | `template/index.html`, `template/sw.js`, `build.py`, `deploy.py`, root `index.html`/`sw.js`, `stores.json` | `3577650` (2026-07-16) | Clean; 1 real bug |
+| Backend — core/order/reset/dashboard/recap | `Core.gs`, `ResetLog.gs`, `Dashboard.gs`, `MOGApi.gs` | `a08ca2b` (2026-07-16) | Clean; minor drift/dead-code |
+| Backend — vendor/items/pickpath/history/health | `Vendors.gs`, `Items.gs`, `PickPath.gs`, `History.gs`, `Health.gs` | `a08ca2b` (2026-07-16) | Clean; drift + 1 verify |
+| Web editor + modals | `Editor.gs`, `EditorShell.html`, `EditorHome.html`, all dual-host `*.html` | `a08ca2b` (2026-07-16) | Essentially clean (post-#19) |
+| PWA + deploy infra | `template/index.html`, `template/sw.js`, `build.py`, `deploy.py`, root `index.html`/`sw.js`, `stores.json` | `a08ca2b` (2026-07-16) | Clean; 1 real bug |
 
 Context: the codebase was deep-audited 2026-07-12 (11 commits) and again touched 2026-07-14 (8 commits). This sweep therefore concentrated on the 07-14 changes (Tier-3 formula→code, par-review overhaul, #19 RPC-shim, B1 fix/Health Check). The thin result set is expected.
 
@@ -30,7 +30,8 @@ Ranked HIGH-value-LOW-effort first. Effort tag in brackets.
 - **#15 → RESOLVED, no code change:** `snapshotVendorOrders_` only logs rows with `suggested > 0`, so LOG_ORDERS never holds 0-qty rows — the `qtyOrdered <= 0` filter is correct defensiveness. The over-flag's blindness to not-ordered-because-overstocked days is inherent to logging only actual orders (a future enhancement, not a bug).
 - **#10 → KEPT:** the unreachable guard in `computeSuggestedQty_` is deliberate belt-and-suspenders in the order-math path; not worth touching.
 - **DONE (batch B):** #11 (stale `handlePinSubmit` log label) + #12 (localized the generic error toast — `errGeneric`; 5 sites, audit undercounted as 3). Shipped to all stores, CACHE v38 (`02380fb`).
-- **OPEN:** #13, #14 (LOW-value maintainability refactors — `getManageItemsBootstrap` double MASTER read; duplicated Order History enrich block — deferred).
+- **DONE:** #13 (`getManageItemsBootstrap` now passes a prebuilt par map to `getParReviewFlags` → one MASTER read on modal open, not two) + #14 (extracted `buildHistoryRows_` — the two Order History readers no longer duplicate ~60 lines). No behavior change. Fanned out to all 9 + master.
+- **OPEN:** none — all 16 findings closed.
 
 ### Ship-worthy
 
@@ -91,4 +92,4 @@ Ranked HIGH-value-LOW-effort first. Effort tag in brackets.
 
 ---
 
-*Progress: #1–#12, #15, #16 closed and shipped on 2026-07-16. Only #13/#14 remain (deferred LOW-value maintainability refactors). Resume at #13 if/when desired.*
+*Progress: ALL 16 findings (#1–#16) closed and shipped on 2026-07-16. Audit complete — nothing open. The next audit continues numbering at #17 and re-sweeps only areas whose `last_swept` is behind HEAD.*
