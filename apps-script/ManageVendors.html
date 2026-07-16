@@ -984,11 +984,21 @@
       // ── Vendor cards ─────────────────────────────────────────────────────────
       let vendorData = [];
 
+      // Vendors have no user-defined order, so show the cards alphabetically —
+      // matching the Remove dropdown (which already sorts). Returns a sorted
+      // COPY; never mutates VENDOR_TABLE or the RPC result. vIdx is only a DOM-id
+      // suffix and saves key on v.name, so reordering is safe.
+      function sortVendorData_(arr) {
+        return (arr || []).slice().sort(function(a, b) {
+          return String((a && a.name) || '').localeCompare(String((b && b.name) || ''));
+        });
+      }
+
       function renderVendorCards(useCache) {
         // First call uses the prebaked VENDOR_TABLE from the template (no
         // server roundtrip). Subsequent calls (after Add/Remove) re-fetch.
         if (useCache && VENDOR_TABLE && VENDOR_TABLE.length >= 0) {
-          vendorData = VENDOR_TABLE;
+          vendorData = sortVendorData_(VENDOR_TABLE);
           const container = byId('vendor-cards');
           container.innerHTML = '';
           byId('view-loading').style.display = 'none';
@@ -1009,14 +1019,14 @@
         MIRPC()
           .withSuccessHandler(function(vendors) {
             loadEl.style.display = 'none';
-            vendorData = vendors;
+            vendorData = sortVendorData_(vendors);
             const container = byId('vendor-cards');
             container.innerHTML = '';
             if (!vendors.length) {
               container.innerHTML = "<div style='padding:20px;text-align:center;color:#aaa;font-size:11px;font-style:italic'>" + t('noVendors') + "</div>";
               return;
             }
-            vendors.forEach(function(v, vIdx) { container.appendChild(buildVendorCard(v, vIdx)); });
+            vendorData.forEach(function(v, vIdx) { container.appendChild(buildVendorCard(v, vIdx)); });
           })
           .withFailureHandler(function(err) {
             loadEl.style.padding = '';   // restore default for plain-text error
