@@ -19,9 +19,17 @@ Context: the codebase was deep-audited 2026-07-12 (11 commits) and again touched
 
 ---
 
-## Punch-list — audit 2026-07-16 (items #1–#15)
+## Punch-list — audit 2026-07-16 (items #1–#16)
 
 Ranked HIGH-value-LOW-effort first. Effort tag in brackets.
+
+### Status (2026-07-16, later — all shipped to all 9 + master)
+
+- **DONE:** #1 (`f4e8c88`), #4–#9 batch A1 (`78563bc`-ish A1 commit), #2/#3 batch A2, #16 (`87f6bd6`-area). All fanned out via `deploy.py --redeploy` + PWA push; canary rprfo verified (incl. the web-editor add-vendor flow).
+- **#16 (NEW, found during A2 canary verification):** add-vendor threw "Please create an active sheet first" in the web editor — `moveActiveSheet`/`setActiveSheet` have no active sheet in a `/exec` execution and threw *after* the vendor was created (empty client refresh, duplicate on retry). This was **also the true root cause of the 07-14 B1 bug** (the throw aborted `commitAddVendor` before `setVendorHeaderB1_` ran, so the clone kept "VENDOR TEMPLATE"). Fixed by guarding the cosmetic reordering best-effort.
+- **#15 → RESOLVED, no code change:** `snapshotVendorOrders_` only logs rows with `suggested > 0`, so LOG_ORDERS never holds 0-qty rows — the `qtyOrdered <= 0` filter is correct defensiveness. The over-flag's blindness to not-ordered-because-overstocked days is inherent to logging only actual orders (a future enhancement, not a bug).
+- **#10 → KEPT:** the unreachable guard in `computeSuggestedQty_` is deliberate belt-and-suspenders in the order-math path; not worth touching.
+- **OPEN:** #11, #12 (PWA — batch B, next), #13, #14 (LOW-value maintainability refactors, deferred).
 
 ### Ship-worthy
 
@@ -82,4 +90,4 @@ Ranked HIGH-value-LOW-effort first. Effort tag in brackets.
 
 ---
 
-*Next session: start at #1 (Settings header — HIGH value, LOW effort, confirmed), or #2 (add-vendor silent success — pairs naturally with the B1 work). #15 needs a `snapshotVendorOrders_` log-write check before it's actionable.*
+*Progress: #1–#10, #15, #16 closed (done or resolved-no-change) and fanned out to all 9 + master on 2026-07-16. Remaining: #11/#12 (PWA batch B — next), #13/#14 (deferred LOW-value refactors). Resume at #11.*
