@@ -60,6 +60,21 @@ Use **today's actual date** — the date in the session context is authoritative
 
 Skipping step 2 means the next session loads a stale handoff. Skipping step 3 means CurrentState drifts from reality. All happen in the same session.
 
+## If the session changed MOG *logic*, bump the blueprint too
+
+`docs/MOG_LogicBlueprint.md` (with its rendered `docs/MOG_LogicBlueprint.html`) is a human-facing description of MOG's **behavior and rules** — the asset a future rebuild reads. It is NOT session-continuity like the handoff/CurrentState; it updates on a different clock, only when **logic** changes:
+
+- A new or changed business rule (an `R#`) — e.g. the order math, coverage/multiplier behavior, reset/recap guarantees, multi-vendor sourcing, PIN/isolation.
+- A new or changed core flow, a new integration boundary, or a new tunable constant that encodes a business decision.
+
+When the session shipped that kind of change AND the blueprint exists:
+
+1. Edit `docs/MOG_LogicBlueprint.md` — update the affected rule/flow/section, and bump the `current_as_of: <commit> (<date>)` stamp to the session's commit + today.
+2. Regenerate the HTML: `python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md` (the branded HTML, if one is ever made, is a separate hand-styled artifact that does NOT auto-regenerate — say so in the doc header).
+3. The blueprint edits ride in the same session commit as the code + handoff docs.
+
+Do **not** touch the blueprint for pure plumbing, deploy mechanics, UI/CSS, i18n, or bug fixes that don't change a stated rule — those are handoff/CurrentState material only. When unsure whether a change is "logic," ask: *would a rebuild on another stack behave differently because of it?* If yes, bump the blueprint; if no, leave it. (See the global `project-logic-blueprint` skill for what the doc is and how it's structured.)
+
 ## Handoff document spine
 
 Use this structure, in this order:
