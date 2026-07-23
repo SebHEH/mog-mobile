@@ -104,7 +104,7 @@ First A-numbered visual sweep (per `appsscript-ui-consistency-audit`); numbering
   - **ReorderPickPath**: every edit is a button that flips `isDirty` immediately, no free-text — already covered.
   - Read-only tools (OrderHistory/VendorCadenceAudit/HealthCheck) register nothing → breadcrumb navigates freely. **Guard-style decision (Sebastian): 2-button warn for the per-form tools** (they have their own Save buttons; no ambiguous dialog-Save), 3-button only where a unified draft-Save exists (StorageAreas, MI Assign).
 - Re-parsed all edited files, parity 12/12. **DONE + FANNED OUT (all 9 + master, `deploy.py --redeploy`) + committed + pushed 2026-07-21 — Sebastian confirmed the guard works.**
-- **A5 + A6 DONE + SHIPPED + committed + pushed 2026-07-21.** See the A5/A6 entries above. All visual punch-list items (A1–A6) are now resolved or deliberately dropped — the next visual audit starts at A7 (web editor + PWA + hub scope).
+- **A5 + A6 DONE + SHIPPED + committed + pushed 2026-07-21.** See the A5/A6 entries above. All visual punch-list items (A1–A6) are now resolved or deliberately dropped. **The A7 visual audit (web editor + PWA + hub) ran the same day → items A7–A10 below (all LOW polish, none fixed yet).**
 
 > **SCOPING DECISION (Sebastian, 2026-07-21): the Sheet-dialog modal layer is being phased out** — the web editor is the surviving management surface. Modal-cosmetic investment is therefore wasted effort: **A1, A2, A4 DROPPED** (recorded below with their evidence so no future sweep re-derives them); **A3 rescoped to the web surface**; A5/A6 kept (pure web-editor / PWA). Future visual audits scope to **web editor + PWA + hub only** — do not sweep Sheet-dialog chrome.
 
@@ -127,6 +127,36 @@ First A-numbered visual sweep (per `appsscript-ui-consistency-audit`); numbering
 - **Setup.html concept-theme table (L219-223)** — a DOCUMENTED intentional mirror of `CONCEPT_THEMES` (Dashboard.gs), comment at L215 says so; values verified in sync (RP `#2d8c6b`, ĂN `#3C1124`, TNY `#D4A574`, Lei'd `#b51579`). Watch item: re-verify when adding a concept.
 - **`.status.warn` styling for the 07-16 `b1ok` warning** — exists and renders (ManageVendors:206); the raw `#9a2c2c` it uses is folded into A2, not a missing-style bug.
 - **AdminReset `.badge-danger`** — already routes through `var(--danger)`/`var(--danger-bg)`; the scanner's ManageVendors/StorageAreas `.btn-danger "NOT via --danger"` lines are parse artifacts (rules setting only radius/inherited color).
+
+---
+
+## Visual-consistency punch-list — audit 2 (2026-07-21 later, items A7–A10)
+
+Second visual sweep, **scoped web-first per the phase-out** (web editor + PWA + hub; Sheet-dialog chrome excluded). The hub (`index.html`) had never been visually audited; the PWA + web-editor got a fuller pass than the A1–A6 sweep (which only itemized what surfaced). **Honest verdict: this layer is mature — everything below is LOW / LOW-MED polish, no correctness issues or misfire hazards.** Scanner raw output in scratchpad; items are the judgment-filtered residue after the standing non-findings (neutral greys raw, uppercase micro-labels, brand/concept data tables).
+
+### Status (2026-07-21, latest) — ALL of A7–A10 DONE
+
+- **A7 (web editor) — DONE + FANNED OUT (all 9 + master, `deploy.py --redeploy`) + committed + pushed 2026-07-21.** Added `--danger: #c0392b` to EditorShell's `:root` (the one web-editor danger red, = Styles.html so tool pages are unchanged); `.mge-err` now uses it; Setup's redundant `--danger:#b3261e` re-declaration dropped (EditorShell, loaded later in `<body>`, always won anyway — the gate + Setup invalid-field red shift #b3261e→#c0392b, an imperceptible red-to-red move that IS the unification A7 asked for).
+- **A8 + A9 + A10 — DONE + SHIPPED (PWA CACHE v39→v40, hub sw v7→v8, `build.py` regenerated 8 dirs, `git push` → GitHub Pages) 2026-07-21.** A8: minted a shared 5-token warning-amber ramp (`--warn-fill/-border/-text/-accent/-accent-active`) used by both the recap-stale and override banners, exact current values + the two off-state one-offs consolidated onto the ramp (imperceptible). A9: minted 5 fixed `--status-*`/`--cutoff-orange` tokens for the vendor-card status tints at exact values (kept fixed, not remapped to the themed `--red*`). A10: hub `body` + three radii now reference `--text`/`--bg-mute`/`--r-lg`/`--r-md`/`--r-sm`, and added the missing `--r-sm: 6px` so the hub token set matches the PWA.
+- **Gotcha logged:** a bare `replace_all` of `#fef6e0`/`#7a5a13`/`#c08a1a` ran *after* the token defs were added and rewrote them into self-referential `--warn-x: var(--warn-x)` — caught by the post-edit grep, fixed to literals. Lesson: when tokenizing, add the `:root` literal def LAST, or anchor the usage-replacement with a prefix so the def line can't match.
+
+**A7. [LOW] Web-editor "error/danger" red is two shades, and EditorShell has no danger token — `EditorShell.html` `.mge-err` (`#b3261e`), `Setup.html` `--danger:#b3261e`, vs the A3 dialog + tool pages at `#c0392b` (web editor).** The web token set (`--web-accent*`, `--muted`, `--faint`, `--r*`) has **no danger token**, so `.mge-err` hard-codes `#b3261e`; the shared A3 `.mge-dlg-danger` uses `var(--danger, #c0392b)` (gets `#c0392b` from Styles.html on tool pages, the raw fallback on EditorHome). Two similar-but-different reds for the same "danger" meaning across the surviving surfaces. → Add one `--danger` (or `--web-danger`) to EditorShell's `:root`; route `.mge-err`, `.mge-dlg-danger`, and Setup's `--danger` through it. **value LOW, confidence high.**
+
+**A8. [LOW-MED] PWA warning banners hand-code a gold ramp instead of the `--amber-*` tokens — `template/index.html` `.recap-stale-banner` + `.override-banner` (~L419–475) (PWA).** Both prominent "warning" banners use raw `#fef6e0/#f0c97a/#7a5a13/#c08a1a/#9c6e10/#d9b463/#8a6d1a` — a 5-stop gold ramp that is (a) un-tokenized and (b) a different gold from `--amber-light/mid/dark`. If the amber palette ever moves, these two banners won't. → Either extend the amber ramp in `:root` (e.g. `--amber-bg/-border/-btn/-btn-active`) and reference it, or keep raw with a comment. Not a clean 1:1 (5 stops vs 3 tokens), so it's a small design call, not a mechanical swap. **value LOW-MED, effort LOW.**
+
+**A9. [LOW] PWA vendor-card status colors partly raw — `template/index.html` (~L637–674) (PWA).** `#fde4e4 /*soft red*/`, `#f5c2c2`, `#f0d9a8`, `#ed8936` (orange edge bar), `#fbecec` are hand-coded on the vendor-card status rules rather than drawn from `--red*`/`--amber*`. → Map the ones that match existing tokens; mint a token for the orange edge bar if it's a distinct semantic (it doesn't match amber or red). **value LOW, confidence high.**
+
+**A10. [LOW] Hub body + a few radii hard-code values that duplicate the hub's own tokens — `index.html:25-26` (body) (hub).** `body { color:#1f1e1b; background:#ebe9e0 }` exactly equal `--text` / `--bg-mute` declared in the `:root` right below; a few raw `10px`/`14px` radii duplicate `--r-md`/`--r-lg`. Pure hygiene — the tokens exist, they're just not referenced here. → Point body + those radii at the vars. **value LOW, confidence high.**
+
+### Audit-2 recorded as NOT findings (do not re-flag)
+
+- **PWA `.cta-danger` / `.danger` "NOT via --danger" (scanner) — false positive.** The PWA's danger token IS `--red` (semantic, re-themed per concept: RP `#F0532F`, base `#A32D2D`); both selectors route through `var(--red)`. Correct by the PWA's own convention.
+- **PWA `.recipient-remove` → `var(--text-3)` (muted grey), not red — deliberate.** It's a low-emphasis text "remove" link in a list, not a destructive CTA; muted is the intended weight.
+- **Hub has no `--r-sm` — not a gap.** It never references `var(--r-sm)`; the PWA's `var(--r-sm,6px)` hits are the PWA (which defines it). Nothing to add.
+- **Hub concept-tint table (`CONCEPT_VISUALS`) + inline HEH logo SVG hexes — brand data, intentional** (same class as Setup's `CONCEPT_THEMES` mirror). Verify tints when adding a concept.
+- **`theme-color` `<meta>` hexes (PWA `#0F6E56`, hub `#fc0404`) — raw by necessity** (a `<meta>` can't read a CSS var). Not drift.
+
+**Deploy note for A7–A10 when worked:** A7 = web editor → `deploy.py --redeploy` (canary rpfrf). A8/A9/A10 = PWA + hub → `build.py` (A8/A9 need a CACHE bump; hub A10 bumps the hub `sw.js`) + `git push`.
 
 ---
 
