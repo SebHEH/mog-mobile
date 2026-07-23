@@ -42,6 +42,10 @@
       --amber-light: #faeeda;
       --amber-mid: #BA7517;
       --amber-dark: #412402;
+      /* Fixed badge green (primary vendor) — NOT concept-themed, paired with the
+         amber above; --teal re-themes per concept so it must not be used here. */
+      --green-light: #e2f6ee;
+      --green-dark: #1a7a55;
       --red: #A32D2D;
       --red-light: #FCEBEB;
       --red-dark: #501313;
@@ -828,7 +832,7 @@
     /* Fixed semantic colors (NOT concept-themed) so the green/yellow coding
        reads consistently on every store: green = default source, yellow =
        backup. Primary is green; secondary is amber/yellow. */
-    .vend-badge.vb-primary { color: #1a7a55; background: #e2f6ee; border: 0.5px solid rgba(26,122,85,0.40); }
+    .vend-badge.vb-primary { color: var(--green-dark); background: var(--green-light); border: 0.5px solid rgba(26,122,85,0.40); }
     .vend-badge.vb-secondary { color: var(--amber-dark); background: var(--amber-light); border: 0.5px solid rgba(186,117,23,0.45); }
 
     .stepper {

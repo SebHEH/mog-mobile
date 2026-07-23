@@ -10,12 +10,14 @@ Resumable audit manifest (per `codebase-audit-method`). Each area records the co
 
 | Area | Files | last_swept | Verdict |
 |---|---|---|---|
-| Backend — core/order/reset/dashboard/recap | `Core.gs`, `ResetLog.gs`, `Dashboard.gs`, `MOGApi.gs` | `a08ca2b` (2026-07-16) | Clean; minor drift/dead-code |
-| Backend — vendor/items/pickpath/history/health | `Vendors.gs`, `Items.gs`, `PickPath.gs`, `History.gs`, `Health.gs` | `a08ca2b` (2026-07-16) | Clean; drift + 1 verify |
-| Web editor + modals | `Editor.gs`, `EditorShell.html`, `EditorHome.html`, all dual-host `*.html` | `a08ca2b` (2026-07-16) | Essentially clean (post-#19) |
-| PWA + deploy infra | `template/index.html`, `template/sw.js`, `build.py`, `deploy.py`, root `index.html`/`sw.js`, `stores.json` | `a08ca2b` (2026-07-16) | Clean; 1 real bug |
+| Backend — core/order/reset/dashboard/recap | `Core.gs`, `ResetLog.gs`, `Dashboard.gs`, `MOGApi.gs` | `dc77978` (2026-07-21) | Clean; 1 latent TZ drift (#17) |
+| Backend — vendor/items/pickpath/history/health | `Vendors.gs`, `Items.gs`, `PickPath.gs`, `History.gs`, `Health.gs` | `dc77978` (2026-07-21) | Clean |
+| Web editor + modals | `Editor.gs`, `EditorShell.html`, `EditorHome.html`, all dual-host `*.html` | `dc77978` (2026-07-21) | Clean behaviorally; visual items A1–A5 |
+| PWA + deploy infra | `template/index.html`, `template/sw.js`, `build.py`, `deploy.py`, root `index.html`/`sw.js`, `stores.json` | `dc77978` (2026-07-21) | Clean; 1 visual nit (A6) |
 
 Context: the codebase was deep-audited 2026-07-12 (11 commits) and again touched 2026-07-14 (8 commits). This sweep therefore concentrated on the 07-14 changes (Tier-3 formula→code, par-review overhaul, #19 RPC-shim, B1 fix/Health Check). The thin result set is expected.
+
+**2026-07-21 re-sweep:** all 4 areas were CLEAN vs the 07-16 stamps (only docs/skill commits since `a08ca2b`), so this pass was (a) the mechanical scanner over the whole repo — every hit already in the recorded-NOT-findings list, zero shared-constant drift, i18n parity 12/12 PASS, CACHE v38 synced template + 8 dirs; (b) an adversarial re-verify of all 9 of the 07-16 fix commits (`f4e8c88`→`a08ca2b`) — all faithful, incl. the #13/#14 refactor (shared filter body identical to both originals; prebuilt par map matches the standalone read's `par>0` semantics) — which surfaced #17; and (c) the repo's first dedicated **visual-consistency sweep** (`appsscript-ui-consistency-audit` lenses) since 2026-06-22, covering the Sheet-modal layer, web-editor layer, and PWA → items A1–A6 below.
 
 ---
 
@@ -75,6 +77,59 @@ Ranked HIGH-value-LOW-effort first. Effort tag in brackets.
 
 ---
 
+## Punch-list — audit 2026-07-21 (items #17–#18)
+
+### Status (2026-07-21, later)
+
+- **DONE + FANNED OUT (all 9 + master, `deploy.py --redeploy`, 2026-07-21):** #17 (`MOGApi.gs` TZ swap + comment) + #18 (6 dead glossary lines deleted, parity 21/21). Rode the same fan-out as A3.
+
+**#17 [LOW] `api_commitReset_` writes the override-date property with the script TZ, its reader compares with the spreadsheet TZ — `MOGApi.gs:337` (backend).** CONFIRMED. `api_commitReset_` formats `EMERGENCY_OVERRIDE_LASTDATE_PROP` with `Session.getScriptTimeZone()` (line 337 feeds lines 342–343 and the `resetDate` return at 352), while the property's reader `resetEmergencyOverrideOnOpen_` (Core.gs:415–416) and every other writer (Core.gs:593 via :569, ResetLog.gs:367 via :317, MOGApi.gs:375 via :373) use `getSpreadsheetTimeZone()`. Same latent class as closed item #5 — a no-op today (all stores US/Eastern, manifest TZ matches) but a day-boundary mismatch if they ever diverge, which would make the on-open guard clear a same-day override (or leave a stale one on). The A1 batch fixed `getTodaysLogByVendor_` but missed this sibling. → Swap line 337 to `SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone()`. `--redeploy` (api path). **value LOW-MED, confidence high (latent).**
+
+**#18 [LOW] Dead i18n keys with stale window.confirm phrasing — `ReorderPickPath.html:588-590, 617-619` (modal).** `unsavedSwitch` / `unsavedSwitchEnd` / `unsavedClose` are defined in both languages but referenced nowhere (grep-confirmed) — orphaned when the 07-14 `rpp-guard` dialog replaced `window.confirm`. The copy still says "Click OK to save… or Cancel" — wrong for the 3-button dialog even if ever resurrected. Parity checker passes (both sides present); parity ≠ liveness. → Delete all six lines (EN + ES together). Push-only. **value LOW, confidence high.**
+
+---
+
+## Visual-consistency punch-list — 2026-07-21 (items A1–A6)
+
+First A-numbered visual sweep (per `appsscript-ui-consistency-audit`); numbering continues across future visual audits. Scanner raw output kept out of the repo — the bulk of its raw-hex hits are the accepted neutral-greys-stay-raw decision (2026-06-04); items below are the judgment-filtered residue.
+
+### Status (2026-07-21, later)
+
+- **DONE (canary rpfrf):** A3 shipped — shared `mgeGuard3_`/`mgeConfirm_`/`mgeDialogEnsure_` + `.mge-dlg-*` CSS in EditorShell; ReorderPickPath + ManageItems converged onto `mgeGuard3_` (per-tool `.rpp-guard-*`/`.ig-*` copies + markup deleted); StorageAreas close→`mgeGuard3_` (upgraded 2-btn→3-btn Save/Don't-save/Cancel, `doSave` gained an optional onDone), delete→`mgeConfirm_`; HealthCheck destructive-fix→`mgeConfirm_`. JS parses, parity 12/12, no dangling refs, zero `window.confirm` left in the editor set. Net ~−70 lines.
+- **A3 follow-up 1 — breadcrumb navigation now honors the guard** (found in rpfrf smoke test: clicking the breadcrumb bypassed the dirty guard and silently discarded edits — pre-existing; breadcrumb is EditorShell chrome that navigates via a raw `<a>`). Added a **leave-guard mechanism** to EditorShell: `mgeSetLeaveGuard_(fn)` + a one-time delegated click interceptor on `#mge-crumb` (`mgeWireCrumbGuard_`, wired from `setBreadcrumb_`) that routes ancestor-link clicks through the registered `fn(proceed)`. Each editable tool registers a `guardLeave_(proceed)`; footer `doClose`/`editorClose` delegate to it too — one code path for footer-close AND breadcrumb.
+- **A3 follow-up 2 — two-step / free-text inputs also count as "dirty" now** (found in rpfrf: an in-progress Storage-Areas rename or typed Add field wasn't in the `isDirty` draft, so it slipped past the guard). Swept ALL web tools for the class and closed each:
+  - **StorageAreas**: `hasPendingInput_` (open rename with changed text, or non-empty Add field) fires the 3-button guard; Save folds the pending text into the draft via `commitPendingInput_` first (Cancel leaves the open input untouched).
+  - **ManageItems**: Assign tab keeps its 3-button (real save-all); the Add/Edit **item** forms (own Add/Save buttons, no unified save) now warn via a **2-button** "Leave without saving?" — Add dirty = any text field typed; Edit dirty = live form ≠ `editFormBaseline_` snapshot (captured in `setEditFormState_('loaded')`).
+  - **ManageVendors** (had NO guard/dirty model at all): added `guardLeave_` + `vendorFormPending_` (Add name / Import name / chosen file / an open inline multiplier edit) → 2-button warn; `editorClose` now routes through it.
+  - **ReorderPickPath**: every edit is a button that flips `isDirty` immediately, no free-text — already covered.
+  - Read-only tools (OrderHistory/VendorCadenceAudit/HealthCheck) register nothing → breadcrumb navigates freely. **Guard-style decision (Sebastian): 2-button warn for the per-form tools** (they have their own Save buttons; no ambiguous dialog-Save), 3-button only where a unified draft-Save exists (StorageAreas, MI Assign).
+- Re-parsed all edited files, parity 12/12. **DONE + FANNED OUT (all 9 + master, `deploy.py --redeploy`) + committed + pushed 2026-07-21 — Sebastian confirmed the guard works.**
+- **A5 + A6 DONE + SHIPPED + committed + pushed 2026-07-21.** See the A5/A6 entries above. All visual punch-list items (A1–A6) are now resolved or deliberately dropped — the next visual audit starts at A7 (web editor + PWA + hub scope).
+
+> **SCOPING DECISION (Sebastian, 2026-07-21): the Sheet-dialog modal layer is being phased out** — the web editor is the surviving management surface. Modal-cosmetic investment is therefore wasted effort: **A1, A2, A4 DROPPED** (recorded below with their evidence so no future sweep re-derives them); **A3 rescoped to the web surface**; A5/A6 kept (pure web-editor / PWA). Future visual audits scope to **web editor + PWA + hub only** — do not sweep Sheet-dialog chrome.
+
+**A3. [MED] (RESCOPED web-only) Web tools handle unsaved-changes / destructive confirms three different ways — `ManageItems` / `ReorderPickPath` / `StorageAreas` / `HealthCheck` (web editor).** ManageItems has its own styled 3-button guard (`ig-*`, :705-713), ReorderPickPath its own (`rpp-guard-*`, :505-513, built 07-14 explicitly because `window.confirm` is unreliable in the HtmlService iframe) — duplicated markup+CSS+JS, the same drift class #19 centralized for RPCs. Meanwhile StorageAreas still uses the flaky `window.confirm` for BOTH its dirty-close guard (:739) and delete-area confirm (:675), and HealthCheck for its destructive-fix gate (:133) — all four fire on the web surface, where the flakiness was actually observed. → Centralize one guard/confirm dialog in EditorShell (the #19 pattern: shared `mgeGuard3_`/`mgeConfirm_`), converge ManageItems + ReorderPickPath onto it, migrate StorageAreas + HealthCheck off `window.confirm`. This is also groundwork the phase-out wants anyway: shared web chrome living in EditorShell, not per-modal. (RecalibrateVendor's 3 confirms are Sheet-only — out of scope per the phase-out.)
+
+**A5. [LOW] Web-editor radius tokens defined 3× under 2 naming schemes — `EditorShell.html` (`--r:10px/--r-sm:7px`) vs `Setup.html` (`--r:12px/--r-sm:9px` — same NAMES) vs `EditorHome.html` (`--radius:12px/--radius-sm:9px` — different names).** **DONE + FANNED OUT (all 9 + master, `deploy.py --redeploy`, 2026-07-21).** Cascade traced: EditorShell is `include()`d into `<body>` AFTER each page's `<head>` `:root`, so **Setup's `--r:12px` was silently clobbered by EditorShell's `--r:10px`** (Setup actually rendered 10px — its declaration was inert), and **EditorHome used the distinct `--radius` name precisely to dodge that clobber** (genuinely rendering 12px). Fix (zero pixels changed): added a shared **large scale `--r-lg:12px/--r-lg-sm:9px`** to EditorShell's base `:root`; pointed EditorHome at `--r-lg*` (dropped its orphan `--radius` scheme); deleted Setup's dead `--r/--r-sm` redeclaration (now inherits the 10px it already rendered). One naming system, defined once, no same-name collision. *Deferred option (not taken): point Setup at `--r-lg` so its wizard cards match Home's larger radius — honors Setup's declared-but-clobbered 12px intent, but that's a real (tiny) visual change; left pixel-identical.*
+
+**A6. [LOW] PWA vendor badge pair mixes raw + token in one component — `template/index.html` (PWA).** **DONE + SHIPPED (CACHE v38→v39, `build.py` + `git push` → GitHub Pages, 2026-07-21).** `.vend-badge.vb-primary` hard-coded `#1a7a55`/`#e2f6ee` while its sibling `.vb-secondary` used `var(--amber-*)`. Minted fixed **`--green-light:#e2f6ee`/`--green-dark:#1a7a55`** beside the amber pair (same block, commented "NOT concept-themed"; `--teal` re-themes so it's not used) and rewired `.vb-primary` to them (alpha border left raw, matching the amber sibling). Exact same hex values → zero visual change by construction.
+
+### Dropped per the modal phase-out (2026-07-21) — do not re-flag, do not fix
+
+- **A1 (was: HealthCheck.html doesn't `include('Styles')`, hand-rolls ~40 hexes incl. a private pass/warn/fail palette).** True but moot: Styles.html is the *modal* design system and the Sheet dialog is retiring. When HealthCheck's web page gets its `mog-editor-web-reskin` pass, tokenize against the EditorShell web tokens then.
+- **A2 (was: semantic state palette in near-miss shades across 6 modals — success ink `#1f6d2a` vs token `#1a6b2e`, 3 success-bgs, 2 warn inks, 3 danger reds vs the Styles trio).** Modal-chrome cosmetics; dropped. If any of these chips survive into web renderings during the phase-out, unify them at reskin time, not as a modal sweep.
+- **A4 (was: `--r-control`/`--r-card` referenced 4× vs ~120 raw radii; micro-labels 8–11.5px vs `--fs-label`).** Sheet-modal-layer shape/type adoption; dropped outright.
+
+### Visual sweep — recorded as NOT findings (do not re-flag)
+
+- **Neutral greys raw everywhere** — deliberate (2026-06-04 unification: brand/semantic tokenized, neutral greys left raw). The scanner's ~700 raw-hex hits are overwhelmingly this.
+- **Uppercase micro-labels/eyebrows** (`.section-label`, `.day-pill-label`, `.ah-eyebrow`, etc.) — house idiom, blessed by Styles.html's own `--fs-label: 10px; /* caps micro-labels */`. Not casing drift; buttons/actions are sentence case as convention requires.
+- **Setup.html concept-theme table (L219-223)** — a DOCUMENTED intentional mirror of `CONCEPT_THEMES` (Dashboard.gs), comment at L215 says so; values verified in sync (RP `#2d8c6b`, ĂN `#3C1124`, TNY `#D4A574`, Lei'd `#b51579`). Watch item: re-verify when adding a concept.
+- **`.status.warn` styling for the 07-16 `b1ok` warning** — exists and renders (ManageVendors:206); the raw `#9a2c2c` it uses is folded into A2, not a missing-style bug.
+- **AdminReset `.badge-danger`** — already routes through `var(--danger)`/`var(--danger-bg)`; the scanner's ManageVendors/StorageAreas `.btn-danger "NOT via --danger"` lines are parse artifacts (rules setting only radius/inherited color).
+
+---
+
 ## Recorded as NOT findings (do not re-flag)
 
 - **EditorShell.html "5 `google.script.run`" (scanner lens 1) — false positive.** 3 distinct auth/dispatch paths that never co-fire on load: `editorPing` (validate-first gate), `editorAuth` (PIN submit), and the generic `webedit_call` inside the `mgeRpc_` Proxy. Not a fan-out.
@@ -92,4 +147,4 @@ Ranked HIGH-value-LOW-effort first. Effort tag in brackets.
 
 ---
 
-*Progress: ALL 16 findings (#1–#16) closed and shipped on 2026-07-16. Audit complete — nothing open. The next audit continues numbering at #17 and re-sweeps only areas whose `last_swept` is behind HEAD.*
+*Progress: items #1–#16 closed and shipped 2026-07-16. The 2026-07-21 re-sweep (code + first visual audit) opened #17–#18 (code, both LOW) and A1–A6 (visual); A1/A2/A4 were then DROPPED per Sebastian's modal phase-out decision (Sheet-dialog layer retiring — see the scoping note above). Open: #17 + #18 (a 10-minute batch: one `--redeploy` + one push-only) and A3 (rescoped web-only, the biggest UX win) + A5/A6 (ride-alongs). The next code audit continues at #19, the next visual audit at A7 and scopes to web editor + PWA + hub only; re-sweep only areas whose `last_swept` is behind HEAD.*
