@@ -25,12 +25,13 @@
        only, so picking a concept re-skins the whole screen for free. */
     :root {
       --accent: #1a1a2e; --accent-text: #ffffff; --accent-ink: #1a1a2e; --accent-soft: #eef0f4;
-      --ink: #1d1f1d; --line: #e3e5e3; --bg: #f5f6f5; --card: #ffffff; --danger: #b3261e;
+      --ink: #1d1f1d; --line: #e3e5e3; --bg: #f5f6f5; --card: #ffffff;
       --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 15px; --fs-lg: 16px; --fs-xl: 18px; --fs-2xl: 20px;
-      /* --r, --r-sm, --font, --shadow, --muted, --faint inherited from EditorShell's
-         :root (loaded later in <body>). Setup previously re-declared --r/--r-sm here
-         but EditorShell's later definition always won, so this now just uses the base
-         (10/7px) it already rendered. For the large scale use --r-lg / --r-lg-sm. */
+      /* --danger, --r, --r-sm, --font, --shadow, --muted, --faint inherited from
+         EditorShell's :root (loaded later in <body>, so it wins). Setup used to
+         re-declare --danger (#b3261e) and --r/--r-sm here; both were always
+         overridden by EditorShell, so they're dropped — the web editor now has one
+         danger red (#c0392b) and one radius scale. Large scale = --r-lg/--r-lg-sm. */
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: var(--fs-md); line-height: 1.45; -webkit-font-smoothing: antialiased; min-height: 100vh; }

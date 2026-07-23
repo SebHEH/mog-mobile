@@ -19,6 +19,7 @@
     --r: 10px; --r-sm: 7px;       /* tool / form scale (dense pages) */
     --r-lg: 12px; --r-lg-sm: 9px; /* large scale — dashboard tiles, wizard cards */
     --muted: #6b6f6b; --faint: #9aa3ad;
+    --danger: #c0392b;            /* one danger red across the web editor (matches Styles.html) */
   }
 
   .mge-overlay { position: fixed; inset: 0; z-index: 9999; background: #f3f3ee; display: flex; align-items: center; justify-content: center; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
@@ -51,7 +52,7 @@
   .mge-sub { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #8a9099; margin-top: 7px; margin-bottom: 20px; }
   .mge-input { width: 100%; padding: 13px; border: 1px solid #d8dce1; border-radius: 8px; font-size: 18px; text-align: center; letter-spacing: .3em; background: #fafaf8; }
   .mge-input:focus { outline: none; border-color: var(--login-accent); }
-  .mge-err { margin-top: 11px; font-size: 12px; color: #b3261e; min-height: 16px; }
+  .mge-err { margin-top: 11px; font-size: 12px; color: var(--danger); min-height: 16px; }
   .mge-btn { width: 100%; margin-top: 12px; padding: 13px; background: var(--login-accent); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; }
   .mge-btn:disabled { background: #aaa; cursor: default; }
   .mge-langrow { margin-top: 18px; display: flex; gap: 6px; justify-content: center; }
