@@ -25,7 +25,7 @@
       --accent: #0e7c7c; --accent-text: #ffffff; --accent-ink: #0e7c7c;
       --ink: #1d1f1d; --line: #e3e5e3; --bg: #f5f6f5; --card: #ffffff;
       --sp-2: 8px; --sp-3: 12px; --sp-5: 22px; --sp-6: 32px;
-      --radius: 12px; --radius-sm: 9px;
+      /* Radii use EditorShell's shared large scale (--r-lg / --r-lg-sm = 12/9px). */
       --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 15px; --fs-lg: 16px; --fs-xl: 18px; --fs-2xl: 20px;
       --accent-soft: #eef2f2;
       /* --font, --shadow, --muted, --faint inherited from EditorShell's :root
@@ -44,7 +44,7 @@
     .ah-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); max-width: 880px; margin: 0 auto; }
     .ah-store { font-size: var(--fs-2xl); font-weight: 800; letter-spacing: .01em; }
     .ah-eyebrow { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .12em; opacity: .82; margin-bottom: 2px; }
-    .lang-toggle { display: inline-flex; background: rgba(255,255,255,.16); border-radius: var(--radius-sm); overflow: hidden; flex: none; }
+    .lang-toggle { display: inline-flex; background: rgba(255,255,255,.16); border-radius: var(--r-lg-sm); overflow: hidden; flex: none; }
     .lang-btn { background: transparent; color: var(--accent-text); border: none; padding: 6px 11px; font-size: var(--fs-sm); font-weight: 700; cursor: pointer; opacity: .65; font-family: var(--font); }
     .lang-btn.on { background: rgba(255,255,255,.92); color: var(--accent-ink); opacity: 1; }
 
@@ -54,7 +54,7 @@
     .tile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); }
     .tile {
       display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
-      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow);
       padding: 24px 14px; text-decoration: none; color: var(--ink); cursor: pointer; font-family: var(--font);
       transition: box-shadow .12s, transform .12s;
     }
@@ -68,16 +68,16 @@
     @media (max-width: 600px) { .tile-grid { grid-template-columns: 1fr 1fr; } }
 
     /* Help CTA banner (MVS-style) + help popup. */
-    .help-cta { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; cursor: pointer; background: var(--accent); color: var(--accent-text); border: none; border-radius: var(--radius); padding: 16px 18px; margin-bottom: var(--sp-4); font-family: var(--font); transition: box-shadow .12s, transform .12s; }
+    .help-cta { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; cursor: pointer; background: var(--accent); color: var(--accent-text); border: none; border-radius: var(--r-lg); padding: 16px 18px; margin-bottom: var(--sp-4); font-family: var(--font); transition: box-shadow .12s, transform .12s; }
     .help-cta:hover { box-shadow: 0 6px 22px rgba(0,0,0,.18); transform: translateY(-2px); }
     .help-cta .hc-ico { flex: none; width: 42px; height: 42px; border-radius: 50%; background: rgba(255,255,255,.18); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; line-height: 1; }
     .help-cta .hc-txt { flex: 1; min-width: 0; }
     .help-cta .hc-ttl { display: block; font-size: var(--fs-lg); font-weight: 800; }
     .help-cta .hc-sub { display: block; font-size: var(--fs-sm); opacity: .92; margin-top: 3px; }
-    .help-cta .hc-go { flex: none; background: var(--accent-text); color: var(--accent); font-weight: 800; font-size: var(--fs-sm); padding: 9px 14px; border-radius: var(--radius-sm); }
+    .help-cta .hc-go { flex: none; background: var(--accent-text); color: var(--accent); font-weight: 800; font-size: var(--fs-sm); padding: 9px 14px; border-radius: var(--r-lg-sm); }
 
     .ehelp-overlay { position: fixed; inset: 0; background: rgba(15,18,22,.5); display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; z-index: 200; overflow: auto; }
-    .ehelp-card { background: var(--card); border-radius: var(--radius); width: 100%; max-width: 540px; box-shadow: 0 18px 50px rgba(0,0,0,.28); overflow: hidden; }
+    .ehelp-card { background: var(--card); border-radius: var(--r-lg); width: 100%; max-width: 540px; box-shadow: 0 18px 50px rgba(0,0,0,.28); overflow: hidden; }
     /* Accent-filled header band, matching the MVS/MPS help modal. */
     .ehelp-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; background: var(--accent); color: var(--accent-text); }
     .ehelp-title { font-size: var(--fs-xl); font-weight: 800; color: var(--accent-text); }
@@ -87,7 +87,7 @@
     .ehelp-body p { margin: 0 0 12px; }
     .ehelp-body ol { margin: 0 0 14px 18px; padding: 0; }
     .ehelp-body li { margin-bottom: 7px; }
-    .ehelp-tip { background: var(--accent-soft); border-radius: var(--radius-sm); padding: 11px 14px; font-size: var(--fs-sm); color: var(--muted); }
+    .ehelp-tip { background: var(--accent-soft); border-radius: var(--r-lg-sm); padding: 11px 14px; font-size: var(--fs-sm); color: var(--muted); }
 
     /* Guided-tour coach-mark styles now live in EditorShell (.mge-tour-*),
        shared with the setup wizard. This page just supplies the steps. */

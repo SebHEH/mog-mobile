@@ -16,7 +16,9 @@
     --web-accent-soft: #e9f4ef; --web-accent-line: #cfe6dc;
     --shadow: 0 1px 3px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.05);
     --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-    --r: 10px; --r-sm: 7px; --muted: #6b6f6b; --faint: #9aa3ad;
+    --r: 10px; --r-sm: 7px;       /* tool / form scale (dense pages) */
+    --r-lg: 12px; --r-lg-sm: 9px; /* large scale — dashboard tiles, wizard cards */
+    --muted: #6b6f6b; --faint: #9aa3ad;
   }
 
   .mge-overlay { position: fixed; inset: 0; z-index: 9999; background: #f3f3ee; display: flex; align-items: center; justify-content: center; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
@@ -165,6 +167,24 @@
   body.mge-web .web-titlebar { display: block; max-width: var(--shell-width, 1000px); margin: 0 auto; padding: 16px 24px 2px; }
   body.mge-web .web-title { font-size: 22px; font-weight: 800; color: #1d1f1d; margin: 0; }
   body.mge-web .web-subtitle { font-size: 13.5px; color: var(--muted, #6b7280); margin: 4px 0 0; line-height: 1.45; max-width: 72ch; }
+
+  /* ── Shared confirm / unsaved-changes dialog (A3) ──────────────────────────
+     One dialog for the whole editor, replacing the per-tool copies (ManageItems
+     .ig-*, ReorderPickPath .rpp-guard-*) and the sandbox-unreliable
+     window.confirm (StorageAreas, HealthCheck). Namespaced + self-contained so
+     it renders identically in the Sheet dialog (no Styles.html reliance) and the
+     web app. Sits below the gate overlay (z-9999) so a re-PIN can't be masked. */
+  .mge-dlg-overlay { display: none; position: fixed; inset: 0; z-index: 9000; background: rgba(20,22,28,0.45); align-items: center; justify-content: center; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  .mge-dlg-overlay.open { display: flex; }
+  .mge-dlg-card { background: #fff; border-radius: 12px; max-width: 400px; width: 100%; padding: 22px 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.28); }
+  .mge-dlg-title { font-size: 17px; font-weight: 700; color: #1a1a2e; margin-bottom: 8px; }
+  .mge-dlg-msg { font-size: 14px; color: #556; line-height: 1.5; margin-bottom: 20px; white-space: pre-line; }
+  .mge-dlg-btns { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .mge-dlg-btn { padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; border: 1px solid transparent; cursor: pointer; }
+  .mge-dlg-cancel  { background: #fff; border-color: #d7dbe2; color: #556; }
+  .mge-dlg-discard { background: #fff; border-color: #e0b4b4; color: #a13b3b; }
+  .mge-dlg-save    { background: var(--web-accent, #2d8c6b); color: #fff; }
+  .mge-dlg-danger  { background: var(--danger, #c0392b); color: #fff; }
 
 </style>
 
@@ -1262,6 +1282,81 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     else { google.script.host.close(); }
   }
 
+  // ── Shared confirm / unsaved-changes dialog (A3) ───────────────────────────
+  // mgeGuard3_(opts): 3-button Save / Don't save / Cancel guard.
+  // mgeConfirm_(opts): 2-button confirm (danger:true → red confirm button).
+  // Replaces the per-tool guards + window.confirm. Each field accepts a plain
+  // string OR a { en, es } pair (resolved at open time via mgeGetLang_); title
+  // and button labels default to the shared bilingual set below, so a caller
+  // usually passes only { msg, onSave, onDiscard } / { msg, danger, onConfirm }.
+  // Language is fixed at open — toggling EN/ES with the dialog up won't
+  // retranslate it (transient dialog; acceptable).
+  var MGE_DLG_LABELS = {
+    title:   { en: 'Unsaved changes', es: 'Cambios sin guardar' },
+    save:    { en: 'Save changes',    es: 'Guardar' },
+    discard: { en: "Don't save",      es: 'No guardar' },
+    cancel:  { en: 'Cancel',          es: 'Cancelar' },
+    confirm: { en: 'Continue',        es: 'Continuar' }
+  };
+  function mgeDlgPick_(v, fallback) {
+    if (v == null) v = fallback;
+    if (v && typeof v === 'object') return (mgeGetLang_() === 'es') ? v.es : v.en;
+    return v;
+  }
+  function mgeDialogEnsure_() {
+    var ov = mgeEl_('mge-dlg-overlay');
+    if (ov) return ov;
+    ov = document.createElement('div');
+    ov.id = 'mge-dlg-overlay';
+    ov.className = 'mge-dlg-overlay';
+    ov.innerHTML =
+      '<div class="mge-dlg-card" role="dialog" aria-modal="true">' +
+        '<div class="mge-dlg-title" id="mge-dlg-title"></div>' +
+        '<div class="mge-dlg-msg" id="mge-dlg-msg"></div>' +
+        '<div class="mge-dlg-btns" id="mge-dlg-btns"></div>' +
+      '</div>';
+    ov.addEventListener('click', function (e) { if (e.target === ov) mgeDlgClose_(); });
+    document.body.appendChild(ov);
+    return ov;
+  }
+  function mgeDlgClose_() { var ov = mgeEl_('mge-dlg-overlay'); if (ov) ov.classList.remove('open'); }
+  function mgeDlgAddBtn_(row, label, cls, onClick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'mge-dlg-btn ' + (cls || '');
+    b.textContent = label;
+    b.onclick = onClick;
+    row.appendChild(b);
+  }
+  function mgeGuard3_(opts) {
+    opts = opts || {};
+    mgeDialogEnsure_();
+    mgeEl_('mge-dlg-title').textContent = mgeDlgPick_(opts.title, MGE_DLG_LABELS.title);
+    mgeEl_('mge-dlg-msg').textContent   = mgeDlgPick_(opts.msg, '');
+    var row = mgeEl_('mge-dlg-btns'); row.innerHTML = '';
+    mgeDlgAddBtn_(row, mgeDlgPick_(opts.cancelLabel,  MGE_DLG_LABELS.cancel),  'mge-dlg-cancel',  mgeDlgClose_);
+    mgeDlgAddBtn_(row, mgeDlgPick_(opts.discardLabel, MGE_DLG_LABELS.discard), 'mge-dlg-discard', function () {
+      mgeDlgClose_(); if (typeof opts.onDiscard === 'function') opts.onDiscard();
+    });
+    mgeDlgAddBtn_(row, mgeDlgPick_(opts.saveLabel, MGE_DLG_LABELS.save), 'mge-dlg-save', function () {
+      mgeDlgClose_(); if (typeof opts.onSave === 'function') opts.onSave();
+    });
+    mgeEl_('mge-dlg-overlay').classList.add('open');
+  }
+  function mgeConfirm_(opts) {
+    opts = opts || {};
+    mgeDialogEnsure_();
+    mgeEl_('mge-dlg-title').textContent = mgeDlgPick_(opts.title, MGE_DLG_LABELS.title);
+    mgeEl_('mge-dlg-msg').textContent   = mgeDlgPick_(opts.msg, '');
+    var row = mgeEl_('mge-dlg-btns'); row.innerHTML = '';
+    mgeDlgAddBtn_(row, mgeDlgPick_(opts.cancelLabel, MGE_DLG_LABELS.cancel), 'mge-dlg-cancel', mgeDlgClose_);
+    mgeDlgAddBtn_(row, mgeDlgPick_(opts.confirmLabel, MGE_DLG_LABELS.confirm),
+      opts.danger ? 'mge-dlg-danger' : 'mge-dlg-save', function () {
+        mgeDlgClose_(); if (typeof opts.onConfirm === 'function') opts.onConfirm();
+      });
+    mgeEl_('mge-dlg-overlay').classList.add('open');
+  }
+
   function mgeErr_(en, es) { var e = mgeEl_('mge-err'); if (e) e.textContent = (mgeGetLang_() === 'es') ? es : en; }
 
   function mgeSubmit_() {
@@ -1301,10 +1396,39 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     mgeErr_('Something went wrong. Try again.', 'Algo salió mal. Inténtalo de nuevo.');
   }
 
+  // ── Leave guard (A3) ───────────────────────────────────────────────────────
+  // A tool with unsaved edits registers a guard here so breadcrumb navigation
+  // (and any future internal nav) can't silently discard them. The guard is
+  // fn(proceed): if clean, call proceed() immediately; if dirty, prompt via
+  // mgeGuard3_ and call proceed() only on Save-success or Don't-save. Cleared to
+  // null = navigate freely. Per-page (EditorShell reloads on every ?page= nav).
+  var MGE_LEAVE_GUARD = null;
+  var MGE_CRUMB_WIRED = false;
+  function mgeSetLeaveGuard_(fn) { MGE_LEAVE_GUARD = (typeof fn === 'function') ? fn : null; }
+  // One delegated click listener on the crumb bar (survives its innerHTML
+  // re-renders). Intercepts ancestor-link clicks and routes them through the
+  // registered guard; separators, the current segment, and the ? button aren't
+  // links so they pass through.
+  function mgeWireCrumbGuard_() {
+    if (MGE_CRUMB_WIRED) return;
+    var bar = mgeEl_('mge-crumb'); if (!bar) return;
+    bar.addEventListener('click', function (e) {
+      var a = e.target;
+      while (a && a !== bar && !(a.tagName === 'A' && a.getAttribute('href'))) a = a.parentNode;
+      if (!a || a === bar) return;      // not an ancestor link
+      if (!MGE_LEAVE_GUARD) return;     // no guard registered → normal navigation
+      var href = a.getAttribute('href');
+      e.preventDefault();
+      MGE_LEAVE_GUARD(function () { window.open(href, '_top'); });
+    });
+    MGE_CRUMB_WIRED = true;
+  }
+
   // Breadcrumb: setBreadcrumb_([{label, href}], {en, es}) — ancestors are links,
   // the last entry is the current (static) page. Hidden when no segments.
   function setBreadcrumb_(ancestors, current) {
     var bar = mgeEl_('mge-crumb'); if (!bar) return;
+    mgeWireCrumbGuard_();   // wire the leave-guard interceptor once
     if (!ancestors || !ancestors.length) { bar.setAttribute('hidden', ''); bar.innerHTML = ''; return; }
     var es = (mgeGetLang_() === 'es');
     var h = '';

@@ -408,17 +408,7 @@
       @keyframes mgeDetailFlash { from { background: #d9f0e6; } to { background: transparent; } }
       #view-detail.detail-flash { animation: mgeDetailFlash 1.2s ease-out; border-radius: 8px; }
 
-      /* Unsaved-changes popup */
-      .ig-overlay { display: none; position: fixed; inset: 0; background: rgba(20,22,28,0.45); z-index: 60; align-items: center; justify-content: center; padding: 20px; }
-      .ig-overlay.open { display: flex; }
-      .ig-card { background: #fff; border-radius: 14px; max-width: 400px; width: 100%; padding: 22px 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.28); }
-      .ig-title { font-size: 17px; font-weight: 700; color: #1a1a2e; margin-bottom: 8px; }
-      .ig-msg { font-size: 14px; color: #556; line-height: 1.5; margin-bottom: 20px; }
-      .ig-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-      .ig-btn { padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; border: 1px solid transparent; cursor: pointer; }
-      .ig-cancel { background: #fff; border-color: #d7dbe2; color: #556; }
-      .ig-discard { background: #fff; border-color: #e0b4b4; color: #a13b3b; }
-      .ig-save { background: var(--web-accent, #2c5d99); color: #fff; }
+      /* Unsaved-changes guard is the shared EditorShell dialog (mgeGuard3_). */
 
       /* ── Quick-switch active-vendor control (View detail) ── */
       /* Primary + backup vendor list on the View detail. Primary is starred;
@@ -702,18 +692,7 @@
       </div>
     </div>
 
-    <!-- Unsaved-changes popup (Assign to Vendor) -->
-    <div id="assign-guard" class="ig-overlay" onclick="if(event.target===this)closeAssignGuard_()">
-      <div class="ig-card">
-        <div class="ig-title"><span class="en">Unsaved changes</span><span class="es">Cambios sin guardar</span></div>
-        <div class="ig-msg" id="assign-guard-msg"></div>
-        <div class="ig-actions">
-          <button class="ig-btn ig-cancel" onclick="closeAssignGuard_()"><span class="en">Cancel</span><span class="es">Cancelar</span></button>
-          <button class="ig-btn ig-discard" onclick="assignGuardDiscard_()"><span class="en">Don't save</span><span class="es">No guardar</span></button>
-          <button class="ig-btn ig-save" onclick="assignGuardSave_()"><span class="en">Save changes</span><span class="es">Guardar</span></button>
-        </div>
-      </div>
-    </div>
+    <!-- Unsaved-changes guard (Assign to Vendor): shared EditorShell dialog (mgeGuard3_). -->
 
     <div class="web-titlebar">
       <h1 class="web-title"><span class="en">Manage Items</span><span class="es">Administrar artículos</span></h1>
@@ -1337,6 +1316,9 @@
     let parFlags = {}; // {itemId: {flag, timesOrdered, avgOnHand, par, emptyCount, overCount}}
     let areaList = [];
     let editLookup = '';
+    // Snapshot of the Edit form taken when an item loads; the leave guard diffs
+    // the live form against it. null = no item loaded (nothing to compare).
+    let editFormBaseline_ = null;
 
     // View All cache constants — declared up here, ABOVE the IIFE that runs
     // loadAllItems() on modal open. const/let are subject to the temporal
@@ -1357,16 +1339,61 @@
     // web app. No per-modal function allowlist — the server's webeditDispatch_
     // switch gates what's callable.
     function MIRPC() { return mgeRpc_(); }
-    // Close: guard against losing unsaved Assign-tab edits, then hand off to the
-    // shared base close (mgeEditorClose_: editor home in web, host.close in Sheet).
-    function editorClose() {
+    // Leave guard: unsaved edits must survive both the footer Close AND
+    // breadcrumb navigation. proceed() runs when it's safe to leave. Two kinds
+    // of pending state:
+    //   • Assign tab (a whole pending set with a real "save all") → the existing
+    //     3-button Save / Don't save / Cancel guard (openAssignGuard_).
+    //   • Add / Edit item form (each has its OWN Add/Save button, no unified
+    //     save) → a 2-button "Leave without saving?" warn; to save, the user
+    //     Stays and clicks the form's own button.
+    // Registered with EditorShell (breadcrumb) + used by the base close.
+    function guardLeave_(proceed) {
       const onAssign = byId('panel-assign') && byId('panel-assign').classList.contains('active');
       if (onAssign && typeof assignHasPendingChanges_ === 'function' && assignHasPendingChanges_(assignCurrentVendor_)) {
-        openAssignGuard_(function () { mgeEditorClose_(); });
+        openAssignGuard_(proceed);
         return;
       }
-      mgeEditorClose_();
+      if (itemFormPending_()) {
+        mgeConfirm_({
+          msg: { en: 'Leave without saving your changes to this item?',
+                 es: '¿Salir sin guardar los cambios de este artículo?' },
+          danger: true,
+          confirmLabel: { en: 'Leave', es: 'Salir' },
+          cancelLabel:  { en: 'Stay',  es: 'Quedarse' },
+          onConfirm: proceed
+        });
+        return;
+      }
+      proceed();
     }
+    // Unsaved input in the Add form (any text field typed) or the Edit form
+    // (fields differ from the loaded item — editFormBaseline_ snapshot taken when
+    // the item loads). Dropdown defaults don't count as "typed" for Add.
+    function itemFormPending_() {
+      const addOn  = byId('panel-add')  && byId('panel-add').classList.contains('active');
+      const editOn = byId('panel-edit') && byId('panel-edit').classList.contains('active');
+      if (addOn) {
+        if ((byId('add-name').value || '').trim()) return true;
+        if ((byId('add-pack').value || '').trim()) return true;
+        if ((byId('add-par').value  || '').trim()) return true;
+      }
+      if (editOn && editFormBaseline_ !== null && serializeEditForm_() !== editFormBaseline_) return true;
+      return false;
+    }
+    function serializeEditForm_() {
+      return [
+        (byId('edit-name').value || '').trim(),
+        byId('edit-vendor').value,
+        (byId('edit-pack').value || '').trim(),
+        (byId('edit-par').value  || '').trim(),
+        byId('edit-active').value,
+        byId('edit-useMult').value,
+        getCheckedEligible_('edit-eligible', byId('edit-vendor').value).join(','),
+        (byId('edit-area-new').value || '').trim()
+      ].join('|');
+    }
+    function editorClose() { guardLeave_(mgeEditorClose_); }
 
     // ── Help panel ──
     function toggleHelp(show) {
@@ -1436,6 +1463,8 @@
       if (empty)   empty.style.display   = state === 'empty'   ? '' : 'none';
       if (loading) loading.style.display = state === 'loading' ? '' : 'none';
       if (body)    body.style.display    = state === 'loaded'  ? '' : 'none';
+      // Snapshot the just-populated form (or clear it) for the leave guard.
+      editFormBaseline_ = (state === 'loaded') ? serializeEditForm_() : null;
     }
 
     // ── Init ──────────────────────────────────────────────────────────────────
@@ -1551,6 +1580,7 @@
           [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
           { en: 'Manage Items', es: 'Administrar artículos' }
         );
+        mgeSetLeaveGuard_(guardLeave_);   // breadcrumb nav honors unsaved Assign-tab edits
         var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
         var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
       }
@@ -1669,31 +1699,19 @@
       renderAssignList_();
     }
 
-    // Unsaved-changes popup — shared by the vendor-switch and tab-switch guards.
-    // onProceed runs after the user picks Save (post-save) or Don't save.
-    let assignGuardProceed_ = null;
+    // Unsaved-changes guard → shared EditorShell dialog (mgeGuard3_), used by
+    // the vendor-switch and tab-switch guards. Save persists then proceeds on
+    // success; Don't save drops pending edits, re-renders, then proceeds.
     function openAssignGuard_(onProceed) {
-      assignGuardProceed_ = onProceed || null;
-      byId('assign-guard-msg').textContent = t('assignGuardMsg').replace('{v}', assignCurrentVendor_);
-      byId('assign-guard').classList.add('open');
-    }
-    function closeAssignGuard_() {                 // Cancel — stay put
-      byId('assign-guard').classList.remove('open');
-      assignGuardProceed_ = null;
-    }
-    function assignGuardDiscard_() {               // Don't save — drop edits, proceed
-      const proceed = assignGuardProceed_;
-      assignGuardProceed_ = null;
-      assignPending_ = {};
-      byId('assign-guard').classList.remove('open');
-      renderAssignList_();
-      if (proceed) proceed();
-    }
-    function assignGuardSave_() {                  // Save, then proceed on success
-      const proceed = assignGuardProceed_;
-      assignGuardProceed_ = null;
-      byId('assign-guard').classList.remove('open');
-      doAssignSave(proceed);
+      mgeGuard3_({
+        msg: t('assignGuardMsg').replace('{v}', assignCurrentVendor_),
+        onSave:    function () { doAssignSave(onProceed || null); },
+        onDiscard: function () {
+          assignPending_ = {};
+          renderAssignList_();
+          if (onProceed) onProceed();
+        }
+      });
     }
     // True if the user has toggled any (non-primary) item away from its saved
     // membership for the given vendor.

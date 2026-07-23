@@ -477,19 +477,7 @@
       body.mge-web button.btn-close:hover { color: var(--web-accent-dark); opacity: 1; }
       body.mge-web button.btn-save { flex: 0 0 auto; background: var(--web-accent); padding: 12px 24px; border-radius: var(--r-sm); }
       body.mge-web button.btn-save:hover { opacity: .9; }
-
-      /* Unsaved-changes dialog — a real Save / Don't save / Cancel choice
-         (replaces window.confirm, which is unreliable in the HtmlService iframe
-         and offered no in-dialog Save). */
-      .rpp-guard-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; align-items: center; justify-content: center; }
-      .rpp-guard-overlay.open { display: flex; }
-      .rpp-guard-card { background: #fff; border-radius: var(--r-card, 8px); padding: 22px 24px; max-width: 400px; margin: 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.25); }
-      .rpp-guard-title { font-size: 16px; font-weight: 700; color: var(--brand, #1a1a2e); margin-bottom: 8px; }
-      .rpp-guard-msg { font-size: 14px; color: #444; line-height: 1.5; margin-bottom: 18px; }
-      .rpp-guard-btns { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-      .rpp-guard-btn { padding: 8px 14px; border-radius: var(--r-control, 6px); border: 1px solid var(--border-2, #ccc); background: #fff; cursor: pointer; font-size: 13px; }
-      .rpp-guard-save { background: var(--brand-green, #2d8c6b); color: #fff; border-color: transparent; font-weight: 700; }
-      .rpp-guard-discard { color: var(--danger, #a32d2d); }
+      /* Unsaved-changes guard is the shared EditorShell dialog (mgeGuard3_). */
     </style>
   </head>
   <body class="lang-en">
@@ -502,18 +490,7 @@
       <button class="lang-btn"        onclick="setLang('es')">ES</button>
     </div>
 
-    <!-- ── Unsaved-changes dialog (Save / Don't save / Cancel) ── -->
-    <div id="rpp-guard" class="rpp-guard-overlay" onclick="if(event.target===this)rppGuardCancel_()">
-      <div class="rpp-guard-card">
-        <div class="rpp-guard-title"><span class="en">Unsaved changes</span><span class="es">Cambios sin guardar</span></div>
-        <div class="rpp-guard-msg"><span class="en">Save your changes to this vendor's pick path before leaving?</span><span class="es">¿Guardar los cambios en la ruta de este proveedor antes de salir?</span></div>
-        <div class="rpp-guard-btns">
-          <button class="rpp-guard-btn rpp-guard-cancel" onclick="rppGuardCancel_()"><span class="en">Cancel</span><span class="es">Cancelar</span></button>
-          <button class="rpp-guard-btn rpp-guard-discard" onclick="rppGuardDiscard_()"><span class="en">Don't save</span><span class="es">No guardar</span></button>
-          <button class="rpp-guard-btn rpp-guard-save" onclick="rppGuardSave_()"><span class="en">Save changes</span><span class="es">Guardar</span></button>
-        </div>
-      </div>
-    </div>
+    <!-- Unsaved-changes guard: shared EditorShell dialog (mgeGuard3_). -->
 
     <!-- ── Help panel (toggled by the [?] header button) ── -->
     <div id="help-overlay" class="help-overlay" onclick="if(event.target===this)toggleHelp(false)">
@@ -585,9 +562,6 @@
           noItemsHint:      'No items yet — use + on a section to add unassigned items here.',
           unassignedHeader: '⚠ Unassigned — use the buttons to assign each item to a section',
           noAreaTitle:      'No storage area assigned',
-          unsavedSwitch:    ' You have unsaved changes for ',
-          unsavedSwitchEnd: '.\n\nClick OK to save before switching, or Cancel to discard changes.',
-          unsavedClose:     'You have unsaved changes. Close anyway?',
           unsavedChanges:   'Unsaved changes.',
           saving:           'Saving…',
           saved:            'Saved! ',
@@ -614,9 +588,6 @@
           noItemsHint:      'Sin artículos — usa + en una sección para agregar artículos sin asignar aquí.',
           unassignedHeader: '⚠ Sin asignar — usa los botones para asignar cada artículo a una sección',
           noAreaTitle:      'Sin área de almacén asignada',
-          unsavedSwitch:    ' Tienes cambios sin guardar para ',
-          unsavedSwitchEnd: '.\n\nHaz clic en Aceptar para guardar antes de cambiar, o en Cancelar para descartar.',
-          unsavedClose:     '¿Tienes cambios sin guardar. ¿Cerrar de todos modos?',
           unsavedChanges:   'Cambios sin guardar.',
           saving:           'Guardando…',
           saved:            '¡Guardado! ',
@@ -1226,28 +1197,27 @@
           .commitReorderPickPath(currentVendor, payload);
       }
 
-      // ── Close ─────────────────────────────────────────────────────────────────
-      function doClose() {
-        if (isDirty) { rppGuardOpen_(function () { mgeEditorClose_(); }); return; }
-        mgeEditorClose_();
+      // ── Leave guard (Close + breadcrumb navigation) ───────────────────────────
+      // proceed() runs when it's safe to leave: immediately if clean, else after
+      // Save-success or Don't-save. Registered with EditorShell so breadcrumb
+      // clicks route through it too (not just the footer Close).
+      function guardLeave_(proceed) {
+        if (!isDirty) { proceed(); return; }
+        rppGuardOpen_(proceed);
       }
+      function doClose() { guardLeave_(mgeEditorClose_); }
       function editorClose() { mgeEditorClose_(); }
 
-      // Unsaved-changes dialog: Save (then proceed), Don't save (proceed), or
-      // Cancel (stay) — replaces the sandbox-unreliable window.confirm and adds
-      // an in-dialog Save. onProceed runs after a successful Save or Don't save.
-      var rppGuardProceed_ = null;
-      function rppGuardOpen_(onProceed) { rppGuardProceed_ = onProceed || null; byId('rpp-guard').classList.add('open'); }
-      function rppGuardCancel_() { byId('rpp-guard').classList.remove('open'); rppGuardProceed_ = null; }
-      function rppGuardDiscard_() {
-        var p = rppGuardProceed_; rppGuardProceed_ = null;
-        byId('rpp-guard').classList.remove('open');
-        if (p) p();
-      }
-      function rppGuardSave_() {
-        var p = rppGuardProceed_; rppGuardProceed_ = null;
-        byId('rpp-guard').classList.remove('open');
-        doSave(p);   // save, then proceed on success
+      // Unsaved-changes guard → shared EditorShell dialog (mgeGuard3_): Save
+      // (then proceed on success), Don't save (proceed), or Cancel (stay).
+      // onProceed runs after a successful Save or after Don't save.
+      function rppGuardOpen_(onProceed) {
+        mgeGuard3_({
+          msg: { en: "Save your changes to this vendor's pick path before leaving?",
+                 es: '¿Guardar los cambios en la ruta de este proveedor antes de salir?' },
+          onSave:    function () { doSave(onProceed || null); },
+          onDiscard: function () { if (onProceed) onProceed(); }
+        });
       }
 
       // ── Server-call indirection (one source of truth, two hosts) ──────────────
@@ -1287,6 +1257,7 @@
             [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
             { en: 'Shelf to Sheet', es: 'Estante a Hoja' }
           );
+          mgeSetLeaveGuard_(guardLeave_);   // breadcrumb nav honors unsaved edits
           var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
           var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
         }

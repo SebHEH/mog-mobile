@@ -130,8 +130,23 @@
     // state. Destructive fixes (e.g. purge) confirm first. Works in both hosts
     // (runHealthFix is UI-free and client-callable).
     function doFix(fixId, destructive) {
-      if (destructive && !window.confirm(
-        'This will modify the sheet (remove pick-path rows and rebuild the vendor tabs). Continue?')) return;
+      // Destructive fixes confirm first via the shared EditorShell dialog
+      // (mgeConfirm_ — replaces the sandbox-unreliable window.confirm). This tool
+      // is English-only (admin), so the strings are passed literally.
+      if (destructive) {
+        mgeConfirm_({
+          title: 'Confirm fix',
+          msg: 'This will modify the sheet (remove pick-path rows and rebuild the vendor tabs). Continue?',
+          danger: true,
+          confirmLabel: 'Continue',
+          cancelLabel: 'Cancel',
+          onConfirm: function () { doFixRun_(fixId); }
+        });
+        return;
+      }
+      doFixRun_(fixId);
+    }
+    function doFixRun_(fixId) {
       var btns = document.querySelectorAll('.hc-fix');
       for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
       showBanner_('Applying fix…', 'info');

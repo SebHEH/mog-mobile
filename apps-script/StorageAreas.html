@@ -414,7 +414,7 @@
           confirmDelete:'Delete "', confirmDeleteEnd:'"? Assigned items will lose their area.',
           noAreas:'No areas yet — add one below.',
           unsavedChanges:'Unsaved changes.', saving:'Saving…', saved:'Saved.',
-          unsavedClose:'You have unsaved changes. Close anyway?'
+          unsavedClose:'Save your changes to the storage areas before leaving?'
         },
         es: {
           addPlaceholder:'ej. Cámara Fría',
@@ -424,7 +424,7 @@
           confirmDelete:'¿Eliminar "', confirmDeleteEnd:'"? Los artículos asignados perderán su área.',
           noAreas:'Sin áreas — agrega una abajo.',
           unsavedChanges:'Cambios sin guardar.', saving:'Guardando…', saved:'Guardado.',
-          unsavedClose:'Tienes cambios sin guardar. ¿Cerrar de todos modos?'
+          unsavedClose:'¿Guardar los cambios en las áreas de almacén antes de salir?'
         }
       };
 
@@ -672,10 +672,16 @@
       // (not per-delete), since the actual pick-DB cleanup happens on Save.
       function quickDelete(idx) {
         var name = areas[idx].name;
-        if (!window.confirm(t('confirmDelete') + name + t('confirmDeleteEnd'))) return;
-        areas.splice(idx, 1);
-        renderList();
-        markDirty();
+        mgeConfirm_({
+          msg: t('confirmDelete') + name + t('confirmDeleteEnd'),
+          danger: true,
+          confirmLabel: { en: 'Delete', es: 'Eliminar' },
+          onConfirm: function () {
+            areas.splice(idx, 1);
+            renderList();
+            markDirty();
+          }
+        });
       }
 
       // ── Add (draft) ─────────────────────────────────────────────────────────--
@@ -702,9 +708,11 @@
       }
 
       // ── Save (bulk commit of the whole draft) ─────────────────────────────────
-      function doSave() {
+      function doSave(onDone) {
         // Send the desired final state. Each entry carries origName (identity)
         // + name; the server reconciles renames/adds/deletes/reorder in one pass.
+        // onDone (optional) runs after a successful save — lets the close guard
+        // Save-then-close.
         var payload = areas.map(function(a) {
           return { origName: a.origName, name: a.name };
         });
@@ -724,6 +732,7 @@
             if (res && res.inUseCount > 0) msg += ' ' + res.inUseCount + t('itemsLost');
             setStatus('save', msg, 'ok');
             setTimeout(function() { if (!isDirty) setStatus('save', ''); }, 3000);
+            if (typeof onDone === 'function') onDone();
           })
           .withFailureHandler(function(err) {
             setSavingCard_('list-card', false);
@@ -734,11 +743,54 @@
           .commitStorageAreasDraft(payload);
       }
 
-      // ── Close (guards unsaved changes) ────────────────────────────────────────
-      function doClose() {
-        if (isDirty && !window.confirm(t('unsavedClose'))) return;
-        editorClose();
+      // ── Leave guard (Close + breadcrumb navigation) ───────────────────────────
+      // proceed() runs when it's safe to leave: immediately if clean, else after
+      // Save-success or Don't-save. Registered with EditorShell so breadcrumb
+      // clicks route through it too (not just the footer Close).
+      //
+      // "Dirty" is more than the isDirty flag: rename and add are two-step (type,
+      // then confirm), so typed-but-unconfirmed text lives only in the input, not
+      // the draft — it would slip past isDirty and be lost silently. So the guard
+      // also fires on pending input, and Save folds that text into the draft first
+      // (Cancel leaves the open input untouched; Don't save discards it).
+      function hasPendingInput_() {
+        if (renamingIdx !== null) {
+          var ri = byId('ri-' + renamingIdx);
+          if (ri && ri.value.trim() && ri.value.trim().toLowerCase() !== areas[renamingIdx].name.toLowerCase()) return true;
+        }
+        var addEl = byId('add-name');
+        if (addEl && addEl.value.trim()) return true;
+        return false;
       }
+      // Fold a valid open rename / typed add-field entry into the draft (mirrors
+      // submitRename / doAdd, data only — the DOM is about to be left behind).
+      // Invalid (blank/duplicate) pending text is dropped, as those can't save.
+      function commitPendingInput_() {
+        if (renamingIdx !== null) {
+          var ri = byId('ri-' + renamingIdx);
+          if (ri) {
+            var oldName = areas[renamingIdx].name;
+            var newName = ri.value.trim();
+            var dup = areas.some(function(a, j) { return j !== renamingIdx && a.name.toLowerCase() === newName.toLowerCase(); });
+            if (newName && newName.toLowerCase() !== oldName.toLowerCase() && !dup) areas[renamingIdx].name = newName;
+          }
+        }
+        var addEl = byId('add-name');
+        if (addEl) {
+          var addName = addEl.value.trim();
+          var addDup  = areas.some(function(a) { return a.name.toLowerCase() === addName.toLowerCase(); });
+          if (addName && !addDup) areas.push({ name: addName, order: (areas.length + 1) * 10, origName: null });
+        }
+      }
+      function guardLeave_(proceed) {
+        if (!isDirty && !hasPendingInput_()) { proceed(); return; }
+        mgeGuard3_({
+          msg: t('unsavedClose'),
+          onSave:    function () { commitPendingInput_(); doSave(proceed); },  // fold pending, save, proceed
+          onDiscard: proceed
+        });
+      }
+      function doClose() { guardLeave_(editorClose); }
       function editorClose() { mgeEditorClose_(); }
 
       // ── Refresh from server (recovery after a failed save) ────────────────────
@@ -802,6 +854,7 @@
             [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
             { en: 'Storage Areas', es: 'Áreas de almacenamiento' }
           );
+          mgeSetLeaveGuard_(guardLeave_);   // breadcrumb nav honors unsaved edits
           var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
           var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
         }

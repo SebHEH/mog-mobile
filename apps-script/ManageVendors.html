@@ -1523,7 +1523,31 @@
       // a token-proxied generic dispatcher in the web app. The server's
       // webeditDispatch_ switch gates what's callable — no per-modal allowlist.
       function MIRPC() { return mgeRpc_(); }
-      function editorClose() { mgeEditorClose_(); }
+
+      // ── Leave guard (Close + breadcrumb navigation) ───────────────────────────
+      // Each of this tool's forms (Add, Import, inline multiplier edit) has its
+      // OWN Add/Import/Save button and there's no unified draft, so leaving warns
+      // (2-button) rather than offering an ambiguous Save: to save, Stay and use
+      // the form's own button. proceed() = navigate away (Close or breadcrumb).
+      function vendorFormPending_() {
+        var vn = byId('vendor-name');     if (vn && vn.value.trim()) return true;   // Add form
+        var iv = byId('imp-vendor-name'); if (iv && iv.value.trim()) return true;   // Import form
+        var f  = byId('imp-file');        if (f && f.files && f.files.length) return true;
+        // An inline multiplier edit left open (editing a vendor's cadence)
+        if (document.querySelector('[id^="iedit-"].visible')) return true;
+        return false;
+      }
+      function guardLeave_(proceed) {
+        if (!vendorFormPending_()) { proceed(); return; }
+        mgeConfirm_({
+          msg: { en: 'Leave without saving your changes?', es: '¿Salir sin guardar los cambios?' },
+          danger: true,
+          confirmLabel: { en: 'Leave', es: 'Salir' },
+          cancelLabel:  { en: 'Stay',  es: 'Quedarse' },
+          onConfirm: proceed
+        });
+      }
+      function editorClose() { guardLeave_(mgeEditorClose_); }
 
       // ── Init ──────────────────────────────────────────────────────────────────
       // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──
@@ -1559,6 +1583,7 @@
             [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
             { en: 'Manage Vendors', es: 'Administrar proveedores' }
           );
+          mgeSetLeaveGuard_(guardLeave_);   // breadcrumb nav honors unsaved form input
           var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
           var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
         }
