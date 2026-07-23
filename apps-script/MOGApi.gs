@@ -334,7 +334,10 @@ function api_commitReset_() {
   const today = new Date();
   oe.getRange(LAST_RESET_DATE_CELL).setValue(today);
 
-  const tz = Session.getScriptTimeZone();
+  // Spreadsheet TZ, not script TZ — the LAST_OVERRIDE_DATE reader
+  // (resetEmergencyOverrideOnOpen_) and every other writer compare
+  // yyyy-MM-dd strings formatted with getSpreadsheetTimeZone() (audit #17).
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
   const overrideRange = oe.getRange(EMERGENCY_OVERRIDE_CELL);
   if (overrideRange.getValue() === true) {
     overrideRange.setValue(false);
