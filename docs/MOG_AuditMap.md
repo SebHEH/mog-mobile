@@ -173,7 +173,7 @@ Second visual sweep, **scoped web-first per the phase-out** (web editor + PWA + 
 
 ## Known pre-existing carry-forward (not counted here)
 
-- **#24 MOGApi.gs split → `Recap.gs` + `Admin.gs`** (pure code-motion) — already on the backlog from the 2026-07-12 audit; use `appsscript-decompose-file`. Not re-numbered.
+- **#24 MOGApi.gs split → `Recap.gs` + `Admin.gs`** (pure code-motion) — already on the backlog from the 2026-07-12 audit; use `appsscript-decompose-file`. Not re-numbered. **DONE 2026-07-24:** MOGApi.gs (2,361 lines) → MOGApi.gs (1,300) + Recap.gs (542, recap email + recipients) + Admin.gs (535, admin/config + test fns). Byte-exact reassembly + 60/60 declaration parity + no dup symbols verified; canary rprfo smoke-tested (order flow + recap email), fanned out all 9 + master via `deploy.py --redeploy`.
 
 ---
 

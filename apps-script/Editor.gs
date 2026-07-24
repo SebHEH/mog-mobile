@@ -78,7 +78,7 @@ function renderEditorHome_() {
 // ?page=setup — the first-run store-setup wizard. doGet routes any editor page
 // here while MOG_API_PIN is unset (you can't gate on a PIN that doesn't exist
 // yet). Identity-only: the form writes the same PropertiesService keys as
-// setupMobileApi (MOGApi.gs), minus the master PIN (an owner-menu concern).
+// setupMobileApi (Admin.gs), minus the master PIN (an owner-menu concern).
 function renderStoreSetupWeb_() {
   const tmpl = HtmlService.createTemplateFromFile('Setup');
   tmpl.webBootJson = editorWebBoot_({ setup: true });
@@ -264,7 +264,7 @@ function editorPing(token) {
  * session token can exist (chicken-and-egg). Its safety is a HARD ONE-SHOT
  * GUARD instead — it runs only while MOG_API_PIN is unset and refuses the
  * moment a PIN exists, so a configured store's /exec can never be re-claimed
- * through it. Writes the SAME identity props as setupMobileApi (MOGApi.gs),
+ * through it. Writes the SAME identity props as setupMobileApi (Admin.gs),
  * minus the master PIN (owner-menu only). The /exec URL is unpublished until
  * setup completes (it enters stores.json afterward), so the open window is an
  * unguessable, self-closing one. On success it mints a session token so the

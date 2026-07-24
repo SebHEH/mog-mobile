@@ -18,6 +18,10 @@ The deploy script itself (`deploy.py`) lives at the repo root, alongside `build.
 | `ResetLog.gs` | Reset / order-log snapshot / daily recap |
 | `History.gs` | Order history modal + par-review flags |
 | `Dashboard.gs` | HOME dashboard builder + per-concept theming |
+| `Editor.gs` | KM web editor: doGet page routing, PIN gate/token, `webedit_call` dispatch, per-tool web renderers |
+| `Health.gs` | Store Health Check — read-only diagnostic + one-click web fixes |
+| `Recap.gs` | Daily recap email (build + send) + recipients list in SETUP AB-AE (split from `MOGApi.gs` 2026-07-24) |
+| `Admin.gs` | Run-once admin/config functions (`setupMobileApi`, PINs, concept) + editor-run test functions (split from `MOGApi.gs` 2026-07-24) |
 | `AdminReset.html` | Admin-only reset/wipe modal |
 | `ManageItems.html` | Item editor modal |
 | `ManageVendors.html` | Vendor editor modal |

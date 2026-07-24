@@ -153,6 +153,8 @@ mog-mobile/
 │   ├── Dashboard.gs             HOME dashboard builder + per-concept theming.
 │   ├── Editor.gs                KM web editor: doGet page routing, PIN gate/token, webedit_call dispatch, per-tool web renderers.
 │   ├── Health.gs                Store Health Check — read-only diagnostic (getStoreHealthReport) + web fixes (runHealthFix).
+│   ├── Recap.gs                 Daily recap email (build + send) + recipients list in SETUP AB-AE (split from MOGApi.gs 2026-07-24).
+│   ├── Admin.gs                 Run-once admin/config fns (setupMobileApi, PINs, concept) + editor-run test fns (split from MOGApi.gs 2026-07-24).
 │   ├── AdminReset.html          Admin reset modal.
 │   ├── ManageItems.html         Item editor modal (dual-host: Sheet dialog + web).
 │   ├── ManageVendors.html       Vendor editor modal (dual-host).

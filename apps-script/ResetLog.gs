@@ -476,7 +476,7 @@ function commitLogAndReset() {
 // it BEFORE clearing on-hand. Never throws — returns a status object purely
 // for optional UI messaging (the sheet reset dialog surfaces it).
 //
-// Guarded with typeof — if MOGApi.gs isn't present (a location not yet
+// Guarded with typeof — if Recap.gs isn't present (a location not yet
 // onboarded to the mobile API), the email step is silently skipped and the
 // reset proceeds normally.
 function sendRecapIfUnsent_() {
