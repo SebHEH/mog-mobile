@@ -1103,16 +1103,27 @@ function countMasterVendors_() {
 // Canonical vendor-tab H2 multiplier formula — single source of truth, shared
 // by the per-tab sync and the VENDOR_TEMPLATE repair. References the LIVE
 // dashboard cells (AD2 override, AE3 day-of-week), never the dead legacy B4/D2.
+//
+// Mirrors vendorDayMultiplier_ (MOGApi.gs) exactly, including Emergency
+// Override: override off → today's multiplier from SETUP S:Y; override on →
+// "bridge to the next real delivery" (first mult > 0 scanning forward from
+// today inclusive, wrapping the week; all-zero row → 1). Unknown vendor or
+// day label → 0, both states — same as the code. (Until 2026-07-24 the sheet
+// diverged under override with a flat 1×; that was the accepted "option A"
+// gap from the 07-02 override redesign, closed by this formula.)
 function vendorTabH2Formula_() {
   const overrideRef = 'ORDER_ENTRY!' + toAbsoluteA1_(DASH.EMERGENCY_OVERRIDE);
   const dayRef      = 'ORDER_ENTRY!' + toAbsoluteA1_(DASH.ORDER_DAY);
-  return '=IF(' + overrideRef + '=TRUE, 1, ' +
-      'IFERROR(' +
-        'INDEX(SETUP!$S$2:$Y, ' +
-          'MATCH(TRIM($B$1), ARRAYFORMULA(TRIM(SETUP!$R$2:$R)), 0), ' +
-          'MATCH(' + dayRef + ', ARRAYFORMULA(TRIM(SETUP!$S$1:$Y$1)), 0)' +
-        '), 0)' +
-    ')';
+  return '=LET(' +
+      'vrow, IFERROR(MATCH(TRIM($B$1), ARRAYFORMULA(TRIM(SETUP!$R$2:$R)), 0), 0), ' +
+      'dcol, IFERROR(MATCH(' + dayRef + ', ARRAYFORMULA(TRIM(SETUP!$S$1:$Y$1)), 0), 0), ' +
+      'IF(OR(vrow=0, dcol=0), 0, ' +
+        'LET(wk, ARRAYFORMULA(N(INDEX(SETUP!$S$2:$Y, vrow, 0))), ' +
+          'IF(' + overrideRef + '=TRUE, ' +
+            'LET(rot, CHOOSECOLS(wk, ARRAYFORMULA(MOD(dcol-1+SEQUENCE(1,7,0),7)+1)), ' +
+                'pos, IFERROR(MATCH(TRUE, ARRAYFORMULA(rot>0), 0), 0), ' +
+                'IF(pos=0, 1, INDEX(rot, 1, pos))), ' +
+            'INDEX(wk, 1, dcol)))))';
 }
 
 
