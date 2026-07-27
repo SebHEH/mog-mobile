@@ -10,10 +10,10 @@ Resumable audit manifest (per `codebase-audit-method`). Each area records the co
 
 | Area | Files | last_swept | Verdict |
 |---|---|---|---|
-| Backend — core/order/reset/dashboard/recap | `Core.gs`, `ResetLog.gs`, `Dashboard.gs`, `MOGApi.gs` | `2874ff6` (2026-07-23) | Clean (#17 fixed + shipped) |
-| Backend — vendor/items/pickpath/history/health | `Vendors.gs`, `Items.gs`, `PickPath.gs`, `History.gs`, `Health.gs` | `2874ff6` (2026-07-23) | Clean |
-| Web editor + modals | `Editor.gs`, `EditorShell.html`, `EditorHome.html`, all dual-host `*.html` | `2874ff6` (2026-07-23) | Clean (#18, A3, A5, A7 fixed + shipped) |
-| PWA + deploy infra | `template/index.html`, `template/sw.js`, `build.py`, `deploy.py`, root `index.html`/`sw.js`, `stores.json` | `2874ff6` (2026-07-23) | Clean (A6, A8, A9, A10 fixed + shipped) |
+| Backend — core/order/reset/dashboard/recap | `Core.gs`, `ResetLog.gs`, `Dashboard.gs`, `MOGApi.gs`, `Recap.gs`, `Admin.gs` | `8a8de37` (2026-07-27) | Clean (#24 split boundary re-verified; #19 opened) |
+| Backend — vendor/items/pickpath/history/health | `Vendors.gs`, `Items.gs`, `PickPath.gs`, `History.gs`, `Health.gs` | `8a8de37` (2026-07-27) | Clean (H2 formula rewrite verified faithful) |
+| Web editor + modals | `Editor.gs`, `EditorShell.html`, `EditorHome.html`, all dual-host `*.html` | `8a8de37` (2026-07-27) | Clean (only 2 comment-pointer lines since `2874ff6`) |
+| PWA + deploy infra | `template/index.html`, `template/sw.js`, `build.py`, `deploy.py`, root `index.html`/`sw.js`, `stores.json` | `8a8de37` (2026-07-27) | Clean (zero diff since `2874ff6`) |
 
 Context: the codebase was deep-audited 2026-07-12 (11 commits) and again touched 2026-07-14 (8 commits). This sweep therefore concentrated on the 07-14 changes (Tier-3 formula→code, par-review overhaul, #19 RPC-shim, B1 fix/Health Check). The thin result set is expected.
 
@@ -160,6 +160,27 @@ Second visual sweep, **scoped web-first per the phase-out** (web editor + PWA + 
 
 ---
 
+## Punch-list — audit 2026-07-27 (item #19)
+
+Sweep of the two commits since `2874ff6`: `a68f7a5` (#24 MOGApi split) + `8a8de37` (H2 override-sync). Mechanical scanner clean (every hit already in the recorded NOT-findings; zero constant drift). The split boundary and the formula rewrite both verified — see the NOT-findings block below. One doc-rot finding:
+
+### Status (2026-07-27)
+
+- **DONE:** #19 — banner rewritten same session (current setup flow: wizard/`mog-add-store`, SETUP!AA cutoffs, real read/write surface, split pointer, `--redeploy` rule; CORS note kept). Parse-checked; pushed to all 9 + master push-only (comment-only, zero behavior delta — 07-24 comment-pointer precedent; the `/exec` snapshots pick it up on the next real `--redeploy`).
+
+**#19 [LOW] MOGApi.gs file header describes the pre-wizard, pre-Tier-3 world — `MOGApi.gs:1-34` (backend).** The 34-line banner still says: "Add this file to the script project" (multi-file project since 2026-06-19; onboarding is `mog-add-store` + the `?page=setup` wizard); step 2 "run setupMobileApi()" (now in `Admin.gs`, and the wizard is the primary path); step 3 "Edit VENDOR_META below to add cutoff times" (cutoffs live in SETUP!AA via Manage Vendors — `VENDOR_META` is an explicitly-legacy fallback per the comments at :693/:1095); "Writes only to MASTER_ITEMS.On_Hand and LOG_ORDERS" (the API now also writes vendor-tab On Hand, reset state, the override cell, recipients AB-AE); and a fossil "TODO BEFORE V1 SHIP" at v0.9.0. Actively misleads a new reader on the onboarding path — the thing Tier-2 wants to streamline. → Rewrite the banner to the current flow (wizard/`mog-add-store`, SETUP!AA cutoffs, real write surface); keep the CORS note (still true and load-bearing). Push-only, no `--redeploy` needed (comment-only). **value LOW-MED, confidence high.**
+
+### Visual re-sweep note (2026-07-27)
+
+No A-items consumed: the visual layers (web editor + PWA + hub) had **zero rendered-surface changes** since the A7–A10 sweep (`Editor.gs` comment lines only; PWA/hub untouched), so there was nothing to re-audit. **Next visual item remains A11.**
+
+### Audit-2026-07-27 recorded as NOT findings (do not re-flag)
+
+- **`vendorTabH2Formula_` (Vendors.gs, `8a8de37`) verified faithful to `vendorDayMultiplier_` (MOGApi.gs:1041) on all four branches:** unknown vendor/day → 0 both states; override off → `INDEX(wk,1,dcol)` = today's mult; override on → `CHOOSECOLS` rotation (`MOD(dcol-1+SEQUENCE(1,7,0),7)+1` wraps correctly) + first `mult>0` = the code's scan-forward-inclusive loop; all-zero row under override → 1. **Known microscopic nuance, deliberate-accepted:** `N()` coerces numeric *text* (`"2"`) to 0 where the code's `Number(x)||0` gives 2 — divergent only if a SETUP S:Y mult cell were text-formatted, which is a data-hygiene condition (both readers see the same cells; the code path is authoritative). Not a formula bug; do not re-flag.
+- **#24 split boundary re-verified (adversarial):** 0 duplicate top-level symbols across all 12 `.gs`; `escapeHtml_`'s only server-side callers are in `Recap.gs` (the `VendorCadenceAudit.html:368` hit is that modal's own browser-side local copy, defined at :300); `Recap.gs`/`Admin.gs` carry proper provenance headers; the `ResetLog.gs`/`Editor.gs` comment pointers were correctly repointed. Constants staying in `MOGApi.gs` (incl. `RECIPIENTS_*` whose consumers moved to Recap) is the recorded routing decision — flat namespace, deliberate, do not re-litigate.
+
+---
+
 ## Recorded as NOT findings (do not re-flag)
 
 - **EditorShell.html "5 `google.script.run`" (scanner lens 1) — false positive.** 3 distinct auth/dispatch paths that never co-fire on load: `editorPing` (validate-first gate), `editorAuth` (PIN submit), and the generic `webedit_call` inside the `mgeRpc_` Proxy. Not a fan-out.
@@ -177,4 +198,4 @@ Second visual sweep, **scoped web-first per the phase-out** (web editor + PWA + 
 
 ---
 
-*Progress: items #1–#16 closed 2026-07-16. The 2026-07-22 re-sweep (code + first visual audit) opened #17–#18 (code) and A1–A6 (visual); A1/A2/A4 were DROPPED per the modal phase-out. On 2026-07-22 all of #17/#18/A3/A5/A6 shipped; on 2026-07-23 the A7 visual audit (web editor + PWA + hub) ran and A7–A10 shipped. **Everything is now closed or deliberately dropped — nothing open.** The next code audit continues at **#19**, the next visual audit at **A11** (web editor + PWA + hub scope); both re-sweep only areas whose `last_swept` is behind HEAD (currently `2874ff6`).*
+*Progress: items #1–#16 closed 2026-07-16. The 2026-07-22 re-sweep (code + first visual audit) opened #17–#18 (code) and A1–A6 (visual); A1/A2/A4 were DROPPED per the modal phase-out. On 2026-07-22 all of #17/#18/A3/A5/A6 shipped; on 2026-07-23 the A7 visual audit (web editor + PWA + hub) ran and A7–A10 shipped. The 2026-07-27 sweep covered the #24 split + the H2 rewrite (both verified) and opened + closed **#19 (stale MOGApi.gs header — rewritten + pushed same session)**; the visual layers were unchanged so no A-items were consumed. The next code audit continues at **#20**, the next visual audit at **A11** (web editor + PWA + hub scope); both re-sweep only areas whose `last_swept` is behind HEAD (currently `8a8de37`).*

@@ -1,36 +1,39 @@
 /***********************
- * MOG MOBILE API — v0.1.0
+ * MOG MOBILE API
  *
- * Web app endpoints for the mobile companion PWA.
- * Single endpoint via doPost dispatching on { pin, action, payload }.
+ * Web-app endpoints for the companion PWA (sebheh.github.io/mog-mobile).
+ * doPost is the single PWA endpoint, dispatching on { pin, action, payload }.
+ * doGet routes the KM web editor + first-run setup wizard (?page=…, rendered
+ * in Editor.gs) and the JSON health probe (?page=api).
  *
- * SETUP (per location, one-time):
- *   1. Add this file to the script project in the location's spreadsheet
- *      (Extensions → Apps Script → File +).
- *   2. From the script editor, run setupMobileApi() — prompts for PIN,
- *      location name, abbreviation, and GM email.
- *   3. Edit VENDOR_META below to add cutoff times for each vendor.
- *   4. Deploy → New deployment → type "Web app"
- *        Execute as: Me
- *        Who has access: Anyone
- *      Copy the deployment URL — that is the per-location API endpoint.
- *   5. Add the URL + PIN into the mobile app config for that location.
+ * SETUP (per location):
+ *   The ?page=setup wizard on a fresh /exec deployment is the primary path
+ *   (writes the identity props, minus the master PIN). The full end-to-end
+ *   onboarding — Drive copy, Script ID, .clasp-targets.json, web-app deploy,
+ *   stores.json — is the repo's mog-add-store skill. setupMobileApi()
+ *   (Admin.gs) remains the editor-run fallback. Vendor cutoff times are set
+ *   in Manage Vendors (stored in SETUP!AA); the VENDOR_META constant below
+ *   is a legacy fallback only.
  *
  * NOTES:
- *   - Does not modify any existing functions in the bound-script files.
- *   - Reads from MASTER_ITEMS, SETUP, LOG_ORDERS.
- *   - Writes only to MASTER_ITEMS.On_Hand (same column the existing system
- *     uses for in-progress counts) and LOG_ORDERS (append-only on submit).
- *   - The mobile app and the spreadsheet UI share state automatically —
- *     counting in either place updates the same On Hand column.
+ *   - All .gs files share one flat global scope. This file owns doGet/doPost,
+ *     the api_* handlers, and the shared constants below. Recap + recipients
+ *     live in Recap.gs; admin/config + test fns in Admin.gs (2026-07-24 split).
+ *   - Reads MASTER_ITEMS, SETUP, LOG_ORDERS, and vendor tabs (On Hand col E
+ *     + Item ID col M only — the order math is computed in code; see
+ *     computeSuggestedQty_ / vendorDayMultiplier_).
+ *   - Writes vendor-tab On Hand (col E), LOG_ORDERS (append on submit), the
+ *     reset-date + Emergency Override cells on ORDER_ENTRY, and the recap
+ *     recipients list (SETUP AB-AE). Counting in the PWA and typing in the
+ *     Sheet update the same cells — the two surfaces share state.
+ *   - The PWA hits a VERSIONED /exec snapshot: changes to this file (or
+ *     anything it calls) ship via `python deploy.py --redeploy`, never
+ *     push-only.
  *
  * CORS NOTE FOR PWA CLIENT:
  *   Apps Script Web Apps reject application/json POSTs (CORS preflight).
  *   The PWA must use Content-Type: text/plain;charset=utf-8 and put the
  *   JSON in the body. Apps Script reads it from e.postData.contents.
- *
- * TODO BEFORE V1 SHIP:
- *   - Audit log of API calls (who, what, when)
  ***********************/
 
 const API_VERSION         = '0.9.0';
