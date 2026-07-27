@@ -1182,31 +1182,57 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
   function mgeRunCb_() { if (typeof MGE_CB === 'function') MGE_CB(); mgeDecorateLinks_(); }
 
   // Each page's init calls this. The gate is the ONLY door: device → block;
-  // a stored token is VALIDATED server-side (editorPing) before the page runs,
-  // never used optimistically; anything else → PIN. This guarantees you can't
-  // land on a tool with an unverified session — a token flushed by a redeploy
-  // or expired routes to the PIN, not a broken page.
+  // then two token paths with different trust levels (2026-07-27 slowness fix):
+  //
+  //   URL token (?t=…, appended by mgeDecorateLinks_ on the PREVIOUS page) —
+  //   adopted OPTIMISTICALLY: the tool init runs immediately and editorPing
+  //   validates in the background. Safe because the token was validated (and
+  //   its sliding TTL refreshed) seconds ago by the page that wrote the link,
+  //   the page's baked template data is served pre-PIN anyway, and every real
+  //   RPC still hard-validates server-side (webedit_call). If the background
+  //   ping DOES fail (redeploy flushed CacheService mid-session, or >1h idle
+  //   between clicks), mgeReshowGate_ reprompts — the same recovery that
+  //   already handles mid-session expiry. This removes a full serial /exec
+  //   round-trip (~1.5–2s) from every internal page navigation.
+  //
+  //   Stored token (localStorage — bookmark/reload landings, can be days old)
+  //   — VALIDATED FIRST via editorPing before the page runs, never used
+  //   optimistically; anything else → PIN. Same guarantee as before: you
+  //   can't land cold on a tool with an unverified session.
   function mgeStartGate_(cb) {
     MGE_CB = cb || null;
     mgeApplyConcept_(); mgeApplyLang_();
     if (mgeIsPhone_()) { mgeShow_('device'); return; }
-    // Validate-first, with a cross-page handoff. A token can reach this page two
-    // ways: localStorage (same-page reloads) OR the URL (?t=<token>, appended to
-    // every internal link by mgeDecorateLinks_). The sandbox does NOT reliably
-    // keep localStorage across a ?page= navigation, so without the URL carrier a
-    // KM who PINs in on the home page gets re-prompted on every tool. Order: try
-    // the stored token; if absent/invalid, try the URL token; only then PIN.
     mgeShow_('checking');
     var toPin = function () { mgeClearToken_(); MOG_TOKEN = null; mgeShow_('pin'); };
-    var tryUrl = function () {
-      mgeTokenFromUrl_(function (urlTok) {
-        if (urlTok) mgeTryToken_(urlTok, toPin);
-        else toPin();
-      });
+    var tryStored = function () {
+      var stored = mgeStoredToken_();
+      if (stored) mgeTryToken_(stored, toPin);
+      else toPin();
     };
-    var stored = mgeStoredToken_();
-    if (stored) mgeTryToken_(stored, tryUrl);
-    else tryUrl();
+    // URL token first (fresher than localStorage when both exist — it was
+    // minted by the page the user just left); fall back to validate-first on
+    // the stored token, then the PIN.
+    mgeTokenFromUrl_(function (urlTok) {
+      if (urlTok) mgeAdoptUrlToken_(urlTok);
+      else tryStored();
+    });
+  }
+
+  // Optimistic adoption of a URL-carried token: reveal + init NOW, validate in
+  // the background. On a failed ping the gate reshows (clears the dead token,
+  // PIN prompt); re-auth re-runs init via mgeRunCb_, reloading the tool clean —
+  // the established mid-session-expiry recovery path.
+  function mgeAdoptUrlToken_(tok) {
+    MOG_TOKEN = tok;
+    mgeStoreToken_(tok);          // best-effort cache for same-page reloads
+    mgeHide_(); mgeRunCb_();      // no round-trip in the critical path
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!(res && res.ok)) mgeReshowGate_();
+      })
+      .withFailureHandler(function () { mgeReshowGate_(); })
+      .editorPing(tok);           // background: also refreshes the sliding TTL
   }
 
   // Validate a candidate token server-side (editorPing). On success: adopt it,
