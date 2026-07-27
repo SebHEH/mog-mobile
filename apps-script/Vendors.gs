@@ -34,7 +34,23 @@ function showManageVendorsSidebar() {
 
 // Returns all vendors with their 7-day multipliers for the View All tab.
 // Returns [{name, mults: [mon,tue,wed,thu,fri,sat,sun]}]
+// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-27): read on the
+// Manage Vendors doGet render + the Manage Items bootstrap. Same shared-ts
+// invalidation and same mid-write caveat as getVendorList above.
 function getVendorTableData() {
+  var ts  = getServerMutationTs_();
+  var key = 'vendorTable_v1:' + ts;
+  var cache = CacheService.getDocumentCache();
+  try {
+    var hit = cache.get(key);
+    if (hit) return JSON.parse(hit);
+  } catch (e) { /* fail-safe — compute on cache error */ }
+  var result = getVendorTableData_compute_();
+  try { cache.put(key, JSON.stringify(result), 300); } catch (e) { /* fail-safe */ }
+  return result;
+}
+
+function getVendorTableData_compute_() {
   const sh      = getSheet_(VENDOR_TABLE.SHEET);
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
@@ -139,7 +155,10 @@ function commitAddVendor(vendorName, mults, cutoffTime) {
 
 
   // 1. Duplicate check
-  const existing = getVendorList();
+  // _compute_ (cache bypass): this fn bumped the mutation ts at its start, so
+  // the cached wrapper would store this PRE-insert list under the POST-bump
+  // key — serving a stale vendor list for up to the cache TTL after the add.
+  const existing = getVendorList_compute_();
   if (existing.some(v => v.toLowerCase() === name.toLowerCase())) {
     throw new Error('"' + name + '" already exists.');
   }
@@ -990,7 +1009,27 @@ function commitRemoveVendor(vendorName) {
 
 
 
+// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-27 web-editor
+// slowness fix): the vendor list is read on nearly every editor doGet render
+// and by many server paths. Keyed on the shared mutation ts — every vendor
+// mutator bumps it, so invalidation is free. WRITERS BEWARE: a mutator that
+// bumps at its START and then reads the list BEFORE mutating must call
+// getVendorList_compute_() directly (commitAddVendor does), or it caches the
+// pre-mutation list under the post-bump key.
 function getVendorList() {
+  var ts  = getServerMutationTs_();
+  var key = 'vendorList_v1:' + ts;
+  var cache = CacheService.getDocumentCache();
+  try {
+    var hit = cache.get(key);
+    if (hit) return JSON.parse(hit);
+  } catch (e) { /* fail-safe — compute on cache error */ }
+  var result = getVendorList_compute_();
+  try { cache.put(key, JSON.stringify(result), 300); } catch (e) { /* fail-safe */ }
+  return result;
+}
+
+function getVendorList_compute_() {
   const sh      = getSheet_(VENDOR_TABLE.SHEET);
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];

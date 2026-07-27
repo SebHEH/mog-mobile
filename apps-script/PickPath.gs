@@ -25,7 +25,26 @@ function readAreaBlock_(setup) {
 
 
 
+// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-27): read on the
+// Storage Areas doGet render + the Manage Items bootstrap. Shared-ts
+// invalidation. WRITERS BEWARE: commitStorageAreasDraft_locked_ bumps at its
+// start and reads the CURRENT list before reconciling — it must (and does)
+// call getStorageAreaList_compute_() directly, or it would cache the
+// pre-mutation list under the post-bump key.
 function getStorageAreaList() {
+  var ts  = getServerMutationTs_();
+  var key = 'areaList_v1:' + ts;
+  var cache = CacheService.getDocumentCache();
+  try {
+    var hit = cache.get(key);
+    if (hit) return JSON.parse(hit);
+  } catch (e) { /* fail-safe — compute on cache error */ }
+  var result = getStorageAreaList_compute_();
+  try { cache.put(key, JSON.stringify(result), 300); } catch (e) { /* fail-safe */ }
+  return result;
+}
+
+function getStorageAreaList_compute_() {
   const { block } = readAreaBlock_(getSheet_(SHEET_SETUP));
   return block
     .map(r => ({ name: String(r[0] || "").trim(), order: Number(r[1]) }))
@@ -114,7 +133,10 @@ function commitStorageAreasDraft_locked_(finalList) {
   }
 
   const setup   = getSheet_(SHEET_SETUP);
-  const current = getStorageAreaList();                       // [{name, order}]
+  // _compute_ (cache bypass): the bump above means the cached wrapper would
+  // store this PRE-reconcile list under the POST-bump key — serving the old
+  // area list for up to the cache TTL after the save.
+  const current = getStorageAreaList_compute_();              // [{name, order}]
   const currentByLower = new Map(current.map(a => [a.name.toLowerCase(), a.name]));
 
   // ── Validate the whole payload before touching the sheet ──
@@ -784,7 +806,24 @@ function showReorderPickPathSidebar() {
 
 
 
+// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-27): the Shelf to
+// Sheet doGet render preloads this for the default vendor. Keyed on vendor +
+// the shared mutation ts (every pick-DB / item / area mutator bumps it).
 function getPickPathForSidebar(vendor) {
+  var vKey = String(vendor || '').trim().toLowerCase();
+  var ts   = getServerMutationTs_();
+  var key  = 'pickPathSb_v1:' + ts + ':' + vKey;
+  var cache = CacheService.getDocumentCache();
+  try {
+    var hit = cache.get(key);
+    if (hit) return JSON.parse(hit);
+  } catch (e) { /* fail-safe — compute on cache error */ }
+  var result = getPickPathForSidebar_compute_(vendor);
+  try { cache.put(key, JSON.stringify(result), 300); } catch (e) { /* fail-safe */ }
+  return result;
+}
+
+function getPickPathForSidebar_compute_(vendor) {
   const setup        = getSheet_(SHEET_SETUP);
   const master       = getSheet_(SHEET_MASTER);
   const areaOrderMap = getAreaOrderMap_();
