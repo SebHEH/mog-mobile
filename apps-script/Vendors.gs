@@ -34,7 +34,7 @@ function showManageVendorsSidebar() {
 
 // Returns all vendors with their 7-day multipliers for the View All tab.
 // Returns [{name, mults: [mon,tue,wed,thu,fri,sat,sun]}]
-// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-27): read on the
+// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-29): read on the
 // Manage Vendors doGet render + the Manage Items bootstrap. Same shared-ts
 // invalidation and same mid-write caveat as getVendorList above.
 function getVendorTableData() {
@@ -1009,7 +1009,7 @@ function commitRemoveVendor(vendorName) {
 
 
 
-// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-27 web-editor
+// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-29 web-editor
 // slowness fix): the vendor list is read on nearly every editor doGet render
 // and by many server paths. Keyed on the shared mutation ts — every vendor
 // mutator bumps it, so invalidation is free. WRITERS BEWARE: a mutator that

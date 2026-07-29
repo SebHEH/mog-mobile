@@ -2,7 +2,7 @@
 
 **TOOL:** MOG (Master Ordering Guide) — the phone ordering app at `sebheh.github.io/mog-mobile/<store>/`
 **AUDIENCE:** Kitchen Managers — they use it daily; they do not configure items, pars, or vendors (that lives in the computer editor, admin-side).
-**Written from the deployed code, 2026-07-27** (`template/index.html`, `apps-script/MOGApi.gs`, `apps-script/Recap.gs`).
+**Written from the deployed code, 2026-07-29** (`template/index.html`, `apps-script/MOGApi.gs`, `apps-script/Recap.gs`).
 
 ## 1. ONE-LINER
 
@@ -91,7 +91,7 @@ Open the app and put in the store PIN. The **Today** screen lists only the vendo
 
 ## 12. OPEN QUESTIONS FOR SEBASTIAN
 
-**All resolved 2026-07-27 (answers folded into the sections above):**
+**All resolved 2026-07-29 (answers folded into the sections above):**
 
 - Who places orders from the daily email? → **KM or GM, mostly the KM.** BOH shift leads may also do the counting. (§4, §5 step 8)
 - When to count? → **After the lunch rush.** (§6)

@@ -25,7 +25,7 @@ function readAreaBlock_(setup) {
 
 
 
-// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-27): read on the
+// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-29): read on the
 // Storage Areas doGet render + the Manage Items bootstrap. Shared-ts
 // invalidation. WRITERS BEWARE: commitStorageAreasDraft_locked_ bumps at its
 // start and reads the CURRENT list before reconciling — it must (and does)
@@ -806,7 +806,7 @@ function showReorderPickPathSidebar() {
 
 
 
-// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-27): the Shelf to
+// Cache wrapper (mog-apps-script-caching pattern A, 2026-07-29): the Shelf to
 // Sheet doGet render preloads this for the default vendor. Keyed on vendor +
 // the shared mutation ts (every pick-DB / item / area mutator bumps it).
 function getPickPathForSidebar(vendor) {

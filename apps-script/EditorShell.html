@@ -1182,7 +1182,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
   function mgeRunCb_() { if (typeof MGE_CB === 'function') MGE_CB(); mgeDecorateLinks_(); }
 
   // Each page's init calls this. The gate is the ONLY door: device → block;
-  // then two token paths with different trust levels (2026-07-27 slowness fix):
+  // then two token paths with different trust levels (2026-07-29 slowness fix):
   //
   //   URL token (?t=…, appended by mgeDecorateLinks_ on the PREVIOUS page) —
   //   adopted OPTIMISTICALLY: the tool init runs immediately and editorPing
