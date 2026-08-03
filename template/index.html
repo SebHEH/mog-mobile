@@ -3979,6 +3979,15 @@
     renderCount();
   }
 
+  // Null-safe numeric equality for on-hand / par values. The server sends
+  // numbers or null; drafts store numbers or null (null = the KM cleared the
+  // field); '' turns up in a few cached shapes. All three blanks compare equal.
+  function sameNum_(a, b) {
+    const na = (a === null || a === undefined || a === '') ? null : Number(a);
+    const nb = (b === null || b === undefined || b === '') ? null : Number(b);
+    return na === nb;
+  }
+
   async function openCount(vendor) {
     state.countContext = { vendor: vendor, items: [], dirty: {} };
     showView('count');
@@ -4013,11 +4022,26 @@
       state.countContext.dateStr = dateStr;
 
       // Merge localStorage draft on top of server values (drafts win — that's
-      // the "unsaved" tier the user expects to see when they return)
+      // the "unsaved" tier the user expects to see when they return).
+      //
+      // A surviving draft means the save never completed — a successful save
+      // clears it (flushDirtyToServer). So any drafted value that differs from
+      // the server's is genuinely UNSAVED and must be seeded into ctx.dirty:
+      // flushDirtyToServer builds its payload from ctx.dirty alone, so without
+      // this the count and review screens would display the drafted numbers
+      // while nothing was sent to the server, and the recap email / order log
+      // (both computed from the sheet) would disagree with what the KM saw and
+      // approved. Values already matching the server are left out so we don't
+      // fire a pointless write or needlessly clear the reviewed flag.
       const draft = loadDraft(dateStr, vendor);
       for (const id of Object.keys(draft)) {
         const item = state.countContext.items.find(i => i.id === id);
-        if (item) item.onHand = draft[id];
+        if (!item) continue;
+        const serverVal = item.onHand;
+        item.onHand = draft[id];
+        if (!sameNum_(serverVal, draft[id])) {
+          state.countContext.dirty[id] = draft[id];
+        }
       }
       // Cache target pars from the API's onHand+suggestedQty pairing so
       // computeSuggested can update suggestions live as the user types.
@@ -4051,7 +4075,21 @@
         const newIds = new Set(fresh.items.map(i => i.id));
         let added = 0;   fresh.items.forEach(i => { if (!oldIds.has(i.id)) added++; });
         let removed = 0; ctx.items.forEach(i => { if (!newIds.has(i.id)) removed++; });
-        if (!added && !removed) return;   // metadata-only diff: not worth a re-render
+
+        // Order math changed on an item we're already showing — a par edited in
+        // Manage Items / Recalibrate Vendor Pars, or the day multiplier rolling
+        // over. targetPar and par are the INPUTS to computeSuggested, not
+        // cosmetic metadata: leaving them stale means the KM counts, reviews and
+        // approves quantities the server will never log, and the recap email
+        // won't match the review screen.
+        const freshById = new Map(fresh.items.map(i => [i.id, i]));
+        let mathChanged = 0;
+        for (const o of ctx.items) {
+          const f = freshById.get(o.id);
+          if (!f) continue;
+          if (!sameNum_(o.targetPar, f.targetPar) || !sameNum_(o.par, f.par)) mathChanged++;
+        }
+        if (!added && !removed && !mathChanged) return;   // truly cosmetic diff
 
         // Don't yank a focused input — defer to the next open.
         const ae = document.activeElement;
@@ -4071,16 +4109,19 @@
         cacheTargetPars(ctx.items);
         renderCount();
 
-        // Notify what changed — added and/or removed, with counts. We only
-        // reach here when added || removed, so the message is never empty.
+        // Notify what changed — added, removed and/or re-priced, with counts. We
+        // only reach here when at least one of the three fired, so the message
+        // is never empty.
         const parts = [];
         if (state.lang === 'en') {
           if (added)   parts.push(added + ' new item' + (added === 1 ? '' : 's'));
           if (removed) parts.push(removed + ' item' + (removed === 1 ? '' : 's') + ' removed');
+          if (mathChanged) parts.push('pars updated');
           showToast('Updated — ' + parts.join(', '), 'success');
         } else {
           if (added)   parts.push(added + ' artículo' + (added === 1 ? '' : 's') + ' nuevo' + (added === 1 ? '' : 's'));
           if (removed) parts.push(removed + ' artículo' + (removed === 1 ? '' : 's') + ' eliminado' + (removed === 1 ? '' : 's'));
+          if (mathChanged) parts.push('pares actualizados');
           showToast('Actualizado — ' + parts.join(', '), 'success');
         }
       })
@@ -4103,16 +4144,28 @@
     if (isNaN(oh)) return null;
 
     if (item.targetPar != null) {
-      return Math.max(0, Math.ceil(Number(item.targetPar) - oh));
+      return Math.max(0, ceilQty_(Number(item.targetPar) - oh));
     }
     if (item._targetPar != null) {
-      return Math.max(0, Math.ceil(Number(item._targetPar) - oh));
+      return Math.max(0, ceilQty_(Number(item._targetPar) - oh));
     }
     if (item.suggestedQty != null) {
-      return Math.ceil(Number(item.suggestedQty));
+      return ceilQty_(Number(item.suggestedQty));
     }
     return null;
   }
+
+  // Rounding half of the order math. MUST stay byte-identical in behavior to
+  // computeSuggestedQty_ (MOGApi.gs) — if these two disagree, the review screen
+  // the KM approves and the recap email / order history computed on the server
+  // differ by a unit, which is exactly the class of bug this pairing exists to
+  // prevent.
+  //
+  // Orders ALWAYS round up, never down. The epsilon only cancels binary-float
+  // noise so a shortfall that is exactly 1 in decimal (e.g. par 1.1 x 2 - 1.2,
+  // which floats to 1.0000000000000002) can't ceil to 2. Any genuine fraction
+  // still rounds up — see the full rationale on computeSuggestedQty_.
+  function ceilQty_(x) { return Math.ceil(x - 1e-9); }
 
   function cacheTargetPars(items) {
     // The API now sends targetPar directly so live updates work for every

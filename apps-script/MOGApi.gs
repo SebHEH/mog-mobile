@@ -656,7 +656,14 @@ function api_getVendorItems_(payload, ctx) {
     const parNum  = meta.par;
     const useMult = meta.useMult;
     const effectiveMult = useMult ? dayMult : 1;
-    const targetPar = (!isNaN(parNum) && effectiveMult > 0)
+    // The dayMult > 0 term mirrors computeSuggestedQty_'s gate exactly: when the
+    // vendor isn't delivering (dayMult 0) the server suggests nothing REGARDLESS
+    // of useMult, so targetPar has to be null too. Without it, a useMult=false
+    // item kept a non-null targetPar and the PWA's computeSuggested — which
+    // prefers targetPar over the server's suggestedQty so it can recompute live
+    // as the KM types — would show an order quantity the recap email and order
+    // log never record.
+    const targetPar = (!isNaN(parNum) && dayMult > 0 && effectiveMult > 0)
       ? parNum * effectiveMult
       : null;
 
@@ -1086,7 +1093,24 @@ function computeSuggestedQty_(par, useMult, dayMult, onHand) {
   if (isNaN(par) || dayMult <= 0 || onHand === null || onHand === undefined) return null;
   const effectiveMult = useMult ? dayMult : 1;
   if (effectiveMult <= 0) return null;
-  const qty = Math.ceil(par * effectiveMult - onHand);
+  // ORDERS ALWAYS ROUND UP — never down. A partial unit short is a whole unit
+  // ordered, because you can't buy half a case. The only thing corrected here
+  // is binary-float noise: `par * effectiveMult - onHand` is float arithmetic,
+  // so a shortfall that is EXACTLY 1 in decimal can land at 1.0000000000000002
+  // (e.g. par 1.1 x 2 - 1.2) and a bare Math.ceil would order 2 for a phantom
+  // 2e-16 of a case.
+  //
+  // The epsilon is the right tool for that, NOT rounding to N decimals: it
+  // cancels noise (a few ULP, ~1e-13 at these magnitudes) while leaving every
+  // GENUINE fraction intact, so a real shortfall of 1.0001 still orders 2. A
+  // fixed 3dp round would have shaved that to 1 — an under-order, which this
+  // system must never do. 1e-9 sits ~1000x above float noise and ~100,000x
+  // below the smallest fraction anyone could enter.
+  //
+  // The PWA's ceilQty_ and ManageItems.html's ppCeil_ use this same expression
+  // and MUST stay identical — if they drift, the review screen the KM approves
+  // disagrees with the recap email and the order log.
+  const qty = Math.ceil((par * effectiveMult - onHand) - 1e-9);
   return qty > 0 ? qty : null;
 }
 

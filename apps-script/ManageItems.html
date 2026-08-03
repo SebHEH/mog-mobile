@@ -1476,9 +1476,11 @@
     var PP_DAYS = { en: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], es: ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'] };
     // Round UP to a whole unit — you can't order a fraction from a vendor, and it
     // always rounds up, never down. Applied AFTER the multiplier (ceil(par×mult)),
-    // e.g. par 3.25 × mult 3 = 9.75 → 10. (Round nudge first to kill float noise so
-    // an exact 6.0 doesn't ceil to 7.)
-    function ppCeil_(x) { if (!(x > 0)) return 0; return Math.ceil(Math.round(x * 1000) / 1000); }
+    // e.g. par 3.25 × mult 3 = 9.75 → 10. The epsilon only cancels binary-float
+    // noise so an exact 6.0 doesn't ceil to 7; any genuine fraction still rounds
+    // up. Same expression as computeSuggestedQty_ (MOGApi.gs) and the PWA's
+    // ceilQty_ — all three must stay identical.
+    function ppCeil_(x) { if (!(x > 0)) return 0; return Math.ceil(x - 1e-9); }
     function renderParPreview_(mode) {
       if (!MOG_WEB) return;
       var el = byId(mode + '-par-preview'); if (!el) return;
