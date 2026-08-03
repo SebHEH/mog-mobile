@@ -1588,14 +1588,24 @@
       <span class="lang-es">Está tardando más de lo normal</span>
     </h1>
     <p class="stale-sub">
-      <span class="lang-en">Starting the new day didn't finish. Tap Refresh — it may have already gone through, and you'll go straight in.</span>
-      <span class="lang-es">No se terminó de empezar el día. Toca Actualizar — puede que ya se haya hecho y entrarás directo.</span>
+      <span class="lang-en">We couldn't confirm the new day started, so today's order isn't ready yet. Tap Refresh — it may have already gone through, and you'll go straight in.</span>
+      <span class="lang-es">No pudimos confirmar que el día nuevo empezó, así que el pedido de hoy no está listo. Toca Actualizar — puede que ya se haya hecho y entrarás directo.</span>
     </p>
 
     <button class="stale-cta" id="stale-reset-btn">
       <i class="ti ti-refresh" aria-hidden="true"></i>
       <span class="lang-en">Refresh</span>
       <span class="lang-es">Actualizar</span>
+    </button>
+
+    <!-- Escape hatch, revealed only when a cached cycle exists (see
+         showResetRefreshScreen_). Counting against an unconfirmed cycle is the
+         hazard this screen exists to prevent, so it's a deliberate choice the KM
+         makes rather than the silent default it used to be. -->
+    <button class="cta-secondary" id="stale-offline-btn" type="button"
+            style="display:none; max-width:320px; margin-top:12px">
+      <span class="lang-en">Work offline with last loaded data</span>
+      <span class="lang-es">Trabajar sin conexión con los últimos datos</span>
     </button>
 
     <p class="pin-switch-store">
@@ -2622,7 +2632,16 @@
   // leaving plenty of headroom. The AbortError thrown on timeout is
   // recognized by isNetworkError_ so the offline banner + save queue
   // engage exactly as on any other network failure.
-  const API_TIMEOUT_MS = 15000;
+  // 30s, raised from 15s (2026-08-03). MEASURED, not guessed: a doGet diagnostic
+  // run against Roll Play Tysons BOH (11 vendors) inside a real web-app execution
+  // timed the dashboard's read set at 8-15s cold, and the whole reset at ~26s with
+  // NOTHING to do. The old 15s ceiling aborted a healthy in-flight getDashboard,
+  // which surfaces as "Offline — using last loaded data" with a retry that fails
+  // the same way — the server had answered, the client just stopped waiting.
+  // Apps Script also keeps executing after a client abort, so a too-low ceiling
+  // buys nothing and costs a confusing failure. Known-slow writes still pass an
+  // explicit override (see RESET_TIMEOUT_MS).
+  const API_TIMEOUT_MS = 30000;
 
   async function api(action, payload, timeoutMs) {
     if (!state.apiUrl || state.apiUrl.indexOf('PASTE_YOUR') === 0) {
@@ -2757,6 +2776,32 @@
     $('screen-pin').style.display = 'none';
     $('screen-main').style.display = 'none';
     $('screen-stale').style.display = 'flex';
+    // Offer the offline escape only when there's actually a cached cycle to work
+    // from. With no cache the app has nothing to render anyway, so the button
+    // would be a dead end.
+    const offlineBtn = $('stale-offline-btn');
+    if (offlineBtn) {
+      const haveCache = !!(state.cache.dashboard && state.cache.dashboard.vendors);
+      offlineBtn.style.display = haveCache ? 'inline-block' : 'none';
+    }
+  }
+
+  // FAIL CLOSED on an unconfirmed cycle.
+  //
+  // Both boot paths used to call showMainApp() from their catch, which dropped the
+  // KM straight into the app whenever the reset-status check failed — showing the
+  // PREVIOUS cycle's vendors, pars and multipliers. Counts typed against those get
+  // logged under the old cycle date, and the KM has no way to tell: the app looks
+  // completely normal. That's what happened on 2026-08-03 (rpt), where a cold
+  // /exec made getResetStatus exceed the old 15s ceiling and the day's reset was
+  // silently skipped.
+  //
+  // Now an unconfirmed cycle gates on the stale screen instead. The KM can Refresh
+  // (which re-checks, so a reset that already landed enters cleanly) or explicitly
+  // choose to work offline from cached data.
+  function gateOnUnconfirmedCycle_(err, where) {
+    console.error(where + ' — could not confirm reset status:', err);
+    showResetRefreshScreen_();
   }
 
   async function proceedAfterAuth() {
@@ -2771,8 +2816,8 @@
         await showMainApp();
       }
     } catch (err) {
-      console.error('proceedAfterAuth error:', err);
-      await showMainApp();
+      // Was showMainApp() — see gateOnUnconfirmedCycle_ for why that was unsafe.
+      gateOnUnconfirmedCycle_(err, 'proceedAfterAuth');
     }
   }
 
@@ -2793,7 +2838,14 @@
   // Hand to LOG_ORDERS, clears the columns, sends the recap email
   // synchronously, then stamps AE9. On a cold /exec invocation that can run
   // well past the default 15s API timeout, so give it generous headroom.
-  const RESET_TIMEOUT_MS = 45000;
+  // 120s, raised from 45s (2026-08-03). The reset was measured at ~26s on an
+  // 11-vendor store with zero rows to log and on-hand already clear, and ~31s
+  // doing real work — one range read per vendor tab plus one clear-write per
+  // vendor tab, neither of which batches. 45s left almost no headroom for a cold
+  // CacheService (every --redeploy flushes it) or normal Apps Script variance,
+  // and blowing it drops the KM on the Refresh screen even though the reset
+  // usually completed server-side.
+  const RESET_TIMEOUT_MS = 120000;
 
   // Shared reset core for both the manual button and the new-day auto-reset.
   // busyLabel is shown on the full-screen overlay while the reset runs.
@@ -2927,6 +2979,7 @@
     // wrap only the fast status check (+ the normal-day app load), finish
     // its ceremony and fade out, THEN hand off to the visible reset overlay.
     let pendingStale = null;
+    let gateFailure  = null;
     await playTransitionAnimation((async function () {
       try {
         const status = await api('getResetStatus');
@@ -2936,10 +2989,18 @@
           await showMainApp();
         }
       } catch (err) {
-        console.error('handlePinSubmit error:', err);
-        await showMainApp();
+        // Was showMainApp() — see gateOnUnconfirmedCycle_. Flagged so the gate is
+        // shown AFTER the transition finishes, not underneath it (the transition
+        // bar is z-80 and would swallow the taps, which is exactly how the "flat
+        // Refresh button" was reported on 2026-08-03).
+        gateFailure = err;
       }
     })(), label);
+
+    if (gateFailure) {
+      gateOnUnconfirmedCycle_(gateFailure, 'handlePinSubmit');
+      return;
+    }
 
     if (pendingStale) {
       await autoRunStaleReset();
@@ -6461,6 +6522,14 @@
   const mgrExitBtn = document.getElementById('manager-exit-btn');
   if (mgrExitBtn) mgrExitBtn.addEventListener('click', exitManagerMode);
   $('stale-reset-btn').addEventListener('click', function () { location.reload(); });
+  // Deliberate offline entry from the gate. setOffline_() raises the banner so the
+  // KM can see the data is cached and unconfirmed while they work.
+  if ($('stale-offline-btn')) {
+    $('stale-offline-btn').addEventListener('click', function () {
+      setOffline_();
+      showMainApp();
+    });
+  }
   $('pin-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') handlePinSubmit();
   });
