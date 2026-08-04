@@ -286,7 +286,40 @@
     }
     .lang-btn:active { opacity: 0.6; }
 
-    .scroll-area { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .scroll-area { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+    /* Pull-to-refresh indicator.
+       A home-screen install runs standalone (apple-mobile-web-app-capable +
+       manifest display:standalone), so there is NO browser chrome: no reload
+       button, and no native pull-to-refresh either, since body already sets
+       overscroll-behavior:none. A KM had no way to refresh a stuck screen.
+       This is a FIXED pill rather than an element that pushes content down:
+       translating the scroll container would fight -webkit-overflow-scrolling
+       momentum and the sticky topbar, and a layout shift on every touch near
+       the top of a count list is worse than losing the rubber-band feel.
+       z-index 55 sits above content (10) and below the banners (60) and both
+       overlays (70/80). */
+    .ptr-indicator {
+      position: fixed;
+      top: calc(env(safe-area-inset-top, 0px) + 52px);
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 55;
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: var(--bg);
+      border: 0.5px solid var(--border);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+      font-size: 12px; font-weight: 500;
+      color: var(--text-2);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.12s ease;
+    }
+    .ptr-indicator.visible { opacity: 1; }
+    .ptr-indicator .ti { font-size: 14px; }
+    /* Reuses the recap pill's spin keyframe rather than defining a second one. */
+    .ptr-indicator.spinning .ti { animation: recap-spin 1s linear infinite; }
     .screen { padding: 16px 14px 24px; }
 
     .tabbar {
@@ -1562,6 +1595,20 @@
       <span class="lang-en">If you don't know the PIN, ask your GM.</span>
       <span class="lang-es">Si no sabes el PIN, pregunta a tu gerente.</span>
     </p>
+    <!-- Reload escape hatch. Hidden until a sign-in actually fails, so the
+         happy path stays uncluttered. This screen is the one place a KM can
+         get truly stuck in a standalone install: no chrome, no session, and
+         the gate's Refresh button (stale-reset-btn) is downstream of auth so
+         they never reach it. A hard reload is right here — unlike the in-app
+         pull-to-refresh, there is no session or typed data worth preserving.
+         Reuses .pin-switch-store styling; no new CSS. -->
+    <p class="pin-switch-store" id="pin-reload-row" style="display:none">
+      <span class="lang-en">Still stuck?</span>
+      <span class="lang-es">¿Sigue sin funcionar?</span>
+      <button class="pin-switch-store-btn" id="pin-reload-btn" type="button">
+        <span class="lang-en">Reload the app</span><span class="lang-es">Recargar la app</span>
+      </button>
+    </p>
     <p class="pin-switch-store">
       <span class="lang-en">Wrong store?</span>
       <span class="lang-es">¿Tienda equivocada?</span>
@@ -1657,6 +1704,15 @@
     </div>
 
     <div class="breadcrumb" id="breadcrumb" style="display:none"></div>
+
+    <!-- Pull-to-refresh pill. Fixed-position (see .ptr-indicator), so its spot
+         in the DOM is only about keeping it inside the app shell. The label is
+         set from the T table by the gesture handler rather than carrying
+         .lang-en/.lang-es spans, because it changes state mid-gesture. -->
+    <div class="ptr-indicator" id="ptr-indicator" aria-hidden="true">
+      <i class="ti ti-refresh" aria-hidden="true"></i>
+      <span id="ptr-label"></span>
+    </div>
 
     <div class="scroll-area" id="scroll-area">
       <div class="screen" id="view-today" style="display:none"></div>
@@ -2361,6 +2417,9 @@
       emailMyCopy:      { en: 'Email me the daily summary', es: 'Env\u00edame el resumen' },
       emailing:         { en: 'Sending…', es: 'Enviando…' },
       refreshing:       { en: 'Refreshing…', es: 'Actualizando…' },
+      ptrPull:          { en: 'Pull to refresh', es: 'Desliza para actualizar' },
+      ptrRelease:       { en: 'Release to refresh', es: 'Suelta para actualizar' },
+      ptrDone:          { en: 'Up to date', es: 'Todo actualizado' },
       // Emergency override (home)
       overrideCta:      { en: 'Emergency override', es: 'Anulaci\u00f3n de emergencia' },
       overrideOnTitle:  { en: 'Emergency override on', es: 'Anulaci\u00f3n de emergencia activada' },
@@ -2988,6 +3047,11 @@
         errEl.textContent = t('pinServerHiccup');
       }
       else errEl.textContent = m;
+      // Any failed sign-in reveals the reload escape hatch. In a standalone
+      // install this is the only way out of a wedged PIN screen, and a KM
+      // shouldn't have to know to delete and re-add the home-screen icon.
+      const reloadRow = $('pin-reload-row');
+      if (reloadRow) reloadRow.style.display = '';
       return;
     }
 
@@ -4156,8 +4220,12 @@
   //   - we never re-render while an input is focused (don't yank the keyboard
   //     mid-count — the next open picks it up via the warmed cache).
   function revalidateCountItems_(vendor) {
-    if (navigator.onLine === false) return;
-    fetchVendorItems_(vendor, { force: true })
+    // Returns the promise so an explicit refresh (pull-to-refresh) can await
+    // it and stop its spinner at the right moment. The implicit caller in
+    // openCount ignores the return value, so fire-and-forget is unchanged.
+    // The chain ends in a .catch, so this never rejects.
+    if (navigator.onLine === false) return Promise.resolve();
+    return fetchVendorItems_(vendor, { force: true })
       .then(fresh => {
         const ctx = state.countContext;
         // Bail if the user navigated away or switched vendors mid-fetch.
@@ -6223,6 +6291,143 @@
     loadHistory();
   }
 
+  // ============================================================
+  // Pull to refresh
+  // ============================================================
+  // Why this exists: a home-screen install runs standalone
+  // (apple-mobile-web-app-capable + manifest display:standalone), so there is
+  // no browser chrome and therefore no reload path — and because body sets
+  // overscroll-behavior:none, there's no native pull-to-refresh in a browser
+  // tab either. On 2026-08-04 a KM at Rosslyn BOH hit a transient Google
+  // delivery flake and was stranded with no way to retry.
+  //
+  // This is a SOFT refresh, deliberately not location.reload(): each view
+  // re-runs its own authoritative loader with its cache dropped, so a pull
+  // means what the rest of the app already means by "refresh". On the count
+  // screen that routes through revalidateCountItems_, which preserves typed
+  // counts and won't yank a focused input — a hard reload there would be
+  // hostile even though drafts survive it since fb89ac5.
+  const PTR_TRIGGER_PX = 70;    // travel required before a release refreshes
+  const PTR_MAX_PX     = 110;   // clamp on measured travel
+
+  // Views whose refresh is meaningful AND whose loader repaints in place
+  // without navigating. Deliberately excludes: 'review' (refetching under a KM
+  // who is about to approve quantities is a correctness hazard, not a
+  // convenience), 'settings'/'recipients' (config screens, nothing
+  // time-sensitive), and the history SUB-views (their loader repaints the
+  // dates root, which would strand you on a stale drill-down).
+  const PTR_VIEWS = ['today', 'count', 'history', 'recap'];
+
+  function ptrBlocked_() {
+    // Never compete with the transition bar or the busy overlay. Rendering
+    // beneath the z-80 transition is exactly what made the 08-03 gate's
+    // Refresh button read as "flat", so the gesture stays inert while
+    // either is up.
+    const busy  = document.getElementById('busy-overlay');
+    const trans = document.getElementById('transition-overlay');
+    if (busy && busy.classList.contains('open')) return true;
+    if (trans && trans.classList.contains('open')) return true;
+    return false;
+  }
+
+  async function refreshCurrentView_() {
+    const v = state.currentView;
+    if (v === 'count') {
+      const ctx = state.countContext;
+      if (ctx && ctx.vendor) await revalidateCountItems_(ctx.vendor);
+      return;
+    }
+    if (v === 'history') {
+      state.cache.historyDates = null;
+      state.cache.historyVendors = {};
+      await loadHistory();
+      return;
+    }
+    if (v === 'recap') {
+      state.cache.recap = null;
+      await openRecap();
+      return;
+    }
+    state.cache.dashboard = null;
+    setDashboardFetchedAt_(null);
+    await loadToday();
+  }
+
+  function wirePullToRefresh_() {
+    const area  = document.getElementById('scroll-area');
+    const pill  = document.getElementById('ptr-indicator');
+    const label = document.getElementById('ptr-label');
+    if (!area || !pill || !label) return;
+
+    let startY  = 0;
+    let pulling = false;   // this touch is a pull candidate
+    let armed   = false;   // travel passed the trigger threshold
+    let running = false;   // a refresh is in flight
+
+    function reset_() {
+      pulling = false;
+      armed   = false;
+      pill.classList.remove('visible', 'spinning');
+    }
+
+    // All listeners are passive: we never preventDefault, so native scrolling
+    // and iOS momentum are untouched. The contained overscroll bounce doubles
+    // as the rubber-band feel we're not faking with a transform.
+    area.addEventListener('touchstart', function (e) {
+      if (running || e.touches.length !== 1) return;
+      if (!PTR_VIEWS.includes(state.currentView)) return;
+      if (ptrBlocked_()) return;
+      // Only from rest at the very top, or the gesture hijacks a flick back
+      // up through a long count list.
+      if (area.scrollTop > 0) return;
+      // Don't steal a touch that starts on a control — the count screen is
+      // full of number inputs and steppers.
+      if (e.target && e.target.closest && e.target.closest('input, button, select, textarea, a')) return;
+      startY  = e.touches[0].clientY;
+      pulling = true;
+      armed   = false;
+    }, { passive: true });
+
+    area.addEventListener('touchmove', function (e) {
+      if (!pulling || running) return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0 || area.scrollTop > 0) {   // reversed direction or scrolled off the top
+        reset_();
+        return;
+      }
+      const travel = Math.min(dy, PTR_MAX_PX);
+      pill.classList.add('visible');
+      armed = travel >= PTR_TRIGGER_PX;
+      label.textContent = armed ? t('ptrRelease') : t('ptrPull');
+    }, { passive: true });
+
+    area.addEventListener('touchend', async function () {
+      if (!pulling) return;
+      pulling = false;
+      if (!armed || running) { reset_(); return; }
+      running = true;
+      armed   = false;
+      pill.classList.add('visible', 'spinning');
+      label.textContent = t('refreshing');
+      try {
+        await refreshCurrentView_();
+        label.textContent = t('ptrDone');
+      } catch (err) {
+        // api() already raises the offline banner for network-class failures,
+        // so the pill doesn't editorialize on top of it — it just stops.
+        console.warn('[ptr] refresh failed:', err);
+      } finally {
+        // Hold the result briefly so the pill isn't a subliminal flash.
+        setTimeout(function () { running = false; reset_(); }, 450);
+      }
+    }, { passive: true });
+
+    area.addEventListener('touchcancel', function () {
+      if (running) return;
+      reset_();
+    }, { passive: true });
+  }
+
   function showView(viewName) {
     ['today','count','review','recap','history','history-vendors','history-detail','settings','recipients'].forEach(v => {
       $('view-' + v).style.display = v === viewName ? 'block' : 'none';
@@ -6554,6 +6759,14 @@
   const mgrExitBtn = document.getElementById('manager-exit-btn');
   if (mgrExitBtn) mgrExitBtn.addEventListener('click', exitManagerMode);
   $('stale-reset-btn').addEventListener('click', function () { location.reload(); });
+  // Pull-to-refresh for every in-app view, and the PIN screen's own reload
+  // escape hatch. Both exist because a standalone home-screen install has no
+  // browser chrome to reload from. The PIN button hard-reloads (no session,
+  // nothing to preserve); the gesture soft-refreshes (see wirePullToRefresh_).
+  wirePullToRefresh_();
+  if ($('pin-reload-btn')) {
+    $('pin-reload-btn').addEventListener('click', function () { location.reload(); });
+  }
   // Deliberate offline entry from the gate. setOffline_() raises the banner so the
   // KM can see the data is cached and unconfirmed while they work.
   if ($('stale-offline-btn')) {
