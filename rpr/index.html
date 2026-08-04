@@ -320,6 +320,16 @@
     .ptr-indicator .ti { font-size: 14px; }
     /* Reuses the recap pill's spin keyframe rather than defining a second one. */
     .ptr-indicator.spinning .ti { animation: recap-spin 1s linear infinite; }
+    /* "New version — tap to reload". The base pill is pointer-events:none so it
+       never eats a scroll; the update state MUST re-enable them or the tap
+       could never land. Accent-filled so it reads as an action, not a status. */
+    .ptr-indicator.update {
+      pointer-events: auto;
+      cursor: pointer;
+      background: var(--teal);
+      border-color: var(--teal);
+      color: #fff;
+    }
     .screen { padding: 16px 14px 24px; }
 
     .tabbar {
@@ -2420,6 +2430,7 @@
       ptrPull:          { en: 'Pull to refresh', es: 'Desliza para actualizar' },
       ptrRelease:       { en: 'Release to refresh', es: 'Suelta para actualizar' },
       ptrDone:          { en: 'Up to date', es: 'Todo actualizado' },
+      updateReady:      { en: 'New version — tap to reload', es: 'Nueva versión — toca para recargar' },
       // Emergency override (home)
       overrideCta:      { en: 'Emergency override', es: 'Anulaci\u00f3n de emergencia' },
       overrideOnTitle:  { en: 'Emergency override on', es: 'Anulaci\u00f3n de emergencia activada' },
@@ -4220,16 +4231,26 @@
   //   - we never re-render while an input is focused (don't yank the keyboard
   //     mid-count — the next open picks it up via the warmed cache).
   function revalidateCountItems_(vendor) {
-    // Returns the promise so an explicit refresh (pull-to-refresh) can await
-    // it and stop its spinner at the right moment. The implicit caller in
-    // openCount ignores the return value, so fire-and-forget is unchanged.
-    // The chain ends in a .catch, so this never rejects.
+    return revalidateOrderItems_(vendor, 'count');
+  }
+
+  // Shared by the count screen and the review screen. Both render the same
+  // order context from the same vendor items, so both go stale the same way —
+  // and review is where stale math costs the most, since that's the screen a
+  // KM approves from (the fb89ac5 class of bug). Parameterized rather than
+  // duplicated so the count/review refresh paths can't drift apart.
+  //
+  // Returns the promise so an explicit refresh (pull-to-refresh) can await it
+  // and stop its spinner at the right moment. The implicit caller in openCount
+  // ignores the return value, so fire-and-forget is unchanged. The chain ends
+  // in a .catch, so this never rejects.
+  function revalidateOrderItems_(vendor, forView) {
     if (navigator.onLine === false) return Promise.resolve();
     return fetchVendorItems_(vendor, { force: true })
       .then(fresh => {
         const ctx = state.countContext;
         // Bail if the user navigated away or switched vendors mid-fetch.
-        if (state.currentView !== 'count' || !ctx || ctx.vendor !== vendor) return;
+        if (state.currentView !== forView || !ctx || ctx.vendor !== vendor) return;
         if (!fresh || !Array.isArray(fresh.items)) return;
 
         const oldIds = new Set(ctx.items.map(i => i.id));
@@ -4252,9 +4273,10 @@
         }
         if (!added && !removed && !mathChanged) return;   // truly cosmetic diff
 
-        // Don't yank a focused input — defer to the next open.
+        // Don't yank a focused input — defer to the next open. Scoped to the
+        // active view; review has no inputs, so this never fires there.
         const ae = document.activeElement;
-        if (ae && ae.tagName === 'INPUT' && $('view-count').contains(ae)) return;
+        if (ae && ae.tagName === 'INPUT' && $('view-' + forView).contains(ae)) return;
 
         // Rebuild from fresh server items, then re-overlay entered counts so
         // nothing typed is lost (dirty wins over the persisted draft).
@@ -4268,7 +4290,7 @@
           }
         }
         cacheTargetPars(ctx.items);
-        renderCount();
+        if (forView === 'review') renderReview(); else renderCount();
 
         // Notify what changed — added, removed and/or re-priced, with counts. We
         // only reach here when at least one of the three fired, so the message
@@ -6310,13 +6332,80 @@
   const PTR_TRIGGER_PX = 70;    // travel required before a release refreshes
   const PTR_MAX_PX     = 110;   // clamp on measured travel
 
-  // Views whose refresh is meaningful AND whose loader repaints in place
-  // without navigating. Deliberately excludes: 'review' (refetching under a KM
-  // who is about to approve quantities is a correctness hazard, not a
-  // convenience), 'settings'/'recipients' (config screens, nothing
-  // time-sensitive), and the history SUB-views (their loader repaints the
-  // dates root, which would strand you on a stale drill-down).
-  const PTR_VIEWS = ['today', 'count', 'history', 'recap'];
+  // Every in-app view supports the gesture. It started as an allowlist
+  // (today/count/history/recap) but that left the stale-data problem half
+  // solved: each excluded view was one a KM could sit on indefinitely with no
+  // way to refresh, and none of them could pick up a new app version either.
+  // refreshCurrentView_ now has a real branch per view, and 'settings' — which
+  // reads no server data — still gets the app-version check.
+
+  // ---- App-version staleness -------------------------------------------
+  // The problem pull-to-refresh does NOT solve on its own: a standalone
+  // home-screen session never navigates, so it keeps running whatever HTML/JS
+  // it launched with — indefinitely. A KM who never fully closes the app can
+  // sit on an old version for weeks, which is why reaching v44 required
+  // force-closing the app.
+  //
+  // sw.js already calls skipWaiting() + clients.claim(), so a new worker takes
+  // over immediately, but that only governs FUTURE fetches — the rendered page
+  // is still old code until it reloads. And handleNavigation_ is network-first,
+  // so a reload always lands on the newest HTML when online. That makes the fix
+  // simply "cause a reload at a moment the KM chooses".
+  //
+  // Never auto-reload: doing that mid-count would destroy in-progress work.
+  // The pill is an explicit tap, and it stays hidden while counts are dirty.
+  let appUpdateReady = false;
+  // Captured at boot: if the page loaded with no controller, the imminent
+  // clients.claim() fires controllerchange for the FIRST install, which is not
+  // an update. Only a controller swap on an already-controlled page is.
+  const hadControllerAtBoot = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+
+  function countsAreDirty_() {
+    const ctx = state.countContext;
+    return !!(ctx && ctx.dirty && Object.keys(ctx.dirty).length > 0);
+  }
+
+  function showAppUpdatePill_() {
+    // Suppress while the KM has unsaved counts — a reload prompt is noise at
+    // best and a data-loss invitation at worst. It'll surface on the next pull
+    // once counts are flushed.
+    if (!appUpdateReady || countsAreDirty_()) return;
+    const pill  = document.getElementById('ptr-indicator');
+    const label = document.getElementById('ptr-label');
+    if (!pill || !label) return;
+    label.textContent = t('updateReady');
+    pill.classList.remove('spinning');
+    pill.classList.add('visible', 'update');
+    pill.setAttribute('aria-hidden', 'false');
+  }
+
+  function wireAppUpdateWatch_() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadControllerAtBoot) return;   // first install, not an update
+      appUpdateReady = true;
+      showAppUpdatePill_();
+    });
+    const pill = document.getElementById('ptr-indicator');
+    if (pill) {
+      pill.addEventListener('click', function () {
+        if (pill.classList.contains('update')) location.reload();
+      });
+    }
+  }
+
+  // Fired from every pull. Cheap (one conditional request for sw.js) and it
+  // makes "pull to refresh" mean "get me current" for the app itself, not just
+  // its data — which is the whole reason to have it on every view.
+  async function checkForAppUpdate_() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) await reg.update();
+    } catch (err) {
+      console.warn('[sw] update check failed:', err);
+    }
+  }
 
   function ptrBlocked_() {
     // Never compete with the transition bar or the busy overlay. Rendering
@@ -6332,25 +6421,44 @@
 
   async function refreshCurrentView_() {
     const v = state.currentView;
-    if (v === 'count') {
+    // Always check whether the APP itself is stale, on every view. This is the
+    // half a data refresh can't cover, and the reason the gesture is now
+    // universal rather than allowlisted.
+    const updateCheck = checkForAppUpdate_();
+
+    if (v === 'count' || v === 'review') {
       const ctx = state.countContext;
-      if (ctx && ctx.vendor) await revalidateCountItems_(ctx.vendor);
-      return;
-    }
-    if (v === 'history') {
+      if (ctx && ctx.vendor) await revalidateOrderItems_(ctx.vendor, v);
+    } else if (v === 'history') {
       state.cache.historyDates = null;
       state.cache.historyVendors = {};
       await loadHistory();
-      return;
-    }
-    if (v === 'recap') {
+    } else if (v === 'history-vendors') {
+      const d = state.historyVendorsContext && state.historyVendorsContext.date;
+      if (d) {
+        delete state.cache.historyVendors[d];   // its loader reads this cache first
+        await openHistoryDateCard(d);
+      }
+    } else if (v === 'history-detail') {
+      // openHistoryDetail always hits getHistoryDetail — no cache to drop.
+      const hctx = state.historyDetailContext;
+      if (hctx) await openHistoryDetail(hctx);
+    } else if (v === 'recap') {
       state.cache.recap = null;
       await openRecap();
-      return;
+    } else if (v === 'recipients') {
+      state.cache.recipients = null;
+      await openRecipients();
+    } else if (v === 'settings') {
+      // renderSettings() reads no server data — nothing to re-fetch. The pull
+      // still means something here: it's the app-version check above.
+    } else {
+      state.cache.dashboard = null;
+      setDashboardFetchedAt_(null);
+      await loadToday();
     }
-    state.cache.dashboard = null;
-    setDashboardFetchedAt_(null);
-    await loadToday();
+
+    await updateCheck;
   }
 
   function wirePullToRefresh_() {
@@ -6367,7 +6475,12 @@
     function reset_() {
       pulling = false;
       armed   = false;
-      pill.classList.remove('visible', 'spinning');
+      pill.classList.remove('visible', 'spinning', 'update');
+      pill.setAttribute('aria-hidden', 'true');
+      // If an app update is waiting, the pill goes back to advertising it
+      // instead of vanishing — otherwise finishing a pull would dismiss the
+      // one affordance that lets the KM pick up the new version.
+      showAppUpdatePill_();
     }
 
     // All listeners are passive: we never preventDefault, so native scrolling
@@ -6375,7 +6488,6 @@
     // as the rubber-band feel we're not faking with a transform.
     area.addEventListener('touchstart', function (e) {
       if (running || e.touches.length !== 1) return;
-      if (!PTR_VIEWS.includes(state.currentView)) return;
       if (ptrBlocked_()) return;
       // Only from rest at the very top, or the gesture hijacks a flick back
       // up through a long count list.
@@ -6396,6 +6508,9 @@
         return;
       }
       const travel = Math.min(dy, PTR_MAX_PX);
+      // A pull takes the pill over from any waiting update advert; reset_
+      // hands it back afterwards if the update is still pending.
+      pill.classList.remove('update');
       pill.classList.add('visible');
       armed = travel >= PTR_TRIGGER_PX;
       label.textContent = armed ? t('ptrRelease') : t('ptrPull');
@@ -6764,6 +6879,9 @@
   // browser chrome to reload from. The PIN button hard-reloads (no session,
   // nothing to preserve); the gesture soft-refreshes (see wirePullToRefresh_).
   wirePullToRefresh_();
+  // Watches for a new app version taking over and turns the pill into a
+  // tap-to-reload action. Paired with the per-pull checkForAppUpdate_.
+  wireAppUpdateWatch_();
   if ($('pin-reload-btn')) {
     $('pin-reload-btn').addEventListener('click', function () { location.reload(); });
   }
