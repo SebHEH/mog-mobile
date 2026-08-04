@@ -2390,6 +2390,7 @@
       pinNetworkError:  { en: "Couldn't reach the server. Check your connection.", es: 'Sin conexión. Revisa tu internet.' },
       pinConfigError:   { en: 'App not configured. Contact your GM.', es: 'App no configurada. Contacta tu gerente.' },
       pinLockedError:   { en: 'Too many attempts. Try again in {minutes} minute(s).', es: 'Demasiados intentos. Espera {minutes} minuto(s).' },
+      pinServerHiccup:  { en: 'The server hiccupped. Tap Sign in again.', es: 'El servidor falló. Toca Iniciar sesión otra vez.' },
       wrongStore:       { en: 'Wrong store?', es: '\u00bfTienda equivocada?' },
       switchStore:      { en: 'Switch', es: 'Cambiar' },
       summarySent:      { en: 'Daily summary emailed', es: 'Resumen enviado' },
@@ -2647,14 +2648,24 @@
     if (!state.apiUrl || state.apiUrl.indexOf('PASTE_YOUR') === 0) {
       throw new Error('CONFIG_MISSING');
     }
-    // Read-only calls (get*/ping) auto-retry ONCE on a transient failure — a
+    // Read-only calls (get*/ping) auto-retry on a transient failure — a
     // cold /exec (first hit slow → timeout) or a Google delivery flake
     // (BAD_JSON / abort) rides out invisibly instead of flashing "Offline" or
     // stranding the user on "Couldn't load". Writes are NOT retried: a
     // timed-out write may have succeeded server-side, so a blind retry could
     // duplicate it (add item/vendor, log/reset).
+    //
+    // THREE attempts, raised from two (2026-08-04). Google's serving layer can
+    // return an HTML page instead of the JSON body for a POST that the script
+    // handled fine — the response never gets delivered. Probing rpr's /exec the
+    // morning it happened: GET clean, 14/14 POSTs clean and sub-second, so the
+    // deployment had NOT rotted (a retired deployment answers "Page Not Found",
+    // a different signature). It was transient, and two attempts 700ms apart
+    // both landed inside the same blip. `ping` is the worst place to give up:
+    // the KM can't get past the PIN screen at all, so a failure there is a
+    // total lockout rather than a degraded view.
     const retriable   = /^(get|ping)/i.test(action);
-    const maxAttempts = retriable ? 2 : 1;
+    const maxAttempts = retriable ? 3 : 1;
     let lastErr;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -2664,7 +2675,11 @@
         const transient = isNetworkError_(err) ||
           String((err && err.message) || '').indexOf('BAD_JSON') === 0;
         if (attempt < maxAttempts && transient) {
-          await new Promise(function (r) { setTimeout(r, 700); });
+          // Escalating backoff (700ms, then 1400ms) rather than a flat 700ms:
+          // three closely-spaced attempts can all land inside one delivery
+          // blip, which is exactly how this surfaced. Spreading them widens
+          // the window covered to ~2.1s without making a real outage feel slow.
+          await new Promise(function (r) { setTimeout(r, 700 * attempt); });
           continue;
         }
         // Network-class failures (incl. our timeout abort) flip the offline
@@ -2955,6 +2970,23 @@
       else if (m === 'CONFIG_MISSING') errEl.textContent = t('pinConfigError');
       else if (m === 'Invalid PIN') errEl.textContent = t('pinError');
       else if (isNetworkError_(err)) errEl.textContent = t('pinNetworkError');
+      // A BAD_JSON here means all three attempts got a page instead of the JSON
+      // body — Google's serving layer, not our code. The raw text used to land
+      // in this element verbatim, so a KM at Rosslyn BOH was shown ~200 chars of
+      // Google's error-page markup ("BAD_JSON: <!DOCTYPE html>…window['ppConfig']
+      // = {productName: '…'") under the PIN box with no idea what to do. Say
+      // what to do instead. The detail still goes to the console for us.
+      else if (m.indexOf('BAD_JSON') === 0) {
+        console.warn('PIN sign-in got a non-JSON response:', m);
+        errEl.textContent = t('pinServerHiccup');
+      }
+      // Backstop: never render an unrecognized server string raw. Anything that
+      // looks like markup or runs long is a transport/infra artifact, not a
+      // message written for a KM.
+      else if (m.indexOf('<') >= 0 || m.length > 120) {
+        console.warn('PIN sign-in unexpected error:', m);
+        errEl.textContent = t('pinServerHiccup');
+      }
       else errEl.textContent = m;
       return;
     }
