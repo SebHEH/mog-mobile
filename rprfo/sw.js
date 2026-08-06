@@ -33,7 +33,7 @@
 // or service-worker behavior that needs old caches evicted. Old
 // caches are deleted in the `activate` handler.
 
-const CACHE_VERSION = 'v48';
+const CACHE_VERSION = 'v49';
 const SHELL_CACHE   = 'mog-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'mog-runtime-' + CACHE_VERSION;
 
@@ -73,6 +73,43 @@ const RUNTIME_CACHE = 'mog-runtime-' + CACHE_VERSION;
 // DEPLOY AT A QUIET HOUR. Not during an ordering window.
 const FORCE_CLIENT_RELOAD = true;
 
+// Identity of THIS migration. A client that has already been dragged forward
+// records this id and is never force-reloaded for it again — so leaving the
+// flag armed cannot double-reload anyone, and forgetting to disarm is
+// harmless. To run a genuinely new migration later, change this id (that is
+// the deliberate act; the boolean alone is no longer enough).
+//
+// This also makes leaving it armed the SAFER choice for a while: stragglers
+// still on old code convert whenever their browser finally fetches this
+// worker, while everyone already migrated is skipped.
+const FORCE_RELOAD_ID = '2026-08-05-v48-stale-install-migration';
+
+// Survives the activate cleanup below via the allow-list — if this cache were
+// evicted with the old shells, the latch would be forgotten on every deploy
+// and the whole guarantee would evaporate.
+const MIGRATION_CACHE = 'mog-migrations';
+
+async function migrationAlreadyRan_(id) {
+  try {
+    const c = await caches.open(MIGRATION_CACHE);
+    return !!(await c.match('./__mog_migration__/' + id));
+  } catch (err) {
+    // Can't read the latch — assume it already ran. Skipping a reload is a
+    // far cheaper mistake than reloading a KM mid-count on every deploy.
+    console.warn('[sw] migration latch unreadable, skipping:', err);
+    return true;
+  }
+}
+
+async function markMigrationRan_(id) {
+  try {
+    const c = await caches.open(MIGRATION_CACHE);
+    await c.put('./__mog_migration__/' + id, new Response('done'));
+  } catch (err) {
+    console.warn('[sw] could not record migration latch:', err);
+  }
+}
+
 // How long to wait for clients to answer the busy-check before assuming
 // silence means "old client, safe to reload". Short: a live page replies in
 // ~1 frame, and every extra ms is delay on the activate handler.
@@ -98,6 +135,11 @@ function clientIsBusy_(client) {
 
 async function forceStaleClientsForward_() {
   try {
+    if (await migrationAlreadyRan_(FORCE_RELOAD_ID)) return;
+    // Record BEFORE navigating, not after: navigate() tears the client's page
+    // down and can end this worker's execution context mid-await, which would
+    // leave the latch unwritten and re-fire on the next deploy.
+    await markMigrationRan_(FORCE_RELOAD_ID);
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     await Promise.all(clients.map(async (client) => {
       if (await clientIsBusy_(client)) {
@@ -160,7 +202,10 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   // Drop any caches not in our current allow-list. This is how new
   // CACHE_VERSION deployments evict stale shells cleanly.
-  const allow = new Set([SHELL_CACHE, RUNTIME_CACHE]);
+  // MIGRATION_CACHE is version-independent ON PURPOSE: it holds the
+  // forced-reload latch, and evicting it here would make every deploy forget
+  // that a client had already been migrated — re-firing the hammer each time.
+  const allow = new Set([SHELL_CACHE, RUNTIME_CACHE, MIGRATION_CACHE]);
   event.waitUntil(
     caches.keys().then(keys => Promise.all(
       keys.filter(k => k.indexOf('mog-') === 0 && !allow.has(k))
