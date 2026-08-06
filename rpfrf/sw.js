@@ -33,9 +33,91 @@
 // or service-worker behavior that needs old caches evicted. Old
 // caches are deleted in the `activate` handler.
 
-const CACHE_VERSION = 'v47';
+const CACHE_VERSION = 'v48';
 const SHELL_CACHE   = 'mog-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'mog-runtime-' + CACHE_VERSION;
+
+// ===========================================================================
+// FORCE_CLIENT_RELOAD — one-shot migration hammer. ARMED.
+// ===========================================================================
+// SET THIS BACK TO false IMMEDIATELY AFTER THE MIGRATION DEPLOY.
+//
+// The problem it solves: the graceful auto-update in index.html only exists in
+// v47+. A KM whose app is still running v43/v44 has no version check at all,
+// and an iOS home-screen install RESUMES from memory instead of re-navigating,
+// so that session can run launch-time code until iOS evicts it -- potentially
+// weeks. They cannot be reached by page code, because the page code is the
+// thing that's stale.
+//
+// Why the service worker CAN reach them: sw.js is fetched and updated by the
+// browser on its own schedule, independent of how old the page's HTML/JS is.
+// So new worker code runs on a v43 client. From here, client.navigate() forces
+// that page to re-navigate, and because handleNavigation_ is network-first it
+// lands on current code. No tap, no force-close.
+//
+// Cost, stated plainly: any client that does not answer the busy-check below
+// gets reloaded whether or not someone is mid-count. The busy-check listener
+// ships in v48, i.e. alongside this code -- so on the FIRST migration nothing
+// out there can answer, and every open client is reloaded unconditionally.
+// That is the entire point, and it is the price of the migration.
+//
+// What that costs each population:
+//   - pre-v47: typed counts survive (drafts are written per keystroke and
+//     re-seeded into ctx.dirty since fb89ac5), but they land on the PIN screen,
+//     since pre-v47 never wrote the sessionStorage mirror that carries a
+//     session across a reload.
+//   - v47: reloaded too, but keeps its session -- nearly invisible.
+//   - v48+: can answer the busy-check, so future uses of the hammer skip
+//     anyone mid-task. This is what makes the mechanism safe to reuse.
+//
+// DEPLOY AT A QUIET HOUR. Not during an ordering window.
+const FORCE_CLIENT_RELOAD = true;
+
+// How long to wait for clients to answer the busy-check before assuming
+// silence means "old client, safe to reload". Short: a live page replies in
+// ~1 frame, and every extra ms is delay on the activate handler.
+const BUSY_CHECK_TIMEOUT_MS = 400;
+
+// Asks one client whether it's mid-task. Resolves true (busy) only on an
+// explicit "busy" answer; silence or any error resolves false, which is what
+// makes stale clients reloadable.
+function clientIsBusy_(client) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    try {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = (e) => done(!!(e.data && e.data.busy));
+      client.postMessage({ type: 'mog-busy-check' }, [ch.port2]);
+    } catch (err) {
+      done(false);
+    }
+    setTimeout(() => done(false), BUSY_CHECK_TIMEOUT_MS);
+  });
+}
+
+async function forceStaleClientsForward_() {
+  try {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    await Promise.all(clients.map(async (client) => {
+      if (await clientIsBusy_(client)) {
+        console.warn('[sw] client reports busy — skipping forced reload');
+        return;
+      }
+      try {
+        // navigate() needs the client to be same-origin and is unsupported in
+        // some engines; fall back to asking the page to reload itself, which
+        // only v47+ will understand.
+        if (typeof client.navigate === 'function') await client.navigate(client.url);
+        else client.postMessage({ type: 'mog-force-reload' });
+      } catch (err) {
+        console.warn('[sw] forced reload failed for a client:', err);
+      }
+    }));
+  } catch (err) {
+    console.warn('[sw] forceStaleClientsForward_ failed:', err);
+  }
+}
 
 // URLs to pre-cache on install. Both './' and './index.html' point
 // at the same document under GitHub Pages, but a navigation request
@@ -83,7 +165,12 @@ self.addEventListener('activate', (event) => {
     caches.keys().then(keys => Promise.all(
       keys.filter(k => k.indexOf('mog-') === 0 && !allow.has(k))
           .map(k => caches.delete(k))
-    )).then(() => self.clients.claim())
+    ))
+    .then(() => self.clients.claim())
+    // Must run AFTER claim(): an unclaimed client isn't ours to navigate, and
+    // claiming first also means the reload it performs is served by this
+    // worker rather than the outgoing one.
+    .then(() => (FORCE_CLIENT_RELOAD ? forceStaleClientsForward_() : undefined))
   );
 });
 

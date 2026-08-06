@@ -6429,6 +6429,27 @@
     pill.setAttribute('aria-hidden', 'false');
   }
 
+  // Answers the service worker's busy-check (see FORCE_CLIENT_RELOAD in sw.js).
+  // A forced migration reload is blunt by necessity — it has to work on clients
+  // too old to be asked anything at all. This listener is how clients carrying
+  // THIS code opt out while someone is mid-task, so future uses of the hammer
+  // land only where they must. It does nothing for the first migration, since
+  // the clients being dragged forward predate the listener.
+  function wireSwBusyProtocol_() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      const d = e.data || {};
+      const busy = countsAreDirty_() || !!state.recipientsDirty;
+      if (d.type === 'mog-busy-check') {
+        // The SW reads silence as "not busy", so always answer when a port is
+        // present rather than leaving it to time out.
+        if (e.ports && e.ports[0]) e.ports[0].postMessage({ busy: busy });
+        return;
+      }
+      if (d.type === 'mog-force-reload' && !busy) location.reload();
+    });
+  }
+
   function wireAppUpdateWatch_() {
     if (!('serviceWorker' in navigator)) return;
     navigator.serviceWorker.addEventListener('controllerchange', function () {
@@ -6939,6 +6960,7 @@
   // Watches for a new app version taking over and turns the pill into a
   // tap-to-reload action. Paired with the per-pull checkForAppUpdate_.
   wireAppUpdateWatch_();
+  wireSwBusyProtocol_();
   if ($('pin-reload-btn')) {
     $('pin-reload-btn').addEventListener('click', function () { location.reload(); });
   }
