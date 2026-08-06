@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: efe75c7 (2026-08-03) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: 049408d (2026-08-06) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -235,7 +235,11 @@ naive rebuild silently loses.*
   actions.** After repeated wrong PINs the store locks out for a cooldown window. The store PIN is the
   store's street number: easy for anyone on shift, and paired with the hub picker it stops one store
   from accidentally using another store's guide. Shift leads can use it because they have no company
-  email. *(Confirmed: `checkPin_`, lockout; owner-confirmed why.)*
+  email. **A session lasts the life of the app session, not the life of a page load:** the PIN is
+  re-entered after a full close, but survives a reload, so the app can restart itself (to pick up a
+  new version, say) without pushing anyone back to the sign-in screen. Re-authentication is always
+  validated against the server, never assumed from stored state. *(Confirmed: `checkPin_`, lockout,
+  `sessionStorage` mirror re-validated via `tryPin` on boot; owner-confirmed why.)*
 - **R16. Every store is strictly isolated**: one store's app only ever sees its own items, vendors,
   orders, and recipients. A user has no need to see another store's ordering, and it keeps the app
   simple. *(Confirmed: per-store Sheet + per-store deployment; owner-confirmed why.)*
