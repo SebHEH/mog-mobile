@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: 7806512 (2026-07-17) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: efe75c7 (2026-08-03) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -172,9 +172,19 @@ naive rebuild silently loses.*
 - **R3. If a vendor's multiplier for today is 0, that vendor does not deliver today**: its items show
   nothing to order and are effectively out of the day's ordering. *(Confirmed: `vendorDayMultiplier_`
   returning 0, `computeSuggestedQty_` returning null.)*
-- **R4. Always round the order up to a whole unit.** Two reasons: you never intend to order short
-  (running out mid-service is worse than a little extra), and vendors sell whole units (you cannot
-  buy 0.25 of an item). *(Confirmed: `Math.ceil`; owner-confirmed why.)*
+- **R4. Always round the order up to a whole unit — but only on a REAL shortfall.** Two reasons to
+  round up: you never intend to order short (running out mid-service is worse than a little extra),
+  and vendors sell whole units (you cannot buy 0.25 of an item). The refinement: a shortfall of
+  exactly zero, or exactly N, must not become one more unit. On a rebuild this matters because
+  binary floating point turns an exact result into a phantom remainder — `par 1.1 × 2 − 1.2` is
+  exactly 1 in decimal but computes as `1.0000000000000002`, and a bare round-up ordered 2. Guard
+  with a small epsilon before rounding up, never by rounding to a fixed number of decimals: that
+  also shaves a *genuine* fraction, and this system must never round an order down. Spreadsheet
+  engines hide this (Sheets applies ~15-significant-digit final-result cleanup, so its `ROUNDUP`
+  never saw the artifact) — a reimplementation on any other stack will not, unless it guards.
+  Affects roughly 0.8% of decimal par/on-hand combinations, always over by exactly one unit.
+  *(Confirmed: `computeSuggestedQty_` epsilon guard, verified against exact integer-scaled decimal
+  arithmetic 2026-08-03; owner-confirmed the never-round-down intent.)*
 - **R5. On-hand may be a decimal; par and the order are quantities in the item's pack/unit.**
   *(Confirmed: PWA decimal input, `Number()` on save.)*
 - **R6. Par is one number per item, shared across every vendor that can supply it**, not a per-vendor
@@ -209,6 +219,15 @@ naive rebuild silently loses.*
 - **R13. A new order day auto-resets on first contact** (app open or sheet open); there is no manual
   mid-day reset. Auto-reset is also what guarantees the recap gets sent and the day gets logged.
   *(Confirmed: reset flow; the manual button was deliberately removed.)*
+- **R13a. Never let anyone order against a cycle you could not confirm.** If the system cannot verify
+  that the current day has been reset, it must GATE — not proceed. The failure this rule exists to
+  prevent is silent and expensive: the previous cycle's vendor list, pars and multipliers render
+  identically to a normal day, so a user counts into a stale cycle and those counts get logged under
+  the *old* cycle date with nothing on screen to hint at it. The correct behavior is a blocking screen
+  offering a retry, plus — only when cached data exists — an explicit, user-chosen "work offline"
+  path that makes the trade visible rather than automatic. On a rebuild: any error handler on the
+  boot/auth path that falls through to "just show the app" is this bug. *(Confirmed:
+  `gateOnUnconfirmedCycle_`, shipped 2026-08-03 after both boot paths were found failing open.)*
 - **R14. Counts entered while offline are queued and must flush before a new-day reset wipes them.**
   This is a hard requirement: never lose a user's counts to a bad connection. *(Confirmed:
   `drainSaveQueue_` awaited by `runStaleReset_`; owner-confirmed hard requirement.)*

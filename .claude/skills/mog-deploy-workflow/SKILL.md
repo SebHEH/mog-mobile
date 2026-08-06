@@ -48,6 +48,27 @@ The reason: spreadsheet data and per-store state vary subtly. A change that work
 
 **Staged-commit discipline (when a session is planned as N separate commits).** It's fine — often better — to bundle several logical changes onto *one* canary smoke test for efficiency. But **commit each logical change before you start editing the next one.** If you deploy change A to canary, then edit change B on top before committing A, you can no longer make two clean commits without reconstructing A from a scratchpad snapshot (the working tree now holds A+B intermingled). Commit A first → the second commit is then just B's diff. The canary bundling and the commit granularity are independent: deploy whenever it's efficient, but don't let an uncommitted stage pile onto the next.
 
+## `--redeploy` flushes CacheService — WHEN you fan out matters
+
+A new deployment version empties `CacheService`, and that costs more than the editor-token reprompt
+documented below. Every cached read goes with it, so **the first request to each store afterwards is a
+cold full recompute**: `api_getDashboard_` rebuilds from scratch (one vendor-tab read per vendor, plus
+the order-log read, plus item counts). Measured on an 11-vendor store, that's **8–15s**, and the very
+first `/exec` execution on a fresh version measured **20.1s**.
+
+Consequences to plan around:
+
+- **A healthy store can look broken right after a fan-out.** If a cold response outruns the PWA's
+  `API_TIMEOUT_MS`, the client aborts and renders "Offline — using last loaded data" with a retry that
+  fails the same way — while the server completed fine. That's what happened on 2026-08-03 (rpt) and it
+  cost hours of misdiagnosis. See `[[mog-exec-repoint]]`, Step 1, first bullet.
+- **Don't fan out into a store's reset window.** The new-day reset is the heaviest call in the app
+  (~26–31s server-side on an 11-vendor store) and a cold cache stacks on top of it. Morning open is the
+  worst time to redeploy; prefer after the ordering window.
+- **Expect the first post-deploy probe to be slow, and re-probe before concluding anything.** A 20s
+  health GET immediately after `--redeploy` is normal cold start, not a rotted deployment. Probe twice.
+- **Deploying to a canary warms only that canary.** The other 8 are still cold when you fan out.
+
 ## KM web editor (`doGet?page=…`) — iterate by `--redeploy` to the canary, send the `/exec` link
 
 Editor pages are served two ways from the same Apps Script project:
