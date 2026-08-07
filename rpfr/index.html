@@ -3609,11 +3609,16 @@
     }
     showBusy(t('refreshing'));
     try {
-      await api('setEmergencyOverride', { on: turnOn });
+      const res = await api('setEmergencyOverride', { on: turnOn });
       state.cache.dashboard   = null;
       setDashboardFetchedAt_(null);
       state.cache.vendorItems = {};
-      await loadToday();
+      // The server returns the fresh dashboard with the ack, so the common path
+      // is ONE execution instead of two. `res.dashboard` is absent when the
+      // store's backend predates this change or its defensive read failed — then
+      // loadToday() fetches exactly as before. That fallback is what makes this
+      // PWA build safe to push globally while the backend rolls out per store.
+      await loadToday((res && res.dashboard) || undefined);
       hideBusy();
       showToast(turnOn ? t('overrideOnToast') : t('overrideOffToast'), 'success');
     } catch (e) {
@@ -4018,7 +4023,17 @@
     }
   }
 
-  async function loadToday() {
+  // `preloaded` (optional): a dashboard payload the caller already holds —
+  // currently from setEmergencyOverride, which now returns it alongside the ack
+  // so the override toggle costs ONE ~2s /exec execution instead of two.
+  //
+  // When present we skip the network call but still run the ENTIRE fresh-fetch
+  // path below (GC, reviewed-flag self-heal, offline cache write). Seeding
+  // state.cache.dashboard directly and letting the fast path render it would be
+  // shorter and wrong: this is a fresh server payload, and the fast path
+  // deliberately skips that reconciliation on the grounds that a cache hit was
+  // already reconciled when it was first populated.
+  async function loadToday(preloaded) {
     const view = $('view-today');
     // Fast path: if we have a dashboard cache, render it immediately and
     // skip the network round-trip. The cache is invalidated whenever the
@@ -4030,7 +4045,7 @@
     // The self-heal / GC pass below only needs to run on a fresh fetch;
     // on a cache hit, those localStorage states are already reconciled
     // from when the cache was first populated.
-    if (state.cache.dashboard) {
+    if (!preloaded && state.cache.dashboard) {
       renderToday(state.cache.dashboard);
       // Re-kick the prefetch in case the cache was filled by a prior
       // session and the prefetch never ran (or the user refreshed
@@ -4045,9 +4060,10 @@
       }
       return;
     }
-    renderLoading(view);
+    // No loading state when the payload is already in hand — it would flash.
+    if (!preloaded) renderLoading(view);
     try {
-      const data = await api('getDashboard');
+      const data = preloaded || await api('getDashboard');
       state.cache.dashboard = data;
       setDashboardFetchedAt_(Date.now());
       writeOfflineCache_(OFFLINE_SLOTS.DASHBOARD, data);
@@ -4524,13 +4540,28 @@
     if (mult === (ctx.overrideMult || 0)) { ctx._pickerOpen = false; renderCount(); return; }
     showBusy(t('refreshing'));
     try {
-      await api('setVendorOverride', { vendor: ctx.vendor, mult: mult });
+      const res = await api('setVendorOverride', { vendor: ctx.vendor, mult: mult });
       ctx._pickerOpen = false;
       // Server bumped its mutation ts — drop the local dashboard cache so the
       // Today view's "to order" counts recompute with the new multiplier.
       state.cache.dashboard = null;
       setDashboardFetchedAt_(null);
-      const fresh = await fetchVendorItems_(ctx.vendor, { force: true });
+      // The server returns this vendor's recomputed items with the ack, so the
+      // pick is ONE execution instead of two. Absent (older backend, or the
+      // server-side defensive read failed) → fall back to the forced fetch,
+      // i.e. the original behavior.
+      //
+      // Seeding state.cache.vendorItems is REQUIRED, not an optimization: the
+      // forced fetch used to refresh that cache, and buildRecapLocally_ reads
+      // `suggestedQty` straight out of it to build the full order list without
+      // a network call. Skipping the seed would leave the order list showing
+      // pre-pick quantities.
+      let fresh = res && res.itemsPayload;
+      if (fresh) {
+        state.cache.vendorItems[ctx.vendor] = fresh;
+      } else {
+        fresh = await fetchVendorItems_(ctx.vendor, { force: true });
+      }
       ctx.emergencyOverride = !!fresh.emergencyOverride;
       ctx.overrideMult = Number(fresh.overrideMult) || 0;
       ctx.items = fresh.items;

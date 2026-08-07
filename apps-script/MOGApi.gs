@@ -404,7 +404,25 @@ function api_setEmergencyOverride_(payload) {
   // shows/hides off-schedule vendors based on override) recomputes immediately.
   bumpServerMutationTs_();
 
-  return { emergencyOverride: on };
+  // ROUND-TRIP COLLAPSE. Hand back the fresh dashboard with the ack so the PWA
+  // doesn't spend a SECOND ~2s /exec execution asking for state we can compute
+  // right here. The floor is per-EXECUTION overhead (measured 2.18s for a bare
+  // no-work request, 2026-08-08), not per-byte, so folding the read into this
+  // execution is close to free while a separate call is not.
+  //
+  // ORDER MATTERS: compute AFTER the AD2 write and AFTER the ts bump.
+  // api_getDashboard_ keys its cache on getServerMutationTs_(), so computing
+  // before the bump would store PRE-mutation data under the POST-bump key and
+  // serve it for the full 300s TTL — the commitAddVendor trap from audit 07-29.
+  //
+  // Defensive by design: the write has ALREADY succeeded by this point, so a
+  // read failure must never make a successful toggle look failed. Returning
+  // without `dashboard` is a valid response — the client then fetches it
+  // itself, which is exactly the old two-round-trip behavior.
+  let dashboard = null;
+  try { dashboard = api_getDashboard_(); } catch (e) { dashboard = null; }
+
+  return { emergencyOverride: on, dashboard: dashboard };
 }
 
 
@@ -456,7 +474,21 @@ function api_setVendorOverride_(payload) {
   // dashboard (and anything keyed on the mutation ts) recomputes.
   bumpServerMutationTs_();
 
-  return { vendor: vendor, overrideMult: mult };
+  // ROUND-TRIP COLLAPSE — same rationale as api_setEmergencyOverride_: the day
+  // pick used to cost two serial ~2s executions (write, then re-fetch), and the
+  // second one asked for something this execution can already produce.
+  //
+  // Unlike the dashboard, api_getVendorItems_ is NOT CacheService-wrapped
+  // (dispatch calls it directly), so there is no stale-key hazard here. It must
+  // still run AFTER the AF write so every quantity reflects the pick just made
+  // — vendorDayMultiplier_ reads that cell back through readVendorOverrides_.
+  //
+  // Defensive for the same reason as above: the pick is already saved, so a
+  // read failure degrades to "client fetches it itself", never to a false error.
+  let itemsPayload = null;
+  try { itemsPayload = api_getVendorItems_({ vendor: vendor }); } catch (e) { itemsPayload = null; }
+
+  return { vendor: vendor, overrideMult: mult, itemsPayload: itemsPayload };
 }
 
 
