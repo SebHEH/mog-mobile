@@ -196,77 +196,79 @@ function getLogOrderDate_() {
 
 
 
-// Sweeps all vendor tabs and returns log rows for items where Suggested Qty > 0.
-// ⚠ Verify column positions match your VENDOR_TEMPLATE before deploying.
-function snapshotVendorOrders_(orderDate, timestamp) {
-  const ss      = SpreadsheetApp.getActiveSpreadsheet();
-  const vendors = getVendorList();
-  const rows    = [];
+// The ONE sweep of the vendor tabs a reset performs. Produces the LOG_ORDERS
+// rows; the recap email is then rebuilt FROM those logged rows by
+// buildRecapFromLog_, off the KM's critical path.
+//
+// Replaces the old snapshotVendorOrders_ + an inline buildRecapSections_ call.
+// Those each built their own read context (MASTER_ITEMS, SETUP multipliers, the
+// Override flag) and swept every vendor tab independently, computing the SAME
+// suggested quantities twice from two reads taken at two different moments.
+//
+// Collapsing to one sweep is a correctness fix as much as a speed one:
+//   * The order log and the recap email can no longer disagree — the email is
+//     DERIVED from the log now, so a KM saving on-hand in the window between the
+//     two old passes can't produce a history row that differs from the email.
+//   * The old recap pre-filtered vendors on the RAW today multiplier while the
+//     log used vendorDayMultiplier_ (Override-aware). Under Emergency Override a
+//     vendor could be written to history yet dropped from the email. There is
+//     only one vendor set now. (buildRecapSections_'s own filter is fixed too,
+//     for the in-app "full order list" and manual-send paths, which still build
+//     from live on-hand.)
+//
+// Every vendor is swept, not just today's deliveries: a vendor that isn't
+// delivering gets dayMult 0, so computeSuggestedQty_ returns null for all of its
+// items and it contributes nothing — the same outcome the old pre-filter
+// produced, without the Override blind spot.
+//
+// Items come from api_getVendorItems_, which is the single source of the order
+// math (par from MASTER_ITEMS col G, on-hand from vendor-tab col E, item id from
+// col M, suggested via computeSuggestedQty_) and is exactly what the PWA count
+// screen renders — so the logged order matches what the KM saw and approved.
+//
+// Returns { rows, cycleDate } — rows in LOG_ORDERS column order.
+function buildOrderCycleSnapshot_(orderDate, timestamp) {
+  const setup  = getSheet_(SHEET_SETUP);
+  const active = getActiveOrderDate_();
 
-  // Log every tab where an item was actually counted (On Hand entered) and its
-  // suggested qty > 0 — including backup/secondary vendors. On-Hand is per tab,
-  // so an item is only ordered from the vendor(s) it was counted on; there's no
-  // primary-only filter, so a legitimate backup order (primary out of stock or
-  // not delivering) is captured.
+  // Shared read context, built ONCE for every vendor. Must be COMPLETE —
+  // api_getVendorItems_ treats ctx as all-or-nothing, because a partial one
+  // would silently mix fresh and stale reads.
+  const ctx = {
+    pickDb:            readPickDb_(setup),
+    vendorMults:       readVendorMultipliers_(setup),
+    emergencyOverride: readEmergencyOverride_(),
+    dayOfWeek:         active.dayOfWeek,
+    masterMeta:        readMasterItemMeta_(),
+    cutoffs:           readVendorCutoffs_(setup)
+  };
 
+  const rows = [];
 
+  getVendorList().forEach(vendor => {
+    let result;
+    try {
+      result = api_getVendorItems_({ vendor: vendor }, ctx);
+    } catch (e) {
+      // A missing or renamed vendor tab must never abort a reset — the old
+      // snapshot skipped absent sheets silently and so do we. Logged for triage.
+      Logger.log('buildOrderCycleSnapshot_ skipped ' + vendor + ': ' + (e.stack || e));
+      return;
+    }
 
-
-  // Item Name and Suggested Qty are computed in code (Item Name from
-  // MASTER_ITEMS via readMasterItemMeta_; Suggested via the shared
-  // computeSuggestedQty_ helper) — NOT read from the vendor tab's col-A / col-F
-  // formulas. That's the same math the PWA count screen and daily recap use, so
-  // the logged order matches what the KM saw. The tab is read for On Hand
-  // (col E, real data) and Item ID (col M, the roster spill) only.
-  const VTAB_ITEM_ID_COL = VENDOR_TAB.ITEM_ID_COL;    // M — Item ID (hidden)
-  const VTAB_ON_HAND_COL = VENDOR_TAB.ON_HAND_COL;    // E (5)
-  const VTAB_READ_TO_COL = VENDOR_TAB.ITEM_ID_COL;    // read through M
-
-  // Shared read context, built once for all vendors.
-  const masterMeta        = readMasterItemMeta_();
-  const vendorMults       = readVendorMultipliers_(getSheet_(SHEET_SETUP));
-  const emergencyOverride = readEmergencyOverride_();
-  const dayOfWeek         = getActiveOrderDate_().dayOfWeek;
-
-  vendors.forEach(vendor => {
-    const sh = ss.getSheetByName(vendor);
-    if (!sh) return;
-
-    const lastRow = sh.getLastRow();
-    if (lastRow < VENDOR_TAB.DATA_START_ROW) return;
-
-    const numRows = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
-    const data    = sh
-      .getRange(VENDOR_TAB.DATA_START_ROW, 1, numRows, VTAB_READ_TO_COL)
-      .getValues();
-
-    const dayMult = vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride);
-
-    data.forEach(r => {
-      const itemId = String(r[VTAB_ITEM_ID_COL - 1] || "").trim();
-      if (!itemId) return;
-
-      // Non-roster / blank-name row — same skip as the count path (old code
-      // skipped on a blank col-A, which is XLOOKUP(id,…)="" for these rows).
-      const meta = masterMeta.get(itemId);
-      if (!meta || !meta.name) return;
-
-      const onHandRaw = r[VTAB_ON_HAND_COL - 1];
-      const onHand = (onHandRaw === "" || onHandRaw === null || isNaN(Number(onHandRaw)))
-        ? null
-        : Number(onHandRaw);
-
-      const suggested = computeSuggestedQty_(meta.par, meta.useMult, dayMult, onHand);
-      if (suggested == null || suggested <= 0) return;
-
-      rows.push([timestamp, orderDate, vendor, itemId, meta.name, (onHand === null ? 0 : onHand), suggested]);
-    });
+    // Log every tab where an item was actually counted (On Hand entered) and its
+    // suggested qty > 0 — INCLUDING backup/secondary vendors. On-Hand is per tab,
+    // so an item is only ordered from the vendor(s) it was counted on; there's
+    // deliberately no primary-only filter, so a legitimate backup order (primary
+    // out of stock, or not delivering) is captured.
+    for (const it of result.items) {
+      if (it.suggestedQty == null || it.suggestedQty <= 0) continue;
+      rows.push([timestamp, orderDate, vendor, it.id, it.name,
+                 (it.onHand === null ? 0 : it.onHand), it.suggestedQty]);
+    }
   });
 
-
-
-
-  return rows;
+  return { rows: rows, cycleDate: active.dateStr };
 }
 
 
@@ -377,7 +379,11 @@ function resetOnHandAllVendors() {
   // Compose the email-status line first so both result branches share it.
   let emailLine = '';
   if (emailResult) {
-    if (emailResult.sent !== undefined && emailResult.sent > 0) {
+    if (emailResult.scheduled) {
+      // Normal path since the async handoff: the recap sends from a one-shot
+      // trigger about a minute from now, rebuilt from the rows just logged.
+      emailLine = '✓ Recap email queued — it sends within a minute or two.\n';
+    } else if (emailResult.sent !== undefined && emailResult.sent > 0) {
       emailLine = '✓ Recap email sent to ' + emailResult.sent + ' recipient(s)';
       if (emailResult.failed) emailLine += ' (' + emailResult.failed + ' failed — see logs)';
       emailLine += '.\n';
@@ -439,8 +445,10 @@ function commitLogAndReset() {
   // even though on-hand had been cleared.
   const deletedCount = deleteLogEntriesForDate_(logSheet, orderDate);
 
-  // Snapshot all vendor tabs
-  const rows = snapshotVendorOrders_(orderDate, timestamp);
+  // Snapshot all vendor tabs ONCE. The recap email is no longer built here — it's
+  // rebuilt from these logged rows by the async sender below.
+  const cycle = buildOrderCycleSnapshot_(orderDate, timestamp);
+  const rows  = cycle.rows;
 
   // Append to LOG_ORDERS
   if (rows.length > 0) {
@@ -450,14 +458,28 @@ function commitLogAndReset() {
       .setValues(rows);
   }
 
-  // Send the daily recap email BEFORE clearing on-hand — the email is
-  // built from the live on-hand values, so it must run while they're still
-  // populated. Deduped via MOG_LAST_RECAP_SENT_DATE so calling reset from
-  // multiple paths (sheet menu, PWA button, PWA new-day auto-reset) sends
-  // at most one email per cycle. Never blocks the reset on email failure.
-  const emailResult = sendRecapIfUnsent_();
+  // Hand the recap off to a one-shot trigger instead of sending it inline. The
+  // KM was waiting on one Gmail round-trip per recipient while the reset held
+  // the request open — with the vendor sweep and the on-hand clear that pushed
+  // rprfo-class stores past the PWA's 45s client timeout. sendPendingRecap_
+  // rebuilds the recap from the rows just appended above (buildRecapFromLog_),
+  // so it doesn't need live on-hand and can safely run after the clear below.
+  //
+  // FALLBACK: if the trigger can't be created (quota, authorization), send
+  // synchronously right here — while on-hand is STILL POPULATED, since the
+  // inline builder reads it live. That ordering is why this stays above
+  // resetAllVendorOnHand_. Slower, but a store never silently loses its email.
+  let emailResult;
+  try {
+    emailResult = scheduleRecapSend_(cycle.cycleDate);
+  } catch (schedErr) {
+    Logger.log('scheduleRecapSend_ failed, falling back to inline send: ' +
+               (schedErr.stack || schedErr));
+    emailResult = sendRecapIfUnsent_();
+  }
 
-  // Reset On Hand after logging + emailing
+  // Reset On Hand — must come after the snapshot above, and after the inline
+  // fallback if one ran.
   resetAllVendorOnHand_();
 
   return {
@@ -479,6 +501,10 @@ function commitLogAndReset() {
 // Guarded with typeof — if Recap.gs isn't present (a location not yet
 // onboarded to the mobile API), the email step is silently skipped and the
 // reset proceeds normally.
+// Inline (synchronous) send. This is now only the FALLBACK for when
+// scheduleRecapSend_ can't arm its trigger — the normal path is async via
+// sendPendingRecap_. Builds from LIVE on-hand, so it must be called before
+// resetAllVendorOnHand_ clears it.
 function sendRecapIfUnsent_() {
   if (typeof buildRecapSections_ !== 'function' ||
       typeof readRecipients_     !== 'function' ||
@@ -539,11 +565,12 @@ function deleteLogEntriesForDate_(logSheet, orderDate) {
     .getValues()
     .flat();
 
-  const fmt = (v) => {
-    if (!v) return "";
-    const d = (v instanceof Date) ? v : new Date(v);
-    return isNaN(d.getTime()) ? String(v).trim() : Utilities.formatDate(d, tz, "yyyy-MM-dd");
-  };
+  // Memoized: this walks EVERY log row, and one cycle stamps the same date onto
+  // all of its rows, so the unmemoized version made thousands of comparatively
+  // expensive Utilities.formatDate calls to resolve a handful of distinct dates.
+  // makeLogDateFormatter_ (History.gs) is a like-for-like replacement of the
+  // closure that used to live here — same Date/string/unparseable handling.
+  const fmt = makeLogDateFormatter_(tz, "yyyy-MM-dd");
 
   // Build a list of rows to delete (sheet rows are 1-indexed; data starts
   // at row 2). Walk bottom-up so each delete doesn't shift the indexes

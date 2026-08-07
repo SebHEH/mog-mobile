@@ -140,16 +140,31 @@ function buildRecapSections_(requestedVendors) {
   const active      = getActiveOrderDate_();
   const dayOfWeek   = active.dayOfWeek;
   const cycleDate   = active.dateStr;
+  // Read BEFORE the vendor filter below — the filter needs it (see why there).
+  const emergencyOverride = readEmergencyOverride_();
 
   let vendorsToCheck;
   if (requestedVendors && requestedVendors.length) {
     const known = new Set(allVendors);
     vendorsToCheck = requestedVendors.filter(v => known.has(v));
   } else {
-    vendorsToCheck = allVendors.filter(v => {
-      const m = vendorMults.get(v) || {};
-      return (Number(m[dayOfWeek]) || 0) > 0;
-    });
+    // Filter on the EFFECTIVE multiplier, not the raw today-column value.
+    //
+    // This used to read `vendorMults.get(v)[dayOfWeek] > 0` directly, which
+    // ignores Emergency Override — while the quantities computed below (and
+    // the order log written by the reset) both go through vendorDayMultiplier_,
+    // which under Override bridges to the vendor's next scheduled delivery. So
+    // with Override on, a vendor that doesn't deliver today was counted by the
+    // KM, priced by the PWA, and written to history — but silently dropped from
+    // the recap email AND from the in-app "full order list" that share this
+    // filter. Override is exactly when someone is ordering off-schedule, so it
+    // was the worst case to lose a vendor in.
+    //
+    // With Override off, vendorDayMultiplier_ returns today's raw multiplier,
+    // so normal operation is byte-identical to the old filter.
+    vendorsToCheck = allVendors.filter(v =>
+      vendorDayMultiplier_(vendorMults, v, dayOfWeek, emergencyOverride) > 0
+    );
   }
 
   // Shared read context — built ONCE and passed into api_getVendorItems_ so
@@ -159,7 +174,7 @@ function buildRecapSections_(requestedVendors) {
   const recapCtx = {
     pickDb:            readPickDb_(setup),
     vendorMults:       vendorMults,
-    emergencyOverride: readEmergencyOverride_(),
+    emergencyOverride: emergencyOverride,
     dayOfWeek:         dayOfWeek,
     masterMeta:        readMasterItemMeta_(),
     cutoffs:           readVendorCutoffs_(setup)
@@ -188,6 +203,162 @@ function buildRecapSections_(requestedVendors) {
 }
 
 
+
+
+// ── Async recap send ──────────────────────────────────────────────────────
+// Rebuilds a cycle's recap sections from LOG_ORDERS instead of from live
+// on-hand. This is what lets the recap be sent AFTER the reset has cleared
+// on-hand — and it's a STRONGER guarantee than the old live rebuild: the email
+// is now derived FROM the order log, so the email and history cannot disagree
+// by construction rather than by two computations happening to match.
+//
+// Everything the email needs is in the log or joinable to it:
+//   name, onHand, qty — logged directly by buildOrderCycleSnapshot_
+//   pack              — joined from MASTER_ITEMS by buildHistoryRows_ (itemPack)
+//   area              — joined from the pick DB here (the log doesn't store it)
+//
+// Order is preserved: rows were appended in getVendorList() order and, within a
+// vendor, pick-path order; buildHistoryRows_'s date sort is stable and every row
+// here shares one date, so sections come out in the same order the old live
+// builder produced.
+function buildRecapFromLog_(orderDate) {
+  const rows = getOrderHistory({ vendorFilter: 'ALL', dateFrom: orderDate, dateTo: orderDate });
+
+  // vendor|itemId -> storage area. Not stored in the log, so joined from the
+  // pick DB. Cosmetic grouping in the email, so a read failure must never sink
+  // the send — fall back to blank areas.
+  const areaByKey = new Map();
+  try {
+    for (const r of readPickDb_(getSheet_(SHEET_SETUP))) {
+      const vendor = String(r[0] || '').trim();
+      const id     = String(r[1] || '').trim();
+      if (vendor && id) areaByKey.set(vendor + '|' + id, String(r[3] || '').trim());
+    }
+  } catch (e) {
+    Logger.log('buildRecapFromLog_ pick-DB read failed (areas will be blank): ' + (e.stack || e));
+  }
+
+  const byVendor = new Map();   // insertion-ordered, so vendor order is the log's
+  let totalItems = 0;
+  for (const r of rows) {
+    if (!r.vendor || !(r.qtyOrdered > 0)) continue;
+    if (!byVendor.has(r.vendor)) byVendor.set(r.vendor, []);
+    byVendor.get(r.vendor).push({
+      name:   r.itemName,
+      pack:   r.itemPack,
+      onHand: r.onHandPrev,
+      qty:    r.qtyOrdered,
+      area:   areaByKey.get(r.vendor + '|' + r.itemId) || ''
+    });
+    totalItems++;
+  }
+
+  const sections = [];
+  byVendor.forEach(function (lines, vendor) {
+    sections.push({ vendor: vendor, itemCount: lines.length, lines: lines });
+  });
+  return { sections: sections, totalItems: totalItems, cycleDate: orderDate };
+}
+
+
+// Hands the recap send off to a one-shot time-based trigger so a reset returns
+// immediately instead of blocking the KM on one Gmail round-trip per recipient.
+// Clears any earlier sendPendingRecap_ trigger first — Apps Script caps triggers
+// per script, so they must never accumulate.
+function scheduleRecapSend_(cycleDate) {
+  dropRecapTriggers_();
+  PropertiesService.getScriptProperties().setProperty(
+    PROP_PENDING_RECAP,
+    JSON.stringify({ cycleDate: cycleDate, attempts: 0 })
+  );
+  ScriptApp.newTrigger('sendPendingRecap_').timeBased().after(RECAP_SEND_DELAY_MS).create();
+  return { scheduled: true, cycleDate: cycleDate };
+}
+
+
+function dropRecapTriggers_() {
+  // Safe to call from inside sendPendingRecap_ itself — deleting the trigger
+  // that is currently executing is allowed.
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'sendPendingRecap_') {
+      try { ScriptApp.deleteTrigger(t); } catch (e) { /* already gone */ }
+    }
+  });
+}
+
+
+// Trigger handler: sends the pending cycle's recap, rebuilt from LOG_ORDERS
+// (on-hand is already cleared by the time this runs — that's the whole point).
+//
+// The bounded retry is REQUIRED, not a bonus. Going async removed the KM's
+// immediate feedback, so without it a silent Gmail failure would strand a cycle
+// with no email and nobody aware. Still at most one DELIVERED email per cycle:
+// PROP_LAST_RECAP_SENT_DATE gates that, and it's checked before every attempt.
+//
+// Never throws — a trigger error surfaces nowhere useful, so everything is
+// logged for triage instead.
+function sendPendingRecap_() {
+  const props = PropertiesService.getScriptProperties();
+  let pending = null;
+  try { pending = JSON.parse(props.getProperty(PROP_PENDING_RECAP) || 'null'); }
+  catch (e) { pending = null; }
+
+  const finish = function () {
+    dropRecapTriggers_();
+    props.deleteProperty(PROP_PENDING_RECAP);
+  };
+
+  // Nothing pending, or a stale trigger left over — clean up and stop.
+  if (!pending || !pending.cycleDate) { finish(); return; }
+
+  // Already delivered for this cycle by some other path (a manual send, or the
+  // synchronous fallback in commitLogAndReset when trigger creation failed).
+  if ((props.getProperty(PROP_LAST_RECAP_SENT_DATE) || '') === pending.cycleDate) {
+    finish();
+    return;
+  }
+
+  let sent = 0, failed = 0, nothingToDo = false;
+  try {
+    const recipients = readRecipients_().filter(function (r) { return r.active && r.email; });
+    const recap      = buildRecapFromLog_(pending.cycleDate);
+    if (!recipients.length || !recap.sections.length) {
+      // No recipients configured, or nothing was ordered this cycle. Neither is
+      // a transient failure, so don't burn retries on it.
+      nothingToDo = true;
+    } else {
+      for (const r of recipients) {
+        try {
+          sendRecapEmail_(r.email, recap.sections, recap.cycleDate, recap.totalItems);
+          sent++;
+        } catch (e) {
+          failed++;
+          Logger.log('sendPendingRecap_ send failed for ' + r.email + ': ' + (e.stack || e));
+        }
+      }
+    }
+  } catch (e) {
+    Logger.log('sendPendingRecap_ error: ' + (e.stack || e));
+  }
+
+  if (sent > 0) props.setProperty(PROP_LAST_RECAP_SENT_DATE, pending.cycleDate);
+
+  const attempts = (Number(pending.attempts) || 0) + 1;
+  if (sent > 0 || nothingToDo || attempts >= RECAP_SEND_MAX_TRIES) {
+    if (!sent && !nothingToDo) {
+      Logger.log('sendPendingRecap_ giving up on ' + pending.cycleDate +
+                 ' after ' + attempts + ' attempt(s), ' + failed + ' failure(s).');
+    }
+    finish();
+    return;
+  }
+
+  // Transient failure — keep the pending record, bump the counter, re-arm.
+  props.setProperty(PROP_PENDING_RECAP,
+    JSON.stringify({ cycleDate: pending.cycleDate, attempts: attempts }));
+  dropRecapTriggers_();
+  ScriptApp.newTrigger('sendPendingRecap_').timeBased().after(RECAP_SEND_DELAY_MS).create();
+}
 
 
 function sendRecapEmail_(recipient, sections, cycleDate, totalItems) {
@@ -302,6 +473,40 @@ function sendRecapEmail_(recipient, sections, cycleDate, totalItems) {
 // the once-per-day dedupe flag, and the On-Hand clear. Use it to preview the
 // email design without emailing the real recipients. Throws a clear message if
 // there's nothing to recap (no vendor has items to order right now).
+// Editor-only companion to test_recapEmailToSelf, for the ASYNC path: rebuilds a
+// cycle's recap from LOG_ORDERS (exactly what sendPendingRecap_ does) and emails
+// it ONLY to whoever runs this. Verifies buildRecapFromLog_ against real store
+// data without touching the recipient list, the dedupe flag, or on-hand.
+//
+// Works AFTER a reset has cleared on-hand — that's the point, and it's why this
+// exists alongside test_recapEmailToSelf, which needs live counts. Defaults to
+// the most recent logged cycle so it can be Run straight from the editor with no
+// arguments; pass 'yyyy-MM-dd' to target a specific one. Not menu-wired.
+function test_recapFromLogToSelf(orderDate) {
+  const me = Session.getActiveUser().getEmail();
+  if (!me) throw new Error('Could not resolve your email from Session.getActiveUser().');
+
+  let date = String(orderDate || '').trim();
+  if (!date) {
+    // Most recent logged cycle. getOrderHistory sorts date-desc, so row 0 wins.
+    const all = getOrderHistory({ vendorFilter: 'ALL' }, { needPack: false });
+    if (!all.length) throw new Error('LOG_ORDERS is empty — nothing to rebuild.');
+    date = all[0].orderDate;
+  }
+
+  const recap = buildRecapFromLog_(date);
+  if (!recap.sections.length) {
+    throw new Error('No logged rows for ' + date + ' — nothing to rebuild. ' +
+                    'Check Order History for a date that has orders.');
+  }
+  sendRecapEmail_(me, recap.sections, recap.cycleDate, recap.totalItems);
+  Logger.log('Log-derived recap for ' + date + ' sent to ' + me + ' — ' +
+             recap.sections.length + ' vendors, ' + recap.totalItems + ' items.');
+  return { cycleDate: date, vendorCount: recap.sections.length,
+           itemCount: recap.totalItems, sentTo: me };
+}
+
+
 function test_recapEmailToSelf() {
   const me = Session.getActiveUser().getEmail();
   if (!me) throw new Error('Could not resolve your email from Session.getActiveUser().');

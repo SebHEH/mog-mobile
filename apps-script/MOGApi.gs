@@ -49,6 +49,14 @@ const PROP_CONCEPT        = 'MOG_CONCEPT';        // dashboard branding: 'roll-p
 // email doesn't fire twice. Manual sends bypass via payload.force.
 const PROP_LAST_RECAP_SENT_DATE = 'MOG_LAST_RECAP_SENT_DATE';
 
+// Async recap handoff. The reset no longer sends the recap inline — it stamps
+// the cycle here and arms a one-shot time-based trigger (sendPendingRecap_), so
+// the KM's reset returns without waiting on Gmail. Holds
+// {cycleDate, attempts}; deleted once the cycle is delivered or abandoned.
+const PROP_PENDING_RECAP   = 'MOG_PENDING_RECAP';
+const RECAP_SEND_DELAY_MS  = 60 * 1000;  // one-shot trigger delay (Apps Script rounds to ~1 min)
+const RECAP_SEND_MAX_TRIES = 3;          // bounded retry — see sendPendingRecap_
+
 // Recipient list lives in SETUP columns AB-AE, rows 2+.
 // AB: name, AC: email, AD: active (TRUE/FALSE), AE: GM (TRUE/FALSE).
 // GM rows are visible but locked from the PWA — only editable in the sheet.
@@ -799,16 +807,16 @@ function api_getHistoryDetail_(payload) {
   const vendor = String(payload.vendor || '');
   if (!date || !vendor) throw new Error('date and vendor are required.');
 
+  // Pack metadata isn't stored in LOG_ORDERS, so buildHistoryRows_ joins it in
+  // from MASTER_ITEMS as row.itemPack (via buildPackByIdMap_, same map this
+  // used to build for itself). Reusing it drops a second full MASTER read that
+  // produced an identical map — COL.ID is 1, so the ranges and join matched.
   const flat = getOrderHistory({ vendorFilter: vendor, dateFrom: date, dateTo: date });
-
-  // Pack metadata isn't stored in LOG_ORDERS — pull it from MASTER_ITEMS
-  // and join by item ID. One-shot read; the map is local to this request.
-  const packById = buildPackByIdMap_();
 
   const items = flat.map(r => ({
     id:     r.itemId,
     name:   r.itemName,
-    pack:   packById.get(r.itemId) || '',
+    pack:   r.itemPack,
     onHand: r.onHandPrev,
     qty:    r.qtyOrdered
   }));
@@ -849,7 +857,12 @@ function api_getHistoryDates_(payload) {
     } catch (e) { /* bad cached content — fall through */ }
   }
 
-  const flat = getOrderHistory({ vendorFilter: 'ALL', dateFrom: dateFrom, dateTo: dateTo });
+  // needPack:false — this payload is dates + vendor counts only, so the
+  // MASTER_ITEMS read that populates itemPack would be pure waste.
+  const flat = getOrderHistory(
+    { vendorFilter: 'ALL', dateFrom: dateFrom, dateTo: dateTo },
+    { needPack: false }
+  );
 
   // Group by date → set of unique vendors. The set's size becomes the
   // "N vendors" badge on the dates-view card; the vendor list itself
@@ -893,7 +906,11 @@ function api_getHistoryVendors_(payload) {
     } catch (e) { /* fall through */ }
   }
 
-  const flat = getOrderHistory({ vendorFilter: 'ALL', dateFrom: date, dateTo: date });
+  // needPack:false — vendor/itemCount/timestamp only, no pack surfaced.
+  const flat = getOrderHistory(
+    { vendorFilter: 'ALL', dateFrom: date, dateTo: date },
+    { needPack: false }
+  );
 
   // Group by vendor — itemCount + the vendor's order timestamp.
   const byVendor = new Map();
@@ -1080,9 +1097,10 @@ function vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride)
 
 // Suggested order qty for one item — THE single source of the count/order math,
 // replacing the vendor-tab column-F formula. Called by api_getVendorItems_ (the
-// PWA count/recap path), snapshotVendorOrders_ (the order log), and
-// vendorOnHandSnapshot_ (dashboard "to order" counts) so the math lives in one
-// place and can't drift. Faithful replication of the live F formula:
+// PWA count screen, the recap email, and — via buildOrderCycleSnapshot_ — the
+// order log) and by vendorOnHandSnapshot_ (dashboard "to order" counts), so the
+// math lives in one place and can't drift. Faithful replication of the live F
+// formula:
 //   F = IF(name="" OR H2=0 OR onHand="", "",
 //          qty = ROUNDUP(par*(useMult?H2:1) - onHand); qty<=0 ? "" : qty)
 // Inputs: par = MASTER_ITEMS!G, useMult = MASTER_ITEMS!M, dayMult = H2 (from
@@ -1276,20 +1294,38 @@ function vendorOnHandSnapshot_(vendor, ctx) {
 
 function getTodaysLogByVendor_(dateStr) {
   const log = getSheet_(SHEET_ORDER_LOG);
-  const lastRow = log.getLastRow();
   const map = new Map();
-  if (lastRow < 2) return map;
-  const data = log.getRange(2, 1, lastRow - 1, 7).getValues();
   const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
 
+  // Date parsing stays THIS function's own rather than reusing the shared
+  // makeLogDateFormatter_: a non-Date cell is truncated to its first 10 chars
+  // here, where the history readers re-parse it through new Date(). The two
+  // disagree on odd values, so keeping it local preserves behavior exactly.
+  // Memoized because one cycle stamps the same date onto every row it logs.
+  const dateMemo = new Map();
+  const fmtLogDate = function (v) {
+    const key = (typeof v) + ':' + ((v instanceof Date) ? v.getTime() : v);
+    const hit = dateMemo.get(key);
+    if (hit !== undefined) return hit;
+    const out = (v instanceof Date)
+      ? Utilities.formatDate(v, tz, 'yyyy-MM-dd')
+      : String(v || '').trim().substring(0, 10);
+    dateMemo.set(key, out);
+    return out;
+  };
+
+  // Slice to today's rows instead of reading the whole log. This runs inside
+  // api_getDashboard_compute_, whose CacheService entry is invalidated by every
+  // bumpServerMutationTs_ — api_saveOnHand_ included — so while a KM is
+  // counting, the next dashboard load recomputes on nearly every save. The log
+  // grows forever; today's rows are a handful, and being append-ordered they
+  // sit at the end. dateFrom == dateTo bounds the slice to exactly the
+  // matching rows (readLogSlice_ returns null when none match).
+  const data = readLogSlice_(log, dateStr, dateStr, LOG_COL.QTY_ORDERED, fmtLogDate);
+  if (!data) return map;
+
   for (const r of data) {
-    const orderDateRaw = r[LOG_COL.ORDER_DATE - 1];
-    let orderDate;
-    if (orderDateRaw instanceof Date) {
-      orderDate = Utilities.formatDate(orderDateRaw, tz, 'yyyy-MM-dd');
-    } else {
-      orderDate = String(orderDateRaw || '').trim().substring(0, 10);
-    }
+    const orderDate = fmtLogDate(r[LOG_COL.ORDER_DATE - 1]);
     if (orderDate !== dateStr) continue;
 
     const vendor = String(r[LOG_COL.VENDOR - 1] || '').trim();

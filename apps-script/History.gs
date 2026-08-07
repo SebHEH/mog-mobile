@@ -33,7 +33,11 @@ function getOrderHistoryBootstrap(filters) {
   const lastRow  = logSheet.getLastRow();
   if (lastRow < 2) return { vendors: getVendorList(), rows: [] };
 
-  const data  = logSheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  // Deliberately a FULL read, not a readLogSlice_ one: this is the only caller
+  // that consumes buildHistoryRows_'s unfiltered `vendors` set (it populates the
+  // modal's vendor dropdown), and slicing would drop vendors whose only orders
+  // fall outside the filter window. It still gains the memoized formatters.
+  const data  = logSheet.getRange(2, 1, lastRow - 1, LOG_COL.QTY_ORDERED).getValues();
   const built = buildHistoryRows_(data, filters);
   return {
     vendors: built.vendors.length ? built.vendors : getVendorList(),
@@ -42,38 +46,92 @@ function getOrderHistoryBootstrap(filters) {
 }
 
 
-// Shared enrich + filter + sort for the two order-history readers. Takes the
+// ── LOG_ORDERS read discipline ────────────────────────────────────────────
+// LOG_ORDERS grows without bound: one row per item, per vendor, per cycle,
+// forever. Every reader below is written to touch as little of it as possible,
+// because the PWA's history tab used to pay for the WHOLE sheet (plus a full
+// MASTER_ITEMS read, plus a Utilities.formatDate call per row per column) just
+// to render a list of dates. Three levers, all output-identical:
+//   1. readLogSlice_    — read only the rows that can match the date filter.
+//   2. memoized formatters — one formatDate per DISTINCT date, not per row.
+//   3. lazy pack map    — readers that never surface pack skip MASTER entirely.
+
+// Formats a LOG_ORDERS date/timestamp cell, memoized by raw cell value.
+// A cycle stamps the same orderDate onto every row it logs and the same
+// timestamp onto every row of a vendor, so the same handful of values repeat
+// across thousands of rows; Utilities.formatDate is comparatively expensive.
+// Output is byte-identical to formatting each row independently — the memo key
+// includes typeof so a numeric 5 and the string "5" can't collide (they parse
+// to different dates).
+function makeLogDateFormatter_(tz, pattern) {
+  const memo = new Map();
+  return function (v) {
+    if (!v) return "";
+    const key = (typeof v) + ':' + ((v instanceof Date) ? v.getTime() : v);
+    const hit = memo.get(key);
+    if (hit !== undefined) return hit;
+    const d = (v instanceof Date) ? v : new Date(v);
+    const out = isNaN(d.getTime()) ? String(v).trim() : Utilities.formatDate(d, tz, pattern);
+    memo.set(key, out);
+    return out;
+  };
+}
+
+// Reads the LOG_ORDERS rows that could fall within [dateFrom, dateTo], cols
+// 1..maxCol. Bounds the span by first scanning ONLY the order-date column —
+// the cheapest possible full-height read — for the first and last matching
+// row, then reading just that span.
+//
+// Deliberately makes NO assumption that the log is chronological: if matching
+// rows are scattered the span simply widens, and the worst case degrades to
+// exactly the old full-sheet read. In practice the log IS append-ordered by
+// cycle, so a 30-day window reads a small tail and a single-day query reads a
+// few dozen rows. Returns null when nothing can match.
+//
+// The span may still contain out-of-range rows — callers must keep filtering.
+function readLogSlice_(logSheet, dateFrom, dateTo, maxCol, fmtDate) {
+  const lastRow = logSheet.getLastRow();
+  if (lastRow < 2) return null;
+  const n = lastRow - 1;
+  if (!dateFrom && !dateTo) {
+    return logSheet.getRange(2, 1, n, maxCol).getValues();
+  }
+  const dates = logSheet.getRange(2, LOG_COL.ORDER_DATE, n, 1).getValues();
+  let min = -1, max = -1;
+  for (let i = 0; i < n; i++) {
+    const d = fmtDate(dates[i][0]);
+    if (dateFrom && d < dateFrom) continue;   // "" (blank date) sorts below any bound
+    if (dateTo   && d > dateTo)   continue;
+    if (min < 0) min = i;
+    max = i;
+  }
+  if (min < 0) return null;
+  return logSheet.getRange(2 + min, 1, max - min + 1, maxCol).getValues();
+}
+
+
+// Shared enrich + filter + sort for the order-history readers. Takes the
 // raw LOG_ORDERS data rows (7 cols) + the filter object; returns { rows, vendors }
 // — rows enriched, filtered, and date-desc (bootstrap shape); vendors the full
-// UNFILTERED vendor set (for the dropdown). itemPack is the CURRENT pack from
+// UNFILTERED vendor set (for the dropdown), so callers that need a complete
+// vendor list must pass UNSLICED data. itemPack is the CURRENT pack from
 // MASTER_ITEMS (the log doesn't store pack) — rare pack changes are fine.
-function buildHistoryRows_(data, filters) {
+//
+// opts.needPack: false skips the MASTER_ITEMS read entirely and leaves
+// itemPack "" — for callers that only aggregate dates/vendors/counts. Defaults
+// to true so every existing caller is unchanged.
+// fmtDateShared: an existing memoized yyyy-MM-dd formatter to reuse, so a
+// caller that already formatted the date column doesn't format it twice.
+function buildHistoryRows_(data, filters, opts, fmtDateShared) {
+  const needPack = !(opts && opts.needPack === false);
   const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
 
-  const master     = getSheet_(SHEET_MASTER);
-  const masterLast = master.getLastRow();
-  const packMap    = new Map();
-  if (masterLast >= 2) {
-    master
-      .getRange(2, COL.ID, masterLast - 1, COL.PACK - COL.ID + 1)
-      .getValues()
-      .forEach(r => {
-        const id = String(r[0] || "").trim();
-        const pk = String(r[COL.PACK - COL.ID] || "").trim();
-        if (id) packMap.set(id, pk);
-      });
-  }
+  // Same map buildPackByIdMap_ produces (COL.ID is 1, so the ranges and join
+  // are identical) — consolidated onto it rather than kept as a second copy.
+  const packMap = needPack ? buildPackByIdMap_() : null;
 
-  const fmtDate = (v) => {
-    if (!v) return "";
-    const d = (v instanceof Date) ? v : new Date(v);
-    return isNaN(d.getTime()) ? String(v).trim() : Utilities.formatDate(d, tz, "yyyy-MM-dd");
-  };
-  const fmtTimestamp = (v) => {
-    if (!v) return "";
-    const d = (v instanceof Date) ? v : new Date(v);
-    return isNaN(d.getTime()) ? String(v).trim() : Utilities.formatDate(d, tz, "yyyy-MM-dd HH:mm");
-  };
+  const fmtDate      = fmtDateShared || makeLogDateFormatter_(tz, "yyyy-MM-dd");
+  const fmtTimestamp = makeLogDateFormatter_(tz, "yyyy-MM-dd HH:mm");
 
   const vendorFilter = String(filters && filters.vendorFilter || "ALL").trim();
   const dateFrom     = String(filters && filters.dateFrom     || "").trim();
@@ -91,7 +149,7 @@ function buildHistoryRows_(data, filters) {
         vendor:     vendor,
         itemId:     itemId,
         itemName:   String(r[LOG_COL.ITEM_NAME   - 1] || "").trim(),
-        itemPack:   packMap.get(itemId) || "",
+        itemPack:   packMap ? (packMap.get(itemId) || "") : "",
         onHandPrev: Number(r[LOG_COL.ON_HAND_PRV - 1]) || 0,
         qtyOrdered: Number(r[LOG_COL.QTY_ORDERED - 1]) || 0
       };
@@ -113,12 +171,28 @@ function buildHistoryRows_(data, filters) {
 
 // Serves Tab 1 (Recent Orders) and Tab 2 (Item History) in the modal.
 // filters: { vendorFilter, dateFrom, dateTo }
-function getOrderHistory(filters) {
+// opts is forwarded to buildHistoryRows_ (see needPack there).
+//
+// Reads a date-bounded SLICE, not the whole log. Safe to slice here because
+// every caller consumes only .rows — the unfiltered `vendors` set, which needs
+// the full sheet to be complete, is used exclusively by
+// getOrderHistoryBootstrap, which keeps its own full read below.
+function getOrderHistory(filters, opts) {
   const logSheet = ensureLogSheet_();
-  const lastRow  = logSheet.getLastRow();
-  if (lastRow < 2) return [];
-  const data = logSheet.getRange(2, 1, lastRow - 1, 7).getValues();
-  return buildHistoryRows_(data, filters).rows;
+  const f  = filters || {};
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  // One memoized formatter shared by the slice scan AND the enrich pass, so
+  // the order-date column costs one formatDate per DISTINCT date in total.
+  const fmtDate = makeLogDateFormatter_(tz, "yyyy-MM-dd");
+  const data = readLogSlice_(
+    logSheet,
+    String(f.dateFrom || '').trim(),
+    String(f.dateTo   || '').trim(),
+    LOG_COL.QTY_ORDERED,
+    fmtDate
+  );
+  if (!data) return [];
+  return buildHistoryRows_(data, filters, opts, fmtDate).rows;
 }
 
 
