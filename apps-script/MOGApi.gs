@@ -196,6 +196,7 @@ function doPost(e) {
       case 'setVendorOverride':    data = api_setVendorOverride_(payload);    break;
       case 'getDashboard':     data = api_getDashboard_();              break;
       case 'getVendorItems':   data = api_getVendorItems_(payload);     break;
+      case 'getVendorItemsBulk': data = api_getVendorItemsBulk_(payload); break;
       case 'saveOnHand':       data = api_saveOnHand_(payload);         break;
       case 'emailRecap':       data = api_emailRecap_(payload);         break;
       case 'getRecapData':     data = api_getRecapData_(payload);       break;
@@ -834,6 +835,75 @@ function api_getVendorItems_(payload, ctx) {
     overrideMult:      pickedMult,
     items:             items
   };
+}
+
+
+// Bulk sibling of api_getVendorItems_ — several vendors' payloads from ONE
+// /exec execution.
+//
+// WHY: the PWA warms today's vendors after the dashboard renders, and it used to
+// do that one vendor per request. Every request pays the web app's fixed
+// per-execution overhead (measured 2.18s for a request that does no work at all,
+// 2026-08-08), so warming 8 vendors burned ~20s of wall clock and a KM who
+// tapped a vendor early still waited out a full cold fetch. The per-vendor WORK
+// was never the bottleneck — the request COUNT was.
+//
+// The saving comes from the shared read context, exactly as buildRecapSections_
+// does it: the pick DB / MASTER / multiplier / override / cutoff reads happen
+// once for the whole batch instead of once per vendor, so each extra vendor
+// costs only its own tab read. Per the ctx contract on api_getVendorItems_ the
+// context must be ALL-OR-NOTHING — a partial ctx silently mixes fresh and stale
+// reads.
+//
+// Per-vendor failures are ISOLATED rather than fatal: this feeds a background
+// prefetch, so one unreadable vendor tab should cost that vendor its warm cache,
+// not the whole batch.
+function api_getVendorItemsBulk_(payload) {
+  // Defensive ceiling on how many vendor tabs one execution will walk. No real
+  // store is close (the largest today is ~11), so this should never fire — but
+  // if it ever does, the dropped names come back in `failed` rather than being
+  // silently truncated, and the client just fetches those on demand.
+  const BULK_VENDOR_LIMIT = 30;
+
+  const setup      = getSheet_(SHEET_SETUP);
+  const allVendors = getVendorList();
+  const known      = new Set(allVendors);
+
+  // Same exact-match filter buildRecapSections_ uses: the client sends names
+  // straight from the dashboard payload, which itself comes from getVendorList,
+  // so exact match is the correct key.
+  const requested = (payload && payload.vendors) || [];
+  let list = requested.filter(v => known.has(v));
+
+  const skipped = list.slice(BULK_VENDOR_LIMIT);
+  list = list.slice(0, BULK_VENDOR_LIMIT);
+
+  const active            = getActiveOrderDate_();
+  const vendorMults       = readVendorMultipliers_(setup);
+  const emergencyOverride = readEmergencyOverride_();
+  const vendorOverrides   = readVendorOverrides_(setup);
+
+  const ctx = {
+    pickDb:            readPickDb_(setup),
+    vendorMults:       vendorMults,
+    emergencyOverride: emergencyOverride,
+    vendorOverrides:   vendorOverrides,
+    dayOfWeek:         active.dayOfWeek,
+    masterMeta:        readMasterItemMeta_(),
+    cutoffs:           readVendorCutoffs_(setup)
+  };
+
+  const vendors = {};
+  const failed  = [];
+  for (const vendor of list) {
+    try {
+      vendors[vendor] = api_getVendorItems_({ vendor: vendor }, ctx);
+    } catch (e) {
+      failed.push(vendor);
+    }
+  }
+
+  return { vendors: vendors, failed: failed.concat(skipped) };
 }
 
 

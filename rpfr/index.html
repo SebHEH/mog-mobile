@@ -4201,14 +4201,54 @@
   async function prefetchTodaysVendors_() {
     const data = state.cache.dashboard;
     if (!data || !data.vendors || !data.vendors.length) return;
-    for (const v of data.vendors) {
-      // Skip vendors already 'sent' — the user can't open them anyway.
-      if (v.status === 'sent') continue;
-      if (state.cache.vendorItems[v.name]) continue;
+
+    // Worth warming: not cached yet, and not 'sent' (can't be opened anyway).
+    const pending = data.vendors
+      .filter(v => v.status !== 'sent' && !state.cache.vendorItems[v.name])
+      .map(v => v.name);
+    if (!pending.length) return;
+
+    // ONE request for the whole batch. Each /exec execution costs a fixed ~2s
+    // floor no matter how little work is inside it, so warming N vendors one
+    // request at a time cost N x that floor (~20s for 8) — and a KM who tapped a
+    // vendor before its turn came up still sat through a full cold fetch. The
+    // server builds a single shared read context for the batch, so each extra
+    // vendor adds only its own tab read.
+    if (pending.length > 1) {
       try {
-        await fetchVendorItems_(v.name);
+        // Generous timeout: this is background work, and a batch is legitimately
+        // longer than a single vendor. Timing out here is harmless (we fall
+        // through to the sequential path), but it wastes the batch.
+        const bulk = await api('getVendorItemsBulk', { vendors: pending }, 60000);
+        if (bulk && bulk.vendors) {
+          for (const name of Object.keys(bulk.vendors)) {
+            // Never clobber. A vendor that appeared in the cache while this
+            // request was in flight was put there by something FRESHER than this
+            // batch snapshot — the user actually opening it, or a forced refetch
+            // after a save — so overwriting it could resurrect pre-save on-hand.
+            if (state.cache.vendorItems[name]) continue;
+            state.cache.vendorItems[name] = bulk.vendors[name];
+          }
+          // Whatever the server couldn't produce (unreadable tab, or over its
+          // batch guard) is simply left unwarmed and fetched on demand — the
+          // same path as before any prefetch existed.
+          return;
+        }
       } catch (err) {
-        console.warn('[prefetch] failed for', v.name, err);
+        console.warn('[prefetch] bulk failed, falling back to sequential', err);
+        // Fall through. This is also what runs against a store whose backend
+        // predates getVendorItemsBulk, so the build is safe to ship ahead of it.
+      }
+    }
+
+    // Sequential fallback: a single vendor (nothing to batch), or the bulk call
+    // failed / isn't available on this store's backend yet.
+    for (const name of pending) {
+      if (state.cache.vendorItems[name]) continue;
+      try {
+        await fetchVendorItems_(name);
+      } catch (err) {
+        console.warn('[prefetch] failed for', name, err);
         // Don't bail the whole prefetch on one failure
       }
     }
