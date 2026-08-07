@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: 049408d (2026-08-06) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: 51e3928 (2026-08-07) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -203,14 +203,26 @@ naive rebuild silently loses.*
   backup rather than being removed, because it is still a valid source you will likely want again.
   *(Confirmed: `commitSwitchActiveVendor`; owner-confirmed why.)*
 - **R10. Emergency override changes coverage from "today's cadence" to "bridge to the next
-  delivery"**: scan forward from today for the first day the vendor delivers and use that day's
-  multiplier; a vendor that delivers today is unaffected; a vendor that never delivers falls back to
-  1× so the user can still order. *(Confirmed: `vendorDayMultiplier_` override branch.)*
+  delivery" — and a user's per-vendor answer beats the guess.** With no user input, scan forward
+  from today for the first day the vendor delivers and use that day's multiplier; a vendor that
+  delivers today is unaffected; a vendor that never delivers falls back to 1× so the user can still
+  order. But that auto-bridge derives coverage from the NORMAL schedule, which is exactly what is
+  abnormal in an emergency (a Fri+Sat vendor ordered Thursday is auto-sized to last one day; if
+  Saturday's drop is cancelled it must last seven). So while override is on, the user can answer
+  "when is this vendor's next delivery after this one?" per vendor, and the multiplier becomes the
+  number of days from tomorrow (the arrival day, per the 1-day-lead convention R21) up to — not
+  including — that day (1–7). The answer is stored as the FROZEN day count, not the chosen day
+  label, because the multiplier is relative to the day the order was placed; re-deriving it later
+  from a label would drift. *(Confirmed: `vendorDayMultiplier_` override branch + `SETUP!AF` picks;
+  owner-designed 2026-08-03, shipped 2026-08-07.)*
 - **R11. Emergency override is store-wide, any user can turn it on (with a confirm), and it clears on
   the next reset.** It is for vendor-cadence disruptions such as a holiday landing on a delivery day;
   vendors tend to share delivery days, so applying it store-wide keeps it simple, and it is an
-  operational call rather than an admin action. *(Confirmed: `api_setEmergencyOverride_`, reset
-  clears it; owner-confirmed why.)*
+  operational call rather than an admin action. **Per-vendor day picks (R10) are children of the
+  store-wide flag**: they can only be made while it is on, they are ignored whenever it is off, and
+  they clear wherever the flag clears (reset, turn-off, stale-day sweep) so a pick can never leak
+  into a later cycle. *(Confirmed: `api_setEmergencyOverride_`/`api_setVendorOverride_`, reset and
+  off-toggle clear both; owner-confirmed why.)*
 - **R12. The recap email is sent exactly once per order cycle**, as a guaranteed side effect of the
   session/reset, regardless of which path triggered it. It goes to the manager and the KM: one counts,
   the other (or the same person later) places the orders from the email, and it doubles as an
@@ -336,6 +348,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | active order date | date | The current cycle; "new day" = today past this (R13). |
 | last recap sent date | date | Dedupe gate for the recap (R12). |
 | emergency override | boolean | Store-wide; clears on reset (R11). |
+| vendor override pick | integer 1–7 per vendor | Frozen day count while override is on; clears with the flag (R10/R11). |
 
 ### Flow contracts
 
