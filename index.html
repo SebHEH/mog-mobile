@@ -173,6 +173,29 @@
     }
     .hub-lang-btn:active { opacity: 0.6; }
 
+    /* Hub refresh — sits left of the language toggle, same visual
+       language. One tap fetches the hub fresh (past the SW's
+       stale-while-revalidate cache) and reloads, so a KM can grab the
+       newest version BEFORE drilling into a store. */
+    .hub-refresh-btn {
+      position: absolute;
+      top: max(14px, env(safe-area-inset-top));
+      right: 62px;
+      z-index: 5;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-2);
+      border: 0.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      padding: 4px 10px;
+      background: transparent;
+      cursor: pointer;
+      line-height: 1.2;
+    }
+    .hub-refresh-btn:active { opacity: 0.6; }
+    .hub-refresh-btn.spinning i { display: inline-block; animation: hubspin 0.8s linear infinite; }
+    @keyframes hubspin { to { transform: rotate(360deg); } }
+
     /* Concept / location / store cards. Big, tappable, clearly
        a button. One per row at this width; could grid to 2 cols
        on a wider viewport but the app is mobile-first. */
@@ -431,6 +454,10 @@
     <span class="lang-en">ES</span><span class="lang-es">EN</span>
   </button>
 
+  <button class="hub-refresh-btn" id="hub-refresh-btn" type="button" aria-label="Refresh">
+    <i class="ti ti-refresh" aria-hidden="true"></i>
+  </button>
+
   <!-- CONCEPT PICKER (home) -->
   <div class="screen" id="screen-concept">
     <div class="error-banner" id="error-banner"></div>
@@ -587,6 +614,32 @@
     renderConceptPicker_();
   }
   document.getElementById('hub-lang-btn').addEventListener('click', toggleHubLang_);
+
+  // Hub refresh. The hub SW serves the shell stale-while-revalidate, so a
+  // plain location.reload() would paint the CACHED hub and only catch up on
+  // the visit after. Instead: fetch fresh past the HTTP cache first (also
+  // proves we're online), then drop the hub caches and reload — one tap
+  // lands on the newest deploy. Offline, we leave the cached page alone.
+  async function hubRefresh_() {
+    const btn = document.getElementById('hub-refresh-btn');
+    if (btn) btn.classList.add('spinning');
+    let fresh = null;
+    try { fresh = await fetch('./', { cache: 'reload' }); } catch (e) { /* offline */ }
+    if (fresh && fresh.ok) {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter(k => k.indexOf('mog-hub-') === 0).map(k => caches.delete(k)));
+        if (navigator.serviceWorker) {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg) reg.update();
+        }
+      } catch (e) { /* cache API unavailable — reload still helps */ }
+      location.reload();
+    } else if (btn) {
+      btn.classList.remove('spinning');
+    }
+  }
+  document.getElementById('hub-refresh-btn').addEventListener('click', hubRefresh_);
 
   const params = new URLSearchParams(window.location.search);
   const forcePicker  = params.has('force_picker');

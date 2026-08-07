@@ -1648,16 +1648,18 @@
       <span class="lang-en">If you don't know the PIN, ask your GM.</span>
       <span class="lang-es">Si no sabes el PIN, pregunta a tu gerente.</span>
     </p>
-    <!-- Reload escape hatch. Hidden until a sign-in actually fails, so the
-         happy path stays uncluttered. This screen is the one place a KM can
-         get truly stuck in a standalone install: no chrome, no session, and
-         the gate's Refresh button (stale-reset-btn) is downstream of auth so
-         they never reach it. A hard reload is right here — unlike the in-app
+    <!-- Reload escape hatch. ALWAYS visible (2026-08-07 — was revealed only
+         after a failed sign-in): Sebastian wants KMs to have a refresh
+         opportunity BEFORE entering the app, since this screen is the one
+         place a standalone install can get truly stuck — no chrome, no
+         session, and the gate's Refresh button (stale-reset-btn) is
+         downstream of auth. A hard reload is safe here: unlike the in-app
          pull-to-refresh, there is no session or typed data worth preserving.
+         Navigation is network-first in the SW, so reload = newest deploy.
          Reuses .pin-switch-store styling; no new CSS. -->
-    <p class="pin-switch-store" id="pin-reload-row" style="display:none">
-      <span class="lang-en">Still stuck?</span>
-      <span class="lang-es">¿Sigue sin funcionar?</span>
+    <p class="pin-switch-store" id="pin-reload-row">
+      <span class="lang-en">App acting up?</span>
+      <span class="lang-es">¿Problemas con la app?</span>
       <button class="pin-switch-store-btn" id="pin-reload-btn" type="button">
         <span class="lang-en">Reload the app</span><span class="lang-es">Recargar la app</span>
       </button>
@@ -3135,11 +3137,8 @@
         errEl.textContent = t('pinServerHiccup');
       }
       else errEl.textContent = m;
-      // Any failed sign-in reveals the reload escape hatch. In a standalone
-      // install this is the only way out of a wedged PIN screen, and a KM
-      // shouldn't have to know to delete and re-add the home-screen icon.
-      const reloadRow = $('pin-reload-row');
-      if (reloadRow) reloadRow.style.display = '';
+      // (The reload escape hatch below the form is now always visible —
+      // no reveal needed here. See the pin-reload-row markup comment.)
       return;
     }
 
