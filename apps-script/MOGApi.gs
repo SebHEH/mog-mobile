@@ -408,7 +408,7 @@ function api_setEmergencyOverride_(payload) {
   // ROUND-TRIP COLLAPSE. Hand back the fresh dashboard with the ack so the PWA
   // doesn't spend a SECOND ~2s /exec execution asking for state we can compute
   // right here. The floor is per-EXECUTION overhead (measured 2.18s for a bare
-  // no-work request, 2026-08-08), not per-byte, so folding the read into this
+  // no-work request, 2026-08-07), not per-byte, so folding the read into this
   // execution is close to free while a separate call is not.
   //
   // ORDER MATTERS: compute AFTER the AD2 write and AFTER the ts bump.
@@ -844,7 +844,7 @@ function api_getVendorItems_(payload, ctx) {
 // WHY: the PWA warms today's vendors after the dashboard renders, and it used to
 // do that one vendor per request. Every request pays the web app's fixed
 // per-execution overhead (measured 2.18s for a request that does no work at all,
-// 2026-08-08), so warming 8 vendors burned ~20s of wall clock and a KM who
+// 2026-08-07), so warming 8 vendors burned ~20s of wall clock and a KM who
 // tapped a vendor early still waited out a full cold fetch. The per-vendor WORK
 // was never the bottleneck — the request COUNT was.
 //
