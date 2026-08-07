@@ -534,6 +534,49 @@
     .override-banner .ovr-off-btn:active { background: var(--warn-accent-active); }
     .override-banner .ovr-off-btn i { font-size: 14px; }
 
+    /* Per-vendor Emergency Override day picker (count screen). While the
+       store-wide override is on, each vendor's count screen leads with this
+       card asking "when is this vendor's next delivery after this one?".
+       Prominent chip grid while unanswered; collapses to a one-line note
+       (with Change) once a day is picked. Same amber family as the banner. */
+    .ovr-pick-card {
+      background: var(--warn-fill);
+      border: 1px solid var(--warn-border);
+      border-radius: var(--r-md);
+      padding: 12px;
+      margin-bottom: 14px;
+      color: var(--warn-text);
+    }
+    .ovr-pick-card.picked { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 10px 12px; }
+    .ovr-pick-card.picked i.lead { font-size: 18px; color: var(--warn-accent); flex-shrink: 0; }
+    .ovr-pick-card.picked .ovr-text { flex: 1; min-width: 0; line-height: 1.3; }
+    .ovr-pick-card.picked .ovr-title { font-weight: 700; display: block; }
+    .ovr-pick-card .ovr-change-btn {
+      flex-shrink: 0;
+      background: var(--warn-accent); color: #fff;
+      border: none; border-radius: var(--r-sm, 6px);
+      padding: 7px 12px;
+      font-size: 12px; font-weight: 700; white-space: nowrap;
+    }
+    .ovr-pick-card .ovr-change-btn:active { background: var(--warn-accent-active); }
+    .ovr-pick-title { font-size: 14px; font-weight: 700; margin: 0 0 2px; display: flex; align-items: center; gap: 6px; }
+    .ovr-pick-title i { color: var(--warn-accent); font-size: 17px; flex-shrink: 0; }
+    .ovr-pick-sub { font-size: 12px; margin: 0 0 10px; opacity: 0.9; }
+    .ovr-chip-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .ovr-chip {
+      background: var(--bg, #fff);
+      border: 1px solid var(--warn-border);
+      border-radius: var(--r-sm, 6px);
+      padding: 7px 2px;
+      color: var(--warn-text);
+      display: flex; flex-direction: column; gap: 1px; align-items: center;
+    }
+    .ovr-chip .ovr-chip-day { font-size: 13px; font-weight: 700; }
+    .ovr-chip .ovr-chip-mult { font-size: 11px; opacity: 0.75; }
+    .ovr-chip:active { background: var(--warn-fill); }
+    .ovr-chip.sel { background: var(--warn-accent); border-color: var(--warn-accent); color: #fff; }
+    .ovr-chip.sel .ovr-chip-mult { opacity: 0.9; }
+
     /* Recipients view ── list of email recipients with active toggle.
        GM rows render locked: greyed, no toggle, no remove button. */
     .recipient-card {
@@ -2435,18 +2478,31 @@
       overrideCta:      { en: 'Emergency override', es: 'Anulaci\u00f3n de emergencia' },
       overrideOnTitle:  { en: 'Emergency override on', es: 'Anulaci\u00f3n de emergencia activada' },
       overrideOnSub: {
-        en: 'All vendors show, each sized to cover its next delivery.',
-        es: 'Se muestran todos los proveedores, ajustados para cubrir su pr\u00f3xima entrega.'
+        en: 'All vendors show \u2014 open one to set when its next delivery lands.',
+        es: 'Se muestran todos los proveedores \u2014 abre uno para indicar cu\u00e1ndo llega su pr\u00f3xima entrega.'
       },
       overrideTurnOff:  { en: 'Turn off', es: 'Desactivar' },
       overrideConfirmTitle: { en: 'Turn on emergency override?', es: '\u00bfActivar anulaci\u00f3n de emergencia?' },
       overrideConfirmMsg: {
-        en: 'Shows every vendor, even those not delivering today, and sizes each order to cover the vendor\u2019s next scheduled delivery. Turns off automatically at the next reset.',
-        es: 'Muestra todos los proveedores, incluso los que no entregan hoy, y ajusta cada pedido para cubrir su pr\u00f3xima entrega programada. Se desactiva autom\u00e1ticamente en el pr\u00f3ximo reinicio.'
+        en: 'Shows every vendor, even those not delivering today, and sizes each order to cover the vendor\u2019s next scheduled delivery. On each vendor\u2019s count screen you can say when its next delivery really lands. Turns off automatically at the next reset.',
+        es: 'Muestra todos los proveedores, incluso los que no entregan hoy, y ajusta cada pedido para cubrir su pr\u00f3xima entrega programada. En la pantalla de conteo de cada proveedor puedes indicar cu\u00e1ndo llega realmente su pr\u00f3xima entrega. Se desactiva autom\u00e1ticamente en el pr\u00f3ximo reinicio.'
       },
       overrideConfirmYes: { en: 'Turn on', es: 'Activar' },
       overrideOnToast:  { en: 'Emergency override on', es: 'Anulaci\u00f3n de emergencia activada' },
       overrideOffToast: { en: 'Emergency override off', es: 'Anulaci\u00f3n de emergencia desactivada' },
+      // Per-vendor override day picker (count screen, override on)
+      ovrPickTitle: {
+        en: 'When is this vendor\u2019s next delivery after this one?',
+        es: '\u00bfCu\u00e1ndo es la pr\u00f3xima entrega de este proveedor despu\u00e9s de esta?'
+      },
+      ovrPickSub: {
+        en: 'Tap the day \u2014 the order will be sized to last until then.',
+        es: 'Toca el d\u00eda \u2014 el pedido se ajustar\u00e1 para durar hasta entonces.'
+      },
+      ovrPickedPrefix: { en: 'Sized to last until', es: 'Ajustado para durar hasta' },
+      ovrPickChange:   { en: 'Change', es: 'Cambiar' },
+      ovrPickAuto:     { en: 'Auto', es: 'Auto' },
+      ovrPickSaved:    { en: 'Quantities updated', es: 'Cantidades actualizadas' },
       confirmEditMsg: {
         en: "You'll be able to change counts. Mark as reviewed again when you're done.",
         es: 'Podrás cambiar los conteos. Marca como revisado al terminar.'
@@ -4211,6 +4267,10 @@
       // and we render the count screen directly with no loading flash.
       const data = await fetchVendorItems_(vendor);
       state.countContext.items = data.items;
+      // Override picker context: the flag gates the day-picker card, the
+      // mult (0 = no pick) marks the chosen chip and drives the note.
+      state.countContext.emergencyOverride = !!data.emergencyOverride;
+      state.countContext.overrideMult = Number(data.overrideMult) || 0;
       const dateStr = (state.cache.dashboard && state.cache.dashboard.date) || new Date().toISOString().slice(0,10);
       state.countContext.dateStr = dateStr;
 
@@ -4278,6 +4338,15 @@
         if (state.currentView !== forView || !ctx || ctx.vendor !== vendor) return;
         if (!fresh || !Array.isArray(fresh.items)) return;
 
+        // Sync the override picker state — another manager may have picked a
+        // day (or flipped the flag) since this screen was painted. A changed
+        // pick changes targetPar too, so mathChanged usually fires with it;
+        // ovrChanged catches the all-useMult=false vendor where it wouldn't.
+        const ovrChanged = (!!fresh.emergencyOverride !== !!ctx.emergencyOverride) ||
+                           ((Number(fresh.overrideMult) || 0) !== (ctx.overrideMult || 0));
+        ctx.emergencyOverride = !!fresh.emergencyOverride;
+        ctx.overrideMult = Number(fresh.overrideMult) || 0;
+
         const oldIds = new Set(ctx.items.map(i => i.id));
         const newIds = new Set(fresh.items.map(i => i.id));
         let added = 0;   fresh.items.forEach(i => { if (!oldIds.has(i.id)) added++; });
@@ -4296,7 +4365,7 @@
           if (!f) continue;
           if (!sameNum_(o.targetPar, f.targetPar) || !sameNum_(o.par, f.par)) mathChanged++;
         }
-        if (!added && !removed && !mathChanged) return;   // truly cosmetic diff
+        if (!added && !removed && !mathChanged && !ovrChanged) return;   // truly cosmetic diff
 
         // Don't yank a focused input — defer to the next open. Scoped to the
         // active view; review has no inputs, so this never fires there.
@@ -4325,11 +4394,13 @@
           if (added)   parts.push(added + ' new item' + (added === 1 ? '' : 's'));
           if (removed) parts.push(removed + ' item' + (removed === 1 ? '' : 's') + ' removed');
           if (mathChanged) parts.push('pars updated');
+          if (!parts.length && ovrChanged) parts.push('order sizing updated');
           showToast('Updated — ' + parts.join(', '), 'success');
         } else {
           if (added)   parts.push(added + ' artículo' + (added === 1 ? '' : 's') + ' nuevo' + (added === 1 ? '' : 's'));
           if (removed) parts.push(removed + ' artículo' + (removed === 1 ? '' : 's') + ' eliminado' + (removed === 1 ? '' : 's'));
           if (mathChanged) parts.push('pares actualizados');
+          if (!parts.length && ovrChanged) parts.push('ajuste del pedido actualizado');
           showToast('Actualizado — ' + parts.join(', '), 'success');
         }
       })
@@ -4392,6 +4463,98 @@
     }
   }
 
+  // Day label for an override pick of `mult`. The order placed today arrives
+  // TOMORROW, so a pick of N means "the next delivery after this one lands N
+  // days after tomorrow" — label that calendar day. Anchored to the active
+  // order date (ctx.dateStr), not the phone clock, so a screen left open
+  // across midnight still labels the cycle it belongs to.
+  function overrideDayLabel_(mult) {
+    const ctx = state.countContext;
+    const base = (ctx && ctx.dateStr) ? new Date(ctx.dateStr + 'T12:00:00') : new Date();
+    const d = new Date(base.getTime() + (1 + mult) * 86400000);
+    const EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    return (state.lang === 'en' ? EN : ES)[d.getDay()];
+  }
+
+  // The per-vendor Emergency Override day picker (count screen). Only exists
+  // while the store-wide override is on — the auto-bridge multiplier derives
+  // coverage from the NORMAL schedule, which is exactly what's abnormal in an
+  // emergency, so this card asks the KM directly. Unanswered → the full chip
+  // grid, deliberately prominent; answered → a one-line note with Change.
+  // The "Auto" chip (mult 0) reverts to the next-scheduled auto-bridge.
+  function overridePickerHtml_(ctx) {
+    if (!ctx.emergencyOverride) return '';
+    const picked = ctx.overrideMult || 0;
+    if (picked > 0 && !ctx._pickerOpen) {
+      return '<div class="ovr-pick-card picked">' +
+        '<i class="ti ti-alert-triangle lead" aria-hidden="true"></i>' +
+        '<span class="ovr-text"><span class="ovr-title">' +
+          escapeHtml(t('ovrPickedPrefix')) + ' ' + escapeHtml(overrideDayLabel_(picked)) +
+          ' &times;' + picked + '</span></span>' +
+        '<button class="ovr-change-btn" id="ovr-change-btn" type="button">' +
+          escapeHtml(t('ovrPickChange')) + '</button>' +
+      '</div>';
+    }
+    let chips = '';
+    for (let k = 1; k <= 7; k++) {
+      chips += '<button class="ovr-chip' + (k === picked ? ' sel' : '') + '" data-mult="' + k + '" type="button">' +
+        '<span class="ovr-chip-day">' + escapeHtml(overrideDayLabel_(k)) + '</span>' +
+        '<span class="ovr-chip-mult">&times;' + k + '</span>' +
+      '</button>';
+    }
+    chips += '<button class="ovr-chip auto' + (picked === 0 ? ' sel' : '') + '" data-mult="0" type="button">' +
+      '<span class="ovr-chip-day">' + escapeHtml(t('ovrPickAuto')) + '</span>' +
+      '<span class="ovr-chip-mult">&nbsp;</span>' +
+    '</button>';
+    return '<div class="ovr-pick-card open">' +
+      '<p class="ovr-pick-title"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' +
+        escapeHtml(t('ovrPickTitle')) + '</p>' +
+      '<p class="ovr-pick-sub">' + escapeHtml(t('ovrPickSub')) + '</p>' +
+      '<div class="ovr-chip-row">' + chips + '</div>' +
+    '</div>';
+  }
+
+  // A chip tap sends the FROZEN day count to the server (SETUP!AF), then
+  // re-fetches this vendor so every quantity reflects the new multiplier.
+  // Typed counts survive: they live in ctx.dirty / the saved draft and are
+  // re-overlaid after the swap — same recipe as revalidateOrderItems_.
+  async function onOverridePickTap_(mult) {
+    const ctx = state.countContext;
+    if (!ctx || !ctx.vendor) return;
+    if (mult === (ctx.overrideMult || 0)) { ctx._pickerOpen = false; renderCount(); return; }
+    showBusy(t('refreshing'));
+    try {
+      await api('setVendorOverride', { vendor: ctx.vendor, mult: mult });
+      ctx._pickerOpen = false;
+      // Server bumped its mutation ts — drop the local dashboard cache so the
+      // Today view's "to order" counts recompute with the new multiplier.
+      state.cache.dashboard = null;
+      setDashboardFetchedAt_(null);
+      const fresh = await fetchVendorItems_(ctx.vendor, { force: true });
+      ctx.emergencyOverride = !!fresh.emergencyOverride;
+      ctx.overrideMult = Number(fresh.overrideMult) || 0;
+      ctx.items = fresh.items;
+      const draft = loadDraft(ctx.dateStr, ctx.vendor);
+      for (const it of ctx.items) {
+        if (Object.prototype.hasOwnProperty.call(ctx.dirty, it.id)) {
+          it.onHand = ctx.dirty[it.id];
+        } else if (Object.prototype.hasOwnProperty.call(draft, it.id)) {
+          it.onHand = draft[it.id];
+        }
+      }
+      cacheTargetPars(ctx.items);
+      renderCount();
+      hideBusy();
+      showToast(t('ovrPickSaved'), 'success');
+    } catch (e) {
+      hideBusy();
+      if (isNetworkError_(e)) showToast(t('offlineRetry'), 'error');
+      else showToast(String((e && e.message) || t('errGeneric')), 'error');
+      renderCount();
+    }
+  }
+
   function renderCount() {
     const ctx = state.countContext;
     const view = $('view-count');
@@ -4408,6 +4571,9 @@
     }
 
     let html = '';
+    // Emergency Override day picker — leads the screen while override is on
+    // so the sizing question is answered before (or while) counting.
+    html += overridePickerHtml_(ctx);
     html += '<div class="count-progress">' +
       '<span><span class="count-progress-strong">' + counted + ' ' +
         (state.lang === 'en' ? 'of' : 'de') + ' ' + items.length + '</span> ' +
@@ -4484,6 +4650,16 @@
 
     if ($('review-btn'))         $('review-btn').addEventListener('click', onReviewClick);
     if ($('save-continue-btn'))  $('save-continue-btn').addEventListener('click', onSaveContinueClick);
+
+    // Override day-picker wiring (chips only exist while override is on).
+    view.querySelectorAll('.ovr-chip').forEach(btn => {
+      btn.addEventListener('click', () =>
+        onOverridePickTap_(parseInt(btn.getAttribute('data-mult'), 10) || 0));
+    });
+    if ($('ovr-change-btn')) $('ovr-change-btn').addEventListener('click', () => {
+      ctx._pickerOpen = true;
+      renderCount();
+    });
   }
 
   function onStepperClick(btn) {
@@ -4785,6 +4961,18 @@
     // Vendor name no longer repeated here — it's the breadcrumb's middle
     // crumb above the topbar (set in openReview). Mirrors the History dedup.
     let html = '';
+
+    // Override sizing note — the KM approving these quantities should know
+    // why they're bigger than a normal day (the picked day multiplier).
+    if (ctx.emergencyOverride && (ctx.overrideMult || 0) > 0) {
+      html += '<div class="ovr-pick-card picked">' +
+        '<i class="ti ti-alert-triangle lead" aria-hidden="true"></i>' +
+        '<span class="ovr-text"><span class="ovr-title">' +
+          escapeHtml(t('ovrPickedPrefix')) + ' ' +
+          escapeHtml(overrideDayLabel_(ctx.overrideMult)) +
+          ' &times;' + ctx.overrideMult + '</span></span>' +
+      '</div>';
+    }
 
     if (!toOrder.length) {
       html += '<div class="empty-state" style="padding:32px 24px">' +

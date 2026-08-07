@@ -1145,11 +1145,16 @@ function countMasterVendors_() {
 //
 // Mirrors vendorDayMultiplier_ (MOGApi.gs) exactly, including Emergency
 // Override: override off → today's multiplier from SETUP S:Y; override on →
-// "bridge to the next real delivery" (first mult > 0 scanning forward from
-// today inclusive, wrapping the week; all-zero row → 1). Unknown vendor or
-// day label → 0, both states — same as the code. (Until 2026-07-24 the sheet
-// diverged under override with a flat 1×; that was the accepted "option A"
-// gap from the 07-02 override redesign, closed by this formula.)
+// the KM's per-vendor day pick (SETUP!AF, written by the PWA's "when is the
+// next delivery after this one?" picker) when set, else "bridge to the next
+// real delivery" (first mult > 0 scanning forward from today inclusive,
+// wrapping the week; all-zero row → 1). Unknown vendor or day label → 0,
+// both states — same as the code. The AF check nests INSIDE the override
+// branch, matching vendorDayMultiplier_'s structure: AF is cleared whenever
+// AD2 clears, and a stray leftover must not inflate a normal day. (Until
+// 2026-07-24 the sheet diverged under override with a flat 1×; that was the
+// accepted "option A" gap from the 07-02 override redesign, closed by this
+// formula. The AF branch is the 2026-08-07 per-vendor day picker.)
 function vendorTabH2Formula_() {
   const overrideRef = 'ORDER_ENTRY!' + toAbsoluteA1_(DASH.EMERGENCY_OVERRIDE);
   const dayRef      = 'ORDER_ENTRY!' + toAbsoluteA1_(DASH.ORDER_DAY);
@@ -1158,10 +1163,12 @@ function vendorTabH2Formula_() {
       'dcol, IFERROR(MATCH(' + dayRef + ', ARRAYFORMULA(TRIM(SETUP!$S$1:$Y$1)), 0), 0), ' +
       'IF(OR(vrow=0, dcol=0), 0, ' +
         'LET(wk, ARRAYFORMULA(N(INDEX(SETUP!$S$2:$Y, vrow, 0))), ' +
+            'ovr, IFERROR(N(INDEX(SETUP!$AF$2:$AF, vrow)), 0), ' +
           'IF(' + overrideRef + '=TRUE, ' +
-            'LET(rot, CHOOSECOLS(wk, ARRAYFORMULA(MOD(dcol-1+SEQUENCE(1,7,0),7)+1)), ' +
-                'pos, IFERROR(MATCH(TRUE, ARRAYFORMULA(rot>0), 0), 0), ' +
-                'IF(pos=0, 1, INDEX(rot, 1, pos))), ' +
+            'IF(ovr>0, ovr, ' +
+              'LET(rot, CHOOSECOLS(wk, ARRAYFORMULA(MOD(dcol-1+SEQUENCE(1,7,0),7)+1)), ' +
+                  'pos, IFERROR(MATCH(TRUE, ARRAYFORMULA(rot>0), 0), 0), ' +
+                  'IF(pos=0, 1, INDEX(rot, 1, pos)))), ' +
             'INDEX(wk, 1, dcol)))))';
 }
 

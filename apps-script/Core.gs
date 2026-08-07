@@ -107,6 +107,18 @@ const VENDOR_LIST_COL = 26; // Z
 // sidebar, not by typing in AA directly.
 const VENDOR_CUTOFF_COL = 27; // AA
 
+// Per-vendor Emergency Override multiplier (2026-08-07). Only meaningful
+// while the store-wide override (ORDER_ENTRY!AD2) is ON: the KM answers
+// "when is this vendor's next delivery after this one?" in the PWA and the
+// FROZEN multiplier (1-7, days from tomorrow up to that delivery) lands
+// here, row-aligned with the vendor list (Z). A number is stored rather
+// than the chosen day because the multiplier is relative to the day the
+// order was PLACED — re-deriving from a day label later would drift.
+// Cleared wherever AD2 clears (daily reset, override turned off, stale-day
+// open check) so a choice can never leak into the next cycle. Verified
+// free on the live sheet 2026-08-07 (1,428 formulas, zero refs to AF).
+const VENDOR_OVERRIDE_COL = 32; // AF
+
 
 
 
@@ -415,11 +427,31 @@ function resetEmergencyOverrideOnOpen_() {
   const today = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), "yyyy-MM-dd");
   if (props.getProperty(EMERGENCY_OVERRIDE_LASTDATE_PROP) !== today) {
     overrideRange.setValue(false);
+    // Per-vendor override picks (SETUP!AF) are children of the store-wide
+    // flag — a stale day clears them together so no pick leaks forward.
+    clearVendorOverrides_(ss);
     props.setProperty(EMERGENCY_OVERRIDE_LASTDATE_PROP, today);
     // The override state changed outside the API layer — bump the mutation
     // ts so the PWA's cached dashboard reflects it promptly, not TTL-later.
     bumpServerMutationTs_();
   }
+}
+
+
+// Blank the per-vendor Emergency Override column (SETUP!AF). Called wherever
+// the store-wide override ends its life: the daily reset, the PWA turning
+// override off, and the stale-day open check above. Cheap no-op guard: skips
+// the write when the column is already empty.
+function clearVendorOverrides_(ss) {
+  const setup = (ss || SpreadsheetApp.getActiveSpreadsheet()).getSheetByName(SHEET_SETUP);
+  if (!setup) return false;
+  const lastRow = setup.getLastRow();
+  if (lastRow < 2) return false;
+  const rng  = setup.getRange(2, VENDOR_OVERRIDE_COL, lastRow - 1, 1);
+  const vals = rng.getValues();
+  const hasAny = vals.some(r => r[0] !== '' && r[0] !== null);
+  if (hasAny) rng.clearContent();
+  return hasAny;
 }
 
 

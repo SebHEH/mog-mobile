@@ -238,6 +238,7 @@ function buildOrderCycleSnapshot_(orderDate, timestamp) {
     pickDb:            readPickDb_(setup),
     vendorMults:       readVendorMultipliers_(setup),
     emergencyOverride: readEmergencyOverride_(),
+    vendorOverrides:   readVendorOverrides_(setup),
     dayOfWeek:         active.dayOfWeek,
     masterMeta:        readMasterItemMeta_(),
     cutoffs:           readVendorCutoffs_(setup)

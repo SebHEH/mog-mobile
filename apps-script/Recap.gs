@@ -142,6 +142,7 @@ function buildRecapSections_(requestedVendors) {
   const cycleDate   = active.dateStr;
   // Read BEFORE the vendor filter below — the filter needs it (see why there).
   const emergencyOverride = readEmergencyOverride_();
+  const vendorOverrides   = readVendorOverrides_(setup);
 
   let vendorsToCheck;
   if (requestedVendors && requestedVendors.length) {
@@ -163,7 +164,7 @@ function buildRecapSections_(requestedVendors) {
     // With Override off, vendorDayMultiplier_ returns today's raw multiplier,
     // so normal operation is byte-identical to the old filter.
     vendorsToCheck = allVendors.filter(v =>
-      vendorDayMultiplier_(vendorMults, v, dayOfWeek, emergencyOverride) > 0
+      vendorDayMultiplier_(vendorMults, v, dayOfWeek, emergencyOverride, vendorOverrides) > 0
     );
   }
 
@@ -175,6 +176,7 @@ function buildRecapSections_(requestedVendors) {
     pickDb:            readPickDb_(setup),
     vendorMults:       vendorMults,
     emergencyOverride: emergencyOverride,
+    vendorOverrides:   vendorOverrides,
     dayOfWeek:         dayOfWeek,
     masterMeta:        readMasterItemMeta_(),
     cutoffs:           readVendorCutoffs_(setup)

@@ -193,6 +193,7 @@ function doPost(e) {
       case 'getResetStatus':   data = api_getResetStatus_();            break;
       case 'commitReset':      data = api_commitReset_();               break;
       case 'setEmergencyOverride': data = api_setEmergencyOverride_(payload); break;
+      case 'setVendorOverride':    data = api_setVendorOverride_(payload);    break;
       case 'getDashboard':     data = api_getDashboard_();              break;
       case 'getVendorItems':   data = api_getVendorItems_(payload);     break;
       case 'saveOnHand':       data = api_saveOnHand_(payload);         break;
@@ -350,12 +351,19 @@ function api_commitReset_() {
   // yyyy-MM-dd strings formatted with getSpreadsheetTimeZone() (audit #17).
   const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
   const overrideRange = oe.getRange(EMERGENCY_OVERRIDE_CELL);
+  // Per-vendor day picks (SETUP!AF) clear unconditionally — belt-and-braces
+  // alongside the AD2-gated clear below, so a pick can never outlive its
+  // cycle even if the flag was somehow already off. Runs AFTER
+  // commitLogAndReset above, so the log captured the picked multipliers.
+  const clearedPicks = clearVendorOverrides_();
   if (overrideRange.getValue() === true) {
     overrideRange.setValue(false);
     PropertiesService.getDocumentProperties()
       .setProperty(EMERGENCY_OVERRIDE_LASTDATE_PROP,
                    Utilities.formatDate(today, tz, 'yyyy-MM-dd'));
     bumpServerMutationTs_(); // dashboard must recompute now that override is off
+  } else if (clearedPicks) {
+    bumpServerMutationTs_();
   }
 
   return {
@@ -387,12 +395,68 @@ function api_setEmergencyOverride_(payload) {
     const today = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd');
     PropertiesService.getDocumentProperties()
       .setProperty(EMERGENCY_OVERRIDE_LASTDATE_PROP, today);
+  } else {
+    // The per-vendor day picks (SETUP!AF) are children of this flag — turning
+    // the mode off retires them together, so re-enabling later starts clean.
+    clearVendorOverrides_(ss);
   }
   // Dashboard is cached by mutation ts — bump so the vendor list (which now
   // shows/hides off-schedule vendors based on override) recomputes immediately.
   bumpServerMutationTs_();
 
   return { emergencyOverride: on };
+}
+
+
+function api_setVendorOverride_(payload) {
+  // Record (or clear) one vendor's Emergency Override day pick from the PWA.
+  // The KM answered "when is this vendor's next delivery after this one?" and
+  // the client sends the FROZEN day count (mult 1-7 = days from tomorrow up to,
+  // not including, that delivery). mult 0 clears the pick (back to auto-bridge).
+  //
+  // Only meaningful while the store-wide override (AD2) is on — the PWA only
+  // shows the picker then, and vendorDayMultiplier_ ignores AF when the flag
+  // is off. Refreshing LAST_OVERRIDE_DATE here keeps the stale-day sweep
+  // (resetEmergencyOverrideOnOpen_) from clearing an actively-used override.
+  const vendor = normalizeVendorOrThrow_(payload.vendor);
+  const mult   = Math.floor(Number(payload && payload.mult));
+  if (isNaN(mult) || mult < 0 || mult > 7) {
+    throw new Error('Invalid override multiplier (expected 0-7): ' + (payload && payload.mult));
+  }
+
+  const ss    = SpreadsheetApp.getActiveSpreadsheet();
+  const setup = ss.getSheetByName(SHEET_SETUP);
+  if (!setup) throw new Error('SETUP sheet not found.');
+
+  // Row-aligned with the vendor list (Z) — same keying as cutoffs (AA).
+  const lastRow = setup.getLastRow();
+  let targetRow = 0;
+  if (lastRow >= 2) {
+    const names = setup.getRange(2, VENDOR_LIST_COL, lastRow - 1, 1).getValues();
+    for (let i = 0; i < names.length; i++) {
+      if (String(names[i][0] || '').trim().toLowerCase() === vendor.toLowerCase()) {
+        targetRow = i + 2;
+        break;
+      }
+    }
+  }
+  if (!targetRow) throw new Error('Vendor not found in SETUP: ' + vendor);
+
+  const cell = setup.getRange(targetRow, VENDOR_OVERRIDE_COL);
+  if (mult > 0) {
+    cell.setValue(mult);
+    PropertiesService.getDocumentProperties()
+      .setProperty(EMERGENCY_OVERRIDE_LASTDATE_PROP,
+                   Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd'));
+  } else {
+    cell.clearContent();
+  }
+
+  // Suggested quantities changed for this vendor — bump so the cached
+  // dashboard (and anything keyed on the mutation ts) recomputes.
+  bumpServerMutationTs_();
+
+  return { vendor: vendor, overrideMult: mult };
 }
 
 
@@ -453,7 +517,8 @@ function api_getDashboard_compute_() {
   // Shared read context for vendorOnHandSnapshot_ — built once so the per-vendor
   // "to order" count reads MASTER_ITEMS / SETUP a single time, not per vendor.
   const snapCtx = { masterMeta: readMasterItemMeta_(), vendorMults: vendorMults,
-                    emergencyOverride: emergencyOverride, dayOfWeek: dayOfWeek };
+                    emergencyOverride: emergencyOverride, dayOfWeek: dayOfWeek,
+                    vendorOverrides: readVendorOverrides_(setup) };
   const backupCounts = countBackupItemsByVendor_(snapCtx.masterMeta);
 
   const out = [];
@@ -610,7 +675,8 @@ function api_getVendorItems_(payload, ctx) {
   const vendorMults       = ctx ? ctx.vendorMults : readVendorMultipliers_(setup);
   const emergencyOverride = ctx ? ctx.emergencyOverride : readEmergencyOverride_();
   const dayOfWeek         = ctx ? ctx.dayOfWeek : getActiveOrderDate_().dayOfWeek;
-  const dayMult = vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride);
+  const vendorOverrides   = ctx ? ctx.vendorOverrides : readVendorOverrides_(setup);
+  const dayMult = vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride, vendorOverrides);
 
   // Map<itemId, {useMult, par, name, pack}> from MASTER_ITEMS. par (col G) is
   // the canonical per-item base par; useMult (col M) gates the day multiplier;
@@ -723,10 +789,18 @@ function api_getVendorItems_(payload, ctx) {
     cutoff = (VENDOR_META[vendor] || {}).cutoffTime || null;
   }
 
+  // Override context for the PWA count screen: `emergencyOverride` gates the
+  // day-picker card, `overrideMult` (0 = no pick) highlights the chosen chip
+  // and drives the "sized to last until <day> xN" note on count + review.
+  const pickedMult = (emergencyOverride && vendorOverrides && vendorOverrides.get(vendor) > 0)
+    ? Number(vendorOverrides.get(vendor)) : 0;
+
   return {
-    vendor:     vendor,
-    cutoffTime: cutoff,
-    items:      items
+    vendor:            vendor,
+    cutoffTime:        cutoff,
+    emergencyOverride: emergencyOverride,
+    overrideMult:      pickedMult,
+    items:             items
   };
 }
 
@@ -1065,7 +1139,31 @@ function readEmergencyOverride_() {
 }
 
 
-function vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride) {
+function readVendorOverrides_(setup) {
+  // Map<vendor, mult> from the per-vendor Emergency Override column
+  // (SETUP!AF, row-aligned with the vendor list in Z). Only positive
+  // numbers are kept — blanks / zeros / junk mean "no pick, use the
+  // auto-bridge". Values here only exist while ORDER_ENTRY!AD2 is on
+  // (they're cleared with it), and vendorDayMultiplier_ additionally
+  // gates on the flag so a stray leftover can never inflate a normal day.
+  const map = new Map();
+  const lastRow = setup.getLastRow();
+  if (lastRow < 2) return map;
+  const numRows = lastRow - 1;
+  // One read spanning Z..AF (vendor name .. override mult).
+  const width = VENDOR_OVERRIDE_COL - VENDOR_LIST_COL + 1;
+  const vals = setup.getRange(2, VENDOR_LIST_COL, numRows, width).getValues();
+  for (let i = 0; i < vals.length; i++) {
+    const v = String(vals[i][0] || '').trim();
+    if (!v) continue;
+    const m = Number(vals[i][width - 1]);
+    if (!isNaN(m) && m > 0) map.set(v, m);
+  }
+  return map;
+}
+
+
+function vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride, vendorOverrides) {
   // Effective vendor multiplier for `vendor` on `dayOfWeek` — computed in code
   // to replace reading the vendor tab's H2 formula. Mirrors that formula:
   //   H2 = IF(AD2=TRUE, <emergency>, <today's mult from SETUP S:Y>)
@@ -1075,18 +1173,32 @@ function vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride)
   //
   // Emergency Override (AD2 on): a flat 1x doesn't help a vendor that only
   // delivers some days (a 1-day order won't bridge the gap to its next drop).
-  // Instead, "bridge to the next real delivery": scan forward from today
+  //
+  // A KM PICK wins first (SETUP!AF via `vendorOverrides`): the auto-bridge
+  // below derives coverage from the NORMAL schedule, which is exactly what's
+  // abnormal in an emergency (a Fri+Sat vendor ordered Thursday is sized to
+  // last one day — but if Saturday's drop is cancelled it must last seven).
+  // The PWA's day picker asks "when is this vendor's next delivery after this
+  // one?" and stores the frozen day count; that number is authoritative.
+  //
+  // No pick → "bridge to the next real delivery": scan forward from today
   // (inclusive) for the first day with mult > 0 and use that day's multiplier,
   // so an off-schedule emergency order covers what the next scheduled drop
   // would bring. If today is itself a delivery day, that's today's own mult
   // (override is a no-op for that vendor). An all-zero row (vendor never
   // delivers / misconfigured) falls back to 1 so the KM can still order.
+  //
+  // The pick is checked INSIDE the override branch on purpose — SETUP!AF is
+  // cleared whenever AD2 clears, and the in-Sheet H2 formula nests the same
+  // way (vendorTabH2Formula_), so code and sheet stay structurally identical.
   const m = vendorMults.get(vendor);
   if (!m) return 0;
   const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const start = DAYS.indexOf(dayOfWeek);
   if (start < 0) return Number(m[dayOfWeek]) || 0;   // unknown day label — defensive
   if (!emergencyOverride) return Number(m[DAYS[start]]) || 0;
+  const picked = vendorOverrides ? Number(vendorOverrides.get(vendor)) : NaN;
+  if (!isNaN(picked) && picked > 0) return picked;
   for (let i = 0; i < 7; i++) {
     const mv = Number(m[DAYS[(start + i) % 7]]) || 0;
     if (mv > 0) return mv;
@@ -1256,8 +1368,8 @@ function vendorOnHandSnapshot_(vendor, ctx) {
   // computeSuggestedQty_ (was: read from the col-F formula), so the dashboard
   // no longer depends on any vendor-tab formula. `ctx` carries the shared read
   // context built once by the caller — { masterMeta, vendorMults,
-  // emergencyOverride, dayOfWeek } — so MASTER_ITEMS / SETUP aren't re-read
-  // per vendor.
+  // emergencyOverride, vendorOverrides, dayOfWeek } — so MASTER_ITEMS / SETUP
+  // aren't re-read per vendor.
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(vendor);
   if (!sh) return { any: false, toOrder: 0, enteredCount: 0 };
 
@@ -1270,7 +1382,7 @@ function vendorOnHandSnapshot_(vendor, ctx) {
   const data     = sh.getRange(VENDOR_TAB.DATA_START_ROW, startCol, numRows, VENDOR_TAB.ITEM_ID_COL - startCol + 1).getValues();
   const ID_IDX   = VENDOR_TAB.ITEM_ID_COL - startCol;      // M, relative to E
 
-  const dayMult = vendorDayMultiplier_(ctx.vendorMults, vendor, ctx.dayOfWeek, ctx.emergencyOverride);
+  const dayMult = vendorDayMultiplier_(ctx.vendorMults, vendor, ctx.dayOfWeek, ctx.emergencyOverride, ctx.vendorOverrides);
 
   let enteredCount = 0;
   let toOrder = 0;
