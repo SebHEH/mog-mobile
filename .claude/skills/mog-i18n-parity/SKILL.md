@@ -1,6 +1,6 @@
 ---
 name: mog-i18n-parity
-description: Verify EN/ES bilingual parity across MOG Apps Script modals deterministically, instead of counting `var T = { en, es }` glossary keys by hand. Use whenever a modal's strings change — adding/removing/renaming a T key, translating a new toast, or finishing any ManageItems/OrderHistory/ManageVendors/etc. edit that touched user-facing text. Trigger on "check the EN/ES parity", "did I drop a translation key", "is this modal at parity", "count the keys", "this string is English-only", or at the end of any modal session that added strings (the old habit was "102 keys each, verified" by eye). Ships scripts/check_i18n_parity.py. Skip for the PWA (template/index.html uses an inline `state.lang` ternary, not a T glossary — different mechanism) and for English-only files.
+description: Verify EN/ES bilingual parity across MOG Apps Script modals deterministically, instead of counting `var T = { en, es }` glossary keys by hand. Use whenever a modal's strings change — adding/removing/renaming a T key, translating a new toast, or finishing any ManageItems/OrderHistory/ManageVendors/etc. edit that touched user-facing text. Trigger on "check the EN/ES parity", "did I drop a translation key", "is this modal at parity", "count the keys", "this string is English-only", or at the end of any modal session that added strings (the old habit was "102 keys each, verified" by eye). Ships scripts/check_i18n_parity.py. Also covers the PWA: --all checks template/index.html, whose `T = { msg: { key: { en, es } } }` glossary is compared entry by entry. Skip for English-only files.
 ---
 
 # mog-i18n-parity
@@ -13,7 +13,7 @@ Every modal session that touches strings used to end with a hand-count — *"102
 python .claude/skills/mog-i18n-parity/scripts/check_i18n_parity.py --all
 ```
 
-`--all` scans every `apps-script/*.html`. Or pass explicit files:
+`--all` scans every `apps-script/*.html` plus the PWA's `template/index.html`. Or pass explicit files:
 
 ```
 python .claude/skills/mog-i18n-parity/scripts/check_i18n_parity.py apps-script/ManageItems.html
@@ -25,9 +25,10 @@ Exit code 0 = parity everywhere (skips count as pass), 1 = at least one mismatch
 
 - **Mode B — JS glossary** (`var T = { en: {...}, es: {...} }`): the 6 interactive modals (AdminReset, ManageItems, ManageVendors, OrderHistory, ReorderPickPath, StorageAreas). Compares the two key sets and reports keys missing from either side, duplicate keys, and order drift (a key inserted in one block but appended in the other — passes the count test but warns here).
 - **Mode A — dual-span** (`class="en"` / `class="es"`): the static-help modal HowToUse. Compares span counts; each `.en` content span needs a sibling `.es`.
+- **Per-entry glossary** (`T = { titles: {...}, msg: { key: { en: '...', es: '...' } } }`): the PWA's `template/index.html`. Every entry must hold both `en` and `es`, and a key declared twice in one section is reported (the second silently wins). A problem names the key path: `MISSING from T.es (present in EN): msg.today   [line L]`. The 10 store folders are `build.py` copies of the template, so checking it covers them. The root hub page is not checked: its `<body class="en">` is a language-mode class, which the dual-span count would misread as an untranslated span.
 - **Neither → SKIP** (counts as pass): English-only or non-bilingual files.
 
-Known-good baseline (2026-05-27): AdminReset 10, ManageVendors 25, ReorderPickPath 24, StorageAreas 15, OrderHistory 41, ManageItems 102, HowToUse 227 spans. If a count drops below these after an edit, you removed a key — intended or not, the script tells you which one.
+Known-good baseline (2026-05-27): AdminReset 10, ManageVendors 25, ReorderPickPath 24, StorageAreas 15, OrderHistory 41, ManageItems 102, HowToUse 227 spans. PWA (2026-10-01): template/index.html 154 entries. If a count drops below these after an edit, you removed a key — intended or not, the script tells you which one.
 
 ## How to read a failure
 
@@ -38,7 +39,7 @@ Known-good baseline (2026-05-27): AdminReset 10, ManageVendors 25, ReorderPickPa
 
 ## The script is a thin wrapper — logic lives in the canonical
 
-`scripts/check_i18n_parity.py` is a logic-free wrapper over the canonical `~/.claude/skills/i18n-parity-checker/scripts/check_i18n_parity.py` (converted from a full fork on 2026-06-10 per the [[checker-script-sync]] push-toward-fewer-copies rule). The wrapper's only job is expanding `--all` to `apps-script/*.html` before delegating; all parsing logic, modes, and exit codes are the canonical's. Parser fixes land in the canonical copy, never here — if this wrapper ever grows parsing logic, that's drift.
+`scripts/check_i18n_parity.py` is a logic-free wrapper over the canonical `~/.claude/skills/i18n-parity-checker/scripts/check_i18n_parity.py` (converted from a full fork on 2026-06-10 per the [[checker-script-sync]] push-toward-fewer-copies rule). The wrapper's only job is expanding `--all` to `apps-script/*.html` plus `template/index.html` before delegating; all parsing logic, modes, and exit codes are the canonical's. Parser fixes land in the canonical copy, never here — if this wrapper ever grows parsing logic, that's drift.
 
 ## Composition with other skills
 

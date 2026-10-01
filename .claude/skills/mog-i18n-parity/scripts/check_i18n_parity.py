@@ -12,7 +12,13 @@ canonical copy, never here.
 
 Usage (unchanged):
     python scripts/check_i18n_parity.py <modal.html> [<modal2.html> ...]
-    python scripts/check_i18n_parity.py --all        # every apps-script/*.html
+    python scripts/check_i18n_parity.py --all        # every apps-script/*.html + template/index.html
+
+`--all` also checks the PWA's template/index.html (its per-entry `T` glossary,
+compared entry by entry by the canonical checker since 2026-10-01). build.py
+copies the template into every store folder, so the copies are not checked
+separately, and the root hub page is not checked at all: its `<body class="en">`
+is a language-mode class that the dual-span count would misread.
 
 Exit codes (canonical's): 0 parity, 1 mismatch, 2 bad args / file not found.
 """
@@ -38,7 +44,11 @@ def main(argv):
         if not files:
             print("--all matched no files under apps-script/")
             return 2
-        args = [a for a in args if a != "--all"] + files
+        pwa = os.path.join(ROOT, "template", "index.html")
+        if not os.path.exists(pwa):
+            print("--all: template/index.html not found, so the PWA glossary would go unchecked")
+            return 2
+        args = [a for a in args if a != "--all"] + files + [pwa]
     return subprocess.call([sys.executable, CANON] + args, cwd=ROOT)
 
 
