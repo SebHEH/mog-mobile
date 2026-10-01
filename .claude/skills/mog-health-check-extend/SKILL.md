@@ -1,6 +1,6 @@
 ---
 name: mog-health-check-extend
-description: Add a new diagnostic check (and optionally a one-click web fix) to the MOG Store Health Check. Use whenever a session discovers a store-integrity problem the Health Check didn't catch, or Sebastian asks to "add a health check for X", "make the Health Check catch this", "flag any store where …", "give it a one-click fix", or "the Health Check said nothing was wrong but X was broken". This is the recurring pattern behind the H2-sync / template / purge / col-O-migrate / backup-placement / PIN-lockout / vendor-tab-header checks — three sessions in a row extended it. Skip for one-off manual repairs that don't belong in the recurring diagnostic, and for PWA-only or modal-only changes.
+description: Add a new diagnostic check (and optionally a one-click web fix) to the MOG Store Health Check. Use this skill when a session discovers a store-integrity problem the Health Check didn't catch. Trigger on "add a health check for X", "make the Health Check catch this", "flag any store where …", "give it a one-click fix", or "the Health Check said nothing was wrong but X was broken". This is the recurring pattern behind the H2-sync / template / purge / col-O-migrate / backup-placement / PIN-lockout / vendor-tab-header checks — three sessions in a row extended it. Skip for one-off manual repairs that don't belong in the recurring diagnostic, and for PWA-only or modal-only changes.
 ---
 
 # mog-health-check-extend

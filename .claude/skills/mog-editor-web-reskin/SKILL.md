@@ -1,7 +1,7 @@
 ---
 name: mog-editor-web-reskin
 user-invocable: false
-description: The turnkey recipe for polishing one KM web-editor tool (a dual-host Apps Script modal served via doGet?page=…) into a real full-page web app — bespoke per tool, web-gated so the in-Sheet dialog is untouched. Use whenever Sebastian says "polish the next tool", "let's do <Manage Vendors / Reorder Pick Path / Order History> next", "rethink this tool's layout/density", "make it look like Manage Items", or any per-tool web-editor visual pass. ALSO trigger before touching ANY editor modal's web rendering, because step 1 (the setLang class-clobber fix) is a hard prerequisite that silently breaks the whole re-skin if skipped. Skip for the in-Sheet dialog behavior, the PWA (template/index.html), and pure server-logic changes.
+description: The turnkey recipe for polishing one KM web-editor tool (a dual-host Apps Script modal served via doGet?page=…) into a real full-page web app — bespoke per tool, web-gated so the in-Sheet dialog is untouched. Use this skill for any per-tool web-editor visual pass. Trigger on "polish the next tool", "let's do <Manage Vendors / Reorder Pick Path / Order History> next", "rethink this tool's layout/density", "make it look like Manage Items". ALSO trigger before touching ANY editor modal's web rendering, because step 1 (the setLang class-clobber fix) is a hard prerequisite that silently breaks the whole re-skin if skipped. Skip for the in-Sheet dialog behavior, the PWA (template/index.html), and pure server-logic changes.
 ---
 
 # mog-editor-web-reskin
