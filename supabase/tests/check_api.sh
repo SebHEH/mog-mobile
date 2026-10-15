@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Checks the PUBLIC side of the MOG schema: what anyone holding the
+# publishable key can and can't do. Every request here is one that MUST be
+# refused, so it needs no PIN, token, or sync key. Run after schema.sql (and
+# again after any schema change).
+#
+# usage: bash supabase/tests/check_api.sh <project_url> <publishable_key>
+set -u
+URL="${1%/}"; KEY="$2"
+pass=0; fail=0
+
+# check <name> <expected HTTP status> <expected body substring> <curl args...>
+check() {
+  local name="$1" want_code="$2" want_body="$3"; shift 3
+  local body code
+  body=$(curl -s --max-time 30 -w $'\n%{http_code}' -H "apikey: $KEY" "$@")
+  code="${body##*$'\n'}"; body="${body%$'\n'*}"
+  if [ "$code" = "$want_code" ] && [[ "$body" == *"$want_body"* ]]; then
+    echo "PASS  $name"; pass=$((pass+1))
+  else
+    echo "FAIL  $name  (got HTTP $code: ${body:0:200})"; fail=$((fail+1))
+  fi
+}
+
+rpc() { echo "$URL/rest/v1/rpc/$1"; }
+J=(-H 'Content-Type: application/json')
+
+check "tables: not reachable in public"           404 ''   "$URL/rest/v1/stores"
+check "tables: private schema not exposed"        406 ''   -H 'Accept-Profile: mog' "$URL/rest/v1/counts"
+check "provision_store: not callable over API"    406 ''   -X POST "${J[@]}" -H 'Content-Profile: mog' -d '{"p_slug":"x"}' "$(rpc provision_store)"
+check "helpers: not exposed"                      404 ''   -X POST "${J[@]}" -d '{"p":"x"}' "$(rpc sha256_hex)"
+check "speedtest table: dropped"                  404 ''   "$URL/rest/v1/speedtest"
+check "login: unknown store refused"              200 'Unknown store'   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_pin":"0"}' "$(rpc mog_login)"
+check "snapshot: bad token refused"               200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_snapshot)"
+check "save: bad token refused"                   200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_cycle_date":"2026-10-15","p_vendor":"V","p_items":[]}' "$(rpc mog_save_counts)"
+check "sync: bad key refused"                     200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus"}' "$(rpc mog_sync_get_cycle)"
+check "sync: bad key can't push a catalog"        200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_version":1,"p_payload":{}}' "$(rpc mog_sync_push_catalog)"
+
+echo "---"
+echo "$pass passed, $fail failed"
+[ "$fail" -eq 0 ]
