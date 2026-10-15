@@ -111,6 +111,7 @@ Repo-local skills in `./.claude/skills/` ARE owned by this repo — edit those i
 5. No "🤖 Generated with Claude Code" footers on commit messages.
 6. Suggest commits, don't auto-commit. Sebastian owns the commit decision.
 7. PowerShell PATH may be stale after a fresh tooling install on Windows. If `node`, `npm`, `clasp`, or `python` returns "not found" right after `winget install`, prefix the next command with `$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User");`.
+8. **Every request to run a function in the Apps Script editor names its file.** Paste the output of `python editor_link.py <function> <store>`: the `.gs` file, the function, the store, and direct links to that store's editor and Sheet (global skill `appsscript-editor-action`). Never a bare function name, and never leave the store implicit (one codebase, ten Sheets). Sebastian's standing rule, 2026-10-15.
 
 ## Common pitfalls
 
@@ -138,6 +139,7 @@ mog-mobile/
 ├── stores.json                  Store registry: slug, concept, location, deployment URL.
 ├── build.py                     Python templating: stores.json + template/ → <slug>/ dirs + STORE_REGISTRY injection.
 ├── deploy.py                    Push (and optionally --redeploy) apps-script/ to all 9 clasp targets. Also handles --discover for deploymentId bootstrap.
+├── editor_link.py               Prints the exact "run X in the Apps Script editor" request: .gs file, store, editor + Sheet links (convention #8).
 ├── icons/                       Branding (heh-180.png, rp-180.png, etc.).
 ├── template/                    PER-STORE PWA SOURCE.
 │   ├── index.html               (311 KB — the store app UI).

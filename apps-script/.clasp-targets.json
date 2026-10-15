@@ -4,66 +4,110 @@
     "label": "Master template (copied for new stores)",
     "scriptId": "1uW7k2MLb6-dg-Ovx5wYPQee9y5noBPtBRq5UZksuVG9ghcv5r8Uv-kUO",
     "deploymentId": "AKfycbxMVQhOR9g1KuZXbHGaq-2U9ny6VUN8VB7_XOdvsmdLYZU7Dq2i_Q0ovV6ySuBit_MgAA",
-    "isTemplate": true
+    "isTemplate": true,
+    "sheet": {
+      "title": "MASTER_ORDERING_GUIDE_TEMPLATE",
+      "id": "1EvXWNiZWc6wR1LK36MLxSTYmARc4n6I5Lfhgoghqiuk"
+    }
   },
   {
     "slug": "rpr",
     "label": "Roll Play - Rosslyn BOH",
     "scriptId": "1FGadbpeTGGsIf2hQEWnjaIZe1wI8_P4RMY8vmWnHFkbjDofIY-cQ538F",
-    "deploymentId": "AKfycbxRbLvqVy8aU1S_bzc6jwWvNzGD6_lUA0aKPyANckBxj9g3qd_3bYf6a3MviuK3oZNZJw"
+    "deploymentId": "AKfycbxRbLvqVy8aU1S_bzc6jwWvNzGD6_lUA0aKPyANckBxj9g3qd_3bYf6a3MviuK3oZNZJw",
+    "sheet": {
+      "title": "RP_AN_ROSSLYN_ORDERING_GUIDE",
+      "id": "1qWVfV3i50S8yZ771GSCWuVeWzoKM97gJZ9vhWaipk_I"
+    }
   },
   {
     "slug": "rprfo",
     "label": "Roll Play - Rosslyn FOH",
     "scriptId": "1iHm2I3-NFkEoPcqN4kCnN-mXeMdZfZGlx2xemh1ta1_hCoXBKDM7-otM",
-    "deploymentId": "AKfycby8-_goEnDKGXc45PXt9ZpXbDGzInmwetBpEBpRA-_BVjs1cwOqiIqtsBqvu75Q8Fmh"
+    "deploymentId": "AKfycby8-_goEnDKGXc45PXt9ZpXbDGzInmwetBpEBpRA-_BVjs1cwOqiIqtsBqvu75Q8Fmh",
+    "sheet": {
+      "title": "RP_ROSSLYN_FOH_ORDERING_GUIDE",
+      "id": "1QDSlXJLG8J91-seF_OY_sIgM-E5nw2P91hJCYQWlemo"
+    }
   },
   {
     "slug": "rpt",
     "label": "Roll Play - Tysons BOH",
     "scriptId": "1VMZFvyfnUm2vUW2mWHssLrHhMS0xG5IUkxPpliBE9EX2yg95sDfWlzkW",
-    "deploymentId": "AKfycbybndYIG-bwC0rXzwYUiMTJUexuAGZMnixnBwsVUyPW6MpzUik5iFKEAprmVzcss6A7sg"
+    "deploymentId": "AKfycbybndYIG-bwC0rXzwYUiMTJUexuAGZMnixnBwsVUyPW6MpzUik5iFKEAprmVzcss6A7sg",
+    "sheet": {
+      "title": "RP_TYSON_ORDERING_GUIDE",
+      "id": "18pfUWtbIQnIPa9L65JViI3fqI1igfxkoIseWkt2lDTs"
+    }
   },
   {
     "slug": "rptfo",
     "label": "Roll Play - Tysons FOH",
     "scriptId": "1LieGgJhLxoOlp0bEbbFqfjcMwpCGkRptBX1em8-dfavmTclB02pmmmTE",
-    "deploymentId": "AKfycbxR7VJbt6Uc5zgznuPf1lkFl_1vPeZ-rDmNsSS9ByKxpopt1TylrIISSG9O7zbI5Otq"
+    "deploymentId": "AKfycbxR7VJbt6Uc5zgznuPf1lkFl_1vPeZ-rDmNsSS9ByKxpopt1TylrIISSG9O7zbI5Otq",
+    "sheet": {
+      "title": "RP_TYSONS_FOH_ORDERING_GUIDE",
+      "id": "1AKFXXmlau64zVzkXQhW4lnVQWPDaxsBXHCoS_Ir7j7g"
+    }
   },
   {
     "slug": "rpfr",
     "label": "Roll Play - Founders BOH",
     "scriptId": "1qZIWafAt3x1qfg9uG9XlZZjU-nGEwIdoNeg4yRfKVZ9FJzDIOWJqwVv1",
-    "deploymentId": "AKfycbzdQyjNQrd0PZv0X4c8uJxSiniKtWoramL3YNH1RxpGZubBRcoGPyBMIxWyI-RqW47Q"
+    "deploymentId": "AKfycbzdQyjNQrd0PZv0X4c8uJxSiniKtWoramL3YNH1RxpGZubBRcoGPyBMIxWyI-RqW47Q",
+    "sheet": {
+      "title": "RP_FOUNDERS_ORDERING_GUIDE",
+      "id": "1SSyzTiAGx9A9iFFF5gh6oj_l6i9ApxXULVzer5inZEI"
+    }
   },
   {
     "slug": "rpfrf",
     "label": "Roll Play - Founders FOH",
     "scriptId": "1_CjSGM_AHTKG1BcjJ70sckRVu7QODSNvFLr0bRTc8SoDN6Iz-npDRA04",
-    "deploymentId": "AKfycbyQ9f6JcM7dgI2Ng4WAsHWbrVENW_o9WTnkvjSVyLC6VAHnLHsJ5qnnXOhy7oqn-Kh9AQ"
+    "deploymentId": "AKfycbyQ9f6JcM7dgI2Ng4WAsHWbrVENW_o9WTnkvjSVyLC6VAHnLHsJ5qnnXOhy7oqn-Kh9AQ",
+    "sheet": {
+      "title": "RP_FOUNDERS_FOH_ORDERING_GUIDE",
+      "id": "1E2rMup4fzuN4MEquTmRz4-B9Xa5Lj0t4OE8tD4MFQ-U"
+    }
   },
   {
     "slug": "tnyt",
     "label": "Teas'n You - Tysons BOH",
     "scriptId": "1bqgHCSMUDUfPSgzgTQg-4yZYU04b51_khWU4ZPP1rD9bvMURmecc81Hb",
-    "deploymentId": "AKfycbzb2173ENr43g4Y7r7QnaykAaFOEby0bpwlZwcpzpeBuFhpmrlv1NJFxD3J84jTnORKtw"
+    "deploymentId": "AKfycbzb2173ENr43g4Y7r7QnaykAaFOEby0bpwlZwcpzpeBuFhpmrlv1NJFxD3J84jTnORKtw",
+    "sheet": {
+      "title": "BOH TNY_TYSON_ORDERING_GUIDE",
+      "id": "1X-mIjbzp_CEABnBW6ju3jtlMmFoJR78RLuHCFKLbFm8"
+    }
   },
   {
     "slug": "tnytf",
     "label": "Teas'n You - Tysons FOH",
     "scriptId": "1j0YLDMlgpdVo_bs9enKzZtvJwmNOrCIZdv6rxWsPv6qPJGU9oODzPOPE",
-    "deploymentId": "AKfycbwu1tg87fi65QUkS6IUCt6gI9fR23Q4T_bH5btrRR9zNXJ-6JvStkzida1zONomVfdREw"
+    "deploymentId": "AKfycbwu1tg87fi65QUkS6IUCt6gI9fR23Q4T_bH5btrRR9zNXJ-6JvStkzida1zONomVfdREw",
+    "sheet": {
+      "title": "FOH TNY_TYSON_ORDERING_GUIDE",
+      "id": "1youedz_JpcQaNIfijCVPczlcfK9w6EyuGuOnfINGERg"
+    }
   },
   {
     "slug": "tnyr",
     "label": "Teas'n You - Rockville BOH",
     "scriptId": "1rtT6s4QekDEj-Vfrliw6hCd9wgNbw6vZdymMXjV57J3l5vPcjsrEQhBr",
-    "deploymentId": "AKfycbxTnTOXRBhysR1J45QgenCOLLBc86iqtWOwHXJkKQr3IuzDukyFqFngxhTJHc-jGQBN2A"
+    "deploymentId": "AKfycbxTnTOXRBhysR1J45QgenCOLLBc86iqtWOwHXJkKQr3IuzDukyFqFngxhTJHc-jGQBN2A",
+    "sheet": {
+      "title": "BOH TNY_ROCKVILLE_ORDERING_GUIDE",
+      "id": "1dgXIoEeiPqsa6h-0FzhQuxxStyLDR3EfVrO4f0w0V0c"
+    }
   },
   {
     "slug": "tnyrf",
     "label": "Teas'n You - Rockville FOH",
     "scriptId": "1KdaVREgsjHs0NzGGTj81PbEWrK3yYIaHPj1ykblXg3RKXP6oty-0Bg3l",
-    "deploymentId": "AKfycbyGQeDq3M8MmHx4Ves1-youGAe3_PfFEUsl2jGbXfbLzLUO4yyvt7WgH9P2Xjfj3Rd0"
+    "deploymentId": "AKfycbyGQeDq3M8MmHx4Ves1-youGAe3_PfFEUsl2jGbXfbLzLUO4yyvt7WgH9P2Xjfj3Rd0",
+    "sheet": {
+      "title": "FOH TNY_ROCKVILLE_ORDERING_GUIDE",
+      "id": "1tbAjG-GEx0urflttemvnygDRsYN1B_0uZ-9CzSEO7ig"
+    }
   }
 ]
