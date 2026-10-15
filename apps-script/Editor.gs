@@ -306,6 +306,7 @@ function commitStoreSetup(payload) {
   if (concept) props.setProperty(PROP_CONCEPT, concept);
   else         props.deleteProperty(PROP_CONCEPT);
   // PROP_MASTER_PIN intentionally untouched — owner sets it via the menu.
+  pushPinsQuietly_();   // a store connected to Supabase gets the new PIN there too
 
   const token = Utilities.getUuid();
   putEditorToken_(token, 'store');
@@ -350,13 +351,30 @@ function webeditDispatch_(name) {
     case 'commitStorageAreasDraft':         return commitStorageAreasDraft;
     case 'getPickPathForSidebar':           return getPickPathForSidebar;
     case 'commitReorderPickPath':           return commitReorderPickPath;
+    // Supabase catalog sync: the page's background push after a save (Sync.gs)
+    case 'pushCatalogNow':                  return pushCatalogNow;
     default:                        return null;
   }
 }
 
-function webedit_call(token, fnName, args) {
+function webedit_call(token, fnName, args, opts) {
   requireEditorToken_(token);
   const fn = webeditDispatch_(String(fnName || ''));
   if (!fn) throw new Error('Editor action not allowed: ' + fnName);
-  return fn.apply(null, args || []);
+  // Supabase catalog sync (Sync.gs): a call that changed something says so in
+  // an envelope, and the page fires the push as its OWN background request,
+  // so the save never waits on Supabase. bumpServerMutationTs_ sets
+  // MOG_MUTATED_; MOG_SKIP_CATALOG_QUEUE_ stops it from also queuing a
+  // timer-based push for the same edit. mgeRpc_ (EditorShell) unwraps it.
+  // The envelope is OPT-IN (opts.envelope): a page loaded before this
+  // deploy still expects the plain result, and gets it.
+  MOG_SKIP_CATALOG_QUEUE_ = true;
+  MOG_MUTATED_ = false;
+  const result = fn.apply(null, args || []);
+  if (!(opts && opts.envelope)) return result;
+  return {
+    __mogEnvelope: 1,
+    result:        result,
+    pushCatalog:   MOG_MUTATED_ && fnName !== 'pushCatalogNow' && supabaseConfig_().connected
+  };
 }

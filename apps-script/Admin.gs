@@ -83,6 +83,7 @@ function setupMobileApi() {
   else         props.deleteProperty(PROP_CONCEPT);
   if (masterPin) props.setProperty(PROP_MASTER_PIN, masterPin);
   else           props.deleteProperty(PROP_MASTER_PIN);
+  pushPinsQuietly_();   // a store connected to Supabase gets the new PINs there too
 
   ui.alert(
     'Setup complete',
@@ -147,6 +148,7 @@ function setMasterPin() {
     props.deleteProperty(PROP_MASTER_PIN);
     ui.alert('Master PIN removed.');
   }
+  pushPinsQuietly_();   // a store connected to Supabase gets the change there too
 }
 
 
@@ -334,6 +336,7 @@ function clearMobileApiConfig() {
   props.deleteProperty(PROP_LOCATION_ABBR);
   props.deleteProperty(PROP_GM_EMAIL);
   props.deleteProperty(PROP_CONCEPT);            // so the re-themed wizard starts neutral
+  pushPinsQuietly_();   // no PIN now: a connected store's app logins stop too
   props.deleteProperty(PROP_LAST_RECAP_SENT_DATE);
   // Also wipe the rate-limit state — fresh deployment should never
   // start with a stale lockout window from a previous tenant of the

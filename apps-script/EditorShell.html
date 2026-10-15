@@ -1287,13 +1287,36 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
         return function () {
           var args = [].slice.call(arguments);
           google.script.run
-            .withSuccessHandler(function (r) { if (ok) ok(r); })
+            .withSuccessHandler(function (env) {
+              // webedit_call wraps every answer: { __mogEnvelope, result, pushCatalog }.
+              var r = env;
+              if (env && env.__mogEnvelope === 1) {
+                r = env.result;
+                if (env.pushCatalog) mgeQueueCatalogPush_();
+              }
+              if (ok) ok(r);
+            })
             .withFailureHandler(function (e) { mgeWebFail_(e, fail); })
-            .webedit_call(window.MOG_TOKEN, prop, args);
+            .webedit_call(window.MOG_TOKEN, prop, args, { envelope: 1 });
         };
       }
     });
     return proxy;
+  }
+  // Supabase catalog sync (Sync.gs): after a save that changed something, push
+  // the catalog as a SEPARATE background request, so the save itself never
+  // waits on it. One push in flight at a time; saves made during a push queue
+  // exactly one more. Failures are silent here: the server queues its own retry.
+  var mgeCatalogPushBusy_ = false, mgeCatalogPushAgain_ = false;
+  function mgeQueueCatalogPush_() {
+    if (mgeCatalogPushBusy_) { mgeCatalogPushAgain_ = true; return; }
+    mgeCatalogPushBusy_ = true;
+    var done = function () {
+      mgeCatalogPushBusy_ = false;
+      if (mgeCatalogPushAgain_) { mgeCatalogPushAgain_ = false; mgeQueueCatalogPush_(); }
+    };
+    google.script.run.withSuccessHandler(done).withFailureHandler(done)
+      .webedit_call(window.MOG_TOKEN, 'pushCatalogNow', []);
   }
   // Web failure handler: a SESSION_EXPIRED (flushed/expired token) reprompts for
   // the PIN; anything else falls through to the call site's own handler.

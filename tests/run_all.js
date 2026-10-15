@@ -15,7 +15,8 @@ const HELPERS = {
   'run_all.js': 'this runner',
   'slice_js.js': 'library: slices one function out of .gs source',
   'fake_apps_script.js': 'library: fake Sheets/services + loaders',
-  'mog_fixture.js': 'library: seeded randomized stores'
+  'mog_fixture.js': 'library: seeded randomized stores',
+  'fake_supabase.js': 'library: in-memory mog_sync_* + fake UrlFetchApp/ScriptApp'
 };
 
 const dir = __dirname;

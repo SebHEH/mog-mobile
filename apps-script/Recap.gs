@@ -134,6 +134,11 @@ function api_getRecapData_(payload) {
 function buildRecapSections_(requestedVendors) {
   // Shared logic between emailRecap and getRecapData. Reads current state
   // and produces the {sections, totalItems, cycleDate} bundle.
+  // A store that counts in Supabase builds it from its snapshot, same rules
+  // (recapSectionsFromInputs_, OrderMath.gs).
+  if (supabaseConfig_().switched) {
+    return recapSectionsFromInputs_(orderInputsFromSnapshot_(supabaseSnapshot_()), requestedVendors);
+  }
   const setup       = getSheet_(SHEET_SETUP);
   const allVendors  = getVendorList();
   const vendorMults = readVendorMultipliers_(setup);
@@ -224,6 +229,10 @@ function buildRecapSections_(requestedVendors) {
 // here shares one date, so sections come out in the same order the old live
 // builder produced.
 function buildRecapFromLog_(orderDate) {
+  // A store that counts in Supabase logs there; its rows carry pack and area.
+  if (supabaseConfig_().switched) {
+    return recapFromLogRows_(supabaseSync_('mog_sync_get_log', { p_date: orderDate }).rows, orderDate);
+  }
   const rows = getOrderHistory({ vendorFilter: 'ALL', dateFrom: orderDate, dateTo: orderDate });
 
   // vendor|itemId -> storage area. Not stored in the log, so joined from the

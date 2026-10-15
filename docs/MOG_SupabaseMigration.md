@@ -1,6 +1,6 @@
 # MOG → Supabase migration (count path)
 
-**Status (2026-10-15):** schema live and verified (smoke test 40/40, public-key check 10/10). Step 3 (the shared `OrderMath.gs` + `Sync.gs`) is built and passes `node tests/run_all.js`; not deployed. KMs see no change yet.
+**Status (2026-10-15):** schema live and verified (smoke test 40/40, public-key check 10/10). Step 3 (the shared `OrderMath.gs` + `Sync.gs`) is **deployed to all 10 stores + template** (`6584c10`, `--redeploy`). It passed the live `test_supabaseParity` on rprfo (2 delivering vendors, 25 items, plus the dashboard), and every store's health and POST probes pass. KMs see no change; the next step is step 4.
 **Owner decisions:** Sebastian, 2026-10-15 (all recorded below with the reason).
 
 This is the single design record for the move. Later sessions build from this file; if the code and this doc disagree, fix one of them in the same commit.
@@ -35,7 +35,10 @@ Gotcha from the test: a Supabase upsert that **updates** a row returns HTTP **20
 | D5 | Order math | One shared file, `apps-script/OrderMath.gs`, copied into the PWA by `build.py` | Phone, order log and email run identical code. A hand copy would be a new drift risk (the 08-03 bug class). |
 | D6 | Sign-in | SQL functions + session token | Everything lives in `schema.sql`; nothing extra to deploy. |
 | D7 | Catalog sync | Push on every editor save, retry within a minute, full push nightly | Phones see edits within seconds. |
-| D8 | Sheet during the day | Vendor tabs' On Hand stays blank until night | Least load. Counts are copied into column E only when a reset (or a manual recap send) needs them. |
+| D8 | Sheet during the day | Vendor tabs' On Hand stays blank on switched stores | Counts live only in Supabase (D9). |
+| D9 | The Sheet's role (later on 2026-10-15) | **Retired from the app's path.** Supabase is the operational store. The Sheet holds the Apps Script, the catalog the editor still edits (until step 6), and a backup. Nothing is ever copied back into it. | Sebastian: "remove the app writing to the sheet and back for performance sake ... [the Sheet] exists as a backup at most." Every design is judged on speed first. Replaces the copy-back design. |
+| D10 | Order log backup | The nightly close appends the closed cycle to the Sheet's `LOG_ORDERS` | One write per night, off every hot path. Keeps the web editor's Order History and the par-review flags working until step 6 moves them. |
+| D11 | Nightly timer rollout | Installed per store by Connect to Supabase | Each store's reset timing changes along with its migration, rprfo first. |
 
 Rejected: stopping column-E writes but staying on `/exec` (still ~2s per screen); moving everything including the editor now (months, and the editor isn't the complaint); Firebase (workable, but not SQL).
 
@@ -49,20 +52,28 @@ Rejected: stopping column-E writes but staying on `/exec` (still ~2s per screen)
 | Pick path / storage areas (SETUP K:P) | Sheet | `mog.catalog` |
 | Vendors, day multipliers (S:Y), cutoffs (AA) | Sheet | `mog.catalog` |
 | Store PIN + master PIN | Script Properties | `mog.stores` (bcrypt hashes, pushed) |
-| **On-hand counts** | **Supabase `mog.counts`** | Vendor tab column E, written only at reset |
-| **Store-wide Emergency Override** (was ORDER_ENTRY!AD2) | **Supabase `mog.store_state`** | AD2, written only at reset |
-| **Per-vendor day picks** (was SETUP!AF) | **Supabase `mog.store_state`** | AF, written only at reset |
-| Cycle date (was ORDER_ENTRY!AE9) | Sheet; reset writes it, then copies it to `mog.store_state` | — |
-| Order log, recap email, recipients | Sheet / Apps Script (unchanged) | — |
+| **On-hand counts** | **Supabase `mog.counts`** | none: never copied back (D9) |
+| **Store-wide Emergency Override** (was ORDER_ENTRY!AD2) | **Supabase `mog.store_state`** | none |
+| **Per-vendor day picks** (was SETUP!AF) | **Supabase `mog.store_state`** | none |
+| **Cycle date** (was ORDER_ENTRY!AE9) | **Supabase `mog.store_state`** on a switched store (the Sheet's AE9 is no longer updated there) | none |
+| **Order log** | **Supabase `mog.order_log`** | Sheet `LOG_ORDERS`, appended nightly as a backup (D10) |
+| Recap email | Apps Script (MailApp), built from `mog.order_log` | — |
+| Recap recipients | Sheet SETUP AB:AE, read once per close (moves in step 6) | — |
 
 ## 4. How a day works after the switch
 
 1. **Open the app:** one `mog_snapshot` call returns the catalog, store state and this cycle's counts. The phone builds the dashboard and every vendor list locally.
 2. **Count:** each save is one `mog_save_counts` call, per item, tagged with the cycle date. Two phones counting different items no longer overwrite each other. (Today's `saveOnHand` rewrites a block of rows, MOGApi.gs:963–969.)
 3. **Override / day pick:** one call each (`mog_set_override`, `mog_set_vendor_pick`).
-4. **Reset (nightly timer, or any old path):** `commitLogAndReset` (ResetLog.gs) first copies the database's counts and override settings back into the Sheet (`hydrateCountsFromDb_`). Then it runs **unchanged**: log, recap email, clear. Finally it tells the database the new cycle date, which clears overrides and starts fresh counts.
+4. **Close the cycle (the nightly timer at 3:30 AM, or the PWA's fallback if that failed):**
+   - Apps Script fetches the snapshot (`mog_sync_get_snapshot`) and runs `vendorItemsFromSnapshot_` for every vendor.
+   - It keeps the items with a suggested quantity. That **is** the order log, by the same rule `buildOrderCycleSnapshot_` uses.
+   - One call, `mog_sync_close_cycle`, writes those rows to `mog.order_log` and starts the new cycle (override off, picks cleared) in the same transaction. A second close of the same cycle is refused, so nothing is logged twice.
+   - Then the recap email is scheduled, built from `mog.order_log`, and the rows are appended to the Sheet's `LOG_ORDERS` as a backup (D10).
 
-Every reset path goes through `commitLogAndReset`: the PWA (MOGApi.gs:344), opening the Sheet (Core.gs:614) and the dashboard checkbox (Core.gs:714 → ResetLog.gs:350). Putting the copy-back there covers all of them.
+**On a switched store, every reset path goes to that same close:** the PWA's `/exec commitReset`, the Sheet's open trigger and the dashboard checkbox all call `closeCycleInDb_`. Stores not yet switched keep the Sheet reset unchanged.
+
+**`/exec` keeps working for a switched store, off Supabase.** Phones still on the old app call `/exec`. For a switched store, the count-path actions read and write Supabase through the same `OrderMath.gs` builders, never the Sheet: reset status, reset, dashboard, vendor items, saves, overrides and recap. So a store's backend can switch before its PWA does, and old phones see the same counts as new ones.
 
 **A phone that saves after the reset** has the old cycle date. Its counts land under that date, the phone gets `stale: true` back, and the new cycle stays clean. That's the late-drain bug from 07-12, fixed by construction.
 
@@ -132,8 +143,12 @@ Tables live in the private schema `mog`, which the Data API doesn't expose. **Th
 | `mog_set_vendor_pick(token, vendor, mult 0–7)` | PWA | token; 0 clears |
 | `mog_sync_push_catalog(slug, key, version, payload)` | Apps Script | store's sync key; an older push never overwrites a newer one |
 | `mog_sync_set_pins(slug, key, pin, masterPin)` | Apps Script | sync key; a real PIN change signs out every phone for that store |
-| `mog_sync_get_cycle(slug, key)` | Apps Script (copy-back) | sync key |
-| `mog_sync_put_counts(slug, key, cycleDate, rows)` | Apps Script (cutover import, old-phone mirror) | sync key |
+| `mog_sync_get_cycle(slug, key)` | Apps Script (connect / cutover checks) | sync key |
+| `mog_sync_get_snapshot(slug, key)` | Apps Script (cycle close, `/exec` on switched stores) | sync key |
+| `mog_sync_close_cycle(slug, key, closing, newCycle, newDow, rows, todaysLog)` | Apps Script | sync key; one transaction, and a second close of the same cycle is refused |
+| `mog_sync_get_log(slug, key, date)` | Apps Script (recap email) | sync key |
+| `mog_sync_set_override` / `mog_sync_set_vendor_pick` | Apps Script (`/exec` on switched stores) | sync key; same rules as the PWA versions (shared internally) |
+| `mog_sync_put_counts(slug, key, cycleDate, rows)` | Apps Script (cutover import, `/exec` saves on switched stores) | sync key; a null cycle date means the current cycle |
 | `mog_sync_set_state(slug, key, …)` | Apps Script (after reset, cutover) | sync key |
 | `mog.provision_store(slug)` → sync key | SQL Editor only | not exposed to the API at all |
 
@@ -147,19 +162,32 @@ Each step ships separately. KMs notice nothing until step 5 switches a store.
 
 1. ~~Speed test~~ (done 2026-10-15).
 2. Run `supabase/schema.sql` (Sebastian), which also drops the `speedtest` table, then `supabase/tests/smoke.sql`; every row should say PASS. The smoke test checks the logic. Locking the public key out is checked separately over the API.
-3. `OrderMath.gs`: move the two functions plus extract the builders, and refactor `api_getVendorItems_` / `api_getDashboard_compute_` to use them. `Sync.gs` gets the catalog builder and `test_supabaseParity()`, both read-only. **Built and gated 2026-10-15 (`node tests/run_all.js`).** Deploy with `--redeploy`, then run `test_supabaseParity` on a store to check the roster rule live.
-4. `Sync.gs` network half: push on save (hooked after `webedit_call` dispatches, Editor.gs:357, since every web-editor action runs through it), PIN push, `setupSupabase()` (Admin.gs), plus the copy-back in `commitLogAndReset`. Inactive until a store's Script Property `MOG_BACKEND` = `supabase`.
-5. PWA Supabase path behind `stores.json` `backend`. Canary rprfo: provision → `setupSupabase()` → parity test → nightly timer → flip after a reset, before counting starts → smoke test → next store.
+3. `OrderMath.gs`: move the two functions plus extract the builders, and refactor `api_getVendorItems_` / `api_getDashboard_compute_` to use them. `Sync.gs` gets the catalog builder and `test_supabaseParity()`, both read-only. **Done 2026-10-15:** gated by `node tests/run_all.js`, canaried on rprfo (live parity PASS), then deployed to all 10 stores + template.
+4. **Step 4, server side (inactive until a store connects):**
+   - Schema v2: `mog.order_log`, the cycle close, and sync versions of the override calls.
+   - `Sync.gs` network half:
+     - the catalog push after each web-editor save, fired by the editor as a separate background request so saves don't slow down (`webedit_call`, Editor.gs:357, flags which calls changed something)
+     - a background push after Sheet-dialog edits, and the PIN push
+     - the nightly timer and the cycle close
+     - the **Connect to Supabase** and **Switch counting to Supabase** menu items
+   - `/exec` count-path handlers on Supabase for switched stores.
+5. **Step 5:** the PWA reads and writes Supabase directly, behind `stores.json` `backend`, rprfo first. This is when KMs feel the speedup.
+6. **Step 6:** the web editor reads and writes the catalog in Supabase, and recipients and order history move too. The Sheet then holds only the script and the nightly backup (D9's end state).
 
-**Cutover timing:** switch a store right after its reset, when column E is empty, so nothing needs importing. Phones still running the old PWA keep calling `/exec saveOnHand` until they auto-update. For switched stores, that call mirrors into the database (`mog_sync_put_counts`) so no count gets lost.
+**Cutover:** **Switch counting to Supabase** imports the current column-E counts and override settings once, then `/exec` serves that store from Supabase. Do it right after a reset, when column E is empty, and there's nothing to import.
 
-**Rollback (per store):** set `backend` back to `exec` in `stores.json`, run `hydrateCountsFromDb_()` once (today's counts go back into column E), and clear `MOG_BACKEND`. Build the copy-back first; it's both the nightly path and the rollback.
+**Rollback (per store, emergency only):** **Switch back to the Sheet** copies the current cycle's counts, override settings and cycle date into the Sheet once, then clears `MOG_BACKEND`; `/exec` serves from the Sheet again. It's the only path that writes counts to the Sheet.
 
 ## 9. Open items
 
 - **VERIFY:** nobody reads the raw Sheet's vendor tabs or HOME dashboard during the day (they'll show blank counts).
 - **VERIFY:** no store counts after ~3:30 AM (nightly reset time).
 - **VERIFY (parity test):** the roster rule in §5.
-- `getRecapData` / manual `emailRecap` read column E: run the copy-back first, or build locally (the PWA already has `buildRecapLocally_`). Decide in step 5.
-- History views and recipients stay on `/exec` (rare, not on the counting path).
+- **VERIFY (measure):** how long a catalog push takes (`test_supabasePushTiming` on rprfo). It runs in the background either way, but a slow one delays phones seeing an edit.
+- History views on `/exec` read the Sheet's `LOG_ORDERS` backup until step 5/6 moves them to `mog.order_log`. Recipients stay on `/exec` until step 6.
+- **Intended differences** after a store switches (recorded so nobody "fixes" them back):
+  - **A duplicated pick-path row** (same vendor + item twice) shares one count in Supabase. The Sheet kept a separate On Hand per row, and the app could only ever write the last row.
+  - **Counts stay with their item, not their row.** If a vendor's list changes mid-cycle, the Sheet's column E stayed put by position and could land on a different item; Supabase keys counts by item.
+  - **`/exec saveOnHand` on a switched store** takes the vendor name as sent, without a lookup; the app always sends the dashboard's exact name. It saves into Supabase's current cycle, so an old-app phone that queued counts offline overnight could add them to the new day. The new PWA (step 5) sends its cycle date and can't.
+- **Proof for step 4** (`node tests/run_all.js`): `supabase_step4` drives the same 150 randomized stores through the real `doPost` on the Sheet and on a fake Supabase. Answers are identical before and after every write. The close logs what `buildOrderCycleSnapshot_` would and touches only `LOG_ORDERS`. 9 planted defects are all caught.
 - Health Check: add "catalog in sync" (Sheet hash vs pushed version) and "nightly timer installed".

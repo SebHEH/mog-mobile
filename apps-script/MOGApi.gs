@@ -189,7 +189,13 @@ function doPost(e) {
 
   try {
     let data;
-    switch (action) {
+    // The PWA never changes the catalog, so a count save's mutation-ts bump
+    // must not queue a background catalog push (Sync.gs).
+    MOG_SKIP_CATALOG_QUEUE_ = true;
+    // A store that counts in Supabase answers the count path from there
+    // (DbApi.gs). Other actions, and every other store, use the handlers below.
+    if (DB_API_ACTIONS[action] && supabaseConfig_().switched) data = dbApiDispatch_(action, payload);
+    if (data === undefined) switch (action) {
       case 'ping':             data = api_ping_(authType);              break;
       case 'getResetStatus':   data = api_getResetStatus_();            break;
       case 'commitReset':      data = api_commitReset_();               break;

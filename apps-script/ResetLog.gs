@@ -318,6 +318,20 @@ function resetOnHandAllVendors() {
   const ui  = SpreadsheetApp.getUi();
   const ss  = SpreadsheetApp.getActiveSpreadsheet();
   const tz  = ss.getSpreadsheetTimeZone();
+  MOG_SKIP_CATALOG_QUEUE_ = true;   // a reset doesn't change the catalog
+
+  // A store that counts in Supabase closes the cycle there (Sync.gs). This
+  // manual close works even if today's cycle already closed (a same-day redo).
+  if (supabaseConfig_().switched) {
+    const go = ui.alert('Close the cycle now?',
+      'This store counts in Supabase. This logs the current counts to Order History, emails the ' +
+      'recap, and starts a fresh cycle.\n\nMake sure you have already placed your orders.\n\nContinue?',
+      ui.ButtonSet.YES_NO);
+    if (go !== ui.Button.YES) return;
+    const r = closeCycleInDb_({ sameDay: true });
+    ui.alert('Cycle closed', r.rowsLogged + ' item(s) logged for ' + r.orderDate + '.', ui.ButtonSet.OK);
+    return;
+  }
 
 
 

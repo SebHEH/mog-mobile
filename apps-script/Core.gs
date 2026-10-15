@@ -248,13 +248,33 @@ function getServerMutationTs_() {
   }
 }
 
+// Supabase catalog sync (Sync.gs) hangs off this function, because every
+// edit already calls it:
+//   MOG_MUTATED_            set below; webedit_call reads it to tell the web
+//                           editor page "this call changed something".
+//   MOG_SKIP_CATALOG_QUEUE_ set by doPost (the PWA never changes the catalog),
+//                           by webedit_call (the page pushes the catalog
+//                           itself), and by resets and the nightly run, so none
+//                           of them queues a background push.
+// Plain globals: Apps Script resets them at the start of every execution.
+let MOG_MUTATED_ = false;
+let MOG_SKIP_CATALOG_QUEUE_ = false;
+
 function bumpServerMutationTs_() {
+  MOG_MUTATED_ = true;
   try {
     PropertiesService.getDocumentProperties()
       .setProperty(SERVER_MUT_TS_KEY, String(Date.now()));
   } catch (e) {
     // Non-fatal: PropertiesService rate-limited or down. The cache will
     // still self-invalidate via TTL within 5 minutes.
+  }
+  if (!MOG_SKIP_CATALOG_QUEUE_) {
+    // A connected store queues ONE background catalog push for edits that
+    // don't come through the web editor (Sheet dialogs, Recalibrate Vendor
+    // Pars, Admin Reset). A sync hiccup must never fail the edit itself; the
+    // nightly push covers anything missed.
+    try { if (supabaseConfig_().connected) scheduleCatalogPush_(); } catch (e) { /* nightly covers it */ }
   }
 }
 
@@ -510,6 +530,13 @@ function onOpen(e) {
       .addItem("    Audit Vendor Cadence",   "showVendorCadenceAuditSidebar")
       .addItem("    Sync Vendor Multiplier Formulas","syncVendorMultiplierFormulasMenu_")
       .addItem("    Place Backup Vendors on Tabs","syncEligibleVendorsToPickPath")
+      .addSeparator()
+      // Supabase (Sync.gs, docs/MOG_SupabaseMigration.md): connect, then
+      // switch counting; the rollback is for emergencies only.
+      .addItem("    Connect to Supabase",           "connectSupabase")
+      .addItem("    Switch counting to Supabase",   "switchCountingToSupabase")
+      .addItem("    Switch back to the Sheet",      "switchBackToSheet")
+      .addSeparator()
       .addItem("    Clear Config (reset for setup)", "clearMobileApiConfig"))
     .addToUi();
 }
@@ -599,6 +626,11 @@ function dailyResetOnOpen_() {
     const oe = ss.getSheetByName(SHEET_ORDER_ENTRY);
     if (!oe) return;
     const tz = ss.getSpreadsheetTimeZone();
+
+    // A store that counts in Supabase closes its cycle there (the nightly
+    // run, or the app's own fallback), so opening the Sheet does nothing.
+    if (supabaseConfig_().switched) return;
+    MOG_SKIP_CATALOG_QUEUE_ = true;   // a reset doesn't change the catalog
 
     // New-day detection lives in getResetStaleness_ (Core). Stale = never
     // reset, or last reset is before today. If already reset today, this

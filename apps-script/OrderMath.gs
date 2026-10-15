@@ -477,3 +477,92 @@ function dashboardFromSnapshot_(inputs) {
     }
   });
 }
+
+
+// ---------------------------------------------------------------------------
+// Cycle close and recap, from a snapshot (added 2026-10-15, step 4).
+// A store that has switched to Supabase closes its cycle and builds its recap
+// from these, with the SAME rules the Sheet path uses, so switching changes
+// where the data lives, not what gets logged or emailed.
+// ---------------------------------------------------------------------------
+
+// The order log for the cycle in `inputs`: every vendor (A-Z), its items with
+// a suggested qty > 0, in count-list order. The rule buildOrderCycleSnapshot_
+// (ResetLog.gs) applies to the Sheet, including backup vendors.
+// Rows: { vendor, id, name, pack, area, onHandPrev, qty } (onHandPrev 0 when
+// nothing was entered, as in the Sheet log).
+function orderLogRowsFromInputs_(inputs) {
+  const rows = [];
+  for (const vendor of inputs.vendorList) {
+    const result = vendorItemsFromSnapshot_(inputs, vendor);
+    for (const it of result.items) {
+      if (it.suggestedQty == null || it.suggestedQty <= 0) continue;
+      rows.push({
+        vendor:     vendor,
+        id:         it.id,
+        name:       it.name,
+        pack:       it.pack,
+        area:       it.storageArea,
+        onHandPrev: (it.onHand === null ? 0 : it.onHand),
+        qty:        it.suggestedQty
+      });
+    }
+  }
+  return rows;
+}
+
+
+// The recap's sections (the in-app full order list and the manual email), with
+// the rules of buildRecapSections_ (Recap.gs): the requested vendors that
+// exist, or every vendor whose EFFECTIVE multiplier is > 0 (Emergency
+// Override-aware); a vendor's lines are its items with a suggested qty > 0;
+// vendors with no lines are left out.
+function recapSectionsFromInputs_(inputs, requestedVendors) {
+  let vendorsToCheck;
+  if (requestedVendors && requestedVendors.length) {
+    const known = new Set(inputs.vendorList);
+    vendorsToCheck = requestedVendors.filter(function (v) { return known.has(v); });
+  } else {
+    vendorsToCheck = inputs.vendorList.filter(function (v) {
+      return vendorDayMultiplier_(inputs.vendorMults, v, inputs.dayOfWeek,
+                                  inputs.emergencyOverride, inputs.vendorOverrides) > 0;
+    });
+  }
+
+  const sections = [];
+  let totalItems = 0;
+  for (const vendor of vendorsToCheck) {
+    const result = vendorItemsFromSnapshot_(inputs, vendor);
+    const lines = result.items
+      .filter(function (it) { return it.suggestedQty != null && it.suggestedQty > 0; })
+      .map(function (it) {
+        return { name: it.name, pack: it.pack, onHand: it.onHand, qty: it.suggestedQty, area: it.storageArea };
+      });
+    if (lines.length) {
+      sections.push({ vendor: vendor, itemCount: lines.length, lines: lines });
+      totalItems += lines.length;
+    }
+  }
+  return { sections: sections, totalItems: totalItems, cycleDate: inputs.dateStr };
+}
+
+
+// Recap sections from logged rows ({ vendor, name, pack, area, onHandPrev,
+// qty }, in logged order): the rules of buildRecapFromLog_ (Recap.gs). Rows
+// without a vendor or with qty <= 0 are skipped; vendors appear in the log's
+// order.
+function recapFromLogRows_(rows, orderDate) {
+  const byVendor = new Map();
+  let totalItems = 0;
+  for (const r of rows) {
+    if (!r.vendor || !(r.qty > 0)) continue;
+    if (!byVendor.has(r.vendor)) byVendor.set(r.vendor, []);
+    byVendor.get(r.vendor).push({ name: r.name, pack: r.pack, onHand: r.onHandPrev, qty: r.qty, area: r.area || '' });
+    totalItems++;
+  }
+  const sections = [];
+  byVendor.forEach(function (lines, vendor) {
+    sections.push({ vendor: vendor, itemCount: lines.length, lines: lines });
+  });
+  return { sections: sections, totalItems: totalItems, cycleDate: orderDate };
+}

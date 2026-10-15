@@ -36,6 +36,7 @@ class FakeRange {
     Object.assign(this, { sheet, row, col, numRows, numCols });
   }
   getValues() {
+    if (this.sheet.onRead) this.sheet.onRead();   // a live formula (e.g. a vendor tab's spill)
     const book = this.sheet.book;
     book.reads.calls++;
     book.reads.cells += this.numRows * this.numCols;
@@ -54,16 +55,38 @@ class FakeRange {
     return out;
   }
   getValue() { return this.getValues()[0][0]; }
+  setValues(vals) {
+    if (!Array.isArray(vals) || vals.length !== this.numRows || vals.some(r => !Array.isArray(r) || r.length !== this.numCols)) {
+      throw new Error('fake setValues: data is ' + (vals && vals.length) + ' rows, range is ' + this.numRows + 'x' + this.numCols);
+    }
+    const rows = this.sheet.rows;
+    for (let r = 0; r < this.numRows; r++) {
+      while (rows.length < this.row + r) rows.push([]);
+      const line = rows[this.row - 1 + r] || (rows[this.row - 1 + r] = []);
+      for (let c = 0; c < this.numCols; c++) line[this.col - 1 + c] = vals[r][c];
+    }
+    this.sheet.book.writes.push({ sheet: this.sheet.name, row: this.row, col: this.col, numRows: this.numRows, numCols: this.numCols });
+    return this;
+  }
+  setValue(v) { return this.setValues([[v]]); }
+  clearContent() {
+    return this.setValues(Array.from({ length: this.numRows }, () => Array(this.numCols).fill('')));
+  }
 }
 
 class FakeSheet {
   constructor(book, name, rows) { Object.assign(this, { book, name, rows }); }
   getName() { return this.name; }
   getLastRow() {
+    if (this.onRead) this.onRead();   // a spill is already current when the size is asked for
     for (let r = this.rows.length - 1; r >= 0; r--) {
       if ((this.rows[r] || []).some(v => !isEmpty(v))) return r + 1;
     }
     return 0;
+  }
+  deleteRows(start, n) {
+    this.rows.splice(start - 1, n);
+    this.book.writes.push({ sheet: this.name, deleteRows: start, count: n });
   }
   getRange(a, b, c, d) {
     if (typeof a === 'string') {
@@ -77,11 +100,18 @@ class FakeSheet {
 
 // Freezes zero-arg `new Date()` and Date.now() inside a context; every
 // argument form is forwarded untouched so an Invalid Date stays invalid.
-function clockShim(fixMs) {
-  return 'var __R=Date,__FIX=' + Number(fixMs) + ';' +
-    'function __D(){if(!(this instanceof __D))return new __R(__FIX).toString();' +
-    'return arguments.length?Reflect.construct(__R,arguments):new __R(__FIX);}' +
-    '__D.prototype=__R.prototype;__D.now=function(){return __FIX;};__D.UTC=__R.UTC;__D.parse=__R.parse;Date=__D;';
+//
+// advancing: "now" moves forward 1 ms per call instead of standing still.
+// Code that stamps Date.now() as a cache key (bumpServerMutationTs_) needs
+// time to move, or every bump writes the same key and a stale cache entry
+// keeps being served, which real Apps Script never does. 1 ms per call never
+// changes the date.
+function clockShim(fixMs, advancing) {
+  const now = advancing ? '(__FIX+(__T++))' : '__FIX';
+  return 'var __R=Date,__FIX=' + Number(fixMs) + ',__T=0;' +
+    'function __D(){if(!(this instanceof __D))return new __R(' + now + ').toString();' +
+    'return arguments.length?Reflect.construct(__R,arguments):new __R(' + now + ');}' +
+    '__D.prototype=__R.prototype;__D.now=function(){return ' + now + ';};__D.UTC=__R.UTC;__D.parse=__R.parse;Date=__D;';
 }
 
 // Apps Script's Utilities.formatDate, for the patterns MOG uses. Fixture dates
@@ -99,15 +129,19 @@ function formatDate(d, tz, pattern) {
 }
 
 // A fresh context over a store spec: { now, sheets: {name: rows}, scriptProps }.
-function makeContext(spec) {
+// Each context gets its OWN copy of every grid, so writes in one never leak
+// into another built from the same spec. `extra` adds or replaces globals
+// (fake UrlFetchApp, ScriptApp, stubs).
+function makeContext(spec, extra, opts) {
   const ctx = { console };
   vm.createContext(ctx);
-  vm.runInContext(clockShim(spec.now), ctx);
+  vm.runInContext(clockShim(spec.now, opts && opts.advancingClock), ctx);
 
   const reads = { calls: 0, cells: 0 };
-  const book = { reads, CtxDate: vm.runInContext('Date', ctx), sheets: new Map() };
+  const book = { reads, writes: [], CtxDate: vm.runInContext('Date', ctx), sheets: new Map() };
   for (const name of Object.keys(spec.sheets)) {
-    book.sheets.set(name, new FakeSheet(book, name, spec.sheets[name]));
+    const copy = spec.sheets[name].map(r => (Array.isArray(r) ? r.slice() : r));
+    book.sheets.set(name, new FakeSheet(book, name, copy));
   }
   book.addSheet = (name, rows) => book.sheets.set(name, new FakeSheet(book, name, rows));
   const ss = {
@@ -118,6 +152,7 @@ function makeContext(spec) {
 
   const store = m => ({
     getProperty: k => (m.has(k) ? m.get(k) : null),
+    getProperties: () => Object.fromEntries(m),
     setProperty: (k, v) => { m.set(k, String(v)); },
     deleteProperty: k => { m.delete(k); }
   });
@@ -136,8 +171,8 @@ function makeContext(spec) {
     CacheService: { getDocumentCache: () => cache, getScriptCache: () => cache },
     Utilities: { formatDate },
     Logger: { log: () => {} }
-  });
-  return { ctx, book };
+  }, extra || {});
+  return { ctx, book, scriptProps, docProps };
 }
 
 // Source text by revision (rev null = the working tree), read once per run.
