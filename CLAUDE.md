@@ -22,7 +22,7 @@ Replace the path here with the newest handoff at the end of each session that sh
 - **Deploy**:
   - PWA: GitHub Pages auto-deploys from `main`. Edit `template/` → run `python build.py` → commit + push.
   - Apps Script: `clasp` via `deploy.py` (at repo root, alongside `build.py`). Edit `apps-script/<file>` → run `python deploy.py` (bound-sidebar-only changes) or `python deploy.py --redeploy` (any MOGApi.gs / `api_*` change — bumps each store's web-app `/exec` URL too). Push reaches all 9 targets in ~30s; `--redeploy` adds ~3s/target.
-- **Build / test**: No CI yet. `python build.py --dry-run` previews PWA build. `python deploy.py --dry-run` previews Apps Script deploy (combine with `--redeploy` to preview the redeploy phase too). There are no automated tests — verification is manual (open the live URL, run an order).
+- **Build / test**: No CI yet. `python build.py --dry-run` previews PWA build. `python deploy.py --dry-run` previews Apps Script deploy (combine with `--redeploy` to preview the redeploy phase too). `node tests/run_all.js` runs the order-math gates: the real `.gs` code under Node, no dependencies (see `tests/README.md`). Run it before deploying any change to `OrderMath.gs`, the count/dashboard path in `MOGApi.gs`, or `Sync.gs`. Everything else is verified manually (open the live URL, run an order).
 
 ## Layer routing
 
@@ -33,6 +33,7 @@ Every change anchors to one of these layers. Pick the layer before drafting any 
 | **Hub** | `index.html`, `sw.js`, `manifest.json`, `stores.json` | Concept picker, manager mode, store registry. First thing a KM sees. |
 | **Per-store PWA** | `template/index.html`, `template/sw.js` | The store-facing app. `build.py` copies this to every `<slug>/` dir with deployment URLs injected. |
 | **Apps Script backend** | `apps-script/*.gs`, `apps-script/*.html`, `apps-script/appsscript.json` | Bound script that runs in each Sheet. Identical across all 9 deploy targets — per-store config lives in spreadsheet data, not code. |
+| **Supabase (in progress)** | `supabase/schema.sql`, `supabase/tests/` | Counts + Emergency Override settings move here so the PWA skips `/exec` while counting; the Sheet keeps the catalog and pushes it one way. Design record: `docs/MOG_SupabaseMigration.md` (read it before touching this layer). Schema changes are run by Sebastian in the SQL Editor. |
 | **Deploy infrastructure** | `build.py`, `deploy.py`, `apps-script/.clasp-targets.json` | How code reaches production. `.clasp-targets.json` holds both `scriptId` (for source push) and `deploymentId` (for web-app version bump) per target. `deploy.py --discover` finds deploymentIds on a fresh checkout. |
 | **Generated (do NOT edit)** | `rpr/`, `rprfo/`, `rpt/`, `rptfo/`, `rpfr/`, `rpfrf/`, `tnyt/`, `tnytf/` | Output of `build.py`. Overwritten on every build. |
 
@@ -155,6 +156,8 @@ mog-mobile/
 │   ├── Health.gs                Store Health Check — read-only diagnostic (getStoreHealthReport) + web fixes (runHealthFix).
 │   ├── Recap.gs                 Daily recap email (build + send) + recipients list in SETUP AB-AE (split from MOGApi.gs 2026-07-24).
 │   ├── Admin.gs                 Run-once admin/config fns (setupMobileApi, PINs, concept) + editor-run test fns (split from MOGApi.gs 2026-07-24).
+│   ├── OrderMath.gs             The order math + the PWA's two payload builders. Pure functions, run VERBATIM by the PWA too (gated by tests/).
+│   ├── Sync.gs                  Supabase sync, Sheet side: catalog builder + test_supabaseParity (read-only so far).
 │   ├── AdminReset.html          Admin reset modal.
 │   ├── ManageItems.html         Item editor modal (dual-host: Sheet dialog + web).
 │   ├── ManageVendors.html       Vendor editor modal (dual-host).
@@ -171,8 +174,13 @@ mog-mobile/
 │   ├── Styles.html              Shared modal design tokens + universal chrome (via include()).
 │   ├── appsscript.json          Manifest (timezone, OAuth scopes, webapp config).
 │   └── .clasp-targets.json      Slug → {scriptId, deploymentId} map for deploy.py.
+├── supabase/                    SUPABASE LAYER (in progress — see docs/MOG_SupabaseMigration.md).
+│   ├── schema.sql               Private `mog` schema + the public mog_* functions (the only way in).
+│   └── tests/                   smoke.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
+├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.
+│   ├── MOG_SupabaseMigration.md Design record for the count-path move to Supabase (decisions, ownership, rollout).
 │   └── MOG_SessionHandoff_*.md  Per-session handoffs (newest @-imported above).
 ├── .claude/
 │   └── skills/                  Repo-specific skills.

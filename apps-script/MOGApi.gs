@@ -20,8 +20,9 @@
  *     the api_* handlers, and the shared constants below. Recap + recipients
  *     live in Recap.gs; admin/config + test fns in Admin.gs (2026-07-24 split).
  *   - Reads MASTER_ITEMS, SETUP, LOG_ORDERS, and vendor tabs (On Hand col E
- *     + Item ID col M only — the order math is computed in code; see
- *     computeSuggestedQty_ / vendorDayMultiplier_).
+ *     + Item ID col M only). The order math and the two payloads the PWA
+ *     renders live in OrderMath.gs, which the PWA runs verbatim; this file
+ *     reads the Sheet and hands that file its inputs.
  *   - Writes vendor-tab On Hand (col E), LOG_ORDERS (append on submit), the
  *     reset-date + Emergency Override cells on ORDER_ENTRY, and the recap
  *     recipients list (SETUP AB-AE). Counting in the PWA and typing in the
@@ -533,308 +534,136 @@ function api_getDashboard_() {
 
 
 function api_getDashboard_compute_() {
+  // Reads the Sheet, then hands everything to buildDashboardPayload_
+  // (OrderMath.gs), the builder the PWA also runs from its Supabase snapshot.
   const active    = getActiveOrderDate_();
   const dateStr   = active.dateStr;
   const dayOfWeek = active.dayOfWeek;
 
-  const setup        = getSheet_(SHEET_SETUP);
-  const allVendors   = getVendorList();
-  const vendorMults  = readVendorMultipliers_(setup);
+  const setup         = getSheet_(SHEET_SETUP);
+  const allVendors    = getVendorList();
+  const vendorMults   = readVendorMultipliers_(setup);
   const vendorCutoffs = readVendorCutoffs_(setup);
-  const todaysLog    = getTodaysLogByVendor_(dateStr);
-  const itemCounts   = countActiveItemsByVendor_();
+  const todaysLog     = getTodaysLogByVendor_(dateStr);
+  const itemCounts    = countActiveItemsByVendor_();
   // Emergency Override: when on, show ALL vendors (not just today's delivery
   // vendors) so a KM can order from one that's off-schedule today.
   const emergencyOverride = readEmergencyOverride_();
+  const masterMeta        = readMasterItemMeta_();
+  const vendorOverrides   = readVendorOverrides_(setup);
+  const backupCounts      = countBackupItemsByVendor_(masterMeta);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // Shared read context for vendorOnHandSnapshot_ — built once so the per-vendor
-  // "to order" count reads MASTER_ITEMS / SETUP a single time, not per vendor.
-  const snapCtx = { masterMeta: readMasterItemMeta_(), vendorMults: vendorMults,
-                    emergencyOverride: emergencyOverride, dayOfWeek: dayOfWeek,
-                    vendorOverrides: readVendorOverrides_(setup) };
-  const backupCounts = countBackupItemsByVendor_(snapCtx.masterMeta);
-
-  const out = [];
-  for (const vendorName of allVendors) {
-    const mults = vendorMults.get(vendorName) || {};
-    // Skip non-delivery vendors only when override is off. Under override the
-    // whole list shows; the per-vendor screen (api_getVendorItems_) applies
-    // next-delivery coverage.
-    if (!emergencyOverride && (Number(mults[dayOfWeek]) || 0) <= 0) continue;
-
-    const meta        = VENDOR_META[vendorName] || {};
-    const itemCount   = itemCounts.get(vendorName) || 0;
-    const backupCount = backupCounts.get(vendorName) || 0;
-    const log         = todaysLog.get(vendorName);
-
-    let status       = 'not_started';
-    let sentAt       = null;
-    let reference    = null;
-    let toOrderCount = null;
-    let enteredCount = 0;
-
-    if (log) {
-      status       = 'sent';
-      sentAt       = log.sentAt;
-      reference    = log.reference;
-      toOrderCount = log.itemCount;
-      // A sent vendor implicitly has all items "entered" — primaries AND
-      // backups, matching the count screen's roster (the client denominator
-      // is itemCount + backupCount).
-      enteredCount = itemCount + backupCount;
-    } else {
-      const inProgress = vendorOnHandSnapshot_(vendorName, snapCtx);
-      enteredCount = inProgress.enteredCount;
-      if (inProgress.any) {
-        status       = 'in_progress';
-        toOrderCount = inProgress.toOrder;
-      }
-    }
-
-    // Cutoff priority: SETUP column AA (via vendorCutoffs map) → legacy
-    // VENDOR_META fallback (already merged in readVendorCutoffs_, but
-    // checked again here in case meta wasn't visible at read time) →
-    // null. Once all vendors have cutoffs entered in the sidebar,
-    // VENDOR_META should be empty and this falls through cleanly.
-    const cutoffFromSetup = vendorCutoffs.get(vendorName);
-    const cutoff = cutoffFromSetup || meta.cutoffTime || null;
-
-    out.push({
-      name:         vendorName,
-      itemCount:    itemCount,
-      backupCount:  backupCount,
-      cutoffTime:   cutoff,
-      status:       status,
-      sentAt:       sentAt,
-      reference:    reference,
-      toOrderCount: toOrderCount,
-      enteredCount: enteredCount
-    });
-  }
-
-  // Sort by cutoff (earliest first; null cutoffs last), then by name.
-  out.sort((a, b) => {
-    const at = a.cutoffTime || '99:99';
-    const bt = b.cutoffTime || '99:99';
-    if (at !== bt) return at.localeCompare(bt);
-    return a.name.localeCompare(b.name);
-  });
-
-  return {
-    date:      dateStr,
-    dayOfWeek: dayOfWeek,
-    location:  PropertiesService.getScriptProperties().getProperty(PROP_LOCATION) || 'Unknown',
+  return buildDashboardPayload_({
+    date:              dateStr,
+    dayOfWeek:         dayOfWeek,
+    location:          PropertiesService.getScriptProperties().getProperty(PROP_LOCATION) || 'Unknown',
     emergencyOverride: emergencyOverride,
-    vendors:   out
-  };
+    vendors:           allVendors,
+    vendorMults:       vendorMults,
+    vendorOverrides:   vendorOverrides,
+    masterMeta:        masterMeta,
+    itemCounts:        itemCounts,
+    backupCounts:      backupCounts,
+    todaysLog:         todaysLog,
+    // Cutoff priority: SETUP column AA (vendorCutoffs, which already merges the
+    // legacy VENDOR_META fallback), then VENDOR_META again in case the vendor
+    // wasn't visible at read time, then null.
+    cutoffFor: function (v) {
+      return vendorCutoffs.get(v) || (VENDOR_META[v] || {}).cutoffTime || null;
+    },
+    // A card's in-progress status comes from that vendor tab's own rows.
+    rosterFor: function (v) {
+      const sh = ss.getSheetByName(v);
+      return sh ? readVendorTabRoster_(sh) : null;
+    }
+  });
 }
 
 
 function api_getVendorItems_(payload, ctx) {
-  // Reads the vendor tab for On Hand + the item roster only.
+  // One vendor's count-screen payload. This function only READS: the vendor
+  // tab's roster (readVendorTabRoster_: On Hand col E + Item ID col M per row)
+  // and the context below. Building the payload (the order math, the skip
+  // rules, the sort) happens in buildVendorItemsPayload_ (OrderMath.gs), the
+  // same code the PWA runs from its Supabase snapshot, so the phone and this
+  // server can't disagree.
   //
-  // Vendor tab structure (per VENDOR_TAB constant + script comments):
-  //   E(5) = On Hand (user input)
-  //   M(13)= Item ID (hidden, formula-driven from SETUP pick path)
-  //   Data rows start at VENDOR_TAB.DATA_START_ROW (3).
-  //
-  // Those are the ONLY two columns this function consumes (the range read
-  // below spans A:M for simplicity, but only E and M are used). Everything
-  // else comes from code + canonical sources:
-  //   * On Hand lives on the vendor tab — that's where users enter counts
-  //     (manually in the sheet, or via this API for the mobile app). The
-  //     dashboard's "X / Y entered" counter reads vendor tab column E too.
-  //   * Item ID (M) defines WHICH items are on this vendor's order today
-  //     (a SORT/FILTER spill over SETUP's pick path DB, blank when H2=0).
-  //   * Name/pack come from MASTER_ITEMS!B/!E (via masterMeta) — the tab's
-  //     A/B columns are just XLOOKUPs into those same cells.
-  //   * par comes from MASTER_ITEMS!G (via masterMeta) — the tab's col-D
-  //     formula is the same XLOOKUP.
-  //   * Suggested Order Qty is computed here in code (par × day-multiplier −
-  //     on-hand, honoring the Use Multiplier flag) — a faithful replication
-  //     of the vendor tab's column F formula, which stays for the human view.
-  //   Keeping all of this in code makes it versioned, uniform across stores,
-  //   and portable off the sheet.
-  //
-  // Storage area / pick path order still come from SETUP's pick path DB
-  // because the vendor tab itself doesn't carry that metadata.
+  //   * Item ID (M) defines WHICH items are on this vendor's order today (a
+  //     SORT/FILTER spill over SETUP's pick path DB, blank when H2=0).
+  //   * On Hand (E) is the count entered, in the sheet or through the PWA.
+  //   * Name / pack / par / use-multiplier come from MASTER_ITEMS (masterMeta);
+  //     storage area + pick order from the pick path DB; the day multiplier
+  //     from SETUP's table + the active order date + the Emergency Override
+  //     settings (vendorDayMultiplier_). No vendor-tab formula is read.
   //
   // ctx (optional, ALL-OR-NOTHING): a shared read context for callers that
-  // loop over many vendors (buildRecapSections_) so the pick DB / MASTER /
-  // multiplier / override / cutoff reads happen once, not per vendor. When
-  // provided it MUST carry every field — { pickDb, vendorMults,
-  // emergencyOverride, dayOfWeek, masterMeta, cutoffs } — a partial ctx
-  // would silently mix fresh and stale reads. Single-vendor callers (the
-  // PWA dispatch) pass nothing and behave exactly as before.
+  // loop over many vendors (buildRecapSections_, api_getVendorItemsBulk_,
+  // buildOrderCycleSnapshot_) so the pick DB / MASTER / multiplier / override /
+  // cutoff reads happen once, not per vendor. When provided it MUST carry
+  // every field: { pickDb, vendorMults, emergencyOverride, vendorOverrides,
+  // dayOfWeek, masterMeta, cutoffs }. A partial ctx would silently mix fresh
+  // and stale reads. Single-vendor callers (the PWA dispatch) pass nothing.
   const vendor = normalizeVendorOrThrow_(payload.vendor);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(vendor);
   if (!sh) throw new Error('Vendor tab not found: ' + vendor);
 
-  const lastRow = sh.getLastRow();
-  if (lastRow < VENDOR_TAB.DATA_START_ROW) {
+  const roster = readVendorTabRoster_(sh);
+  if (!roster) {
     return { vendor: vendor, cutoffTime: null, items: [] };
   }
 
-  // Pick path metadata — area + ordering — keyed by item ID
-  const setup = getSheet_(SHEET_SETUP);
-  const pickInfo = new Map();
-  for (const r of (ctx ? ctx.pickDb : readPickDb_(setup))) {
-    if (String(r[0] || '').trim() !== vendor) continue;
-    const id = String(r[1] || '').trim();
-    if (!id) continue;
-    pickInfo.set(id, {
-      area:       String(r[3] || '').trim(),
-      areaOrder:  Number(r[4]) || 999,
-      shelfOrder: Number(r[5]) || 999999
-    });
-  }
-
-  // Pull E:M for every data row — On Hand (E) and Item ID (M) are the only
-  // vendor-tab cells this path needs (name/par/suggested come from MASTER_ITEMS
-  // + code below). Narrowed from A:M to skip 4 unused leading columns.
-  const numRows  = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
-  const startCol = VENDOR_TAB.ON_HAND_COL;             // E (5)
-  const data     = sh.getRange(VENDOR_TAB.DATA_START_ROW, startCol, numRows, VENDOR_TAB.ITEM_ID_COL - startCol + 1).getValues();
-
-  // Day-of-week multiplier — computed in code (was: read from the vendor tab's
-  // H2 formula). H2 = IF(AD2=TRUE, <emergency>, <today's SETUP mult>); we now
-  // derive it from the SETUP multiplier table + the active order date + the
-  // Emergency Override flag, so the order math is fully in code (no vendor-tab
-  // formula read). Under Emergency Override we improve on the sheet's flat 1x
-  // by bridging to the vendor's next scheduled delivery (see
-  // vendorDayMultiplier_). The in-Sheet H2 formula is unchanged and still
-  // drives the human view.
+  const setup             = getSheet_(SHEET_SETUP);
+  const pickDb            = ctx ? ctx.pickDb : readPickDb_(setup);
   const vendorMults       = ctx ? ctx.vendorMults : readVendorMultipliers_(setup);
   const emergencyOverride = ctx ? ctx.emergencyOverride : readEmergencyOverride_();
   const dayOfWeek         = ctx ? ctx.dayOfWeek : getActiveOrderDate_().dayOfWeek;
   const vendorOverrides   = ctx ? ctx.vendorOverrides : readVendorOverrides_(setup);
-  const dayMult = vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride, vendorOverrides);
+  const masterMeta        = ctx ? ctx.masterMeta : readMasterItemMeta_();
 
-  // Map<itemId, {useMult, par, name, pack}> from MASTER_ITEMS. par (col G) is
-  // the canonical per-item base par; useMult (col M) gates the day multiplier;
-  // name/pack (cols B/E) are the display fields the tab's A/B XLOOKUPs mirror.
-  // Consulted per-item below.
-  const masterMeta = ctx ? ctx.masterMeta : readMasterItemMeta_();
-
-  const items = [];
-  for (const r of data) {
-    const onHandRaw = r[0];                                  // E (range starts at E)
-    const itemId    = String(r[VENDOR_TAB.ITEM_ID_COL - startCol] || '').trim(); // M, relative to E
-    if (!itemId) continue;
-
-    // Name/pack from MASTER_ITEMS (via masterMeta), not the tab's A/B — those
-    // columns are XLOOKUP(id, MASTER!A, MASTER!B / MASTER!E) spills, so this
-    // is the same text from its canonical source. No MASTER row, or a blank
-    // name, skips the row — exactly the old `A === ""` skip (the tab's
-    // XLOOKUP falls back to "" on a missing id).
-    const meta = masterMeta.get(itemId);
-    if (!meta || !meta.name) continue;
-    const itemName = meta.name;
-    const pack     = meta.pack;
-
-    // Secondary/backup vendor: this item's PRIMARY is a different vendor
-    // (MASTER col C). It's still fully orderable from here — a backup exists
-    // precisely so you can order it when the primary isn't delivering today or
-    // is out of stock. The flag only drives a "Backup · <primary>" badge in the
-    // PWA so the KM knows this isn't the default source. On-Hand is per vendor
-    // tab, so counting it here (and not on the primary) is what routes the
-    // order to this vendor — nothing is double-counted unless the same item is
-    // deliberately counted on two tabs the same day.
-    const isSecondary = !!meta.primaryVendor &&
-      meta.primaryVendor.toLowerCase() !== vendor.toLowerCase();
-
-    const onHand = (onHandRaw === '' || onHandRaw === null)
-      ? null
-      : (isNaN(Number(onHandRaw)) ? null : Number(onHandRaw));
-
-    // targetPar = par (MASTER_ITEMS col G) * day multiplier (H2), honoring the
-    // per-item Use Multiplier flag. Surfacing it lets the PWA recompute live
-    // suggestions as the user types (computeSuggested).
-    //
-    // par now comes from MASTER_ITEMS (via masterMeta) rather than the vendor
-    // tab's column-D formula — the col-D value is itself just an XLOOKUP into
-    // MASTER_ITEMS!G, so this is the same number from its canonical source.
-    // (meta is guaranteed non-null here — rows without a MASTER entry were
-    // skipped above.)
-    //
-    // Use Multiplier: items flagged FALSE in MASTER_ITEMS column M skip the
-    // day multiplier (effectiveMult = 1) — a par already sized for the cycle.
-    const parNum  = meta.par;
-    const useMult = meta.useMult;
-    const effectiveMult = useMult ? dayMult : 1;
-    // The dayMult > 0 term mirrors computeSuggestedQty_'s gate exactly: when the
-    // vendor isn't delivering (dayMult 0) the server suggests nothing REGARDLESS
-    // of useMult, so targetPar has to be null too. Without it, a useMult=false
-    // item kept a non-null targetPar and the PWA's computeSuggested — which
-    // prefers targetPar over the server's suggestedQty so it can recompute live
-    // as the KM types — would show an order quantity the recap email and order
-    // log never record.
-    const targetPar = (!isNaN(parNum) && dayMult > 0 && effectiveMult > 0)
-      ? parNum * effectiveMult
-      : null;
-
-    // Suggested order qty — computed in code (was: read from the vendor tab's
-    // column F formula) via the shared computeSuggestedQty_ helper, the single
-    // source of this math across the count, order-log, and dashboard paths.
-    const suggested = computeSuggestedQty_(parNum, useMult, dayMult, onHand);
-
-    const pi = pickInfo.get(itemId) || { area: '', areaOrder: 999, shelfOrder: 999999 };
-
-    items.push({
-      id:            itemId,
-      name:          itemName,
-      pack:          pack,
-      par:           (!isNaN(parNum) ? parNum : 0),
-      targetPar:     targetPar,
-      onHand:        onHand,
-      suggestedQty:  suggested,
-      secondary:     isSecondary,
-      primaryVendor: meta.primaryVendor,
-      storageArea:   pi.area,
-      _areaOrder:    pi.areaOrder,
-      _shelfOrder:   pi.shelfOrder
-    });
-  }
-
-  // Vendor tab is already in pick-path order via its SORT/FILTER source
-  // formula, but sort defensively in case anything's drifted.
-  items.sort((a, b) => {
-    if (a._areaOrder !== b._areaOrder) return a._areaOrder - b._areaOrder;
-    if (a._shelfOrder !== b._shelfOrder) return a._shelfOrder - b._shelfOrder;
-    return a.name.localeCompare(b.name);
-  });
-  for (const it of items) { delete it._areaOrder; delete it._shelfOrder; }
-
-  // Cutoff: same priority as in getDashboard — SETUP column AA first,
-  // then legacy VENDOR_META, then null. Read inline rather than via the
-  // shared helper because we only need one vendor's value here.
+  // Cutoff: same priority as the dashboard. SETUP column AA first, then the
+  // legacy VENDOR_META, then null. A cutoff lookup error must never break the
+  // items response; the items are the important payload.
   let cutoff = null;
   try {
     const cutoffMap = ctx ? ctx.cutoffs : readVendorCutoffs_(getSheet_(SHEET_SETUP));
     cutoff = cutoffMap.get(vendor) || null;
   } catch (e) {
-    // If SETUP read fails for any reason, fall through to VENDOR_META.
-    // We never want a cutoff lookup error to break the whole vendor
-    // items response — items are the important payload.
+    // fall through to VENDOR_META
   }
   if (!cutoff) {
     cutoff = (VENDOR_META[vendor] || {}).cutoffTime || null;
   }
 
-  // Override context for the PWA count screen: `emergencyOverride` gates the
-  // day-picker card, `overrideMult` (0 = no pick) highlights the chosen chip
-  // and drives the "sized to last until <day> xN" note on count + review.
-  const pickedMult = (emergencyOverride && vendorOverrides && vendorOverrides.get(vendor) > 0)
-    ? Number(vendorOverrides.get(vendor)) : 0;
-
-  return {
+  return buildVendorItemsPayload_(roster, {
     vendor:            vendor,
-    cutoffTime:        cutoff,
+    pickDb:            pickDb,
+    vendorMults:       vendorMults,
     emergencyOverride: emergencyOverride,
-    overrideMult:      pickedMult,
-    items:             items
-  };
+    vendorOverrides:   vendorOverrides,
+    dayOfWeek:         dayOfWeek,
+    masterMeta:        masterMeta,
+    cutoff:            cutoff
+  });
+}
+
+
+// [{ id, onHandRaw }] for each data row of a vendor tab, in tab order, or null
+// when the tab has no data rows. One range read spanning E (On Hand) through M
+// (Item ID); the columns in between are the human view and aren't used. id is
+// trimmed; onHandRaw is the raw cell value (the builders decide what counts).
+function readVendorTabRoster_(sh) {
+  const lastRow = sh.getLastRow();
+  if (lastRow < VENDOR_TAB.DATA_START_ROW) return null;
+  const numRows  = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
+  const startCol = VENDOR_TAB.ON_HAND_COL;                 // E (5)
+  const data     = sh.getRange(VENDOR_TAB.DATA_START_ROW, startCol, numRows,
+                               VENDOR_TAB.ITEM_ID_COL - startCol + 1).getValues();
+  const ID_IDX   = VENDOR_TAB.ITEM_ID_COL - startCol;      // M, relative to E
+  return data.map(function (r) {
+    return { id: String(r[ID_IDX] || '').trim(), onHandRaw: r[0] };
+  });
 }
 
 
@@ -1265,86 +1094,8 @@ function readVendorOverrides_(setup) {
 }
 
 
-function vendorDayMultiplier_(vendorMults, vendor, dayOfWeek, emergencyOverride, vendorOverrides) {
-  // Effective vendor multiplier for `vendor` on `dayOfWeek` — computed in code
-  // to replace reading the vendor tab's H2 formula. Mirrors that formula:
-  //   H2 = IF(AD2=TRUE, <emergency>, <today's mult from SETUP S:Y>)
-  //
-  // Normal (override off): today's multiplier from the SETUP S:Y table; 0 means
-  // the vendor doesn't deliver today (items then blank, same as H2=0).
-  //
-  // Emergency Override (AD2 on): a flat 1x doesn't help a vendor that only
-  // delivers some days (a 1-day order won't bridge the gap to its next drop).
-  //
-  // A KM PICK wins first (SETUP!AF via `vendorOverrides`): the auto-bridge
-  // below derives coverage from the NORMAL schedule, which is exactly what's
-  // abnormal in an emergency (a Fri+Sat vendor ordered Thursday is sized to
-  // last one day — but if Saturday's drop is cancelled it must last seven).
-  // The PWA's day picker asks "when is this vendor's next delivery after this
-  // one?" and stores the frozen day count; that number is authoritative.
-  //
-  // No pick → "bridge to the next real delivery": scan forward from today
-  // (inclusive) for the first day with mult > 0 and use that day's multiplier,
-  // so an off-schedule emergency order covers what the next scheduled drop
-  // would bring. If today is itself a delivery day, that's today's own mult
-  // (override is a no-op for that vendor). An all-zero row (vendor never
-  // delivers / misconfigured) falls back to 1 so the KM can still order.
-  //
-  // The pick is checked INSIDE the override branch on purpose — SETUP!AF is
-  // cleared whenever AD2 clears, and the in-Sheet H2 formula nests the same
-  // way (vendorTabH2Formula_), so code and sheet stay structurally identical.
-  const m = vendorMults.get(vendor);
-  if (!m) return 0;
-  const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const start = DAYS.indexOf(dayOfWeek);
-  if (start < 0) return Number(m[dayOfWeek]) || 0;   // unknown day label — defensive
-  if (!emergencyOverride) return Number(m[DAYS[start]]) || 0;
-  const picked = vendorOverrides ? Number(vendorOverrides.get(vendor)) : NaN;
-  if (!isNaN(picked) && picked > 0) return picked;
-  for (let i = 0; i < 7; i++) {
-    const mv = Number(m[DAYS[(start + i) % 7]]) || 0;
-    if (mv > 0) return mv;
-  }
-  return 1;   // never-delivers row: let the KM still order something under override
-}
-
-
-// Suggested order qty for one item — THE single source of the count/order math,
-// replacing the vendor-tab column-F formula. Called by api_getVendorItems_ (the
-// PWA count screen, the recap email, and — via buildOrderCycleSnapshot_ — the
-// order log) and by vendorOnHandSnapshot_ (dashboard "to order" counts), so the
-// math lives in one place and can't drift. Faithful replication of the live F
-// formula:
-//   F = IF(name="" OR H2=0 OR onHand="", "",
-//          qty = ROUNDUP(par*(useMult?H2:1) - onHand); qty<=0 ? "" : qty)
-// Inputs: par = MASTER_ITEMS!G, useMult = MASTER_ITEMS!M, dayMult = H2 (from
-// vendorDayMultiplier_), onHand = vendor-tab col E (null when nothing entered).
-// Returns a positive integer, or null for every blank case (vendor not
-// delivering today → dayMult 0; no On Hand entered; already at/above par).
-function computeSuggestedQty_(par, useMult, dayMult, onHand) {
-  if (isNaN(par) || dayMult <= 0 || onHand === null || onHand === undefined) return null;
-  const effectiveMult = useMult ? dayMult : 1;
-  if (effectiveMult <= 0) return null;
-  // ORDERS ALWAYS ROUND UP — never down. A partial unit short is a whole unit
-  // ordered, because you can't buy half a case. The only thing corrected here
-  // is binary-float noise: `par * effectiveMult - onHand` is float arithmetic,
-  // so a shortfall that is EXACTLY 1 in decimal can land at 1.0000000000000002
-  // (e.g. par 1.1 x 2 - 1.2) and a bare Math.ceil would order 2 for a phantom
-  // 2e-16 of a case.
-  //
-  // The epsilon is the right tool for that, NOT rounding to N decimals: it
-  // cancels noise (a few ULP, ~1e-13 at these magnitudes) while leaving every
-  // GENUINE fraction intact, so a real shortfall of 1.0001 still orders 2. A
-  // fixed 3dp round would have shaved that to 1 — an under-order, which this
-  // system must never do. 1e-9 sits ~1000x above float noise and ~100,000x
-  // below the smallest fraction anyone could enter.
-  //
-  // The PWA's ceilQty_ and ManageItems.html's ppCeil_ use this same expression
-  // and MUST stay identical — if they drift, the review screen the KM approves
-  // disagrees with the recap email and the order log.
-  const qty = Math.ceil((par * effectiveMult - onHand) - 1e-9);
-  return qty > 0 ? qty : null;
-}
+// vendorDayMultiplier_ and computeSuggestedQty_ moved to OrderMath.gs on
+// 2026-10-15: the PWA runs that file verbatim, so the order math has one copy.
 
 
 // SETUP column AA holds cutoff times paired by row with the vendor names
@@ -1455,54 +1206,6 @@ function countActiveItemsByVendor_() {
     map.set(v, (map.get(v) || 0) + 1);
   }
   return map;
-}
-
-
-function vendorOnHandSnapshot_(vendor, ctx) {
-  // Returns { any, toOrder, enteredCount } for the dashboard's per-vendor
-  // status detection.
-  //   any          — at least one On Hand value entered for this vendor today
-  //   toOrder      — count of items whose suggested order qty > 0
-  //   enteredCount — count of items with a numeric On Hand value entered
-  //
-  // Reads vendor-tab columns E (On Hand — real data) and M (Item ID — the
-  // roster spill) only; the suggested qty is computed in code via
-  // computeSuggestedQty_ (was: read from the col-F formula), so the dashboard
-  // no longer depends on any vendor-tab formula. `ctx` carries the shared read
-  // context built once by the caller — { masterMeta, vendorMults,
-  // emergencyOverride, vendorOverrides, dayOfWeek } — so MASTER_ITEMS / SETUP
-  // aren't re-read per vendor.
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(vendor);
-  if (!sh) return { any: false, toOrder: 0, enteredCount: 0 };
-
-  const lastRow = sh.getLastRow();
-  if (lastRow < VENDOR_TAB.DATA_START_ROW) return { any: false, toOrder: 0, enteredCount: 0 };
-
-  const numRows  = lastRow - VENDOR_TAB.DATA_START_ROW + 1;
-  // One range read spanning E (On Hand) through M (Item ID).
-  const startCol = VENDOR_TAB.ON_HAND_COL;                 // E (5)
-  const data     = sh.getRange(VENDOR_TAB.DATA_START_ROW, startCol, numRows, VENDOR_TAB.ITEM_ID_COL - startCol + 1).getValues();
-  const ID_IDX   = VENDOR_TAB.ITEM_ID_COL - startCol;      // M, relative to E
-
-  const dayMult = vendorDayMultiplier_(ctx.vendorMults, vendor, ctx.dayOfWeek, ctx.emergencyOverride, ctx.vendorOverrides);
-
-  let enteredCount = 0;
-  let toOrder = 0;
-  for (const r of data) {
-    const onHandRaw = r[0];
-    const entered   = (onHandRaw !== '' && onHandRaw !== null && !isNaN(Number(onHandRaw)));
-    if (entered) enteredCount++;
-
-    const itemId = String(r[ID_IDX] || '').trim();
-    if (!itemId) continue;
-    const meta = ctx.masterMeta.get(itemId);
-    if (!meta || !meta.name) continue;   // non-roster / blank row — same skip as the count path
-
-    const onHand    = entered ? Number(onHandRaw) : null;
-    const suggested = computeSuggestedQty_(meta.par, meta.useMult, dayMult, onHand);
-    if (suggested != null && suggested > 0) toOrder++;
-  }
-  return { any: enteredCount > 0, toOrder: toOrder, enteredCount: enteredCount };
 }
 
 
