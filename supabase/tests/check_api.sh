@@ -35,6 +35,12 @@ check "snapshot: bad token refused"               200 'SESSION_EXPIRED' -X POST 
 check "save: bad token refused"                   200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_cycle_date":"2026-10-15","p_vendor":"V","p_items":[]}' "$(rpc mog_save_counts)"
 check "sync: bad key refused"                     200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus"}' "$(rpc mog_sync_get_cycle)"
 check "sync: bad key can't push a catalog"        200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_version":1,"p_payload":{}}' "$(rpc mog_sync_push_catalog)"
+# schema v2
+check "v2 order_log table: not reachable"         404 ''   "$URL/rest/v1/order_log"
+check "v2 sync: bad key can't read a snapshot"    200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus"}' "$(rpc mog_sync_get_snapshot)"
+check "v2 sync: bad key can't close a cycle"      200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_closing":"2026-10-15","p_new_cycle":"2026-10-16","p_new_dow":"Fri","p_rows":[],"p_todays_log":[]}' "$(rpc mog_sync_close_cycle)"
+check "v2 sync: bad key can't read the order log" 200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_date":"2026-10-15"}' "$(rpc mog_sync_get_log)"
+check "v2 sync: bad key can't set the override"   200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_on":true}' "$(rpc mog_sync_set_override)"
 
 echo "---"
 echo "$pass passed, $fail failed"
