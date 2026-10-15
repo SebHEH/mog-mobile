@@ -60,6 +60,16 @@ Use **today's actual date** — the date in the session context is authoritative
 
 Skipping step 2 means the next session loads a stale handoff. Skipping step 3 means CurrentState drifts from reality. All happen in the same session.
 
+## Fold the session's lessons into the skills
+
+The global `session-handoff` step of that name, run after the three files: `skill-enhance-from-session` over the handoff's Process lessons and Sebastian's corrections this session, one picker round at most, skipped when nothing is new. A MOG-only lesson goes into a `mog-*` skill here; a general one is a proposal (`global-skill-governance`). Tag each bullet `[→ dest]`, then gate it:
+
+```
+python .claude/skills/mog-session-handoff/scripts/handoff_facts.py --check-lessons
+```
+
+It must end `LESSONS CHECK: PASS`. On an UPDATE-IN-PLACE day the later session's block carries its own `### Process lessons`, and the check reads every one in the file, so an earlier block's lessons must already be tagged. **Applied skill edits are their own commit**, ahead of the one code + docs commit: a lesson-driven skill change does not belong inside a `feat(hub): …` commit.
+
 ## If the session changed MOG *logic*, bump the blueprint too
 
 `docs/MOG_LogicBlueprint.md` (with its rendered `docs/MOG_LogicBlueprint.html`) is a human-facing description of MOG's **behavior and rules** — the asset a future rebuild reads. It is NOT session-continuity like the handoff/CurrentState; it updates on a different clock, only when **logic** changes:
@@ -103,6 +113,10 @@ Use this structure, in this order:
 ## Files touched this chat
 
 <Concrete file list grouped by purpose. Distinguish source edits from generated-file refreshes (build.py output, deploy.py pushes).>
+
+## Process lessons
+
+<What you would tell yourself at the start of this session, each bullet ending `[→ dest]` with where it went (see "Fold the session's lessons"). `None.` if none.>
 
 ## Commits landed this session
 
