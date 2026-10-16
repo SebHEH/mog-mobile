@@ -1,6 +1,7 @@
 # MOG → Supabase migration (count path)
 
 **Status (2026-10-15):** schema live and verified (smoke test 40/40, public-key check 10/10). Step 3 (the shared `OrderMath.gs` + `Sync.gs`) is **deployed to all 10 stores + template** (`6584c10`, `--redeploy`). It passed the live `test_supabaseParity` on rprfo (2 delivering vendors, 25 items, plus the dashboard), and every store's health and POST probes pass. KMs see no change; the next step is step 4.
+**Status (2026-10-16):** schema v2 live (smoke 21/21, public-key check 15/15). Step 4 is deployed to **rprfo only** and rprfo is **connected** (catalog + PINs pushed, nightly 3:30 AM run installed). Counting there still uses the Sheet until **Switch counting to Supabase**. The other 9 stores + template run step-3 code.
 **Owner decisions:** Sebastian, 2026-10-15 (all recorded below with the reason).
 
 This is the single design record for the move. Later sessions build from this file; if the code and this doc disagree, fix one of them in the same commit.
@@ -23,6 +24,15 @@ Measured 2026-10-15 from Sebastian's PC against rprfo:
 Reads came in 4.4× faster than the no-work floor, under the 5× bar set beforehand. Against a real catalog read they're 6× (warm) to 22× (cold) faster. Sebastian chose to proceed, since real requests always do work on top of the floor and opening the app collapses several `/exec` calls into one read.
 
 Gotcha from the test: a Supabase upsert that **updates** a row returns HTTP **200**, not 201/204.
+
+Measured 2026-10-16 from inside rprfo's script (`test_supabasePushTiming`, 3 runs each):
+
+| Call (Apps Script → Supabase) | Runs | Notes |
+|---|---|---|
+| Catalog push (12 KB) | 2.35s, 1.36s, 1.13s | Build (reading the Sheet) 1.6s cold / 0.8s warm; the send is 0.35–0.75s. |
+| Snapshot read | 0.27s, 0.24s, 0.42s | The same read the PWA will make in step 5, against a ~2s `/exec` floor. |
+
+The push never sits on a save: the web editor fires it as its own background request, and a Sheet edit only queues a one-shot trigger. Its cost is how long a phone waits to see an edit, not how long a save takes.
 
 ## 2. Decisions (2026-10-15)
 
@@ -171,6 +181,11 @@ Each step ships separately. KMs notice nothing until step 5 switches a store.
      - the nightly timer and the cycle close
      - the **Connect to Supabase** and **Switch counting to Supabase** menu items
    - `/exec` count-path handlers on Supabase for switched stores.
+
+   **Connecting a store** (rprfo done 2026-10-16), after `deploy.py --redeploy --target <slug>`:
+   1. Supabase SQL Editor: `select mog.provision_store('<slug>');` and copy the key. It goes into the Sheet prompt, never into a chat. Running it again rotates the key.
+   2. Editor: run **`authorizeSupabase`** in `Sync.gs` once. Google's consent screen lets a person untick "Connect to an external service". A Sheet menu can't re-ask for it, and the editor only re-asks when a script requests it by name (`ScriptApp.requireScopes`). The first run stops at the prompt; allow it, then Run again. Every store is its own script project, so each one needs this.
+   3. Sheet: **📱 Mobile API → Connect to Supabase**, then enter the slug and key.
 5. **Step 5:** the PWA reads and writes Supabase directly, behind `stores.json` `backend`, rprfo first. This is when KMs feel the speedup.
 6. **Step 6:** the web editor reads and writes the catalog in Supabase, and recipients and order history move too. The Sheet then holds only the script and the nightly backup (D9's end state).
 
@@ -183,7 +198,7 @@ Each step ships separately. KMs notice nothing until step 5 switches a store.
 - **VERIFY:** nobody reads the raw Sheet's vendor tabs or HOME dashboard during the day (they'll show blank counts).
 - **VERIFY:** no store counts after ~3:30 AM (nightly reset time).
 - **VERIFY (parity test):** the roster rule in §5.
-- **VERIFY (measure):** how long a catalog push takes (`test_supabasePushTiming` on rprfo). It runs in the background either way, but a slow one delays phones seeing an edit.
+- ~~VERIFY (measure): how long a catalog push takes~~: 1.1–1.4s warm, 2.35s cold, off the save path (§1, 2026-10-16).
 - History views on `/exec` read the Sheet's `LOG_ORDERS` backup until step 5/6 moves them to `mog.order_log`. Recipients stay on `/exec` until step 6.
 - **Intended differences** after a store switches (recorded so nobody "fixes" them back):
   - **A duplicated pick-path row** (same vendor + item twice) shares one count in Supabase. The Sheet kept a separate On Hand per row, and the app could only ever write the last row.

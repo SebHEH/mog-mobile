@@ -266,6 +266,12 @@ const PROP_SB_SYNC_KEY = 'MOG_SUPABASE_SYNC_KEY';  // from mog.provision_store; 
 const PROP_BACKEND     = 'MOG_BACKEND';            // "supabase" once counting has switched
 const PROP_CATALOG_PUSH_QUEUED = 'MOG_CATALOG_PUSH_QUEUED';  // doc prop: ms a background push was queued
 
+// The one permission the sync needs beyond what each store already granted.
+// Google's consent screen lets a person untick a permission, a Sheet menu can't
+// re-ask for it, and the editor re-asks only when a script requests it
+// (authorizeSupabase below).
+const SB_FETCH_SCOPE = 'https://www.googleapis.com/auth/script.external_request';
+
 const CATALOG_PUSH_DELAY_MS = 60 * 1000;   // Apps Script rounds a one-shot trigger to ~1 min
 const NIGHTLY_HOUR          = 3;           // script time zone (America/New_York)
 const NIGHTLY_MINUTE        = 30;
@@ -542,9 +548,37 @@ function ensureNightlyTrigger_() {
 // Connect this store: check its sync key, push the PINs and catalog, give
 // Supabase the current cycle on a first connect, install the nightly run.
 // Counting stays on the Sheet until Switch counting to Supabase.
+// Editor-run, once per store by whoever connects it: asks Google for "Connect
+// to an external service", then makes one call to show Supabase answers. When
+// the permission is missing this run ends at the prompt; allow it and Run again.
+function authorizeSupabase() {
+  ScriptApp.requireScopes(ScriptApp.AuthMode.FULL, [SB_FETCH_SCOPE]);
+  const t0 = Date.now();
+  const r = supabaseRpc_('mog_sync_get_cycle', { p_slug: 'zzping', p_key: '0'.repeat(64) });
+  Logger.log('Permission granted. Supabase answered in ' + (Date.now() - t0) + ' ms (' +
+    (r.ok ? 'ok' : r.error) + '; a refusal is expected, the test uses a made-up key). ' +
+    'Next: 📱 Mobile API → Connect to Supabase.');
+}
+
+// True only when this person is known not to have granted SB_FETCH_SCOPE.
+function supabaseFetchNeedsGrant_() {
+  try {
+    return ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL, [SB_FETCH_SCOPE])
+      .getAuthorizationStatus() === ScriptApp.AuthorizationStatus.REQUIRED;
+  } catch (e) { return false; }   // can't tell: the fetch itself will say
+}
+
+function alertFetchGrant_(ui) {
+  ui.alert('One permission first',
+    'This store\'s script needs Google\'s "Connect to an external service" permission, and a menu can\'t ask for it.\n\n' +
+    'Open Extensions > Apps Script, open Sync.gs, pick authorizeSupabase in the function dropdown and press Run. ' +
+    'Allow the permission, press Run once more, then come back here and connect.', ui.ButtonSet.OK);
+}
+
 function connectSupabase() {
   MOG_SKIP_CATALOG_QUEUE_ = true;
   const ui = SpreadsheetApp.getUi();
+  if (supabaseFetchNeedsGrant_()) { alertFetchGrant_(ui); return; }
   const slugResp = ui.prompt('Connect to Supabase (1 of 2)',
     'This store\'s slug, as in stores.json (for example rprfo):', ui.ButtonSet.OK_CANCEL);
   if (slugResp.getSelectedButton() !== ui.Button.OK) return;
@@ -562,7 +596,11 @@ function connectSupabase() {
   // Check the key before saving anything.
   let check;
   try { check = supabaseRpc_('mog_sync_get_cycle', { p_slug: slug, p_key: key }); }
-  catch (e) { ui.alert('Could not reach Supabase: ' + e.message); return; }
+  catch (e) {
+    if (/script\.external_request/.test(e.message)) alertFetchGrant_(ui);
+    else ui.alert('Could not reach Supabase: ' + e.message);
+    return;
+  }
   if (!check.ok && check.error !== 'STORE_NOT_SYNCED') {
     ui.alert(check.error === 'BAD_SYNC_KEY'
       ? 'That key doesn\'t match store "' + slug + '". Run provision_store again and paste the new key.'
