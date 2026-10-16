@@ -1,7 +1,7 @@
 # MOG → Supabase migration (count path)
 
 **Status (2026-10-15):** schema live and verified (smoke test 40/40, public-key check 10/10). Step 3 (the shared `OrderMath.gs` + `Sync.gs`) is **deployed to all 10 stores + template** (`6584c10`, `--redeploy`). It passed the live `test_supabaseParity` on rprfo (2 delivering vendors, 25 items, plus the dashboard), and every store's health and POST probes pass. KMs see no change; the next step is step 4.
-**Status (2026-10-16):** schema v2 live (smoke 21/21, public-key check 15/15). Step 4 is deployed to **rprfo only** and rprfo is **connected** (catalog + PINs pushed, nightly 3:30 AM run installed). Counting there still uses the Sheet until **Switch counting to Supabase**. The other 9 stores + template run step-3 code.
+**Status (2026-10-16):** schema v2 live (smoke 21/21, public-key check 15/15). **rprfo counts in Supabase.** It moved that morning with 0 counts to copy, since it had already reset. Sebastian entered counts on the PWA; they skipped the Sheet and came back after a reload. Its first Supabase cycle close runs at 3:30 AM on 10-17. Step 4 plus the one-step **Move this store to Supabase** is **deployed to all 10 stores + template** (`--redeploy`; every store passed GET and POST probes) and is inactive until each store moves. **Plan (Sebastian):** once rprfo's 10-17 close checks out (recap email, LOG_ORDERS backup, the app on the new cycle), run `supabase/provision_stores.sql` and move the other 9 stores.
 **Owner decisions:** Sebastian, 2026-10-15 (all recorded below with the reason).
 
 This is the single design record for the move. Later sessions build from this file; if the code and this doc disagree, fix one of them in the same commit.
@@ -48,7 +48,7 @@ The push never sits on a save: the web editor fires it as its own background req
 | D8 | Sheet during the day | Vendor tabs' On Hand stays blank on switched stores | Counts live only in Supabase (D9). |
 | D9 | The Sheet's role (later on 2026-10-15) | **Retired from the app's path.** Supabase is the operational store. The Sheet holds the Apps Script, the catalog the editor still edits (until step 6), and a backup. Nothing is ever copied back into it. | Sebastian: "remove the app writing to the sheet and back for performance sake ... [the Sheet] exists as a backup at most." Every design is judged on speed first. Replaces the copy-back design. |
 | D10 | Order log backup | The nightly close appends the closed cycle to the Sheet's `LOG_ORDERS` | One write per night, off every hot path. Keeps the web editor's Order History and the par-review flags working until step 6 moves them. |
-| D11 | Nightly timer rollout | Installed per store by Connect to Supabase | Each store's reset timing changes along with its migration, rprfo first. |
+| D11 | Nightly timer rollout | Installed per store when it moves to Supabase | Each store's reset timing changes along with its migration, rprfo first. |
 
 Rejected: stopping column-E writes but staying on `/exec` (still ~2s per screen); moving everything including the editor now (months, and the editor isn't the complaint); Firebase (workable, but not SQL).
 
@@ -179,17 +179,19 @@ Each step ships separately. KMs notice nothing until step 5 switches a store.
      - the catalog push after each web-editor save, fired by the editor as a separate background request so saves don't slow down (`webedit_call`, Editor.gs:357, flags which calls changed something)
      - a background push after Sheet-dialog edits, and the PIN push
      - the nightly timer and the cycle close
-     - the **Connect to Supabase** and **Switch counting to Supabase** menu items
+     - one menu item, **Move this store to Supabase** (connect + switch; it replaced separate Connect and Switch items on 2026-10-16)
    - `/exec` count-path handlers on Supabase for switched stores.
 
-   **Connecting a store** (rprfo done 2026-10-16), after `deploy.py --redeploy --target <slug>`:
-   1. Supabase SQL Editor: `select mog.provision_store('<slug>');` and copy the key. It goes into the Sheet prompt, never into a chat. Running it again rotates the key.
-   2. Editor: run **`authorizeSupabase`** in `Sync.gs` once. Google's consent screen lets a person untick "Connect to an external service". A Sheet menu can't re-ask for it, and the editor only re-asks when a script requests it by name (`ScriptApp.requireScopes`). The first run stops at the prompt; allow it, then Run again. Every store is its own script project, so each one needs this.
-   3. Sheet: **📱 Mobile API → Connect to Supabase**, then enter the slug and key.
+   **Moving a store** (code deployed with `deploy.py --redeploy`):
+   1. Once for every store: run `supabase/provision_stores.sql` in the SQL Editor. It lists each store, its Sheet, and its **connect code** (`store:key`). A code goes into its own Sheet's prompt, never into a chat. Running the file again skips stores that already connected, so it never replaces a working key.
+   2. In each Sheet: **📱 Mobile API → Move this store to Supabase**, paste the code, check the confirmation ("This Sheet: … / Code is for store: …"), then click Yes. It connects, pushes PINs and the catalog, copies the cycle and counts, installs the 3:30 AM run, and switches. If it stops part-way, run it again; it won't ask for the code a second time.
+   3. Permission: Google's consent screen lets a person untick "Connect to an external service". A Sheet menu can't re-ask for it, and the editor only re-asks when a script requests it by name. When it's missing, Move shows Google's consent link instead. If that link doesn't work, run **`authorizeSupabase`** in `Sync.gs` from the editor (it calls `ScriptApp.requireScopes`). Every store is its own script project, so each one checks separately.
+
+   rprfo moved on 2026-10-16 with the earlier two-item flow, which taught the permission step.
 5. **Step 5:** the PWA reads and writes Supabase directly, behind `stores.json` `backend`, rprfo first. This is when KMs feel the speedup.
 6. **Step 6:** the web editor reads and writes the catalog in Supabase, and recipients and order history move too. The Sheet then holds only the script and the nightly backup (D9's end state).
 
-**Cutover:** **Switch counting to Supabase** imports the current column-E counts and override settings once, then `/exec` serves that store from Supabase. Do it right after a reset, when column E is empty, and there's nothing to import.
+**Cutover:** **Move this store to Supabase** imports the current column-E counts and override settings once, then `/exec` serves that store from Supabase. Do it right after a reset, when column E is empty, and there's nothing to import.
 
 **Rollback (per store, emergency only):** **Switch back to the Sheet** copies the current cycle's counts, override settings and cycle date into the Sheet once, then clears `MOG_BACKEND`; `/exec` serves from the Sheet again. It's the only path that writes counts to the Sheet.
 
@@ -204,5 +206,5 @@ Each step ships separately. KMs notice nothing until step 5 switches a store.
   - **A duplicated pick-path row** (same vendor + item twice) shares one count in Supabase. The Sheet kept a separate On Hand per row, and the app could only ever write the last row.
   - **Counts stay with their item, not their row.** If a vendor's list changes mid-cycle, the Sheet's column E stayed put by position and could land on a different item; Supabase keys counts by item.
   - **`/exec saveOnHand` on a switched store** takes the vendor name as sent, without a lookup; the app always sends the dashboard's exact name. It saves into Supabase's current cycle, so an old-app phone that queued counts offline overnight could add them to the new day. The new PWA (step 5) sends its cycle date and can't.
-- **Proof for step 4** (`node tests/run_all.js`): `supabase_step4` drives the same 150 randomized stores through the real `doPost` on the Sheet and on a fake Supabase. Answers are identical before and after every write. The close logs what `buildOrderCycleSnapshot_` would and touches only `LOG_ORDERS`. 9 planted defects are all caught.
+- **Proof for step 4** (`node tests/run_all.js`): `supabase_step4` drives the same 150 randomized stores through the real `doPost` on the Sheet and on a fake Supabase. Answers are identical before and after every write. The close logs what `buildOrderCycleSnapshot_` would and touches only `LOG_ORDERS`. 9 planted defects are all caught. `supabase_move` drives Move this store to Supabase through a scripted fake menu: nothing changes before the code checks out and Yes, a move matches that seed path, and failures and rollbacks resume. 9 more planted defects are all caught.
 - Health Check: add "catalog in sync" (Sheet hash vs pushed version) and "nightly timer installed".

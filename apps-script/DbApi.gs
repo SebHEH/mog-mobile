@@ -1,7 +1,7 @@
 /***********************
  * DB API — /exec's count path for a store that counts in Supabase
  *
- * When a store has switched (Sync.gs: Switch counting to Supabase), doPost
+ * When a store has switched (Sync.gs: Move this store to Supabase), doPost
  * sends the count-path actions here instead of to the Sheet handlers. Each one
  * reads or writes Supabase and builds its answer with the same OrderMath.gs
  * builders the PWA runs, returning EXACTLY the shape the Sheet handler

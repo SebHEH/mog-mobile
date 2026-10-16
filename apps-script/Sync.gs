@@ -247,11 +247,12 @@ function syncDiffAt_(a, b, path) {
 // Network half (step 4): Apps Script <-> Supabase
 // ===========================================================================
 // Two per-store switches, both in Script Properties:
-//   connected  MOG_SUPABASE_SLUG + MOG_SUPABASE_SYNC_KEY are set (menu:
-//              Connect to Supabase). The catalog and PINs are pushed and the
-//              3:30 AM nightly run is installed. Counting still uses the Sheet.
-//   switched   connected AND MOG_BACKEND = "supabase" (menu: Switch counting
-//              to Supabase). Counts, Emergency Override, the cycle and the
+//   connected  MOG_SUPABASE_SLUG + MOG_SUPABASE_SYNC_KEY are set. The catalog
+//              and PINs are pushed and the 3:30 AM nightly run is installed.
+//              On its own (only after Switch back to the Sheet) counting
+//              uses the Sheet.
+//   switched   connected AND MOG_BACKEND = "supabase". Menu: Move this store
+//              to Supabase sets both. Counts, Emergency Override, the cycle and the
 //              order log live in Supabase. /exec serves the count path from
 //              there (DbApi.gs) and never reads or writes the Sheet for it;
 //              the Sheet only gets the nightly order-log backup (D10).
@@ -268,8 +269,9 @@ const PROP_CATALOG_PUSH_QUEUED = 'MOG_CATALOG_PUSH_QUEUED';  // doc prop: ms a b
 
 // The one permission the sync needs beyond what each store already granted.
 // Google's consent screen lets a person untick a permission, a Sheet menu can't
-// re-ask for it, and the editor re-asks only when a script requests it
-// (authorizeSupabase below).
+// re-ask for it, and the editor re-asks only when a script requests it. Move
+// this store to Supabase shows Google's consent link instead (showFetchGrant_),
+// with authorizeSupabase as the editor-run fallback.
 const SB_FETCH_SCOPE = 'https://www.googleapis.com/auth/script.external_request';
 
 const CATALOG_PUSH_DELAY_MS = 60 * 1000;   // Apps Script rounds a one-shot trigger to ~1 min
@@ -512,7 +514,7 @@ function sendRecapRowsNow_(orderDate, rows) {
 
 // ---- The nightly run --------------------------------------------------------
 
-// 3:30 AM on a connected store (installed by Connect to Supabase):
+// 3:30 AM on a connected store (installed by Move this store to Supabase):
 //   1. Close the cycle: in Supabase if switched, otherwise the Sheet's own reset
 //      (the same one the PWA triggers), so nobody waits on it in the morning.
 //   2. Full catalog + PIN push: the backstop for edits typed straight into the
@@ -545,110 +547,123 @@ function ensureNightlyTrigger_() {
 
 // ---- Menu: 📱 Mobile API ------------------------------------------------------
 
-// Connect this store: check its sync key, push the PINs and catalog, give
-// Supabase the current cycle on a first connect, install the nightly run.
-// Counting stays on the Sheet until Switch counting to Supabase.
-// Editor-run, once per store by whoever connects it: asks Google for "Connect
-// to an external service", then makes one call to show Supabase answers. When
-// the permission is missing this run ends at the prompt; allow it and Run again.
+// Editor-run fallback for the permission, for when the Move dialog's link
+// doesn't work: asks Google for "Connect to an external service", then makes
+// one call to show Supabase answers. When the permission is missing this run
+// ends at the prompt; allow it and Run again.
 function authorizeSupabase() {
   ScriptApp.requireScopes(ScriptApp.AuthMode.FULL, [SB_FETCH_SCOPE]);
   const t0 = Date.now();
   const r = supabaseRpc_('mog_sync_get_cycle', { p_slug: 'zzping', p_key: '0'.repeat(64) });
   Logger.log('Permission granted. Supabase answered in ' + (Date.now() - t0) + ' ms (' +
     (r.ok ? 'ok' : r.error) + '; a refusal is expected, the test uses a made-up key). ' +
-    'Next: 📱 Mobile API → Connect to Supabase.');
+    'Next: 📱 Mobile API → Move this store to Supabase.');
 }
 
-// True only when this person is known not to have granted SB_FETCH_SCOPE.
-function supabaseFetchNeedsGrant_() {
+// Google's consent link for SB_FETCH_SCOPE when this person hasn't granted it,
+// '' when it's granted, null when Apps Script can't tell.
+function supabaseFetchGrantUrl_() {
   try {
-    return ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL, [SB_FETCH_SCOPE])
-      .getAuthorizationStatus() === ScriptApp.AuthorizationStatus.REQUIRED;
-  } catch (e) { return false; }   // can't tell: the fetch itself will say
+    const info = ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL, [SB_FETCH_SCOPE]);
+    return info.getAuthorizationStatus() === ScriptApp.AuthorizationStatus.REQUIRED
+      ? (info.getAuthorizationUrl() || null) : '';
+  } catch (e) { return null; }
 }
 
-function alertFetchGrant_(ui) {
-  ui.alert('One permission first',
-    'This store\'s script needs Google\'s "Connect to an external service" permission, and a menu can\'t ask for it.\n\n' +
-    'Open Extensions > Apps Script, open Sync.gs, pick authorizeSupabase in the function dropdown and press Run. ' +
-    'Allow the permission, press Run once more, then come back here and connect.', ui.ButtonSet.OK);
+// A Sheet menu can't open Google's consent screen, but a link to it can.
+function showFetchGrant_(ui, url) {
+  const attr = function (s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); };
+  const html = '<div style="font:14px/1.5 Arial,sans-serif">' +
+    '<p>This store\'s script needs Google\'s <b>Connect to an external service</b> permission first.</p>' +
+    (url ? '<p><a href="' + attr(url) + '" target="_blank"><b>Grant permission</b></a> (opens a new tab)</p>' +
+           '<p>Allow it there, close that tab, then run <b>📱 Mobile API → Move this store to Supabase</b> again.</p>' : '') +
+    '<p style="color:#666">' + (url ? 'If the link doesn\'t ask you anything: ' : '') +
+    'Extensions &gt; Apps Script, open Sync.gs, run <b>authorizeSupabase</b>, allow it, and Run again.</p></div>';
+  ui.showModalDialog(HtmlService.createHtmlOutput(html).setWidth(460).setHeight(url ? 250 : 160), 'One permission first');
 }
 
-function connectSupabase() {
+// Move this store to Supabase in one step: connect it (a connect code from
+// supabase/provision_stores.sql), push the PINs and catalog, give Supabase the
+// cycle and the counts entered so far, install the 3:30 AM run, and switch.
+// From then on /exec serves the count path from Supabase. Each piece can run
+// again, so after a failure the same menu item picks up where it stopped, and
+// after Switch back to the Sheet it switches again without a code.
+function moveToSupabase() {
   MOG_SKIP_CATALOG_QUEUE_ = true;
   const ui = SpreadsheetApp.getUi();
-  if (supabaseFetchNeedsGrant_()) { alertFetchGrant_(ui); return; }
-  const slugResp = ui.prompt('Connect to Supabase (1 of 2)',
-    'This store\'s slug, as in stores.json (for example rprfo):', ui.ButtonSet.OK_CANCEL);
-  if (slugResp.getSelectedButton() !== ui.Button.OK) return;
-  const slug = slugResp.getResponseText().trim().toLowerCase();
-  if (!/^[a-z0-9]{2,20}$/.test(slug)) { ui.alert('That doesn\'t look like a store slug.'); return; }
-
-  const keyResp = ui.prompt('Connect to Supabase (2 of 2)',
-    'Paste this store\'s sync key. To get one, run this in the Supabase SQL Editor and copy the result:\n\n' +
-    '    select mog.provision_store(\'' + slug + '\');\n\n' +
-    'Running it again replaces the key, so the old one stops working.', ui.ButtonSet.OK_CANCEL);
-  if (keyResp.getSelectedButton() !== ui.Button.OK) return;
-  const key = keyResp.getResponseText().trim();
-  if (!/^[0-9a-f]{64}$/.test(key)) { ui.alert('A sync key is 64 characters, 0-9 and a-f.'); return; }
-
-  // Check the key before saving anything.
-  let check;
-  try { check = supabaseRpc_('mog_sync_get_cycle', { p_slug: slug, p_key: key }); }
-  catch (e) {
-    if (/script\.external_request/.test(e.message)) alertFetchGrant_(ui);
-    else ui.alert('Could not reach Supabase: ' + e.message);
-    return;
-  }
-  if (!check.ok && check.error !== 'STORE_NOT_SYNCED') {
-    ui.alert(check.error === 'BAD_SYNC_KEY'
-      ? 'That key doesn\'t match store "' + slug + '". Run provision_store again and paste the new key.'
-      : 'Supabase refused: ' + check.error);
-    return;
-  }
-
   const props = PropertiesService.getScriptProperties();
-  props.setProperty(PROP_SB_SLUG, slug);
-  props.setProperty(PROP_SB_SYNC_KEY, key);
-  _SB_CONFIG_ = null;
-
-  pushPinsNow_();
-  const push = pushCatalogNow_();
-  if (!check.ok) setDbStateFromSheet_();   // first connect: Supabase gets this store's cycle
-  const nightly = ensureNightlyTrigger_();
-
-  ui.alert('Connected to Supabase',
-    'Store: ' + slug + '\n' +
-    'Catalog pushed: ' + Math.round(push.bytes / 1024) + ' KB (built in ' + push.buildMs + ' ms, sent in ' + push.sendMs + ' ms)\n' +
-    'Nightly 3:30 AM run: ' + (nightly.created ? 'installed' : 'already installed') + '\n\n' +
-    'Counting still uses the Sheet. When you\'re ready: 📱 Mobile API → Switch counting to Supabase.',
-    ui.ButtonSet.OK);
-}
-
-// Move this store's counting to Supabase: copy the cycle, Emergency Override,
-// day picks and the counts entered so far, once; from then on /exec serves
-// the count path from Supabase. Best right after a reset (no counts to copy).
-function switchCountingToSupabase() {
-  MOG_SKIP_CATALOG_QUEUE_ = true;
-  const ui = SpreadsheetApp.getUi();
   const cfg = supabaseConfig_();
-  if (!cfg.connected) { ui.alert('Connect to Supabase first (📱 Mobile API → Connect to Supabase).'); return; }
-  if (cfg.switched)   { ui.alert('This store already counts in Supabase.'); return; }
-  const go = ui.alert('Switch counting to Supabase?',
-    'From now on this store\'s counts, Emergency Override, cycle and order log live in Supabase, and the ' +
-    'app stops reading and writing them in this Sheet. Cycles close at 3:30 AM; the order log is still ' +
-    'copied to LOG_ORDERS each night as a backup.\n\n' +
-    'Counts already entered this cycle are copied over once. It\'s cleanest right after a reset.\n\nContinue?',
+  if (cfg.switched) { ui.alert('This store already counts in Supabase.'); return; }
+  const grantUrl = supabaseFetchGrantUrl_();
+  if (grantUrl) { showFetchGrant_(ui, grantUrl); return; }
+
+  let slug = cfg.slug, key = cfg.key;
+  if (!cfg.connected) {
+    const resp = ui.prompt('Move this store to Supabase',
+      'Paste this store\'s connect code, from supabase/provision_stores.sql in the Supabase SQL Editor ' +
+      '(the store, a colon, then 64 characters):', ui.ButtonSet.OK_CANCEL);
+    if (resp.getSelectedButton() !== ui.Button.OK) return;
+    const m = /^\s*["']?([a-z0-9]{2,20}):([0-9a-f]{64})["']?\s*$/i.exec(resp.getResponseText());
+    if (!m) { ui.alert('That isn\'t a connect code. One looks like rpr:3f9a… (the store, a colon, then 64 characters, 0-9 and a-f).'); return; }
+    slug = m[1].toLowerCase();
+    key  = m[2].toLowerCase();
+
+    // Check the code before saving anything.
+    let check;
+    try { check = supabaseRpc_('mog_sync_get_cycle', { p_slug: slug, p_key: key }); }
+    catch (e) {
+      if (/script\.external_request/.test(e.message)) showFetchGrant_(ui, supabaseFetchGrantUrl_());
+      else ui.alert('Could not reach Supabase: ' + e.message);
+      return;
+    }
+    if (check.ok) {
+      ui.alert('Store "' + slug + '" is already connected from another Sheet, so this code is probably for a ' +
+        'different Sheet. Nothing was changed.');
+      return;
+    }
+    if (check.error !== 'STORE_NOT_SYNCED') {
+      ui.alert(check.error === 'BAD_SYNC_KEY'
+        ? 'That code doesn\'t match store "' + slug + '". It may be from an older run of provision_stores.sql: run it again and use the new code.'
+        : 'Supabase refused: ' + check.error);
+      return;
+    }
+  }
+
+  const location = props.getProperty(PROP_LOCATION);
+  const go = ui.alert('Move this store to Supabase?',
+    'This Sheet: ' + SpreadsheetApp.getActiveSpreadsheet().getName() + (location ? ' (' + location + ')' : '') + '\n' +
+    'Code is for store: ' + slug + '\n\n' +
+    'From now on its counts, Emergency Override, cycle and order log live in Supabase, and the app stops ' +
+    'reading and writing them in this Sheet. Cycles close at 3:30 AM; the order log is still copied to ' +
+    'LOG_ORDERS each night as a backup. Counts already entered this cycle are copied over once.\n\nContinue?',
     ui.ButtonSet.YES_NO);
   if (go !== ui.Button.YES) return;
 
-  pushCatalogNow_();
-  setDbStateFromSheet_();
-  const imported = importSheetCountsToDb_();
-  PropertiesService.getScriptProperties().setProperty(PROP_BACKEND, 'supabase');
-  _SB_CONFIG_ = null;
-  ui.alert('Counting switched to Supabase', imported + ' count(s) copied over.', ui.ButtonSet.OK);
+  let push, imported, nightly;
+  try {
+    if (!cfg.connected) {
+      props.setProperty(PROP_SB_SLUG, slug);
+      props.setProperty(PROP_SB_SYNC_KEY, key);
+      _SB_CONFIG_ = null;
+    }
+    pushPinsNow_();
+    push = pushCatalogNow_();
+    setDbStateFromSheet_();
+    imported = importSheetCountsToDb_();
+    nightly = ensureNightlyTrigger_();
+    props.setProperty(PROP_BACKEND, 'supabase');
+    _SB_CONFIG_ = null;
+  } catch (e) {
+    ui.alert('Not finished', 'Moving stopped: ' + e.message + '\n\nThis store still counts in the Sheet. ' +
+      'Run 📱 Mobile API → Move this store to Supabase again; it picks up where it stopped.', ui.ButtonSet.OK);
+    return;
+  }
+  ui.alert('Moved to Supabase',
+    'Store: ' + slug + '\n' +
+    'Counts copied: ' + imported + '\n' +
+    'Catalog pushed: ' + Math.round(push.bytes / 1024) + ' KB\n' +
+    'Nightly 3:30 AM run: ' + (nightly.created ? 'installed' : 'already installed') + '\n\n' +
+    'Rollback (emergency only): 📱 Mobile API → Switch back to the Sheet.', ui.ButtonSet.OK);
 }
 
 // EMERGENCY rollback: copy Supabase's current cycle back into the Sheet once
@@ -764,7 +779,7 @@ function writeDbCycleToSheet_(snap) {
 // cost from Apps Script. Read-only apart from re-pushing the same catalog.
 function test_supabasePushTiming() {
   MOG_SKIP_CATALOG_QUEUE_ = true;
-  if (!supabaseConfig_().connected) { Logger.log('Not connected: run 📱 Mobile API → Connect to Supabase first.'); return; }
+  if (!supabaseConfig_().connected) { Logger.log('Not connected: run 📱 Mobile API → Move this store to Supabase first.'); return; }
   const lines = [];
   for (let i = 1; i <= 3; i++) {
     const r = pushCatalogNow_();

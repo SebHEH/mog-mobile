@@ -531,10 +531,9 @@ function onOpen(e) {
       .addItem("    Sync Vendor Multiplier Formulas","syncVendorMultiplierFormulasMenu_")
       .addItem("    Place Backup Vendors on Tabs","syncEligibleVendorsToPickPath")
       .addSeparator()
-      // Supabase (Sync.gs, docs/MOG_SupabaseMigration.md): connect, then
-      // switch counting; the rollback is for emergencies only.
-      .addItem("    Connect to Supabase",           "connectSupabase")
-      .addItem("    Switch counting to Supabase",   "switchCountingToSupabase")
+      // Supabase (Sync.gs, docs/MOG_SupabaseMigration.md): one step to move
+      // a store; the rollback is for emergencies only.
+      .addItem("    Move this store to Supabase",   "moveToSupabase")
       .addItem("    Switch back to the Sheet",      "switchBackToSheet")
       .addSeparator()
       .addItem("    Clear Config (reset for setup)", "clearMobileApiConfig"))

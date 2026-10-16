@@ -159,7 +159,7 @@ mog-mobile/
 │   ├── Recap.gs                 Daily recap email (build + send) + recipients list in SETUP AB-AE (split from MOGApi.gs 2026-07-24).
 │   ├── Admin.gs                 Run-once admin/config fns (setupMobileApi, PINs, concept) + editor-run test fns (split from MOGApi.gs 2026-07-24).
 │   ├── OrderMath.gs             The order math + the PWA's two payload builders. Pure functions, run VERBATIM by the PWA too (gated by tests/).
-│   ├── Sync.gs                  Supabase sync: catalog/PIN push, Connect/Switch menu items, nightly 3:30 AM run, cycle close in Supabase, parity + timing tests.
+│   ├── Sync.gs                  Supabase sync: catalog/PIN push, the Move this store to Supabase menu item, nightly 3:30 AM run, cycle close in Supabase, parity + timing tests.
 │   ├── DbApi.gs                 /exec's count path for a store that counts in Supabase (same answers as the Sheet handlers, no Sheet I/O).
 │   ├── AdminReset.html          Admin reset modal.
 │   ├── ManageItems.html         Item editor modal (dual-host: Sheet dialog + web).
@@ -180,6 +180,7 @@ mog-mobile/
 ├── supabase/                    SUPABASE LAYER (in progress — see docs/MOG_SupabaseMigration.md).
 │   ├── schema.sql               Private `mog` schema + the public mog_* functions (the only way in).
 │   ├── schema_v2.sql            Order log + one-transaction cycle close + sync-key snapshot/override calls (run after schema.sql).
+│   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   └── tests/                   smoke.sql / smoke_v2.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 ├── docs/

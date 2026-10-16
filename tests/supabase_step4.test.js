@@ -27,32 +27,15 @@
 const vm = require('vm');
 const F = require('./fake_apps_script.js');
 const { makeStore } = require('./mog_fixture.js');
-const { FakeSupabase, fakeScriptApp, fakeContentService } = require('./fake_supabase.js');
+const { FakeSupabase, fakeScriptApp, fakeContentService, compileStep4 } = require('./fake_supabase.js');
 
 const STORES = Number(process.argv[2]) || 150;
 const SRC = file => F.source(null, file);
 const PIN = '1111';
 const SLUG = 'zztest';
 
-function compile(srcOf) {
-  const plan = [
-    { file: 'apps-script/Core.gs',
-      consts: F.READERS_PLAN[0].consts.concat(['EMERGENCY_OVERRIDE_LASTDATE_PROP', 'MOG_MUTATED_', 'MOG_SKIP_CATALOG_QUEUE_']),
-      fns: F.READERS_PLAN[0].fns.concat(['getResetStaleness_', 'bumpServerMutationTs_', 'clearVendorOverrides_']) },
-    F.READERS_PLAN[1], F.READERS_PLAN[2],
-    { file: 'apps-script/History.gs', fns: ['readLogSlice_', 'makeLogDateFormatter_'] },
-    { file: 'apps-script/MOGApi.gs',
-      consts: F.API_CONSTS.concat(['PROP_PIN', 'PROP_MASTER_PIN', 'PROP_LAST_RECAP_SENT_DATE', 'PROP_PENDING_RECAP',
-        'RECAP_SEND_DELAY_MS', 'PROP_PIN_FAIL_COUNT', 'PROP_PIN_LOCKOUT_UNTIL', 'PIN_MAX_ATTEMPTS', 'PIN_LOCKOUT_MS']),
-      fns: F.API_FNS.concat(['readVendorTabRoster_', 'api_getVendorItemsBulk_', 'api_saveOnHand_', 'api_setEmergencyOverride_',
-        'api_setVendorOverride_', 'api_getResetStatus_', 'api_getDashboard_', 'api_ping_', 'doPost', 'checkPin_',
-        'constantTimeEq_', 'getPinLockoutState_', 'recordPinFailure_', 'recordPinSuccess_', 'jsonResponse_']) },
-    { file: 'apps-script/Recap.gs', fns: ['buildRecapSections_', 'api_getRecapData_', 'scheduleRecapSend_', 'dropRecapTriggers_', 'buildRecapFromLog_'] },
-    { file: 'apps-script/ResetLog.gs', fns: ['buildOrderCycleSnapshot_', 'ensureLogSheet_', 'deleteLogEntriesForDate_', 'getLogOrderDate_'] },
-    { file: 'apps-script/Editor.gs', fns: ['webedit_call'] }
-  ];
-  return F.compile(srcOf || SRC, plan, ['apps-script/OrderMath.gs', 'apps-script/Sync.gs', 'apps-script/DbApi.gs']);
-}
+// The plan lives in fake_supabase.js, shared with supabase_move.test.js.
+const compile = srcOf => compileStep4(srcOf || SRC);
 
 // What Apps Script resets at the start of every execution.
 const NEW_EXECUTION = new vm.Script(

@@ -6,6 +6,8 @@
 // on-hand number); the SQL itself is proven by supabase/tests/smoke*.sql in
 // Postgres. If a rule changes in the SQL, change it here in the same commit.
 
+const F = require('./fake_apps_script.js');
+
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 
@@ -22,6 +24,8 @@ class FakeSupabase {
     this.stores = new Map();
     this.calls = [];     // fn names, in order
     this.down = false;   // true: every request fails like a network error
+    this.denyFetch = false;   // true: UrlFetchApp throws Apps Script's missing-permission error
+    this.failFns = new Set(); // names of mog_* functions whose requests fail like a network error
   }
 
   // UTC date of "now": the fixtures' dates are UTC and so is the fake formatDate.
@@ -37,14 +41,21 @@ class FakeSupabase {
     const self = this;
     return {
       fetch(url, opts) {
-        if (self.down) throw new Error('Address unavailable: ' + url);
+        if (self.denyFetch) {
+          throw new Error('You do not have permission to call UrlFetchApp.fetch. Required permissions: ' +
+                          'https://www.googleapis.com/auth/script.external_request');
+        }
         const fn = url.split('/rest/v1/rpc/')[1];
+        if (self.down || self.failFns.has(fn)) throw new Error('Address unavailable: ' + url);
         const body = self.handle(fn, JSON.parse(opts.payload));
         const text = JSON.stringify(body);
         return { getResponseCode: () => 200, getContentText: () => text };
       }
     };
   }
+
+  // Reads must not create a cycle's entry (Postgres reads don't insert).
+  countsIn(s, cycle) { return s.counts.get(cycle) || new Map(); }
 
   countsFor(s, cycle) {
     if (!s.counts.has(cycle)) s.counts.set(cycle, new Map());
@@ -68,7 +79,7 @@ class FakeSupabase {
     if (!s.catalog || !s.state) return { ok: false, error: 'STORE_NOT_SYNCED' };
     const st = s.state;
     const today = this.today();
-    const counts = Array.from(this.countsFor(s, st.cycleDate).values())
+    const counts = Array.from(this.countsIn(s, st.cycleDate).values())
       .sort((a, b) => (a.vendor + '\u0001' + a.id < b.vendor + '\u0001' + b.id ? -1 : 1))
       .map(c => ({ vendor: c.vendor, id: c.id, onHand: c.onHand }));
     return { ok: true, data: {
@@ -90,7 +101,7 @@ class FakeSupabase {
     switch (fn) {
       case 'mog_sync_get_cycle':
         if (!s.state) return err('STORE_NOT_SYNCED');
-        return ok({ state: clone(s.state), counts: Array.from(this.countsFor(s, s.state.cycleDate).values()) });
+        return ok({ state: clone(s.state), counts: Array.from(this.countsIn(s, s.state.cycleDate).values()) });
 
       case 'mog_sync_get_snapshot':
         return this.snapshot(p.p_slug, s, p.p_have_version);
@@ -172,11 +183,23 @@ class FakeSupabase {
   }
 }
 
-// A fake ScriptApp that records triggers.
-function fakeScriptApp() {
+// A fake ScriptApp that records triggers. opts.auth is this person's grant of
+// the external-request scope: 'granted' (default), 'required', or 'unavailable'
+// (getAuthorizationInfo throws, as it might on an older runtime).
+const FAKE_GRANT_URL = 'https://accounts.google.com/o/oauth2/auth?client_id=x&scope="s"<b>';
+function fakeScriptApp(opts) {
   const triggers = [];
   const api = {
     triggers,
+    auth: (opts && opts.auth) || 'granted',
+    AuthMode: { FULL: 'FULL' },
+    AuthorizationStatus: { REQUIRED: 'REQUIRED', NOT_REQUIRED: 'NOT_REQUIRED' },
+    getAuthorizationInfo: () => {
+      if (api.auth === 'unavailable') throw new Error('getAuthorizationInfo is not available');
+      return { getAuthorizationStatus: () => (api.auth === 'required' ? 'REQUIRED' : 'NOT_REQUIRED'),
+               getAuthorizationUrl: () => (api.auth === 'required' ? FAKE_GRANT_URL : null) };
+    },
+    requireScopes: () => {},
     getProjectTriggers: () => triggers.slice(),
     deleteTrigger: t => { const i = triggers.indexOf(t); if (i >= 0) triggers.splice(i, 1); },
     newTrigger: handler => {
@@ -200,4 +223,28 @@ const fakeContentService = {
   createTextOutput: text => ({ setMimeType() { return this; }, getContent: () => text })
 };
 
-module.exports = { FakeSupabase, fakeScriptApp, fakeContentService, toOnHand };
+// The step-4 code under test: the slices it needs from each .gs, plus
+// OrderMath.gs, Sync.gs and DbApi.gs whole. srcOf(file) supplies the text, so a
+// control can plant a defect in a copy first.
+const STEP4_PLAN = [
+  { file: 'apps-script/Core.gs',
+    consts: F.READERS_PLAN[0].consts.concat(['EMERGENCY_OVERRIDE_LASTDATE_PROP', 'MOG_MUTATED_', 'MOG_SKIP_CATALOG_QUEUE_']),
+    fns: F.READERS_PLAN[0].fns.concat(['getResetStaleness_', 'bumpServerMutationTs_', 'clearVendorOverrides_']) },
+  F.READERS_PLAN[1], F.READERS_PLAN[2],
+  { file: 'apps-script/History.gs', fns: ['readLogSlice_', 'makeLogDateFormatter_'] },
+  { file: 'apps-script/MOGApi.gs',
+    consts: F.API_CONSTS.concat(['PROP_PIN', 'PROP_MASTER_PIN', 'PROP_LAST_RECAP_SENT_DATE', 'PROP_PENDING_RECAP',
+      'RECAP_SEND_DELAY_MS', 'PROP_PIN_FAIL_COUNT', 'PROP_PIN_LOCKOUT_UNTIL', 'PIN_MAX_ATTEMPTS', 'PIN_LOCKOUT_MS']),
+    fns: F.API_FNS.concat(['readVendorTabRoster_', 'api_getVendorItemsBulk_', 'api_saveOnHand_', 'api_setEmergencyOverride_',
+      'api_setVendorOverride_', 'api_getResetStatus_', 'api_getDashboard_', 'api_ping_', 'doPost', 'checkPin_',
+      'constantTimeEq_', 'getPinLockoutState_', 'recordPinFailure_', 'recordPinSuccess_', 'jsonResponse_']) },
+  { file: 'apps-script/Recap.gs', fns: ['buildRecapSections_', 'api_getRecapData_', 'scheduleRecapSend_', 'dropRecapTriggers_', 'buildRecapFromLog_'] },
+  { file: 'apps-script/ResetLog.gs', fns: ['buildOrderCycleSnapshot_', 'ensureLogSheet_', 'deleteLogEntriesForDate_', 'getLogOrderDate_'] },
+  { file: 'apps-script/Editor.gs', fns: ['webedit_call'] }
+];
+function compileStep4(srcOf) {
+  return F.compile(srcOf || (f => F.source(null, f)), STEP4_PLAN,
+    ['apps-script/OrderMath.gs', 'apps-script/Sync.gs', 'apps-script/DbApi.gs']);
+}
+
+module.exports = { FakeSupabase, fakeScriptApp, fakeContentService, toOnHand, compileStep4, FAKE_GRANT_URL };
