@@ -7,7 +7,9 @@ Reads stores.json at repo root. For each entry:
   - Validates required fields and value formats
   - Creates <slug>/ directory if missing
   - Writes <slug>/index.html = template/index.html with __MOG_API_URL__
-    substituted with the entry's deployment URL
+    substituted with the entry's deployment URL, the Supabase config
+    (URL + publishable key from apps-script/Sync.gs, plus the slug), and
+    apps-script/OrderMath.gs copied in verbatim at its marker
   - Writes <slug>/sw.js = verbatim copy of template/sw.js
 
 If root index.html exists with the STORE_REGISTRY marker line, the registry
@@ -33,6 +35,8 @@ TEMPLATE_DIR   = os.path.join(ROOT, 'template')
 TEMPLATE_INDEX = os.path.join(TEMPLATE_DIR, 'index.html')
 TEMPLATE_SW    = os.path.join(TEMPLATE_DIR, 'sw.js')
 HUB_INDEX      = os.path.join(ROOT, 'index.html')
+ORDER_MATH     = os.path.join(ROOT, 'apps-script', 'OrderMath.gs')
+SYNC_GS        = os.path.join(ROOT, 'apps-script', 'Sync.gs')
 
 # Slugs that would collide with our repo structure.
 RESERVED_SLUGS = {
@@ -46,6 +50,8 @@ DEPLOY_URL_RE = re.compile(r'^https://script\.google\.com/macros/s/[^/]+/exec$')
 API_URL_PLACEHOLDER = '__MOG_API_URL__'
 THEME_PLACEHOLDER   = '__MOG_THEME__'
 ICON_PLACEHOLDER    = '__MOG_APPLE_TOUCH_ICON__'
+SUPABASE_PLACEHOLDER   = '/*__MOG_SUPABASE__*/null'
+ORDER_MATH_PLACEHOLDER = '/* __MOG_ORDER_MATH__ build-injected */'
 REGISTRY_MARKER     = '// __STORE_REGISTRY__ build-injected'
 
 # Maps the human-readable concept name (from stores.json) to a CSS theme
@@ -120,7 +126,36 @@ def validate_stores(stores):
 # Per-store generation
 # ---------------------------------------------------------------------------
 
-def generate_store(entry, template_html, template_sw, dry_run):
+# ---------------------------------------------------------------------------
+# Shared inputs: the order math and the Supabase project (step 5)
+# ---------------------------------------------------------------------------
+
+def read_order_math():
+    """apps-script/OrderMath.gs, verbatim. The phone runs the same file as
+    the server (design record D5); tests/ordermath_purity.test.js proves it
+    needs nothing but plain JavaScript."""
+    if not os.path.exists(ORDER_MATH):
+        fail(f"apps-script/OrderMath.gs not found at {ORDER_MATH}")
+    with open(ORDER_MATH, 'r', encoding='utf-8') as f:
+        text = f.read()
+    if '</script' in text.lower():
+        fail("apps-script/OrderMath.gs contains '</script', which would end the page's <script> block")
+    return text
+
+
+def read_supabase_project():
+    """The project URL and publishable key, from Sync.gs (one copy for the
+    server and the phone). Both are public by design."""
+    with open(SYNC_GS, 'r', encoding='utf-8') as f:
+        text = f.read()
+    url = re.search(r"^const SUPABASE_URL\s*=\s*'(https://[a-z0-9]+\.supabase\.co)';", text, re.M)
+    key = re.search(r"^const SUPABASE_PUBLISHABLE_KEY\s*=\s*'(sb_publishable_[A-Za-z0-9_\-]+)';", text, re.M)
+    if not url or not key:
+        fail("apps-script/Sync.gs: SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY not found in the expected form")
+    return url.group(1), key.group(1)
+
+
+def generate_store(entry, template_html, template_sw, dry_run, order_math, supabase):
     slug         = entry['slug']
     target_dir   = os.path.join(ROOT, slug)
     target_index = os.path.join(target_dir, 'index.html')
@@ -155,6 +190,22 @@ def generate_store(entry, template_html, template_sw, dry_run):
         fail(f"template/index.html: expected exactly 1 {ICON_PLACEHOLDER!r}, "
              f"found {icon_count}. Template may be corrupted.")
     rendered_html = rendered_html.replace(ICON_PLACEHOLDER, icon_link)
+
+    # Supabase config for direct mode. Supabase itself decides per store
+    # whether phones use it (mog.stores.phone_direct); this only says where.
+    sb_count = rendered_html.count(SUPABASE_PLACEHOLDER)
+    if sb_count != 1:
+        fail(f"template/index.html: expected exactly 1 {SUPABASE_PLACEHOLDER!r}, "
+             f"found {sb_count}. Template may be corrupted.")
+    sb_json = json.dumps({'url': supabase[0], 'key': supabase[1], 'slug': slug})
+    rendered_html = rendered_html.replace(SUPABASE_PLACEHOLDER, sb_json)
+
+    # The shared order math, verbatim.
+    om_count = rendered_html.count(ORDER_MATH_PLACEHOLDER)
+    if om_count != 1:
+        fail(f"template/index.html: expected exactly 1 {ORDER_MATH_PLACEHOLDER!r}, "
+             f"found {om_count}. Template may be corrupted.")
+    rendered_html = rendered_html.replace(ORDER_MATH_PLACEHOLDER, order_math)
 
     actions = []
     if not os.path.isdir(target_dir):
@@ -264,11 +315,14 @@ def main():
     with open(TEMPLATE_SW, 'r', encoding='utf-8') as f:
         template_sw = f.read()
 
+    order_math = read_order_math()
+    supabase   = read_supabase_project()
+
     print(f"[stores] generating {len(stores)} store directory(ies)"
           + (" — DRY RUN, no writes" if dry_run else ""))
     for entry in stores:
         print(f"  {entry['concept']} — {entry['location']}  ({entry['slug']})")
-        generate_store(entry, template_html, template_sw, dry_run)
+        generate_store(entry, template_html, template_sw, dry_run, order_math, supabase)
 
     print("[hub] registry injection")
     inject_hub_registry(stores, dry_run)

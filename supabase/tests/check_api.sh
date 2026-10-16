@@ -42,6 +42,10 @@ check "v2 sync: bad key can't close a cycle"      200 'BAD_SYNC_KEY'    -X POST 
 check "v2 sync: bad key can't read the order log" 200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_date":"2026-10-15"}' "$(rpc mog_sync_get_log)"
 check "v2 sync: bad key can't set the override"   200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_on":true}' "$(rpc mog_sync_set_override)"
 
+# schema v3
+check "v3 sync: bad key can't set phone_direct"   200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_on":true}' "$(rpc mog_sync_set_phone_direct)"
+check "v3 helper: phone_direct_on not exposed"    404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo"}' "$(rpc phone_direct_on)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

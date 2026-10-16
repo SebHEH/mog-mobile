@@ -26,6 +26,8 @@ class FakeSupabase {
     this.down = false;   // true: every request fails like a network error
     this.denyFetch = false;   // true: UrlFetchApp throws Apps Script's missing-permission error
     this.failFns = new Set(); // names of mog_* functions whose requests fail like a network error
+    this.httpFor = {};        // fn -> HTTP status to answer instead (404 = a schema that isn't installed)
+    this.tokenSeq = 0;
   }
 
   // UTC date of "now": the fixtures' dates are UTC and so is the fake formatDate.
@@ -33,8 +35,25 @@ class FakeSupabase {
 
   provision(slug) {
     const key = (slug + 'k'.repeat(64)).slice(0, 64).replace(/[^0-9a-f]/g, 'a');
-    this.stores.set(slug, { key, pins: {}, catalog: null, version: null, state: null, counts: new Map(), log: [] });
+    this.stores.set(slug, { key, pins: {}, catalog: null, version: null, state: null, counts: new Map(), log: [],
+                            phoneDirect: false, failCount: 0, lockedUntil: 0, sessions: new Map() });
     return key;
+  }
+
+  // The same handler behind the browser's fetch, for the phone's direct mode.
+  // Resolves like fetch: { ok, status, text() }.
+  fetchFn() {
+    const self = this;
+    return function (url, opts) {
+      return new Promise((resolve, reject) => {
+        if (self.down) { reject(new TypeError('Failed to fetch')); return; }
+        const fn = url.split('/rest/v1/rpc/')[1];
+        if (self.failFns.has(fn)) { reject(new TypeError('Failed to fetch')); return; }
+        if (self.httpFor[fn]) { const t = '{"code":"PGRST202"}'; resolve({ ok: false, status: self.httpFor[fn], text: () => Promise.resolve(t) }); return; }
+        const body = JSON.stringify(self.handle(fn, JSON.parse(opts.body)));
+        resolve({ ok: true, status: 200, text: () => Promise.resolve(body) });
+      });
+    };
   }
 
   urlFetchApp() {
@@ -47,6 +66,7 @@ class FakeSupabase {
         }
         const fn = url.split('/rest/v1/rpc/')[1];
         if (self.down || self.failFns.has(fn)) throw new Error('Address unavailable: ' + url);
+        if (self.httpFor[fn]) return { getResponseCode: () => self.httpFor[fn], getContentText: () => '{"code":"PGRST202"}' };
         const body = self.handle(fn, JSON.parse(opts.payload));
         const text = JSON.stringify(body);
         return { getResponseCode: () => 200, getContentText: () => text };
@@ -75,7 +95,7 @@ class FakeSupabase {
     return latest.size;
   }
 
-  snapshot(slug, s, have) {
+  snapshot(slug, s, have, auth) {
     if (!s.catalog || !s.state) return { ok: false, error: 'STORE_NOT_SYNCED' };
     const st = s.state;
     const today = this.today();
@@ -83,7 +103,7 @@ class FakeSupabase {
       .sort((a, b) => (a.vendor + '\u0001' + a.id < b.vendor + '\u0001' + b.id ? -1 : 1))
       .map(c => ({ vendor: c.vendor, id: c.id, onHand: c.onHand }));
     return { ok: true, data: {
-      slug, authType: 'sync', isManagerMode: false, catalogVersion: s.version,
+      slug, authType: auth || 'sync', isManagerMode: auth === 'master', catalogVersion: s.version,
       catalog: (have != null && have === s.version) ? null : clone(s.catalog),
       state: { cycleDate: st.cycleDate, dayOfWeek: st.dayOfWeek, today, isStale: st.cycleDate < today,
                emergencyOverride: st.emergencyOverride, vendorPicks: clone(st.vendorPicks),
@@ -93,6 +113,7 @@ class FakeSupabase {
 
   handle(fn, p) {
     this.calls.push(fn);
+    if (PHONE_FNS[fn]) return this.handlePhone(fn, p);
     const s = this.stores.get(p.p_slug);
     const ok = data => ({ ok: true, data });
     const err = error => ({ ok: false, error });
@@ -169,6 +190,10 @@ class FakeSupabase {
         return this.snapshot(p.p_slug, s, p.p_have_version);
       }
 
+      case 'mog_sync_set_phone_direct':
+        s.phoneDirect = !!p.p_on;
+        return ok({ phoneDirect: !!p.p_on });
+
       case 'mog_sync_set_vendor_pick': {
         const vendor = String(p.p_vendor || '').trim();
         if (!vendor || vendor.length > 100) return err('Vendor is required.');
@@ -181,7 +206,79 @@ class FakeSupabase {
     }
     return err('fake: unknown function ' + fn);
   }
+
+  // The five PWA functions (schema.sql + schema_v3.sql): a 12-hour session
+  // token from the store or master PIN, the phone_direct switch checked before
+  // anything else, and the same lockout as checkPin_.
+  handlePhone(fn, p) {
+    const ok = data => ({ ok: true, data });
+    const err = error => ({ ok: false, error });
+    if (fn === 'mog_login') {
+      const slug = String(p.p_slug || '').trim().toLowerCase();
+      const s = this.stores.get(slug);
+      if (!s) return err('Unknown store');
+      if (!s.phoneDirect) return err('USE_EXEC');
+      if (s.lockedUntil) {
+        if (s.lockedUntil > this.nowMs) return { ok: false, error: 'Too many attempts', lockout: true, retryAfterMs: s.lockedUntil - this.nowMs };
+        s.failCount = 0; s.lockedUntil = 0;
+      }
+      const pin = String(p.p_pin == null ? '' : p.p_pin);
+      const type = (s.pins.pin && pin === s.pins.pin) ? 'store' : (s.pins.master && pin === s.pins.master) ? 'master' : null;
+      if (!type) {
+        s.failCount++;
+        if (s.failCount >= 5) { s.lockedUntil = this.nowMs + 300000; return { ok: false, error: 'Too many attempts', lockout: true, retryAfterMs: 300000 }; }
+        return err('Invalid PIN');
+      }
+      s.failCount = 0;
+      const snap = this.snapshot(slug, s, null, type);
+      if (!snap.ok) return snap;
+      const token = 'tok' + (++this.tokenSeq) + '-' + slug;
+      s.sessions.set(token, { authType: type, expires: this.nowMs + 12 * 3600000 });
+      return ok(Object.assign(snap.data, { token, expiresAt: 'fake' }));
+    }
+    let slug = null, sess = null;
+    for (const [sl, st] of this.stores) {
+      const x = st.sessions.get(p.p_token);
+      if (x && x.expires > this.nowMs) { slug = sl; sess = x; break; }
+    }
+    if (!sess) return err('SESSION_EXPIRED');
+    const s = this.stores.get(slug);
+    if (!s.phoneDirect) return err('USE_EXEC');
+    switch (fn) {
+      case 'mog_snapshot':
+        return this.snapshot(slug, s, p.p_have_version, sess.authType);
+      case 'mog_save_counts': {
+        const vendor = String(p.p_vendor || '').trim();
+        if (!vendor || vendor.length > 100) return err('Vendor is required.');
+        if (!p.p_cycle_date) return err('Cycle date is required.');
+        if (!Array.isArray(p.p_items)) return err('items must be an array');
+        if (p.p_items.length > 1000) return err('Too many items in one save');
+        const n = this.upsert(s, p.p_cycle_date, vendor, p.p_items);
+        const cycle = s.state && s.state.cycleDate;
+        return ok({ saved: n, vendor, cycleDate: cycle, stale: cycle !== p.p_cycle_date });
+      }
+      case 'mog_set_override': {
+        if (!s.state) return err('STORE_NOT_SYNCED');
+        const on = !!p.p_on;
+        s.state.emergencyOverride = on;
+        if (!on) s.state.vendorPicks = {};
+        return this.snapshot(slug, s, p.p_have_version, sess.authType);
+      }
+      case 'mog_set_vendor_pick': {
+        const vendor = String(p.p_vendor || '').trim();
+        if (!vendor || vendor.length > 100) return err('Vendor is required.');
+        const m = p.p_mult;
+        if (m == null || m < 0 || m > 7) return err('Invalid override multiplier (expected 0-7): ' + (m == null ? 'null' : m));
+        if (!s.state) return err('STORE_NOT_SYNCED');
+        if (m === 0) delete s.state.vendorPicks[vendor]; else s.state.vendorPicks[vendor] = m;
+        return this.snapshot(slug, s, p.p_have_version, sess.authType);
+      }
+    }
+    return err('fake: unknown function ' + fn);
+  }
 }
+
+const PHONE_FNS = { mog_login: 1, mog_snapshot: 1, mog_save_counts: 1, mog_set_override: 1, mog_set_vendor_pick: 1 };
 
 // A fake ScriptApp that records triggers. opts.auth is this person's grant of
 // the external-request scope: 'granted' (default), 'required', or 'unavailable'

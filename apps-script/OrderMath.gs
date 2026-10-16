@@ -566,3 +566,92 @@ function recapFromLogRows_(rows, orderDate) {
   });
   return { sections: sections, totalItems: totalItems, cycleDate: orderDate };
 }
+
+
+// ---------------------------------------------------------------------------
+// Count-path answers from a snapshot (step 5). /exec on a switched store
+// (DbApi.gs) and the phone in direct mode (template/index.html) both answer
+// with these, so the two can't drift: the same rules, error messages and
+// shapes as the Sheet handlers in MOGApi.gs.
+// ---------------------------------------------------------------------------
+
+// getResetStatus's answer (api_getResetStatus_).
+function resetStatusFromSnapshot_(snap) {
+  const st = snap.state;
+  return { today: st.today, lastReset: st.cycleDate, isStale: st.isStale };
+}
+
+// normalizeVendorOrThrow_'s rules and messages (Vendors.gs), against the
+// catalog's vendor list instead of the Sheet.
+function vendorNameFromInputs_(inputs, raw) {
+  const input = String(raw || '').trim();
+  if (!input) throw new Error('Vendor is required.');
+  const key = input.toLowerCase();
+  for (const v of inputs.vendorList) if (v.toLowerCase() === key) return v;
+  throw new Error('Vendor "' + input + '" is not in SETUP vendor table (column R).');
+}
+
+// api_getVendorItemsBulk_'s contract: exact-match names only, at most 30
+// (BULK_VENDOR_LIMIT), per-vendor failures and the overflow reported rather
+// than fatal.
+function vendorItemsBulkFromInputs_(inputs, payload) {
+  const known = new Set(inputs.vendorList);
+  let list = ((payload && payload.vendors) || []).filter(function (v) { return known.has(v); });
+  const skipped = list.slice(30);
+  list = list.slice(0, 30);
+  const vendors = {};
+  const failed  = [];
+  for (const v of list) {
+    try { vendors[v] = vendorItemsFromSnapshot_(inputs, v); }
+    catch (e) { failed.push(v); }
+  }
+  return { vendors: vendors, failed: failed.concat(skipped) };
+}
+
+// getRecapData's answer (api_getRecapData_): never throws on an empty cycle.
+function recapDataFromInputs_(inputs, payload) {
+  const built = recapSectionsFromInputs_(inputs,
+    payload && Array.isArray(payload.vendors) ? payload.vendors : null);
+  return { cycleDate: built.cycleDate, vendorCount: built.sections.length,
+           itemCount: built.totalItems, sections: built.sections };
+}
+
+// A saveOnHand payload as count rows. The vendor is taken as sent (the app
+// sends the dashboard's canonical name); a blank or non-numeric count is a
+// cleared count (null).
+function countRowsFromSave_(payload) {
+  const vendor = String((payload && payload.vendor) || '').trim();
+  if (!vendor) throw new Error('Vendor is required.');
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const rows = items.map(function (it) {
+    const v = (it.onHand === null || it.onHand === '' || it.onHand === undefined) ? null : Number(it.onHand);
+    return { vendor: vendor, id: String(it.id || '').trim(), onHand: (v === null || isNaN(v)) ? null : v };
+  });
+  return { vendor: vendor, rows: rows };
+}
+
+// setVendorOverride's validation (api_setVendorOverride_): the canonical
+// vendor name and a whole multiplier 0-7.
+function vendorPickFromPayload_(inputs, payload) {
+  const vendor = vendorNameFromInputs_(inputs, payload && payload.vendor);
+  const mult = Math.floor(Number(payload && payload.mult));
+  if (isNaN(mult) || mult < 0 || mult > 7) {
+    throw new Error('Invalid override multiplier (expected 0-7): ' + (payload && payload.mult));
+  }
+  return { vendor: vendor, mult: mult };
+}
+
+// The answers to the two override writes, built from the snapshot the write
+// returned. A build failure leaves the payload null: the write already
+// succeeded, so it must not look failed.
+function overrideAnswerFromSnapshot_(snap, on) {
+  let dashboard = null;
+  try { dashboard = dashboardFromSnapshot_(orderInputsFromSnapshot_(snap)); } catch (e) { dashboard = null; }
+  return { emergencyOverride: on, dashboard: dashboard };
+}
+
+function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
+  let itemsPayload = null;
+  try { itemsPayload = vendorItemsFromSnapshot_(orderInputsFromSnapshot_(snap), vendor); } catch (e) { itemsPayload = null; }
+  return { vendor: vendor, overrideMult: mult, itemsPayload: itemsPayload };
+}

@@ -1,7 +1,7 @@
 # MOG → Supabase migration (count path)
 
 **Status (2026-10-15):** schema live and verified (smoke test 40/40, public-key check 10/10). Step 3 (the shared `OrderMath.gs` + `Sync.gs`) is **deployed to all 10 stores + template** (`6584c10`, `--redeploy`). It passed the live `test_supabaseParity` on rprfo (2 delivering vendors, 25 items, plus the dashboard), and every store's health and POST probes pass. KMs see no change; the next step is step 4.
-**Status (2026-10-16):** schema v2 live (smoke 21/21, public-key check 15/15). **rprfo counts in Supabase.** It moved that morning with 0 counts to copy, since it had already reset. Sebastian entered counts on the PWA; they skipped the Sheet and came back after a reload. Its first Supabase cycle close runs at 3:30 AM on 10-17. Step 4 plus the one-step **Move this store to Supabase** is **deployed to all 10 stores + template** (`--redeploy`; every store passed GET and POST probes) and is inactive until each store moves. **Plan (Sebastian):** once rprfo's 10-17 close checks out (recap email, LOG_ORDERS backup, the app on the new cycle), run `supabase/provision_stores.sql` and move the other 9 stores.
+**Status (2026-10-16):** schema v2 live (smoke 21/21, public-key check 15/15). **rprfo counts in Supabase.** It moved that morning with 0 counts to copy, since it had already reset. Sebastian entered counts on the PWA; they skipped the Sheet and came back after a reload. Its first Supabase cycle close runs at 3:30 AM on 10-17. Step 4 plus the one-step **Move this store to Supabase** is **deployed to all 10 stores + template** (`--redeploy`; every store passed GET and POST probes) and is inactive until each store moves. **Plan (Sebastian):** once rprfo's 10-17 close checks out (recap email, LOG_ORDERS backup, the app on the new cycle), run `supabase/provision_stores.sql` and move the other 9 stores. **Step 5 (phones direct) is built and tested, not deployed** (§8 step 5).
 **Owner decisions:** Sebastian, 2026-10-15 (all recorded below with the reason).
 
 This is the single design record for the move. Later sessions build from this file; if the code and this doc disagree, fix one of them in the same commit.
@@ -49,6 +49,9 @@ The push never sits on a save: the web editor fires it as its own background req
 | D9 | The Sheet's role (later on 2026-10-15) | **Retired from the app's path.** Supabase is the operational store. The Sheet holds the Apps Script, the catalog the editor still edits (until step 6), and a backup. Nothing is ever copied back into it. | Sebastian: "remove the app writing to the sheet and back for performance sake ... [the Sheet] exists as a backup at most." Every design is judged on speed first. Replaces the copy-back design. |
 | D10 | Order log backup | The nightly close appends the closed cycle to the Sheet's `LOG_ORDERS` | One write per night, off every hot path. Keeps the web editor's Order History and the par-review flags working until step 6 moves them. |
 | D11 | Nightly timer rollout | Installed per store when it moves to Supabase | Each store's reset timing changes along with its migration, rprfo first. |
+| D12 | Who decides a store's phones go direct (2026-10-16) | **A flag in Supabase**, `mog.stores.phone_direct`, default off (schema v3) | One switch for the backend and the phones: Switch back to the Sheet turns it off first, so phones can't count into Supabase while the Sheet counts. Rollback takes effect on each phone's next call, with no app update. Rejected: a `stores.json` flag (rollback needs a build, a push and phones updating, and a rollback could leave phones writing to Supabase). |
+| D13 | Step 5 scope | **Count path only**: sign-in, reset status, dashboard, vendor lists, bulk prefetch, full order list, saves, override, day picks | That's where KMs wait. The reset fallback, recap email, history and recipients stay on `/exec`. |
+| D14 | Phone freshness | **One snapshot shared for ~3s, refreshed per screen** (open a vendor, pull down, Today, reopen); the catalog is skipped when unchanged | Other phones' counts show up at those moments, as today. Rejected: Supabase Realtime (a library, a websocket, and table policies for tables that are private by design). |
 
 Rejected: stopping column-E writes but staying on `/exec` (still ~2s per screen); moving everything including the editor now (months, and the editor isn't the complaint); Firebase (workable, but not SQL).
 
@@ -84,6 +87,8 @@ Rejected: stopping column-E writes but staying on `/exec` (still ~2s per screen)
 **On a switched store, every reset path goes to that same close:** the PWA's `/exec commitReset`, the Sheet's open trigger and the dashboard checkbox all call `closeCycleInDb_`. Stores not yet switched keep the Sheet reset unchanged.
 
 **`/exec` keeps working for a switched store, off Supabase.** Phones still on the old app call `/exec`. For a switched store, the count-path actions read and write Supabase through the same `OrderMath.gs` builders, never the Sheet: reset status, reset, dashboard, vendor items, saves, overrides and recap. So a store's backend can switch before its PWA does, and old phones see the same counts as new ones.
+
+**Step 5, phones direct** (when Supabase has `phone_direct` on for the store): the PWA's `api()` answers the count-path actions itself, from one snapshot and the `OrderMath.gs` builders. It calls the same "answers from a snapshot" functions DbApi.gs uses, so the shapes and error messages are identical. It signs in with `mog_login` (a 12-hour token, kept in memory), shares one snapshot across reads for ~3s, and saves with `mog_save_counts` tagged with the cycle date. A queued save keeps its own cycle date. Sign-in tries Supabase first; `USE_EXEC`, an unknown store, or Supabase unreachable sends that session to `/exec`. `USE_EXEC` mid-session moves the next call to `/exec`. Settings shows "Server: Supabase · N ms (median M)".
 
 **A phone that saves after the reset** has the old cycle date. Its counts land under that date, the phone gets `stale: true` back, and the new cycle stays clean. That's the late-drain bug from 07-12, fixed by construction.
 
@@ -151,6 +156,8 @@ Tables live in the private schema `mog`, which the Data API doesn't expose. **Th
 | `mog_save_counts(token, cycleDate, vendor, items)` | PWA | token |
 | `mog_set_override(token, on)` | PWA | token; turning off clears the day picks (children of the flag) |
 | `mog_set_vendor_pick(token, vendor, mult 0–7)` | PWA | token; 0 clears |
+| (all five above, schema v3) | PWA | answer `USE_EXEC` while the store's `phone_direct` is off; `mog_login` checks it before the PIN, so a store whose phones aren't direct never touches its lockout counter |
+| `mog_sync_set_phone_direct(slug, key, on)` | Apps Script (Switch back to the Sheet turns it off) | sync key |
 | `mog_sync_push_catalog(slug, key, version, payload)` | Apps Script | store's sync key; an older push never overwrites a newer one |
 | `mog_sync_set_pins(slug, key, pin, masterPin)` | Apps Script | sync key; a real PIN change signs out every phone for that store |
 | `mog_sync_get_cycle(slug, key)` | Apps Script (connect / cutover checks) | sync key |
@@ -188,7 +195,11 @@ Each step ships separately. KMs notice nothing until step 5 switches a store.
    3. Permission: Google's consent screen lets a person untick "Connect to an external service". A Sheet menu can't re-ask for it, and the editor only re-asks when a script requests it by name. When it's missing, Move shows Google's consent link instead. If that link doesn't work, run **`authorizeSupabase`** in `Sync.gs` from the editor (it calls `ScriptApp.requireScopes`). Every store is its own script project, so each one checks separately.
 
    rprfo moved on 2026-10-16 with the earlier two-item flow, which taught the permission step.
-5. **Step 5:** the PWA reads and writes Supabase directly, behind `stores.json` `backend`, rprfo first. This is when KMs feel the speedup.
+5. **Step 5:** the PWA reads and writes Supabase directly when the store's `phone_direct` is on (D12-D14). This is when KMs feel the speedup.
+   - Built 2026-10-16: `supabase/schema_v3.sql` (+ `smoke_v3.sql`); the shared answers in `OrderMath.gs`, which `DbApi.gs` now calls too; the DIRECT CLIENT block and `api()` routing in `template/index.html`; `build.py` injects `OrderMath.gs` and the Supabase config (URL + publishable key read from `Sync.gs`, plus the slug). Gate: `tests/pwa_direct.test.js`.
+   - Measured from a browser on Sebastian's PC (a `mog_login` for an unknown store, so nothing is touched): 1.12s for the first call (TLS + the CORS pre-check, which Supabase lets browsers cache for an hour), then 0.30–0.34s.
+   - **Canary:** after the store has moved and its first close checked out, `update mog.stores set phone_direct = true where slug = 'rprfo';` in the SQL Editor. **Gate before any other store:** Settings on a KM phone at rprfo shows a vendor open or a save under 1s. Over that, stop and revisit.
+   - Rollback for the phones alone: `update mog.stores set phone_direct = false where slug = '<slug>';` (takes effect on each phone's next call).
 6. **Step 6:** the web editor reads and writes the catalog in Supabase, and recipients and order history move too. The Sheet then holds only the script and the nightly backup (D9's end state).
 
 **Cutover:** **Move this store to Supabase** imports the current column-E counts and override settings once, then `/exec` serves that store from Supabase. Do it right after a reset, when column E is empty, and there's nothing to import.

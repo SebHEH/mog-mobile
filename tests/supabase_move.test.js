@@ -12,7 +12,9 @@
 //     importSheetCountsToDb_), with one nightly trigger and MOG_BACKEND set
 //   - a failure part-way leaves the store counting in the Sheet, and running
 //     Move again finishes without asking for the code
-//   - after Switch back to the Sheet, Move switches again without a code
+//   - Switch back to the Sheet turns direct phone access off first (schema
+//     v3), changes nothing if it can't, and goes ahead when v3 isn't installed;
+//     after it, Move switches again without a code
 //   - supabase/provision_stores.sql lists exactly the deploy targets' stores,
 //     with their Sheets, and never re-keys a store that already connected
 // Each has a planted-defect control.
@@ -194,14 +196,33 @@ function runSuite(srcOf, stores) {
       log = side.menu('moveToSupabase', []);
       if (!said(log, /already counts in Supabase/) || sb.calls.length) fail(seed, 'already moved', 'did something');
 
-      // Rollback, then Move again: no code, one nightly trigger still.
+      // Rollback turns phones off first, then Move switches again without a code.
+      sb.stores.get(SLUG).phoneDirect = true;
       side.menu('switchBackToSheet', [YES]);
       if (side.scriptProps.get('MOG_BACKEND')) fail(seed, 'rollback', 'still switched');
-      log = side.menu('moveToSupabase', [YES]);
+      if (sb.stores.get(SLUG).phoneDirect) fail(seed, 'rollback', 'phones still direct');
+      side.menu('moveToSupabase', [YES]);
       if (side.scriptProps.get('MOG_BACKEND') !== 'supabase') fail(seed, 'move after rollback', 'not switched');
       if (side.scriptApp.triggers.filter(t => t.getHandlerFunction() === 'nightlyMaintenance_').length !== 1) {
         fail(seed, 'move after rollback', 'nightly trigger count changed');
       }
+
+      // If phones can't be turned off, the rollback changes nothing.
+      sb.stores.get(SLUG).phoneDirect = true;
+      sb.failFns.add('mog_sync_set_phone_direct');
+      const writesBefore = side.book.writes.length;
+      log = side.menu('switchBackToSheet', [YES]);
+      sb.failFns.clear();
+      if (!said(log, /Not switched/) || side.scriptProps.get('MOG_BACKEND') !== 'supabase' || side.book.writes.length !== writesBefore) {
+        fail(seed, 'rollback, phones unreachable', 'went ahead anyway');
+      }
+
+      // Without schema v3 (the function answers HTTP 404) no phone can be
+      // direct, so the rollback goes ahead.
+      sb.httpFor.mog_sync_set_phone_direct = 404;
+      side.menu('switchBackToSheet', [YES]);
+      delete sb.httpFor.mog_sync_set_phone_direct;
+      if (side.scriptProps.get('MOG_BACKEND')) fail(seed, 'rollback without v3', 'still switched');
     } catch (e) { fail(seed, 'move', 'crashed: ' + e.message); }
   }
   return { failures, stats };
@@ -267,6 +288,11 @@ const CONTROLS = [
   { name: 'never switches', scenario: 'move',
     find: "    props.setProperty(PROP_BACKEND, 'supabase');\r\n    _SB_CONFIG_ = null;\r\n  } catch (e) {",
     replace: "    _SB_CONFIG_ = null;\r\n  } catch (e) {" },
+  { name: 'rollback leaves phones direct', scenario: 'rollback',
+    find: "  try { supabaseSync_('mog_sync_set_phone_direct', { p_on: false }); }",
+    replace: "  try { }" },
+  { name: 'rollback ignores a failed phone switch-off', scenario: 'rollback, phones unreachable',
+    find: "    if (!/HTTP 404/.test(e.message)) {", replace: "    if (false) {" },
   { name: 'a failure part-way still switches', scenario: 'failure part-way',
     find: "  } catch (e) {\r\n    ui.alert('Not finished'",
     replace: "  } catch (e) {\r\n    props.setProperty(PROP_BACKEND, 'supabase');\r\n    ui.alert('Not finished'" }

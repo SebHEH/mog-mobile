@@ -33,7 +33,7 @@ Every change anchors to one of these layers. Pick the layer before drafting any 
 | **Hub** | `index.html`, `sw.js`, `manifest.json`, `stores.json` | Concept picker, manager mode, store registry. First thing a KM sees. |
 | **Per-store PWA** | `template/index.html`, `template/sw.js` | The store-facing app. `build.py` copies this to every `<slug>/` dir with deployment URLs injected. |
 | **Apps Script backend** | `apps-script/*.gs`, `apps-script/*.html`, `apps-script/appsscript.json` | Bound script that runs in each Sheet. Identical across all 9 deploy targets — per-store config lives in spreadsheet data, not code. |
-| **Supabase (in progress)** | `supabase/schema.sql`, `supabase/tests/` | Counts + Emergency Override settings move here so the PWA skips `/exec` while counting; the Sheet keeps the catalog and pushes it one way. Design record: `docs/MOG_SupabaseMigration.md` (read it before touching this layer). Schema changes are run by Sebastian in the SQL Editor. |
+| **Supabase (in progress)** | `supabase/schema*.sql`, `supabase/tests/` | Counts, Emergency Override settings, the cycle and the order log live here; phones talk to it directly when the store's `phone_direct` flag is on (step 5), skipping `/exec` while counting. The Sheet keeps the catalog and pushes it one way. Design record: `docs/MOG_SupabaseMigration.md` (read it before touching this layer). Schema changes are run by Sebastian in the SQL Editor. |
 | **Deploy infrastructure** | `build.py`, `deploy.py`, `apps-script/.clasp-targets.json` | How code reaches production. `.clasp-targets.json` holds both `scriptId` (for source push) and `deploymentId` (for web-app version bump) per target. `deploy.py --discover` finds deploymentIds on a fresh checkout. |
 | **Generated (do NOT edit)** | `rpr/`, `rprfo/`, `rpt/`, `rptfo/`, `rpfr/`, `rpfrf/`, `tnyt/`, `tnytf/` | Output of `build.py`. Overwritten on every build. |
 
@@ -51,7 +51,7 @@ Carry these across every session:
 2. **Never edit code in the Apps Script editor.** `deploy.py` overwrites it. Edit `apps-script/<file>` locally, then deploy.
 3. **`.gs` files are identical across all 9 deploy targets.** Per-store config (PIN, location name, vendor data) lives in the spreadsheet itself via PropertiesService or sheet contents — never hardcode in `.gs` files.
 4. **Apps Script HTML modals render in the browser, not Rhino.** HtmlService serves `apps-script/*.html` into an IFRAME sandbox, so the `<script>` blocks run in the KM's browser JS engine — modern ES6 (arrow functions, `let`/`const`, template literals) works and already ships in production modals. The `.gs` files run on V8 (`runtimeVersion: "V8"` in `appsscript.json`). *(This invariant previously claimed modals run in Rhino/ES5 — that was inaccurate. The global `rhino-safe-html` skill still fires on modal edits; treat it as optional conservative style, not a hard constraint, pending a separate cross-repo reconcile.)*
-5. **Three placeholders in `template/index.html` must each appear exactly once:** `__MOG_API_URL__`, `__MOG_THEME__`, `__MOG_APPLE_TOUCH_ICON__`. `build.py` fails loud if not — never replace them by hand.
+5. **Five placeholders in `template/index.html` must each appear exactly once:** `__MOG_API_URL__`, `__MOG_THEME__`, `__MOG_APPLE_TOUCH_ICON__`, `/*__MOG_SUPABASE__*/null` (the Supabase config) and `/* __MOG_ORDER_MATH__ build-injected */` (where `apps-script/OrderMath.gs` is copied in verbatim). `build.py` fails loud if not — never replace them by hand. `tests/pwa_direct.test.js` checks them too.
 6. **The `STORE_REGISTRY` marker line in root `index.html` is build-injected.** Don't hand-edit the array; edit `stores.json` and run `build.py`.
 7. **Bump `CACHE_VERSION`** in `template/sw.js` (and `sw.js` for hub changes) when shipping shell changes so old caches evict from KMs' phones.
 8. **Slugs in `stores.json` are immutable once published.** KMs have bookmarks and home-screen icons at `/<slug>/`. Renaming breaks them.
@@ -180,8 +180,9 @@ mog-mobile/
 ├── supabase/                    SUPABASE LAYER (in progress — see docs/MOG_SupabaseMigration.md).
 │   ├── schema.sql               Private `mog` schema + the public mog_* functions (the only way in).
 │   ├── schema_v2.sql            Order log + one-transaction cycle close + sync-key snapshot/override calls (run after schema.sql).
+│   ├── schema_v3.sql            The per-store phone_direct switch (step 5) on the five PWA functions (run after v2).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
-│   └── tests/                   smoke.sql / smoke_v2.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
+│   └── tests/                   smoke.sql / smoke_v2.sql / smoke_v3.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.

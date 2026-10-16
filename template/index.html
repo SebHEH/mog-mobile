@@ -1617,6 +1617,16 @@
      ============================================================ -->
 <script>
   window.MOG_API_URL = '__MOG_API_URL__';
+  // Supabase (step 5, docs/MOG_SupabaseMigration.md D12-D14): the project's
+  // public URL and publishable key plus this store's slug, injected by
+  // build.py. Public by design. Supabase decides per store whether phones
+  // talk to it directly; null here (an unbuilt template) means never.
+  window.MOG_SUPABASE = /*__MOG_SUPABASE__*/null;
+</script>
+<!-- The shared order math, apps-script/OrderMath.gs, copied in verbatim by
+     build.py so the phone runs the same code as the server. -->
+<script>
+/* __MOG_ORDER_MATH__ build-injected */
 </script>
 
 <div class="app en" id="app">
@@ -2264,10 +2274,14 @@
 
   function enqueueSave_(vendor, items) {
     const queue = readSaveQueue_();
-    // Coalesce: if an entry for this vendor already exists, merge by
-    // item ID (later wins). This handles the "save fails, KM keeps
+    // In direct mode a queued save remembers its cycle, so a drain after the
+    // nightly close lands in its own day (null: /exec saves to the current
+    // cycle, as before).
+    const cycleDate = directCycleDate_();
+    // Coalesce: if an entry for this vendor (and cycle) already exists,
+    // merge by item ID (later wins). This handles the "save fails, KM keeps
     // typing, save fails again" pattern without unbounded growth.
-    const existingIdx = queue.findIndex(e => e.vendor === vendor);
+    const existingIdx = queue.findIndex(e => e.vendor === vendor && (e.cycleDate || null) === cycleDate);
     if (existingIdx >= 0) {
       const merged = {};
       for (const it of queue[existingIdx].items) merged[it.id] = it.onHand;
@@ -2279,6 +2293,7 @@
         id: 'save_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
         vendor: vendor,
         items: items,
+        cycleDate: cycleDate,
         queuedAt: Date.now()
       });
     }
@@ -2315,7 +2330,7 @@
           toastShown = true;
         }
         try {
-          await api('saveOnHand', { vendor: entry.vendor, items: entry.items });
+          await api('saveOnHand', { vendor: entry.vendor, items: entry.items, cycleDate: entry.cycleDate || undefined });
           // Success — remove this entry and continue
           const after = readSaveQueue_().filter(e => e.id !== entry.id);
           writeSaveQueue_(after);
@@ -2801,11 +2816,19 @@
     // total lockout rather than a degraded view.
     const retriable   = /^(get|ping)/i.test(action);
     const maxAttempts = retriable ? 3 : 1;
+    // Direct mode answers the count path from Supabase (see DIRECT CLIENT
+    // below); everything else, and every store Supabase hasn't switched,
+    // goes to /exec. A USE_EXEC answer mid-session redoes the call on /exec.
+    let viaDirect = directRoutes_(action);
     let lastErr;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        return await apiOnce_(action, payload, timeoutMs);
+        if (viaDirect) return await directOnce_(action, payload);
+        const data = await apiOnce_(action, payload, timeoutMs);
+        if (!retriable) directInvalidate_();   // an /exec write (reset, email) may have moved the cycle
+        return data;
       } catch (err) {
+        if (viaDirect && err && err.useExec) { viaDirect = false; attempt--; continue; }
         lastErr = err;
         const transient = isNetworkError_(err) ||
           String((err && err.message) || '').indexOf('BAD_JSON') === 0;
@@ -2873,6 +2896,274 @@
       throw err;
     }
   }
+
+  // >>> DIRECT CLIENT (step 5; tests/pwa_direct.test.js runs this block as-is)
+  // A store whose phones Supabase has switched to direct (mog.stores.
+  // phone_direct) answers the count path here: one snapshot (catalog + state
+  // + this cycle's counts) and the shared OrderMath.gs builders, giving the
+  // SAME answers and shapes /exec gives (DbApi.gs runs the same functions).
+  // Writes go straight to Supabase. The reset fallback, the recap email,
+  // history and recipients stay on /exec. Design record: D12-D14.
+  const DIRECT_ACTIONS = {
+    ping: 1, getResetStatus: 1, getDashboard: 1, getVendorItems: 1, getVendorItemsBulk: 1,
+    getRecapData: 1, saveOnHand: 1, setEmergencyOverride: 1, setVendorOverride: 1
+  };
+  // Answers that mean "this store's phones use /exec" (not switched, not yet
+  // moved to Supabase, or a schema without the switch).
+  const DIRECT_EXEC_SIGNALS = { USE_EXEC: 1, 'Unknown store': 1, STORE_NOT_SYNCED: 1 };
+  const DIRECT_REUSE_MS         = 3000;    // reads within this share one snapshot
+  const DIRECT_TIMEOUT_MS       = 15000;   // Supabase answers in well under 1s
+  const DIRECT_LOGIN_TIMEOUT_MS = 8000;    // then sign-in falls back to /exec
+  const direct = {
+    mode: null,             // 'direct' | 'exec' | null (not decided yet)
+    token: null, catalog: null, catalogVersion: null,
+    snap: null, snapAt: 0, snapFlight: null, inputs: null, inputsFor: null,
+    netMs: []               // the last few network times, for Settings
+  };
+
+  // Sign-in always tries Supabase first (when this build has its config);
+  // the rest of the count path goes direct only once sign-in said so.
+  function directRoutes_(action) {
+    if (!window.MOG_SUPABASE || !DIRECT_ACTIONS[action]) return false;
+    return action === 'ping' || direct.mode === 'direct';
+  }
+
+  function directUseExec_() {
+    direct.mode = 'exec';
+    direct.token = null;
+    directInvalidate_();
+  }
+
+  function directInvalidate_() {
+    direct.snap = null;
+    direct.inputs = null;
+  }
+
+  function useExecError_() {
+    const e = new Error('USE_EXEC');
+    e.useExec = true;
+    return e;
+  }
+
+  function envelopeError_(body) {
+    const e = new Error(body.error || 'Unknown error');
+    if (body.lockout) {
+      e.lockout = true;
+      e.retryAfterMs = body.retryAfterMs || 0;
+    }
+    return e;
+  }
+
+  // One POST to a public.mog_* function. Returns its { ok, data | error }
+  // envelope; throws on a network failure or timeout (AbortError, which
+  // isNetworkError_ knows) or a non-envelope answer (BAD_JSON, which api()
+  // retries like any delivery flake).
+  async function directFetch_(fn, params, timeoutMs) {
+    const cfg = window.MOG_SUPABASE;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(function () { controller.abort(); }, timeoutMs || DIRECT_TIMEOUT_MS);
+    const t0 = Date.now();
+    try {
+      const resp = await fetch(cfg.url + '/rest/v1/rpc/' + fn, {
+        method: 'POST',
+        headers: { apikey: cfg.key, 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+        signal: controller.signal
+      });
+      const text = await resp.text();
+      direct.netMs.push(Date.now() - t0);
+      if (direct.netMs.length > 10) direct.netMs.shift();
+      let json = null;
+      try { json = JSON.parse(text); } catch (e) { json = null; }
+      if (resp.status !== 200 || !json || typeof json.ok !== 'boolean') {
+        throw new Error('BAD_JSON: Supabase HTTP ' + resp.status + ' ' + String(text).substring(0, 120));
+      }
+      return json;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  // Sign in with the PIN api() sends (state.pin). Keeps the 12-hour token in
+  // memory only: every app start signs in again, which is also what notices
+  // a changed PIN.
+  async function directLogin_(timeoutMs) {
+    const body = await directFetch_('mog_login',
+      { p_slug: window.MOG_SUPABASE.slug, p_pin: state.pin }, timeoutMs);
+    if (!body.ok) {
+      if (DIRECT_EXEC_SIGNALS[body.error]) { directUseExec_(); throw useExecError_(); }
+      throw envelopeError_(body);
+    }
+    direct.mode = 'direct';
+    direct.token = body.data.token;
+    adoptSnapshot_(body.data);
+    return body.data;
+  }
+
+  // A token call. An expired session signs in again once; USE_EXEC (the
+  // store was switched back, or its phones were turned off) hands the call
+  // to /exec for the rest of this session.
+  async function directCall_(fn, params) {
+    for (let pass = 0; pass < 2; pass++) {
+      if (!direct.token) await directLogin_();
+      const body = await directFetch_(fn, Object.assign({ p_token: direct.token }, params));
+      if (body.ok) return body.data;
+      if (body.error === 'SESSION_EXPIRED' && pass === 0) { direct.token = null; continue; }
+      if (DIRECT_EXEC_SIGNALS[body.error]) { directUseExec_(); throw useExecError_(); }
+      throw envelopeError_(body);
+    }
+    throw new Error('SESSION_EXPIRED');
+  }
+
+  // A snapshot answer becomes the current one. The catalog travels only when
+  // it changed since the version we hold.
+  function adoptSnapshot_(data) {
+    if (data.catalog) {
+      direct.catalog = data.catalog;
+      direct.catalogVersion = data.catalogVersion;
+    } else if (data.catalogVersion !== direct.catalogVersion) {
+      throw new Error('BAD_JSON: snapshot without the catalog it should carry');
+    }
+    direct.snap = {
+      catalogVersion: data.catalogVersion, catalog: direct.catalog, state: data.state,
+      counts: data.counts || [], isManagerMode: !!data.isManagerMode
+    };
+    direct.snapAt = Date.now();
+    direct.inputs = null;
+    return direct.snap;
+  }
+
+  // The current snapshot, refreshed when it's older than DIRECT_REUSE_MS.
+  // Reads that land together share one request.
+  function directSnapshot_() {
+    if (direct.snap && Date.now() - direct.snapAt < DIRECT_REUSE_MS) return Promise.resolve(direct.snap);
+    if (!direct.snapFlight) {
+      direct.snapFlight = directCall_('mog_snapshot', { p_have_version: direct.catalogVersion })
+        .then(adoptSnapshot_)
+        .finally(function () { direct.snapFlight = null; });
+    }
+    return direct.snapFlight;
+  }
+
+  async function directInputs_() {
+    const snap = await directSnapshot_();
+    if (direct.inputsFor !== snap || !direct.inputs) {
+      direct.inputs = orderInputsFromSnapshot_(snap);
+      direct.inputsFor = snap;
+    }
+    return direct.inputs;
+  }
+
+  // A save the server accepted, applied to the snapshot we hold, so a read in
+  // the next few seconds sees it without another request. Same rules as
+  // mog.upsert_counts: rows without an id are skipped, the last duplicate wins.
+  function applySavedCounts_(cycle, rows) {
+    const snap = direct.snap;
+    if (!snap || snap.state.cycleDate !== cycle) return;
+    const at = new Map();
+    snap.counts.forEach(function (c, i) { at.set(c.vendor + '\u0001' + c.id, i); });
+    for (const r of rows) {
+      if (!r.id) continue;
+      const k = r.vendor + '\u0001' + r.id;
+      if (at.has(k)) snap.counts[at.get(k)].onHand = r.onHand;
+      else { at.set(k, snap.counts.length); snap.counts.push({ vendor: r.vendor, id: r.id, onHand: r.onHand }); }
+    }
+    direct.inputs = null;
+  }
+
+  // The cycle a save being queued belongs to (null when not in direct mode).
+  function directCycleDate_() {
+    return (direct.mode === 'direct' && direct.snap) ? direct.snap.state.cycleDate : null;
+  }
+
+  // Settings' "Server" row.
+  function directStatusText_() {
+    if (direct.mode !== 'direct') return 'Apps Script';
+    if (!direct.netMs.length) return 'Supabase';
+    const sorted = direct.netMs.slice().sort(function (a, b) { return a - b; });
+    return 'Supabase · ' + direct.netMs[direct.netMs.length - 1] + ' ms (median ' +
+      sorted[Math.floor(sorted.length / 2)] + ')';
+  }
+
+  // One attempt at a direct action; api() owns the retry policy. Answers have
+  // exactly the shapes /exec returns (OrderMath.gs, shared with DbApi.gs).
+  async function directOnce_(action, payload) {
+    payload = payload || {};
+    let data;
+    switch (action) {
+      case 'ping': {
+        // A store not on Supabase (or Supabase unreachable) signs in on /exec.
+        let login;
+        try { login = await directLogin_(DIRECT_LOGIN_TIMEOUT_MS); }
+        catch (e) {
+          if (e.useExec || isNetworkError_(e) || String(e.message || '').indexOf('BAD_JSON') === 0) {
+            directUseExec_();
+            throw useExecError_();
+          }
+          throw e;
+        }
+        const cat = direct.catalog || {};
+        data = { location: cat.location || 'Unknown', abbr: cat.abbr || '', isManagerMode: !!login.isManagerMode };
+        break;
+      }
+      case 'getResetStatus':
+        data = resetStatusFromSnapshot_(await directSnapshot_());
+        break;
+      case 'getDashboard':
+        data = dashboardFromSnapshot_(await directInputs_());
+        break;
+      case 'getVendorItems': {
+        const inputs = await directInputs_();
+        data = vendorItemsFromSnapshot_(inputs, vendorNameFromInputs_(inputs, payload.vendor));
+        break;
+      }
+      case 'getVendorItemsBulk':
+        data = vendorItemsBulkFromInputs_(await directInputs_(), payload);
+        break;
+      case 'getRecapData':
+        data = recapDataFromInputs_(await directInputs_(), payload);
+        break;
+      case 'saveOnHand': {
+        const save = countRowsFromSave_(payload);
+        if (!save.rows.length) { data = { saved: 0, vendor: save.vendor }; break; }
+        // Saved under the cycle the counts were made in: a queued save that
+        // drains after the 3:30 AM close lands in its own day (stale:true)
+        // and can never pollute the new one.
+        const cycle = payload.cycleDate || (await directSnapshot_()).state.cycleDate;
+        const res = await directCall_('mog_save_counts', {
+          p_cycle_date: cycle, p_vendor: save.vendor,
+          p_items: save.rows.map(function (r) { return { id: r.id, onHand: r.onHand }; })
+        });
+        if (res.stale) directInvalidate_();   // the next read fetches the new cycle
+        else applySavedCounts_(cycle, save.rows);
+        data = { saved: res.saved, vendor: save.vendor };
+        break;
+      }
+      case 'setEmergencyOverride': {
+        const on = !!payload.on;
+        const snap = adoptSnapshot_(await directCall_('mog_set_override',
+          { p_on: on, p_have_version: direct.catalogVersion }));
+        data = overrideAnswerFromSnapshot_(snap, on);
+        break;
+      }
+      case 'setVendorOverride': {
+        const pick = vendorPickFromPayload_(await directInputs_(), payload);
+        const snap = adoptSnapshot_(await directCall_('mog_set_vendor_pick',
+          { p_vendor: pick.vendor, p_mult: pick.mult, p_have_version: direct.catalogVersion }));
+        data = vendorPickAnswerFromSnapshot_(snap, pick.vendor, pick.mult);
+        break;
+      }
+      default:
+        throw new Error('Unknown action: ' + action);
+    }
+    // Same as apiOnce_: any answer means we're online; drain queued saves.
+    if (offlineState) setOnline_();
+    else if (readSaveQueue_().length) drainSaveQueue_();
+    // Through JSON, exactly as /exec delivers it: a NaN par arrives as null,
+    // and the screens' edits to the answer can't reach the snapshot.
+    return JSON.parse(JSON.stringify(data));
+  }
+  // <<< DIRECT CLIENT
 
   // ============================================================
   // PIN GATE / STALE / SIGNOUT
@@ -3194,6 +3485,9 @@
     state.pin = '';
     state.location = '';
     state.locAbbr = '';
+    direct.mode = null;      // the next sign-in asks Supabase again
+    direct.token = null;
+    directInvalidate_();
     // Drop the reload-survival mirror too, or signing out then reloading would
     // silently sign the KM back in.
     try { sessionStorage.removeItem('mog_pin_session'); }
@@ -6176,7 +6470,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.17.0';
+    const versionStr = '0.18.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
@@ -6221,6 +6515,10 @@
         '<div class="settings-row">' +
           '<div class="settings-label"><i class="ti ti-info-circle" aria-hidden="true"></i>' + escapeHtml(t('version')) + '</div>' +
           '<div class="settings-value">' + versionStr + '</div>' +
+        '</div>' +
+        '<div class="settings-row">' +
+          '<div class="settings-label"><i class="ti ti-server" aria-hidden="true"></i><span class="lang-en">Server</span><span class="lang-es">Servidor</span></div>' +
+          '<div class="settings-value">' + escapeHtml(directStatusText_()) + '</div>' +
         '</div>' +
       '</div>' +
 

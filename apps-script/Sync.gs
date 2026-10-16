@@ -666,7 +666,8 @@ function moveToSupabase() {
     'Rollback (emergency only): 📱 Mobile API → Switch back to the Sheet.', ui.ButtonSet.OK);
 }
 
-// EMERGENCY rollback: copy Supabase's current cycle back into the Sheet once
+// EMERGENCY rollback: turn off direct phone access (schema v3, so phones go
+// back through /exec), copy Supabase's current cycle back into the Sheet once
 // (cycle date, Emergency Override, day picks, counts), then serve the count
 // path from the Sheet again. The only code that writes counts to the Sheet.
 function switchBackToSheet() {
@@ -679,6 +680,16 @@ function switchBackToSheet() {
     ui.ButtonSet.YES_NO);
   if (go !== ui.Button.YES) return;
 
+  // Phones first: while the Sheet counts, no phone may write to Supabase.
+  try { supabaseSync_('mog_sync_set_phone_direct', { p_on: false }); }
+  catch (e) {
+    // HTTP 404 = schema v3 isn't installed, so no phone can be direct anyway.
+    if (!/HTTP 404/.test(e.message)) {
+      ui.alert('Not switched', 'Could not turn off direct phone access first: ' + e.message +
+        '\n\nNothing was changed. Try again in a minute.', ui.ButtonSet.OK);
+      return;
+    }
+  }
   const written = writeDbCycleToSheet_(supabaseSnapshot_(true));
   PropertiesService.getScriptProperties().deleteProperty(PROP_BACKEND);
   _SB_CONFIG_ = null;
