@@ -72,6 +72,24 @@ class FakeRange {
   clearContent() {
     return this.setValues(Array.from({ length: this.numRows }, () => Array(this.numCols).fill('')));
   }
+  // Range.deleteCells(ROWS): these cells go, and only THESE columns shift up.
+  deleteCells(dim) {
+    if (dim !== 'ROWS') throw new Error('fake deleteCells: only ROWS is supported');
+    const rows = this.sheet.rows;
+    const last = rows.length;
+    for (let c = this.col - 1; c < this.col - 1 + this.numCols; c++) {
+      for (let r = this.row - 1; r < last; r++) {
+        const from = rows[r + this.numRows];
+        const line = rows[r] || (rows[r] = []);
+        line[c] = from ? from[c] : '';
+      }
+    }
+    this.sheet.book.writes.push({ sheet: this.sheet.name, deleteCells: [this.row, this.col, this.numRows, this.numCols] });
+  }
+  getDisplayValue() { const v = this.getValue(); return v === null || v === undefined ? '' : String(v); }
+  clearDataValidations() { return this; }
+  setNumberFormat() { return this; }
+  setDataValidation() { return this; }
 }
 
 class FakeSheet {
@@ -88,6 +106,7 @@ class FakeSheet {
     this.rows.splice(start - 1, n);
     this.book.writes.push({ sheet: this.name, deleteRows: start, count: n });
   }
+  deleteRow(r) { this.deleteRows(r, 1); }
   getRange(a, b, c, d) {
     if (typeof a === 'string') {
       const m = /^([A-Z]+)(\d+)$/.exec(a);
@@ -166,7 +185,7 @@ function makeContext(spec, extra, opts) {
   };
 
   Object.assign(ctx, {
-    SpreadsheetApp: { getActiveSpreadsheet: () => ss },
+    SpreadsheetApp: { getActiveSpreadsheet: () => ss, Dimension: { ROWS: 'ROWS', COLUMNS: 'COLUMNS' } },
     PropertiesService: { getScriptProperties: () => store(scriptProps), getDocumentProperties: () => store(docProps) },
     CacheService: { getDocumentCache: () => cache, getScriptCache: () => cache },
     Utilities: { formatDate },

@@ -328,6 +328,8 @@
 
     <script>
       var LANG = 'en';
+      // This dialog's session for webedit_call, minted by the menu that opened it.
+      var SHEET_TOKEN = <?!= sheetTokenJson ?>;
 
       var T = {
         en: {
@@ -455,7 +457,7 @@
             setStatus(err.message || String(err), 'warn');
             byId('reset-btn').disabled = false;
           })
-          .commitSelectiveReset(options);
+          .webedit_call(SHEET_TOKEN, 'commitSelectiveReset', [options]);
       }
 
       // ── Init ──────────────────────────────────────────────────────────────────

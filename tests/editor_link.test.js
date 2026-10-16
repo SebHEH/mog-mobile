@@ -39,8 +39,8 @@ const CHECKS = {
       r.out.includes('https://script.google.com/d/' + t.scriptId + '/edit') &&
       !!t.sheet && r.out.includes('https://docs.google.com/spreadsheets/d/' + t.sheet.id + '/edit');
   },
-  'names Admin.gs for setupMobileApi': s => {
-    const r = run(s, ['setupMobileApi', 'rpr']);
+  'names Admin.gs for test_ping': s => {
+    const r = run(s, ['test_ping', 'rpr']);
     return r.code === 0 && r.out.includes('**`Admin.gs`**');
   },
   '"all" prints one block per store, and every store has its Sheet recorded': s => {

@@ -65,7 +65,7 @@ const CONCEPT_THEMES = {
 };
 
 // Resolves this store's dashboard theme from the MOG_CONCEPT script property
-// (set via setupMobileApi / Set Store Concept). Falls back to the default
+// (set via setupMobileApi_ / Set Store Concept). Falls back to the default
 // navy when unset or unrecognized, so a store with no concept configured
 // renders exactly as before. Memoized for the life of one execution.
 var _dashThemeCache = null;
@@ -89,7 +89,7 @@ function dashTheme_() {
 // merges, validations on ORDER_ENTRY rows 1-50 are all replaced). Drawings
 // are preserved by Apps Script's clear() so the legacy Reset On Hand
 // button drawing survives — user can delete it manually after rebuild.
-function buildHomeDashboard() {
+function buildHomeDashboard_() {
   const ui = SpreadsheetApp.getUi();
   const confirm = ui.alert(
     "Rebuild Home Dashboard?",
@@ -276,7 +276,7 @@ function buildHomeDashboard() {
     '=TEXT(IF(' + DASH.RESET_DATE + '="", ' + DASH.DATE_FORMULA + ', ' + DASH.RESET_DATE + '), "ddd")'
   );
 
-  // AE9 (RESET_DATE) starts blank; resetOnHandAllVendors writes to it.
+  // AE9 (RESET_DATE) starts blank; resetOnHandAllVendors_ writes to it.
   // Used only by the Reset On Hand status strip's conditional formatting.
   sh.getRange(DASH.RESET_DATE).setNumberFormat("yyyy-mm-dd");
 
@@ -334,7 +334,7 @@ function buildHomeDashboard() {
     const result = ensureDashboardEditTrigger_();
     triggerStatus = result.created ? "installed (you may need to authorize)" : "already installed";
   } catch (err) {
-    triggerStatus = "FAILED — " + err.message + " (try running buildHomeDashboard from the script editor once to grant permissions)";
+    triggerStatus = "FAILED — " + err.message + " (try running buildHomeDashboard_ from the script editor once to grant permissions)";
   }
 
 
@@ -349,7 +349,7 @@ function buildHomeDashboard() {
     const result = ensureDailyResetTrigger_();
     resetTriggerStatus = result.created ? "installed (you may need to authorize)" : "already installed";
   } catch (err) {
-    resetTriggerStatus = "FAILED — " + err.message + " (try running buildHomeDashboard from the script editor once to grant permissions)";
+    resetTriggerStatus = "FAILED — " + err.message + " (try running buildHomeDashboard_ from the script editor once to grant permissions)";
   }
 
 
@@ -379,7 +379,7 @@ function buildHomeDashboard() {
 // ── ROW 1: BANNER ────────────────────────────────────────────────────────
 function buildHomeBanner_(sh) {
   // Store name comes from the per-store MOG_LOCATION_NAME property (set via
-  // setupMobileApi), uppercased. Falls back to a neutral title if unset so a
+  // setupMobileApi_), uppercased. Falls back to a neutral title if unset so a
   // freshly-copied store never stamps the wrong name. Colors come from the
   // concept theme (default navy when no concept is configured).
   const location = String(
@@ -417,7 +417,7 @@ function buildHomeDateStrip_(sh) {
 
   // Emergency override (right) — visible checkbox styled as a warning-only
   // control (bold red label + yellow-cream bg) so it doesn't look like a
-  // normal toggle. Auto-clears when reset fires (see resetOnHandAllVendors)
+  // normal toggle. Auto-clears when reset fires (see resetOnHandAllVendors_)
   // and on first-open of a new day (see resetEmergencyOverrideOnOpen_).
   const warnLabelStyle = { color: "#a02020", size: 10, weight: "bold", align: "right" };
   applyHomeStripCell_(sh, "P2:AC2", "⚠  EMERGENCY OVERRIDE  /  Anulación:", warnLabelStyle);

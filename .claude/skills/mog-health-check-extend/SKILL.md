@@ -17,14 +17,14 @@ When you find a class of store corruption, the durable fix isn't just repairing 
 
 ## Two moving parts
 
-- **The check** — a read-only probe inside `getStoreHealthReport()` (`Health.gs`). Reports status + a human sentence, and *names* a repair.
-- **The fix (optional)** — a headless, UI-free repair invoked from the web editor via `runHealthFix(fixId)` (`Health.gs`), delegating to a `_core_` function in the owning domain file.
+- **The check** — a read-only probe inside `getStoreHealthReport_()` (`Health.gs`). Reports status + a human sentence, and *names* a repair.
+- **The fix (optional)** — a headless, UI-free repair invoked from the web editor via `runHealthFix_(fixId)` (`Health.gs`; the page sends the dispatcher action `runHealthFix`), delegating to a `_core_` function in the owning domain file.
 
 A check with no fix is fine (it just tells the operator what to run in the Sheet). A fix without a check is not — every `fixId` must be produced by a check.
 
 ## Adding the check (always)
 
-In `getStoreHealthReport()`, add to the numbered sections. Use the local `add()` helper — its signature is the contract:
+In `getStoreHealthReport_()`, add to the numbered sections. Use the local `add()` helper — its signature is the contract:
 
 ```js
 add(id, label, status, detail, fix, fixId, destructive)
@@ -35,11 +35,11 @@ add(id, label, status, detail, fix, fixId, destructive)
 - `status` — `'pass' | 'warn' | 'fail'`. **fail** = broken now; **warn** = degraded / self-heals / not-yet-placed; **pass** = healthy.
 - `detail` — one sentence, English only, that a KM/admin can act on. Name counts and the offending vendors/items.
 - `fix` — a human sentence describing the repair (shown even when there's no web button — e.g. "Run 📱 Mobile API → Setup").
-- `fixId` — omit for a check-only probe; set it to wire a **one-click web Fix button** (see below). Must match a `case` in `runHealthFix`.
+- `fixId` — omit for a check-only probe; set it to wire a **one-click web Fix button** (see below). Must match a `case` in `runHealthFix_`.
 - `destructive` — `true` makes the web client **confirm before running** (used by `purge_pickpath`).
 
 **Hard rules:**
-1. **Read-only. Never write** to the sheet or properties inside `getStoreHealthReport()` — not even a self-healing delete of an expired key (the PIN-lockout check reads the raw property precisely to avoid this). The report must be safe to run anytime.
+1. **Read-only. Never write** to the sheet or properties inside `getStoreHealthReport_()` — not even a self-healing delete of an expired key (the PIN-lockout check reads the raw property precisely to avoid this). The report must be safe to run anytime.
 2. **Wrap each check in its own `try/catch`** that degrades to `warn`/`fail` with `'Check errored: ' + e.message`. One broken probe must not sink the whole report.
 3. **A `pass` branch too** — every check emits a row in all states, so the report reads as a complete checklist.
 
@@ -47,13 +47,13 @@ add(id, label, status, detail, fix, fixId, destructive)
 
 1. **Write a UI-free `_core_` function** in the domain file that owns the data (`Vendors.gs`, `PickPath.gs`, `Items.gs`, …), e.g. `fixVendorHeaders_core_()`. It does the repair and returns a plain result object (`{ fixed, names }`, `{ removed }`, `{ added, itemsAffected }`, …). **No `SpreadsheetApp.getUi()`** anywhere in the path — `getUi()` throws in a web-app context, which is exactly how the web Fix button runs. If a Sheet-menu version already exists and calls `getUi()`, extract the logic into `<name>_core_` and have the menu wrapper call the core (this is how `purge`/`migrate` were unified — one source of truth, `f51869e`).
 2. **Bump the server mutation ts** if the repair changes data the PWA reads, so KM caches invalidate (the shared cores generally already do; confirm).
-3. **Add a `case` to `runHealthFix(fixId)`** in `Health.gs` that calls the core and returns `{ ok, message }`. `ok:false` only when the core reports errors (see `sync_h2`, which surfaces `r.errors`). The `message` is shown verbatim in the web UI — make it say what happened, including the "nothing to do" branch.
+3. **Add a `case` to `runHealthFix_(fixId)`** in `Health.gs` that calls the core and returns `{ ok, message }`. `ok:false` only when the core reports errors (see `sync_h2`, which surfaces `r.errors`). The `message` is shown verbatim in the web UI — make it say what happened, including the "nothing to do" branch.
 
-**Dispatch is already wired — a new `fixId` needs NO dispatch change.** Both `getStoreHealthReport` and `runHealthFix` are registered in `webeditDispatch_()` (`Editor.gs`), and `runHealthFix` routes internally by `fixId`. You only touch `webeditDispatch_` if you add a *brand-new client-callable function* (rare — prefer riding `runHealthFix`).
+**Dispatch is already wired — a new `fixId` needs NO dispatch change.** The actions `getStoreHealthReport` and `runHealthFix` are registered in `webeditDispatch_()` (`Editor.gs`), mapping to the private `getStoreHealthReport_` / `runHealthFix_`, and `runHealthFix_` routes internally by `fixId`. You only touch `webeditDispatch_` if you add a *brand-new client-callable function* (rare — prefer riding `runHealthFix`), and that function must be private (`_`): `tests/public_surface.test.js` fails on any new public function (D18).
 
 ## HealthCheck.html usually needs no change
 
-The modal is **data-driven** — it renders whatever `getStoreHealthReport()` returns and shows a Fix button whenever a check has a `fixId` (confirming first when `destructive`). A new check/fix appears automatically. Only touch `HealthCheck.html` for a genuinely new rendering need (and then `rhino-safe-html` applies to its script block, though modals are browser-side ES6-safe — see invariant #4).
+The modal is **data-driven** — it renders whatever `getStoreHealthReport_()` returns and shows a Fix button whenever a check has a `fixId` (confirming first when `destructive`). A new check/fix appears automatically. Only touch `HealthCheck.html` for a genuinely new rendering need (and then `rhino-safe-html` applies to its script block, though modals are browser-side ES6-safe — see invariant #4).
 
 ## Conventions
 

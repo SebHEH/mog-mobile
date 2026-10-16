@@ -233,7 +233,7 @@ function buildRecapFromLog_(orderDate) {
   if (supabaseConfig_().switched) {
     return recapFromLogRows_(supabaseSync_('mog_sync_get_log', { p_date: orderDate }).rows, orderDate);
   }
-  const rows = getOrderHistory({ vendorFilter: 'ALL', dateFrom: orderDate, dateTo: orderDate });
+  const rows = getOrderHistory_({ vendorFilter: 'ALL', dateFrom: orderDate, dateTo: orderDate });
 
   // vendor|itemId -> storage area. Not stored in the log, so joined from the
   // pick DB. Cosmetic grouping in the email, so a read failure must never sink
@@ -323,7 +323,7 @@ function sendPendingRecap_() {
   if (!pending || !pending.cycleDate) { finish(); return; }
 
   // Already delivered for this cycle by some other path (a manual send, or the
-  // synchronous fallback in commitLogAndReset when trigger creation failed).
+  // synchronous fallback in commitLogAndReset_ when trigger creation failed).
   if ((props.getProperty(PROP_LAST_RECAP_SENT_DATE) || '') === pending.cycleDate) {
     finish();
     return;
@@ -494,13 +494,14 @@ function sendRecapEmail_(recipient, sections, cycleDate, totalItems) {
 // the most recent logged cycle so it can be Run straight from the editor with no
 // arguments; pass 'yyyy-MM-dd' to target a specific one. Not menu-wired.
 function test_recapFromLogToSelf(orderDate) {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   const me = Session.getActiveUser().getEmail();
   if (!me) throw new Error('Could not resolve your email from Session.getActiveUser().');
 
   let date = String(orderDate || '').trim();
   if (!date) {
-    // Most recent logged cycle. getOrderHistory sorts date-desc, so row 0 wins.
-    const all = getOrderHistory({ vendorFilter: 'ALL' }, { needPack: false });
+    // Most recent logged cycle. getOrderHistory_ sorts date-desc, so row 0 wins.
+    const all = getOrderHistory_({ vendorFilter: 'ALL' }, { needPack: false });
     if (!all.length) throw new Error('LOG_ORDERS is empty — nothing to rebuild.');
     date = all[0].orderDate;
   }
@@ -519,6 +520,7 @@ function test_recapFromLogToSelf(orderDate) {
 
 
 function test_recapEmailToSelf() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   const me = Session.getActiveUser().getEmail();
   if (!me) throw new Error('Could not resolve your email from Session.getActiveUser().');
   const recap = buildRecapSections_(null);
@@ -631,7 +633,7 @@ function writeRecipients_(recipients) {
 function ensureRecipientsHeader_() {
   // Idempotent: writes the AB-AE header row if absent. Called lazily at
   // the top of every recipient-related action so existing stores don't
-  // need to re-run setupMobileApi to pick up the header.
+  // need to re-run setupMobileApi_ to pick up the header.
   const setup = getSheet_(SHEET_SETUP);
   const headerVals = setup
     .getRange(RECIPIENTS_HEADER_ROW, RECIPIENTS_START_COL, 1, RECIPIENTS_NUM_COLS)

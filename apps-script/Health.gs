@@ -9,16 +9,16 @@
  *
  * READ-ONLY — never writes to the sheet or properties.
  *
- * getStoreHealthReport() is client-callable (Sheet via google.script.run,
+ * getStoreHealthReport_() is client-callable (Sheet via google.script.run,
  * web editor via webedit_call) and returns a host-agnostic structured report
  * that HealthCheck.html renders. Status per check is 'pass' | 'warn' | 'fail'.
  ************************************************************/
 
-function getStoreHealthReport() {
+function getStoreHealthReport_() {
   const ss     = SpreadsheetApp.getActiveSpreadsheet();
   const props  = PropertiesService.getScriptProperties();
   const checks = [];
-  // fixId (optional) names a web-actionable repair that runHealthFix() can run;
+  // fixId (optional) names a web-actionable repair that runHealthFix_() can run;
   // destructive=true makes the web client confirm before running it.
   const add = (id, label, status, detail, fix, fixId, destructive) =>
     checks.push({ id: id, label: label, status: status, detail: detail || '',
@@ -242,9 +242,9 @@ function getStoreHealthReport() {
 // (routed through webedit_call, so the web editor can run it PIN-gated) that
 // runs a specific fix headlessly and returns { ok, message }. Reuses the same
 // UI-free cores the Sheet menu fixers use — no SpreadsheetApp.getUi() (which
-// throws in a web-app context). The fixId values match getStoreHealthReport's
+// throws in a web-app context). The fixId values match getStoreHealthReport_'s
 // per-check fixId.
-function runHealthFix(fixId) {
+function runHealthFix_(fixId) {
   const id = String(fixId || '');
   switch (id) {
     case 'sync_h2': {
@@ -322,9 +322,9 @@ function runHealthFix(fixId) {
 // Sheet launcher — opens the dual-host HealthCheck modal as a Sheet dialog.
 // (The web editor renders the same HealthCheck.html via doGet?page=healthcheck.)
 // webBootJson web:false keeps the web bits inert in the dialog.
-function showStoreHealthCheck() {
+function showStoreHealthCheck_() {
   const tmpl = HtmlService.createTemplateFromFile('HealthCheck');
-  tmpl.webBootJson = JSON.stringify({ web: false });
+  tmpl.webBootJson = sheetBootJson_();   // in-Sheet dialog: web bits off, plus its token for webedit_call
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     'Store Health Check'

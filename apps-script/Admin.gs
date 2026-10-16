@@ -10,7 +10,7 @@
  * 5) ADMIN — RUN ONCE PER LOCATION
  ***********************/
 
-function setupMobileApi() {
+function setupMobileApi_() {
   const ui = SpreadsheetApp.getUi();
   const props = PropertiesService.getScriptProperties();
 
@@ -120,7 +120,7 @@ function setupMobileApi() {
 }
 
 
-function setMasterPin() {
+function setMasterPin_() {
   // Set or rotate the multi-unit manager master PIN without re-running
   // the full setup wizard. Master PIN is OPTIONAL — clearing it (entering
   // blank) leaves only the location's store PIN active.
@@ -152,10 +152,10 @@ function setMasterPin() {
 }
 
 
-function setStoreConcept() {
+function setStoreConcept_() {
   // Set or clear this store's concept for home-dashboard branding without
   // re-running the full setup wizard. The dashboard reads PROP_CONCEPT on
-  // rebuild (buildHomeDashboard → dashTheme_); unset → default navy palette.
+  // rebuild (buildHomeDashboard_ → dashTheme_); unset → default navy palette.
   const ui = SpreadsheetApp.getUi();
   const props = PropertiesService.getScriptProperties();
   const current = props.getProperty(PROP_CONCEPT) || '(none — default navy)';
@@ -183,7 +183,7 @@ function setStoreConcept() {
 }
 
 
-function setGmEmail() {
+function setGmEmail_() {
   // Set or update the GM email. Maintains both:
   //   1. PROP_GM_EMAIL (legacy property — kept for any code that still reads it)
   //   2. The locked GM row in SETUP recipients (column AE = TRUE)
@@ -252,7 +252,7 @@ function setGmEmail() {
 }
 
 
-function showMobileApiStatus() {
+function showMobileApiStatus_() {
   const props = PropertiesService.getScriptProperties();
   const ui = SpreadsheetApp.getUi();
   // Read recipients count for the status dialog. Read errors fall back to
@@ -294,7 +294,7 @@ function showMobileApiStatus() {
 
 
 // UI-free core — shared by the Sheet menu wrapper (below) and the web
-// health-check fix (runHealthFix 'clear_lockout'). Returns { cleared }.
+// health-check fix (runHealthFix_ 'clear_lockout'). Returns { cleared }.
 function clearPinLockout_core_() {
   const props = PropertiesService.getScriptProperties();
   const had = !!(props.getProperty(PROP_PIN_FAIL_COUNT) ||
@@ -306,7 +306,7 @@ function clearPinLockout_core_() {
   return { cleared: had };
 }
 
-function clearPinLockout() {
+function clearPinLockout_() {
   // Manual unlock — for when a legitimate manager gets locked out and
   // can't wait 5 minutes, or when testing. Wired into the Mobile API
   // menu in Core.gs.
@@ -318,7 +318,7 @@ function clearPinLockout() {
 }
 
 
-function clearMobileApiConfig() {
+function clearMobileApiConfig_() {
   const ui = SpreadsheetApp.getUi();
   const resp = ui.alert('Clear Mobile API Config',
     'This UN-CONFIGURES this store — it removes the PIN, master PIN, location, ' +
@@ -362,6 +362,7 @@ function clearMobileApiConfig() {
  ***********************/
 
 function test_ping() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   const result = api_ping_();
   Logger.log('--- test_ping ---');
   Logger.log(JSON.stringify(result, null, 2));
@@ -369,6 +370,7 @@ function test_ping() {
 
 
 function test_getDashboard() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   Logger.log('--- test_getDashboard ---');
   try {
     const result = api_getDashboard_();
@@ -396,6 +398,7 @@ function test_getDashboard() {
 
 
 function test_getVendorItems() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   // Edit this to a real vendor name from your sheet
   const TEST_VENDOR = 'Sysco';
 
@@ -421,6 +424,7 @@ function test_getVendorItems() {
 
 
 function test_doPostFlow() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   // Simulates an actual HTTP POST end-to-end, including PIN check.
   // Useful to confirm the dispatch + auth layer works before testing from
   // the mobile app.
@@ -428,7 +432,7 @@ function test_doPostFlow() {
 
   const pin = PropertiesService.getScriptProperties().getProperty(PROP_PIN);
   if (!pin) {
-    Logger.log('No PIN set. Run setupMobileApi() first.');
+    Logger.log('No PIN set. Run setupMobileApi_() first.');
     return;
   }
 
@@ -457,6 +461,7 @@ function test_doPostFlow() {
 
 
 function test_getResetStatus() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   Logger.log('--- test_getResetStatus ---');
   try {
     const r = api_getResetStatus_();
@@ -470,6 +475,7 @@ function test_getResetStatus() {
 
 
 function test_commitReset() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   // ⚠ DESTRUCTIVE on a fresh state — this runs the same logic as the
   // "Reset On Hand" button on the spreadsheet. Snapshots current On Hand
   // values to LOG_ORDERS (if not already logged for today), clears all
@@ -492,6 +498,7 @@ function test_commitReset() {
 
 
 function test_emailRecap() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   // ⚠ This actually sends an email — to every active recipient configured
   // in SETUP AB-AE. Make sure the recipients list is set up before running.
   // Doesn't write to LOG_ORDERS — recap is read-only / send-only.
@@ -522,6 +529,7 @@ function test_emailRecap() {
 
 
 function test_getRecipients() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   // Read-only verification of the recipients list. Useful for confirming
   // the AB-AE layout is intact and the GM seed migration ran correctly.
   Logger.log('--- test_getRecipients ---');

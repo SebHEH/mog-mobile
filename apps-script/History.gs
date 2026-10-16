@@ -10,10 +10,10 @@
 
 
 // Opens the Order History modal from the menu.
-function showOrderHistoryModal() {
+function showOrderHistoryModal_() {
   ensureLogSheet_();
   const tmpl = HtmlService.createTemplateFromFile("OrderHistory");
-  tmpl.webBootJson = JSON.stringify({ web: false });   // in-Sheet dialog: web bits stay inert
+  tmpl.webBootJson = sheetBootJson_();   // in-Sheet dialog: web bits off, plus its token for webedit_call
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_LG_W).setHeight(MODAL_LG_H),
     "Order History"
@@ -27,8 +27,8 @@ function showOrderHistoryModal() {
 // client doesn't need a separate vendor-list round-trip and the server
 // doesn't read LOG_ORDERS twice. Vendor list is derived from the
 // unfiltered log (the dropdown must show every vendor regardless of filter);
-// rows are the filtered set, same shape getOrderHistory returns.
-function getOrderHistoryBootstrap(filters) {
+// rows are the filtered set, same shape getOrderHistory_ returns.
+function getOrderHistoryBootstrap_(filters) {
   const logSheet = ensureLogSheet_();
   const lastRow  = logSheet.getLastRow();
   if (lastRow < 2) return { vendors: getVendorList(), rows: [] };
@@ -176,8 +176,8 @@ function buildHistoryRows_(data, filters, opts, fmtDateShared) {
 // Reads a date-bounded SLICE, not the whole log. Safe to slice here because
 // every caller consumes only .rows — the unfiltered `vendors` set, which needs
 // the full sheet to be complete, is used exclusively by
-// getOrderHistoryBootstrap, which keeps its own full read below.
-function getOrderHistory(filters, opts) {
+// getOrderHistoryBootstrap_, which keeps its own full read below.
+function getOrderHistory_(filters, opts) {
   const logSheet = ensureLogSheet_();
   const f  = filters || {};
   const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
@@ -200,14 +200,14 @@ function getOrderHistory(filters, opts) {
 
 // ── (removed 2026-06-01) getOrderSummary + getOrderHistoryVendorList ──
 // Both dead. OrderHistory.html builds the Vendor Summary aggregation
-// client-side from getOrderHistory, and the vendor dropdown is populated
-// inline by getOrderHistoryBootstrap — neither server fn had a caller.
+// client-side from getOrderHistory_, and the vendor dropdown is populated
+// inline by getOrderHistoryBootstrap_ — neither server fn had a caller.
 // Recoverable via git history.
 
 
 // Clears all data rows in LOG_ORDERS (header row preserved).
-// Called by commitSelectiveReset when options.orderLog is true.
-function clearOrderLog() {
+// Called by commitSelectiveReset_ when options.orderLog is true.
+function clearOrderLog_() {
   const logSheet = ensureLogSheet_();
   const lastRow  = logSheet.getLastRow();
   if (lastRow < 2) return { ok: true, cleared: 0 };
@@ -303,7 +303,7 @@ const PAR_FLAG = {
 
 
 
-// ── getParReviewFlags ────────────────────────────────────────────────────────
+// ── getParReviewFlags_ ────────────────────────────────────────────────────────
 // Called by ManageItems on load.
 // Reads LOG_ORDERS and MASTER_ITEMS (for par values), computes flags per item.
 //
@@ -327,7 +327,7 @@ const PAR_FLAG = {
 //     par:          number | ""
 //   }
 // }
-function getParReviewFlags(parMap) {
+function getParReviewFlags_(parMap) {
   const logSheet = ensureLogSheet_();
   const lastRow  = logSheet.getLastRow();
   if (lastRow < 2) return {};
@@ -344,8 +344,8 @@ function getParReviewFlags(parMap) {
 
 
   // Par lookup (itemId → par number, par>0 only) so we can compute % of par per
-  // item. getManageItemsBootstrap passes a prebuilt map — it already read MASTER
-  // via getAllItemsForView, so this avoids a second MASTER read on the modal-open
+  // item. getManageItemsBootstrap_ passes a prebuilt map — it already read MASTER
+  // via getAllItemsForView_, so this avoids a second MASTER read on the modal-open
   // path (audit #13). Called standalone (parMap omitted) it reads MASTER here, as
   // before. The map is only used to look up par for logged item IDs, so the extra
   // blank-name MASTER rows the bootstrap map omits are never referenced.

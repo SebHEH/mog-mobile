@@ -16,13 +16,13 @@
 /***********************
  * 4) VENDORS
  ***********************/
-function showManageVendorsSidebar() {
+function showManageVendorsSidebar_() {
   const tmpl = HtmlService.createTemplateFromFile("ManageVendors");
   // Pre-load the full vendor table data so the modal renders without a second
-  // server roundtrip. Was previously also calling getVendorTableData() on init.
+  // server roundtrip. Was previously also calling getVendorTableData_() on init.
   tmpl.vendorListJson  = JSON.stringify(getVendorList());
-  tmpl.vendorTableJson = JSON.stringify(getVendorTableData());
-  tmpl.webBootJson     = JSON.stringify({ web: false });   // in-Sheet dialog: web bits stay inert
+  tmpl.vendorTableJson = JSON.stringify(getVendorTableData_());
+  tmpl.webBootJson     = sheetBootJson_();   // in-Sheet dialog: web bits off, plus its token for webedit_call
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Manage Vendors"
@@ -37,7 +37,7 @@ function showManageVendorsSidebar() {
 // Cache wrapper (mog-apps-script-caching pattern A, 2026-07-29): read on the
 // Manage Vendors doGet render + the Manage Items bootstrap. Same shared-ts
 // invalidation and same mid-write caveat as getVendorList above.
-function getVendorTableData() {
+function getVendorTableData_() {
   var ts  = getServerMutationTs_();
   var key = 'vendorTable_v1:' + ts;
   var cache = CacheService.getDocumentCache();
@@ -133,7 +133,7 @@ function pad2_(n) { return (n < 10 ? '0' : '') + n; }
 // 4. Writes vendor name to column R (Z already written so validation passes)
 // 5. Copies 4th sheet (first vendor tab template), renames + updates B1
 // 6. Protects all cells except E3:E1000, owner-only edit
-function commitAddVendor(vendorName, mults, cutoffTime) {
+function commitAddVendor_(vendorName, mults, cutoffTime) {
   bumpServerMutationTs_();
   const name = String(vendorName || "").trim();
   if (!name) throw new Error("Vendor name is required.");
@@ -304,7 +304,7 @@ function commitAddVendor(vendorName, mults, cutoffTime) {
 // the whole tab. A plain setValue on the merged cell has been observed NOT to
 // persist on freshly-cloned tabs (they kept "VENDOR TEMPLATE"), so: break the
 // merge, write, re-merge, flush, then read back and retry once. Returns true if
-// B1 ends up correct. Shared by commitAddVendor and the Health Check fix.
+// B1 ends up correct. Shared by commitAddVendor_ and the Health Check fix.
 function setVendorHeaderB1_(sheet, name) {
   const want = String(name).trim();
   const hdr  = sheet.getRange("B1:F1");
@@ -342,7 +342,7 @@ function fixVendorHeaders_core_() {
 
 
 // Called by the ManageVendors "Import Vendor" panel. Creates a vendor (reusing
-// commitAddVendor, so the SETUP block + VENDOR_TEMPLATE clone + protections all
+// commitAddVendor_, so the SETUP block + VENDOR_TEMPLATE clone + protections all
 // stay in one place) and then bulk-inserts every item from a pasted/uploaded
 // CSV into MASTER_ITEMS — par left BLANK and no storage-area assignment (the
 // items exist in the data model but stay off the vendor's ordering tab until
@@ -351,7 +351,7 @@ function fixVendorHeaders_core_() {
 // payload = { name, mults:[7], cutoff, csvText }
 // CSV shape: one item per row, col 0 = Item Name, col 1 = Pack Size. A header
 // row ("Item Name,Pack…") and #-comment / blank rows are skipped.
-function commitImportVendor(payload) {
+function commitImportVendor_(payload) {
   bumpServerMutationTs_();
   payload = payload || {};
   const name    = String(payload.name || "").trim();
@@ -390,11 +390,11 @@ function commitImportVendor(payload) {
   if (!items.length) throw new Error("No items found in the file. Each row needs an item name in the first column.");
 
   // 2. Create the vendor first (throws on duplicate name — caught by the UI).
-  commitAddVendor(name, mults, cutoff);
+  commitAddVendor_(name, mults, cutoff);
 
   // 3. Bulk-insert the items into MASTER_ITEMS. A new vendor has no rows yet,
   //    so we append after the last item row. Build the blocks and write each
-  //    column-group in a single setValues (not per-item like commitUpsertItem,
+  //    column-group in a single setValues (not per-item like commitUpsertItem_,
   //    which would be hundreds of I/O calls for a large catalog).
   const sh = getSheet_(SHEET_MASTER);
 
@@ -442,7 +442,7 @@ function commitImportVendor(payload) {
 // RPC against one row lookup. Validates both inputs upfront so we fail
 // before any write — no partial-success state where mults saved but
 // cutoff didn't (or vice versa).
-function commitUpdateVendorMultsAndCutoff(vendorName, mults, cutoffTime) {
+function commitUpdateVendorMultsAndCutoff_(vendorName, mults, cutoffTime) {
   bumpServerMutationTs_();
   const name = String(vendorName || "").trim();
   if (!name) throw new Error("Vendor name is required.");
@@ -496,9 +496,10 @@ function commitUpdateVendorMultsAndCutoff(vendorName, mults, cutoffTime) {
 // par is global per item; mixing canonical and legacy calibration across
 // a store's vendors will give wrong quantities when an item is switched
 // to a vendor whose mults still expect the legacy par.
-function showRecalibrateVendorSidebar() {
+function showRecalibrateVendorSidebar_() {
   const tmpl = HtmlService.createTemplateFromFile("RecalibrateVendor");
   tmpl.vendorListJson = JSON.stringify(getVendorList());
+  tmpl.sheetTokenJson = JSON.stringify(mintSheetToken_());   // its calls go through webedit_call
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Recalibrate Vendor Pars"
@@ -510,7 +511,7 @@ function showRecalibrateVendorSidebar() {
 // vendor's current mults (S:Y on its row) and the items currently active
 // for this vendor with their current par. The modal uses this to compute
 // the three suggested divisors and render the side-by-side preview.
-function getVendorRecalibrationBootstrap(vendorName) {
+function getVendorRecalibrationBootstrap_(vendorName) {
   const name = String(vendorName || "").trim();
   if (!name) throw new Error("Vendor name is required.");
 
@@ -568,7 +569,7 @@ function getVendorRecalibrationBootstrap(vendorName) {
 // active-for-this-vendor item's par by parDivisor (1-decimal rounding,
 // blank/null pars stay blank). bumpServerMutationTs_ invalidates the
 // dashboard's cached order math.
-function commitVendorRecalibration(payload) {
+function commitVendorRecalibration_(payload) {
   bumpServerMutationTs_();
   payload = payload || {};
   const name     = String(payload.vendor || "").trim();
@@ -654,8 +655,8 @@ function commitVendorRecalibration(payload) {
 //   'everyday'  — canonical but every day has a delivery and every mult is 1
 //                 (the rpr-style "treat every day as 1-day par" pattern). Worth
 //                 confirming the vendor actually delivers daily.
-function auditVendorCadence() {
-  const vendors = getVendorTableData(); // [{name, mults, cutoffTime}, ...]
+function auditVendorCadence_() {
+  const vendors = getVendorTableData_(); // [{name, mults, cutoffTime}, ...]
   const out = [];
   for (let i = 0; i < vendors.length; i++) {
     const v        = vendors[i];
@@ -717,9 +718,9 @@ function inferDeliveryFromMults_(mults) {
 }
 
 
-function showVendorCadenceAuditSidebar() {
+function showVendorCadenceAuditSidebar_() {
   const tmpl = HtmlService.createTemplateFromFile("VendorCadenceAudit");
-  tmpl.auditJson = JSON.stringify(auditVendorCadence());
+  tmpl.auditJson = JSON.stringify(auditVendorCadence_());
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Audit Vendor Cadence"
@@ -737,6 +738,7 @@ function showVendorCadenceAuditSidebar() {
 // Writes NOTHING — pure read. Run from Ordering Guide → Mobile API → Audit
 // Vendor Tab Structure before running the migration on a store.
 function auditVendorTabStructure() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   const ui = SpreadsheetApp.getUi();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
@@ -819,7 +821,7 @@ function auditVendorTabStructure() {
 // ── Re-establish a clean hidden VENDOR_TEMPLATE from a healthy vendor tab ──
 // The template is the clone source for Add Vendor. On some stores (e.g. rprfo)
 // it was deleted, leaving Add Vendor to guess at ss.getSheets()[3] (now removed
-// — see commitAddVendor). This rebuilds it STRUCTURALLY rather than from
+// — see commitAddVendor_). This rebuilds it STRUCTURALLY rather than from
 // hardcoded formulas: clone the first structurally-healthy vendor tab, blank its
 // vendor-specific inputs (B1 header → empties the M-spine FILTER spill; E On
 // Hand), and hide it. NO-OP when VENDOR_TEMPLATE already exists.
@@ -888,7 +890,7 @@ function reestablishVendorTemplate_() {
 // Called by ManageVendors sidebar - Remove tab.
 // Removes vendor row from table and from data validation list.
 // Tab, items, and pick path DB are left untouched.
-function commitRemoveVendor(vendorName) {
+function commitRemoveVendor_(vendorName) {
   bumpServerMutationTs_();
   const name = String(vendorName || "").trim();
   if (!name) throw new Error("Vendor name is required.");
@@ -927,7 +929,15 @@ function commitRemoveVendor(vendorName) {
 
 
 
-  setup.deleteRow(deletedRow);
+  // Delete ONLY this vendor's cells: the vendor table R:AA (name, Mon-Sun
+  // multipliers, list, cutoff) and its day pick in AF, shifting the vendors
+  // below up so every vendor column stays row-aligned. Never the whole row:
+  // SETUP's other tables share these rows, so deleteRow also removed a
+  // pick-path row (K:P), a storage area (H:I) and a recipient (AB:AE) (D18).
+  setup.getRange(deletedRow, VENDOR_TABLE.VENDOR_COL, 1, VENDOR_CUTOFF_COL - VENDOR_TABLE.VENDOR_COL + 1)
+       .deleteCells(SpreadsheetApp.Dimension.ROWS);
+  setup.getRange(deletedRow, VENDOR_OVERRIDE_COL, 1, 1)
+       .deleteCells(SpreadsheetApp.Dimension.ROWS);
 
 
 
@@ -1014,7 +1024,7 @@ function commitRemoveVendor(vendorName) {
 // and by many server paths. Keyed on the shared mutation ts — every vendor
 // mutator bumps it, so invalidation is free. WRITERS BEWARE: a mutator that
 // bumps at its START and then reads the list BEFORE mutating must call
-// getVendorList_compute_() directly (commitAddVendor does), or it caches the
+// getVendorList_compute_() directly (commitAddVendor_ does), or it caches the
 // pre-mutation list under the post-bump key.
 function getVendorList() {
   var ts  = getServerMutationTs_();
@@ -1110,7 +1120,7 @@ function normalizeEligibleList_(raw, activeVendor, vendorMap) {
 
 // ── Master vendor list count ─────────────────────────────────────────────
 // Reads SETUP!Z (the master vendor list) and returns the count of non-empty
-// entries. Used by buildHomeDashboard to size the vendor tile section.
+// entries. Used by buildHomeDashboard_ to size the vendor tile section.
 function countMasterVendors_() {
   const ss      = SpreadsheetApp.getActive();
   const setupSh = ss.getSheetByName(SHEET_SETUP);

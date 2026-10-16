@@ -14,7 +14,7 @@ Before starting, confirm with Sebastian:
 - **Slug** to use for the new store (e.g. `rpfo` for Roll Play Foundation, lowercase letters/digits/hyphens only, must not conflict with existing slugs in `stores.json`).
 - **Concept** name (e.g. "Roll Play", "Teas'n You", "ĂN", "Lei'd Poke"). Existing concepts already have themes wired up in `build.py`'s `CONCEPT_TO_THEME` map; a brand-new concept means a `build.py` change too.
 - **Location label** (e.g. "Tysons FOH", "Founders BOH"). Free-text, displayed in the hub picker.
-- **Store PIN** Sebastian wants to set (4-8 digits). He sets this during `setupMobileApi()`; you just need to confirm he's ready.
+- **Store PIN** Sebastian wants to set (4-8 digits). He sets this during Setup / Re-run Setup (`setupMobileApi_`); you just need to confirm he's ready.
 
 If the concept is new (not in `build.py`'s `CONCEPT_TO_THEME` map): pause here, add the new concept to the map, and confirm a theme CSS block exists in `template/index.html` for the new theme slug. Don't proceed until that's settled — otherwise the PWA renders unthemed.
 
@@ -67,9 +67,9 @@ python deploy.py --target <newslug>
 
 **Verification:** `deploy.py` reports `PUSH OK: <newslug>` with 10 files pushed. If it errors with "Project settings not found" or similar, the Script ID is wrong — back up to Step 2.
 
-### Step 4 (Sebastian, in the new Sheet's Apps Script editor) — Run `setupMobileApi()`
+### Step 4 (Sebastian, in the new Sheet) — Run Setup / Re-run Setup (`setupMobileApi_`)
 
-1. In the Apps Script editor (already open from Step 2), pick `setupMobileApi` from the function dropdown.
+1. In the new Sheet, open **Ordering Guide → 📱 Mobile API → Setup / Re-run Setup**. (Since 2026-10-16 the function is private, `setupMobileApi_`, so it is NOT in the Apps Script editor's Run dropdown; the first-run `?page=setup` wizard is the other way in.)
 2. Click **Run**. Accept any authorization prompts (this is the first run; OAuth flow will trigger).
 3. Five prompts will appear in order:
    - **Store PIN** (4-8 digits) — the credential KMs use to log into the PWA.
@@ -154,7 +154,7 @@ git push origin main
 
 **Verification:** Sebastian confirms the new store loads and authenticates. If it doesn't, troubleshooting tree:
 - 404 on `/<newslug>/`? Pages hasn't rebuilt yet, or `build.py` didn't run. Check the latest commit.
-- PIN rejected? Wrong PIN typed, or `setupMobileApi()` didn't complete. Re-run in Apps Script editor.
+- PIN rejected? Wrong PIN typed, or Setup / Re-run Setup didn't complete. Re-run it from the Sheet menu.
 - Page loads but says "deployment URL not set" or similar? `stores.json` entry has the wrong URL — back up to Step 5/6.
 - "Master code not accepted" banner? Master PIN wasn't set (or set to a different value than the other stores) — re-run `setMasterPin` in the Apps Script editor.
 
@@ -168,7 +168,7 @@ After the 8 steps complete and smoke test passes:
 
 - **Don't skip the canary deploy in Step 3.** If you run `python deploy.py` (all targets) instead of `python deploy.py --target <newslug>`, you'd redeploy to 8 other stores unnecessarily. Harmless if the code hasn't changed locally, but wasteful and risks unintended pushes if it has.
 - **Don't update `stores.json` BEFORE the web app is deployed.** `build.py` validates the deployment URL pattern; a placeholder URL will fail validation, and a real-but-not-yet-deployed URL will 500 when the PWA hits it.
-- **Don't forget the `setupMobileApi()` step.** Without it, the Sheet has the code but no per-store PropertiesService config — the PWA will load but auth will fail mysteriously.
+- **Don't forget the Setup / Re-run Setup step.** Without it, the Sheet has the code but no per-store PropertiesService config — the PWA will load but auth will fail mysteriously.
 - **Don't reuse a slug that was previously published and then removed.** KMs may have home-screen icons at `/<slug>/`. Pick a new slug; the old one stays retired.
 - **Don't add a brand-new concept (one not in `CONCEPT_TO_THEME`) without also updating `build.py` and `template/index.html`'s theme CSS.** The PWA will render but un-themed (default look) instead of brand-correct.
 
@@ -176,5 +176,5 @@ After the 8 steps complete and smoke test passes:
 
 - "Update the deployment URL for an existing store" → just a `stores.json` edit + `build.py` + push. No full onboarding needed.
 - "Rename a store's location label" → same.
-- "Change the store PIN" → run `setupMobileApi()` again in that store's Apps Script editor; no other steps.
+- "Change the store PIN" → run Setup / Re-run Setup again from that store's Sheet menu; no other steps.
 - "Remove a store" → manual `git rm -r <slug>/`, remove from `stores.json`, `build.py`, push. No skill for this yet; ask Sebastian if he wants one.

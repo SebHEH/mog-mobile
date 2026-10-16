@@ -1,5 +1,5 @@
 'use strict';
-// GATE: 📱 Mobile API → Move this store to Supabase (Sync.gs moveToSupabase),
+// GATE: 📱 Mobile API → Move this store to Supabase (Sync.gs moveToSupabase_),
 // the one-step connect + switch, run with a scripted fake menu UI over a fake
 // Supabase (fake_supabase.js). Checks:
 //   - nothing changes until the code checks out AND the person says Yes:
@@ -130,7 +130,7 @@ function runSuite(srcOf, stores) {
         const side = makeSide(spec, script, sb, { auth });
         if (prep) prep(sb, key);
         const before = fingerprint(side, sb);
-        const log = side.menu('moveToSupabase', typeof answers === 'function' ? answers(key) : answers);
+        const log = side.menu('moveToSupabase_', typeof answers === 'function' ? answers(key) : answers);
         if (fingerprint(side, sb) !== before) fail(seed, scenario, 'changed something');
         const writes = sb.calls.filter(WRITE_CALL);
         if (writes.length) fail(seed, scenario, 'wrote to Supabase: ' + writes.join(','));
@@ -174,11 +174,11 @@ function runSuite(srcOf, stores) {
       const key = sb.provision(SLUG);
       const side = makeSide(spec, script, sb, {});
       sb.failFns.add('mog_sync_set_state');
-      let log = side.menu('moveToSupabase', [CODE('  "' + SLUG.toUpperCase() + ':' + key.toUpperCase() + '" '), YES]);
+      let log = side.menu('moveToSupabase_', [CODE('  "' + SLUG.toUpperCase() + ':' + key.toUpperCase() + '" '), YES]);
       if (!said(log, /Not finished/)) fail(seed, 'failure part-way', 'no "Not finished"');
       if (side.scriptProps.get('MOG_BACKEND')) fail(seed, 'failure part-way', 'switched anyway');
       sb.failFns.clear();
-      log = side.menu('moveToSupabase', [YES]);   // no code asked this time
+      log = side.menu('moveToSupabase_', [YES]);   // no code asked this time
       if (!said(log, /Moved to Supabase/)) fail(seed, 'move', 'no "Moved to Supabase": ' + JSON.stringify(log));
       if (side.scriptProps.get('MOG_BACKEND') !== 'supabase') fail(seed, 'move', 'MOG_BACKEND not set');
       if (side.scriptProps.get('MOG_SUPABASE_SLUG') !== SLUG || side.scriptProps.get('MOG_SUPABASE_SYNC_KEY') !== key) {
@@ -193,15 +193,15 @@ function runSuite(srcOf, stores) {
       stats.countsCopied += refCopied;
 
       sb.calls.length = 0;
-      log = side.menu('moveToSupabase', []);
+      log = side.menu('moveToSupabase_', []);
       if (!said(log, /already counts in Supabase/) || sb.calls.length) fail(seed, 'already moved', 'did something');
 
       // Rollback turns phones off first, then Move switches again without a code.
       sb.stores.get(SLUG).phoneDirect = true;
-      side.menu('switchBackToSheet', [YES]);
+      side.menu('switchBackToSheet_', [YES]);
       if (side.scriptProps.get('MOG_BACKEND')) fail(seed, 'rollback', 'still switched');
       if (sb.stores.get(SLUG).phoneDirect) fail(seed, 'rollback', 'phones still direct');
-      side.menu('moveToSupabase', [YES]);
+      side.menu('moveToSupabase_', [YES]);
       if (side.scriptProps.get('MOG_BACKEND') !== 'supabase') fail(seed, 'move after rollback', 'not switched');
       if (side.scriptApp.triggers.filter(t => t.getHandlerFunction() === 'nightlyMaintenance_').length !== 1) {
         fail(seed, 'move after rollback', 'nightly trigger count changed');
@@ -211,7 +211,7 @@ function runSuite(srcOf, stores) {
       sb.stores.get(SLUG).phoneDirect = true;
       sb.failFns.add('mog_sync_set_phone_direct');
       const writesBefore = side.book.writes.length;
-      log = side.menu('switchBackToSheet', [YES]);
+      log = side.menu('switchBackToSheet_', [YES]);
       sb.failFns.clear();
       if (!said(log, /Not switched/) || side.scriptProps.get('MOG_BACKEND') !== 'supabase' || side.book.writes.length !== writesBefore) {
         fail(seed, 'rollback, phones unreachable', 'went ahead anyway');
@@ -220,7 +220,7 @@ function runSuite(srcOf, stores) {
       // Without schema v3 (the function answers HTTP 404) no phone can be
       // direct, so the rollback goes ahead.
       sb.httpFor.mog_sync_set_phone_direct = 404;
-      side.menu('switchBackToSheet', [YES]);
+      side.menu('switchBackToSheet_', [YES]);
       delete sb.httpFor.mog_sync_set_phone_direct;
       if (side.scriptProps.get('MOG_BACKEND')) fail(seed, 'rollback without v3', 'still switched');
     } catch (e) { fail(seed, 'move', 'crashed: ' + e.message); }

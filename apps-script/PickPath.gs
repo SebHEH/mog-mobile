@@ -31,7 +31,7 @@ function readAreaBlock_(setup) {
 // start and reads the CURRENT list before reconciling — it must (and does)
 // call getStorageAreaList_compute_() directly, or it would cache the
 // pre-mutation list under the post-bump key.
-function getStorageAreaList() {
+function getStorageAreaList_() {
   var ts  = getServerMutationTs_();
   var key = 'areaList_v1:' + ts;
   var cache = CacheService.getDocumentCache();
@@ -95,10 +95,10 @@ function getAreaOrderMap_() {
 
 
 
-function showStorageAreasSidebar() {
+function showStorageAreasSidebar_() {
   const tmpl = HtmlService.createTemplateFromFile("StorageAreas");
-  tmpl.areaListJson = JSON.stringify(getStorageAreaList());
-  tmpl.webBootJson  = JSON.stringify({ web: false });   // in-Sheet dialog: web bits stay inert
+  tmpl.areaListJson = JSON.stringify(getStorageAreaList_());
+  tmpl.webBootJson  = sheetBootJson_();   // in-Sheet dialog: web bits off, plus its token for webedit_call
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Storage Areas"
@@ -120,7 +120,7 @@ function showStorageAreasSidebar() {
 // a rejected payload leaves the sheet untouched. (No transactions exist in
 // Apps Script — if a later write throws mid-sequence the state can split; the
 // modal recovers by refetching server truth on failure.)
-function commitStorageAreasDraft(finalList) {
+function commitStorageAreasDraft_(finalList) {
   return withPickDbLock_(() => commitStorageAreasDraft_locked_(finalList));
 }
 function commitStorageAreasDraft_locked_(finalList) {
@@ -581,7 +581,7 @@ function savePickPathSilent_(vendor) {
     !result.listedIds.has(String(r[1] || "").trim())
   );
   writePickDb_(setup, kept.concat(result.saved));
-  // Pick-path rows changed — bump like commitReorderPickPath does, so cached
+  // Pick-path rows changed — bump like commitReorderPickPath_ does, so cached
   // manageItems/dashboard payloads refresh instead of waiting out the TTL.
   bumpServerMutationTs_();
 }
@@ -685,11 +685,11 @@ function reloadSetupIfVendorMatches_(savedVendor) {
 
 
 
-// opts (optional): { itemName } — passed by commitUpsertItem (which already
+// opts (optional): { itemName } — passed by commitUpsertItem_ (which already
 // holds the name) to skip the full-MASTER findItemRow_ read below. Only
-// called from commitUpsertItem today; the lookup fallback keeps it safe for
+// called from commitUpsertItem_ today; the lookup fallback keeps it safe for
 // any future direct caller.
-function commitPickPathAreaAssignment(itemId, vendor, areaName, opts) {
+function commitPickPathAreaAssignment_(itemId, vendor, areaName, opts) {
   bumpServerMutationTs_();
   const id = String(itemId  || "").trim();
   if (!id)       throw new Error("Item ID is required.");
@@ -775,7 +775,7 @@ function commitPickPathAreaAssignment(itemId, vendor, areaName, opts) {
 /***********************
  * 9) PICK PATH SIDEBAR
  ***********************/
-function showReorderPickPathSidebar() {
+function showReorderPickPathSidebar_() {
   const setup   = getSheet_(SHEET_SETUP);
   const vendors = getVendorList();
   if (!vendors.length) {
@@ -792,11 +792,11 @@ function showReorderPickPathSidebar() {
 
 
 
-  const data = getPickPathForSidebar(vendor);
+  const data = getPickPathForSidebar_(vendor);
   const tmpl = HtmlService.createTemplateFromFile("ReorderPickPath");
   tmpl.pickDataJson   = JSON.stringify(data);
   tmpl.vendorListJson = JSON.stringify(vendors);
-  tmpl.webBootJson    = JSON.stringify({ web: false });   // in-Sheet dialog: web bits stay inert
+  tmpl.webBootJson    = sheetBootJson_();   // in-Sheet dialog: web bits off, plus its token for webedit_call
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
     "Shelf to Sheet"
@@ -809,7 +809,7 @@ function showReorderPickPathSidebar() {
 // Cache wrapper (mog-apps-script-caching pattern A, 2026-07-29): the Shelf to
 // Sheet doGet render preloads this for the default vendor. Keyed on vendor +
 // the shared mutation ts (every pick-DB / item / area mutator bumps it).
-function getPickPathForSidebar(vendor) {
+function getPickPathForSidebar_(vendor) {
   var vKey = String(vendor || '').trim().toLowerCase();
   var ts   = getServerMutationTs_();
   var key  = 'pickPathSb_v1:' + ts + ':' + vKey;
@@ -919,7 +919,7 @@ function getPickPathForSidebar_compute_(vendor) {
 
 
 
-function commitReorderPickPath(vendor, payload) {
+function commitReorderPickPath_(vendor, payload) {
   return withPickDbLock_(() => commitReorderPickPath_locked_(vendor, payload));
 }
 function commitReorderPickPath_locked_(vendor, payload) {
@@ -1034,8 +1034,9 @@ function toggleMasterItemsTabVisibility() {
 // Returns a summary object: { removed: number, kept: number, itemsNotFound: string[] }
 // Sheet menu entry — delegates to the shared UI-free core (below), then shows
 // the result in a dialog. The web health-check calls the same core headlessly
-// (runHealthFix), so there's one source of truth for the purge logic.
+// (runHealthFix_), so there's one source of truth for the purge logic.
 function purgeInactiveFromPickPath() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   const ui = SpreadsheetApp.getUi();
   const r  = purgeInactiveFromPickPath_core_();
   if (r.removed === 0) {
@@ -1056,7 +1057,7 @@ function purgeInactiveFromPickPath() {
 
 // Shared UI-free core for the pick-path purge — the single source of truth.
 // The Sheet menu wrapper (purgeInactiveFromPickPath, above) and the web health
-// -check fix (runHealthFix) both call it; no SpreadsheetApp.getUi() (which
+// -check fix (runHealthFix_) both call it; no SpreadsheetApp.getUi() (which
 // throws in a web-app context). Filters items that are inactive or missing from
 // MASTER out of the pick path DB, rebuilds vendor tabs when anything changed,
 // and returns { removed, removedNames, notFound }.

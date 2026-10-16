@@ -17,7 +17,7 @@
 // so the phone sees exactly what the server sees. Fresh reads only, never the
 // CacheService-wrapped ones: a push runs right after an edit, and several
 // editors bump the mutation ts at their START, so a cached read could hand
-// back the pre-edit list (the commitAddVendor trap, audit 07-29).
+// back the pre-edit list (the commitAddVendor_ trap, audit 07-29).
 function buildCatalogPayload_() {
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
   const setup = getSheet_(SHEET_SETUP);
@@ -92,6 +92,7 @@ function catalogPickRow_(r) {
 // log. RESULT: PASS means the phone, fed this store's catalog and counts,
 // shows exactly what /exec shows today.
 function test_supabaseParity() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   const report = supabaseParityReport_();
   const lines = [];
   lines.push('Supabase parity: ' + report.store + ', cycle ' + report.cycleDate +
@@ -348,12 +349,12 @@ function pushCatalogNow_() {
 // right after a save that changed something (webedit_call's envelope), so the
 // save never waits on Supabase. Never throws into the page; a failure queues
 // the timer-based retry instead.
-function pushCatalogNow() {
+function pushCatalogFromPage_() {
   if (!supabaseConfig_().connected) return { pushed: false };
   try {
     return Object.assign({ pushed: true }, pushCatalogNow_());
   } catch (e) {
-    Logger.log('pushCatalogNow failed, queuing a background retry: ' + e.message);
+    Logger.log('pushCatalogFromPage_ failed, queuing a background retry: ' + e.message);
     try { scheduleCatalogPush_(); } catch (e2) { /* the nightly push is the last backstop */ }
     return { pushed: false };
   }
@@ -416,7 +417,7 @@ function dropTriggersFor_(handler) {
 
 // Close the cycle Supabase is on: log it and start the next one (one
 // transaction), back the log up to the Sheet, and schedule the recap email.
-// The switched store's version of commitLogAndReset + the AE9 stamp, with no
+// The switched store's version of commitLogAndReset_ + the AE9 stamp, with no
 // Sheet reads on the way.
 //   opts.sameDay  close even if the cycle is already today's (the dashboard's
 //                 manual reset). Without it, a cycle that's already today's is
@@ -456,7 +457,7 @@ function closeCycleInDb_(opts) {
   try {
     emailResult = scheduleRecapSend_(closing);
   } catch (e) {
-    // Same fallback as commitLogAndReset: never silently lose the email.
+    // Same fallback as commitLogAndReset_: never silently lose the email.
     Logger.log('Recap scheduling failed, sending inline: ' + (e.stack || e));
     try { emailResult = sendRecapRowsNow_(closing, rows); } catch (e2) { emailResult = { sent: 0 }; }
   }
@@ -550,9 +551,12 @@ function ensureNightlyTrigger_() {
 // Editor-run fallback for the permission, for when the Move dialog's link
 // doesn't work: asks Google for "Connect to an external service", then makes
 // one call to show Supabase answers. When the permission is missing this run
-// ends at the prompt; allow it and Run again.
+// ends at the prompt; allow it and Run again. Also asks for the email
+// permission requireEditorRun_ (Editor.gs) needs to recognize you in the editor.
+// Not guarded itself: it changes nothing, and it's how a missing grant gets fixed.
 function authorizeSupabase() {
-  ScriptApp.requireScopes(ScriptApp.AuthMode.FULL, [SB_FETCH_SCOPE]);
+  ScriptApp.requireScopes(ScriptApp.AuthMode.FULL,
+    [SB_FETCH_SCOPE, 'https://www.googleapis.com/auth/userinfo.email']);
   const t0 = Date.now();
   const r = supabaseRpc_('mog_sync_get_cycle', { p_slug: 'zzping', p_key: '0'.repeat(64) });
   Logger.log('Permission granted. Supabase answered in ' + (Date.now() - t0) + ' ms (' +
@@ -588,7 +592,7 @@ function showFetchGrant_(ui, url) {
 // From then on /exec serves the count path from Supabase. Each piece can run
 // again, so after a failure the same menu item picks up where it stopped, and
 // after Switch back to the Sheet it switches again without a code.
-function moveToSupabase() {
+function moveToSupabase_() {
   MOG_SKIP_CATALOG_QUEUE_ = true;
   const ui = SpreadsheetApp.getUi();
   const props = PropertiesService.getScriptProperties();
@@ -670,7 +674,7 @@ function moveToSupabase() {
 // back through /exec), copy Supabase's current cycle back into the Sheet once
 // (cycle date, Emergency Override, day picks, counts), then serve the count
 // path from the Sheet again. The only code that writes counts to the Sheet.
-function switchBackToSheet() {
+function switchBackToSheet_() {
   MOG_SKIP_CATALOG_QUEUE_ = true;
   const ui = SpreadsheetApp.getUi();
   if (!supabaseConfig_().switched) { ui.alert('This store already counts in the Sheet.'); return; }
@@ -789,6 +793,7 @@ function writeDbCycleToSheet_(snap) {
 // Editor-run on a connected store: what a catalog push and a snapshot read
 // cost from Apps Script. Read-only apart from re-pushing the same catalog.
 function test_supabasePushTiming() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   MOG_SKIP_CATALOG_QUEUE_ = true;
   if (!supabaseConfig_().connected) { Logger.log('Not connected: run 📱 Mobile API → Move this store to Supabase first.'); return; }
   const lines = [];

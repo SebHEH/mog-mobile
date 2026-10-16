@@ -150,7 +150,7 @@ const LOG_COL = {
 // HOME DASHBOARD — cell registry
 // =========================================================================
 // Single source of truth for the HOME dashboard's interactive cells.
-// buildHomeDashboard() writes the layout against these addresses, and
+// buildHomeDashboard_() writes the layout against these addresses, and
 // onEdit reads them to dispatch checkbox-driven actions. To move a cell:
 // update DASH only — the build function and edit handler will follow.
 const DASH = {
@@ -158,7 +158,7 @@ const DASH = {
   HIDDEN_COL:          31,
   DATE_FORMULA:        "AE2",     // =TODAY() — today's calendar date
   ORDER_DAY:           "AE3",     // =TEXT(IF(AE9="",AE2,AE9),"ddd") — day-of-week of the active cycle
-  RESET_DATE:          "AE9",     // written by resetOnHandAllVendors
+  RESET_DATE:          "AE9",     // written by resetOnHandAllVendors_
 
   // Visible interactive cells. Static positions:
   EMERGENCY_OVERRIDE:  "AD2",     // checkbox in date strip
@@ -172,12 +172,12 @@ const DASH = {
   // Each entry: column letter + sidebar function name to invoke when the
   // checkbox in that column ticks TRUE.
   QUICK_ACTION_COLUMNS: [
-    { col: "A", fn: "showManageItemsSidebar"     },
-    { col: "F", fn: "showManageVendorsSidebar"   },
-    { col: "K", fn: "showReorderPickPathSidebar" },
-    { col: "P", fn: "showStorageAreasSidebar"    },
-    { col: "U", fn: "showOrderHistoryModal"      },
-    { col: "Z", fn: "showHowToUseSidebar"        }
+    { col: "A", fn: "showManageItemsSidebar_"     },
+    { col: "F", fn: "showManageVendorsSidebar_"   },
+    { col: "K", fn: "showReorderPickPathSidebar_" },
+    { col: "P", fn: "showStorageAreasSidebar_"    },
+    { col: "U", fn: "showOrderHistoryModal_"      },
+    { col: "Z", fn: "showHowToUseSidebar_"        }
   ],
   MANAGE_ROW_PROP:     "DASH_MANAGE_ROW",   // DocumentProperties key
   MANAGE_ROW_DEFAULT:  15,                  // fallback if prop unset
@@ -229,7 +229,7 @@ function getSheet_(name) {
 
 
 // ── Server-side mutation timestamp ───────────────────────────────────────
-// Stored in DocumentProperties and read by getManageItemsBootstrap to key
+// Stored in DocumentProperties and read by getManageItemsBootstrap_ to key
 // its CacheService entries. Every commit* function bumps this so the
 // cache key naturally changes on the next read -> miss -> recompute. The
 // old cache entry orphans on its own 5-minute TTL.
@@ -493,32 +493,32 @@ function onOpen(e) {
 
 
 
-    .addItem("    How To Use This Guide",              "showHowToUseSidebar")
+    .addItem("    How To Use This Guide",              "showHowToUseSidebar_")
     .addSeparator()
 
 
 
 
-    .addItem("    Manage Storage Areas",               "showStorageAreasSidebar")
-    .addItem("    Manage Vendors",                     "showManageVendorsSidebar")
-    .addItem("    Manage Items",                       "showManageItemsSidebar")
-    .addItem("    Shelf to Sheet",                     "showReorderPickPathSidebar")
-    .addItem("    View Order History",                 "showOrderHistoryModal")
+    .addItem("    Manage Storage Areas",               "showStorageAreasSidebar_")
+    .addItem("    Manage Vendors",                     "showManageVendorsSidebar_")
+    .addItem("    Manage Items",                       "showManageItemsSidebar_")
+    .addItem("    Shelf to Sheet",                     "showReorderPickPathSidebar_")
+    .addItem("    View Order History",                 "showOrderHistoryModal_")
     .addSeparator()
-    .addItem("    🏠 Rebuild Home Dashboard",          "buildHomeDashboard")
+    .addItem("    🏠 Rebuild Home Dashboard",          "buildHomeDashboard_")
     .addSeparator()
     // Mobile API admin — grouped under a submenu so KMs don't see
     // these in the main menu. Managers reach them via Ordering Guide
-    // → Mobile API. setupMobileApi runs the full 5-step wizard;
+    // → Mobile API. setupMobileApi_ runs the full 5-step wizard;
     // the field-specific setters update one property in isolation.
     .addSubMenu(SpreadsheetApp.getUi().createMenu("    📱 Mobile API")
-      .addItem("    Setup / Re-run Setup",   "setupMobileApi")
-      .addItem("    Set GM Email",           "setGmEmail")
-      .addItem("    Set Master PIN",         "setMasterPin")
-      .addItem("    Set Store Concept",      "setStoreConcept")
-      .addItem("    Status",                 "showMobileApiStatus")
-      .addItem("    🩺 Store Health Check",   "showStoreHealthCheck")
-      .addItem("    Clear PIN Lockout",      "clearPinLockout")
+      .addItem("    Setup / Re-run Setup",   "setupMobileApi_")
+      .addItem("    Set GM Email",           "setGmEmail_")
+      .addItem("    Set Master PIN",         "setMasterPin_")
+      .addItem("    Set Store Concept",      "setStoreConcept_")
+      .addItem("    Status",                 "showMobileApiStatus_")
+      .addItem("    🩺 Store Health Check",   "showStoreHealthCheck_")
+      .addItem("    Clear PIN Lockout",      "clearPinLockout_")
       .addSeparator()
       // Decluttered 2026-06-01: removed spent one-time/diagnostic entries —
       // Migrate Item Vendors (backfill, run everywhere), Audit Vendor Tab
@@ -526,17 +526,17 @@ function onOpen(e) {
       // #4 vendor-template work). The functions remain in the bound-script
       // files (Items.gs / Vendors.gs) and are still runnable from the Apps
       // Script editor if ever needed.
-      .addItem("    Recalibrate Vendor Pars","showRecalibrateVendorSidebar")
-      .addItem("    Audit Vendor Cadence",   "showVendorCadenceAuditSidebar")
+      .addItem("    Recalibrate Vendor Pars","showRecalibrateVendorSidebar_")
+      .addItem("    Audit Vendor Cadence",   "showVendorCadenceAuditSidebar_")
       .addItem("    Sync Vendor Multiplier Formulas","syncVendorMultiplierFormulasMenu_")
-      .addItem("    Place Backup Vendors on Tabs","syncEligibleVendorsToPickPath")
+      .addItem("    Place Backup Vendors on Tabs","syncEligibleVendorsToPickPath_")
       .addSeparator()
       // Supabase (Sync.gs, docs/MOG_SupabaseMigration.md): one step to move
       // a store; the rollback is for emergencies only.
-      .addItem("    Move this store to Supabase",   "moveToSupabase")
-      .addItem("    Switch back to the Sheet",      "switchBackToSheet")
+      .addItem("    Move this store to Supabase",   "moveToSupabase_")
+      .addItem("    Switch back to the Sheet",      "switchBackToSheet_")
       .addSeparator()
-      .addItem("    Clear Config (reset for setup)", "clearMobileApiConfig"))
+      .addItem("    Clear Config (reset for setup)", "clearMobileApiConfig_"))
     .addToUi();
 }
 
@@ -642,7 +642,7 @@ function dailyResetOnOpen_() {
 
     // Log the prior cycle to Order History, email the recap (deduped via
     // MOG_LAST_RECAP_SENT_DATE), then clear On Hand on every vendor tab.
-    const result = commitLogAndReset();
+    const result = commitLogAndReset_();
 
     // Advance the cycle: stamp AE9 so this won't re-fire today and the
     // PWA's getResetStatus stops reporting stale. Mirror the manual sheet
@@ -674,7 +674,7 @@ function dailyResetOnOpen_() {
 // Idempotent installer for the daily-reset open trigger. Creating the
 // trigger requires user authorization — the first call surfaces a
 // permission prompt. Subsequent calls find the existing trigger and no-op.
-// Installed alongside the dashboard edit trigger from buildHomeDashboard.
+// Installed alongside the dashboard edit trigger from buildHomeDashboard_.
 function ensureDailyResetTrigger_() {
   const handlerName = 'dailyResetOnOpen_';
   const existing = ScriptApp.getProjectTriggers().some(t =>
@@ -698,12 +698,12 @@ function ensureDailyResetTrigger_() {
 // reordering of the file.
 function getQuickActionDispatch_() {
   return {
-    showManageItemsSidebar:     showManageItemsSidebar,
-    showManageVendorsSidebar:   showManageVendorsSidebar,
-    showReorderPickPathSidebar: showReorderPickPathSidebar,
-    showStorageAreasSidebar:    showStorageAreasSidebar,
-    showOrderHistoryModal:      showOrderHistoryModal,
-    showHowToUseSidebar:        showHowToUseSidebar
+    showManageItemsSidebar_:     showManageItemsSidebar_,
+    showManageVendorsSidebar_:   showManageVendorsSidebar_,
+    showReorderPickPathSidebar_: showReorderPickPathSidebar_,
+    showStorageAreasSidebar_:    showStorageAreasSidebar_,
+    showOrderHistoryModal_:      showOrderHistoryModal_,
+    showHowToUseSidebar_:        showHowToUseSidebar_
   };
 }
 
@@ -742,7 +742,7 @@ function handleDashboardEdit_(e) {
   // tile in its expected unchecked state.
   if (a1 === DASH.RESET_CHECKBOX && e.value === "TRUE") {
     e.range.setValue(false);
-    resetOnHandAllVendors();
+    resetOnHandAllVendors_();
     return;
   }
 
@@ -857,7 +857,7 @@ function include(name) {
 const MODAL_SM_W = 720, MODAL_SM_H = 680;
 const MODAL_LG_W = 1400, MODAL_LG_H = 900;
 
-function showHowToUseSidebar() {
+function showHowToUseSidebar_() {
   SpreadsheetApp.getUi().showModalDialog(
     HtmlService.createTemplateFromFile("HowToUse").evaluate()
       .setWidth(MODAL_LG_W)

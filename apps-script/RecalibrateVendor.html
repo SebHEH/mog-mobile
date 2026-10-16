@@ -5,6 +5,8 @@
     <?!= include('Styles'); ?>
     <script>
       var VENDOR_LIST = <?!= vendorListJson ?>;
+      // This dialog's session for webedit_call, minted by the menu that opened it.
+      var SHEET_TOKEN = <?!= sheetTokenJson ?>;
     </script>
     <style>
 
@@ -519,7 +521,7 @@
           .withFailureHandler(function(err) {
             setStatus(err.message || t('loadFailed'), 'warn');
           })
-          .getVendorRecalibrationBootstrap(name);
+          .webedit_call(SHEET_TOKEN, 'getVendorRecalibrationBootstrap', [name]);
       }
 
       function resetState() {
@@ -822,11 +824,11 @@
             setStatus(err.message || String(err), 'warn');
             updateSaveButton();
           })
-          .commitVendorRecalibration({
+          .webedit_call(SHEET_TOKEN, 'commitVendorRecalibration', [{
             vendor:     currentVendor,
             newMults:   newMults,
             parDivisor: divisor
-          });
+          }]);
       }
 
       function doClose() {

@@ -1269,16 +1269,22 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
   // ── Shared web-editor RPC shim (used by every tool modal) ──────────────────
   // One source of truth for the three bits each modal used to copy-paste.
   //
-  // mgeRpc_(): in the Sheet, plain google.script.run; in the web app, a generic
-  // proxy that prepends the session token and routes ANY method call through the
-  // token-guarded webedit_call dispatcher (Editor.gs). There is deliberately NO
-  // client-side function allowlist — the server's webeditDispatch_ switch is the
-  // single source of truth for what's callable, so nothing has to be hand-
-  // maintained per modal (the missing-fn drift that once broke getVendorTableData
-  // can't happen). Call sites keep using MIRPC().someFn(args); each modal just
-  // aliases MIRPC to this via a one-line delegate.
+  // mgeRpc_(): a generic proxy that prepends the session token and routes ANY
+  // method call through the token-guarded webedit_call dispatcher (Editor.gs),
+  // in the web app AND in the Sheet dialog. The server functions behind it are
+  // private, so nothing else reaches them (D18). The token: the PIN session on
+  // the web; in the Sheet, the one the menu minted when it opened the dialog
+  // (WEB_BOOT.token). There is deliberately NO client-side function allowlist —
+  // the server's webeditDispatch_ switch is the single source of truth for
+  // what's callable, so nothing has to be hand-maintained per modal (the
+  // missing-fn drift that once broke getVendorTableData can't happen). Call
+  // sites keep using MIRPC().someFn(args); each modal just aliases MIRPC to
+  // this via a one-line delegate.
+  function mgeToken_() {
+    if (window.MOG_WEB) return window.MOG_TOKEN;
+    return (window.WEB_BOOT && window.WEB_BOOT.token) || '';
+  }
   function mgeRpc_() {
-    if (!window.MOG_WEB) return google.script.run;
     var ok = null, fail = null;
     var proxy = new Proxy({}, {
       get: function (t, prop) {
@@ -1297,7 +1303,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
               if (ok) ok(r);
             })
             .withFailureHandler(function (e) { mgeWebFail_(e, fail); })
-            .webedit_call(window.MOG_TOKEN, prop, args, { envelope: 1 });
+            .webedit_call(mgeToken_(), prop, args, { envelope: 1 });
         };
       }
     });
@@ -1316,13 +1322,20 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       if (mgeCatalogPushAgain_) { mgeCatalogPushAgain_ = false; mgeQueueCatalogPush_(); }
     };
     google.script.run.withSuccessHandler(done).withFailureHandler(done)
-      .webedit_call(window.MOG_TOKEN, 'pushCatalogNow', []);
+      .webedit_call(mgeToken_(), 'pushCatalogNow', []);
   }
-  // Web failure handler: a SESSION_EXPIRED (flushed/expired token) reprompts for
-  // the PIN; anything else falls through to the call site's own handler.
+  // Failure handler: a SESSION_EXPIRED (flushed/expired token) reprompts for
+  // the PIN on the web; a Sheet dialog has no PIN gate, so it says to reopen
+  // the dialog. Anything else falls through to the call site's own handler.
   function mgeWebFail_(err, fn) {
     var msg = (err && err.message) ? err.message : '';
-    if (msg.indexOf('SESSION_EXPIRED') !== -1) { mgeReshowGate_(); return; }
+    if (msg.indexOf('SESSION_EXPIRED') !== -1) {
+      if (window.MOG_WEB) { mgeReshowGate_(); return; }
+      var es = window.MOG_LANG === 'es' || (document.body && /\blang-es\b/.test(document.body.className));
+      window.alert(es ? 'Esta ventana expiró. Ciérrala y ábrela otra vez desde el menú.'
+                      : 'This window expired. Close it and open it again from the menu.');
+      return;
+    }
     if (fn) fn(err);
   }
   // Base "Close": no host dialog in the web app, so return to the editor home;

@@ -6,7 +6,7 @@
  * in-Sheet dialog and the web page, so feature/behavior parity is by
  * construction (there is no second copy to drift). The web-only bits in
  * ManageItems.html are gated on a MOG_WEB flag injected here; in the
- * Sheet (showManageItemsSidebar) that flag is false and the modal
+ * Sheet (showManageItemsSidebar_) that flag is false and the modal
  * behaves exactly as it always has.
  *
  * SECURITY — read this. The web app is ANYONE_ANONYMOUS + executeAs
@@ -15,8 +15,10 @@
  * /exec URL. A UI-only PIN would be cosmetic. So the web page routes
  * every server call through ONE token-guarded dispatcher, webedit_call,
  * which (1) verifies a server-minted session token and (2) only allows
- * an explicit allowlist of editor functions. The bare CRUD in Items.gs
- * stays reachable only from inside the authenticated Sheet.
+ * an explicit allowlist of editor functions. Every function it reaches is
+ * PRIVATE (ends in _): a public function would be callable from the served
+ * page directly, skipping the token (D18). The Sheet dialogs go through the
+ * same dispatcher with a token their menu mints.
  *
  * All .gs files share one global scope; constants live in Core.gs and
  * the PIN/lockout helpers live in MOGApi.gs.
@@ -29,6 +31,7 @@
 // doesn't expire mid-edit, while an idle tab eventually does.
 const EDITOR_TOK_PREFIX  = 'edtok_';
 const EDITOR_TOK_TTL_SEC = 3600;   // 1 hour, sliding
+const SHEET_TOK_TTL_SEC  = 21600;  // a Sheet dialog's token: 6 hours (CacheService's max), sliding
 
 
 /***********************
@@ -78,7 +81,7 @@ function renderEditorHome_() {
 // ?page=setup — the first-run store-setup wizard. doGet routes any editor page
 // here while MOG_API_PIN is unset (you can't gate on a PIN that doesn't exist
 // yet). Identity-only: the form writes the same PropertiesService keys as
-// setupMobileApi (Admin.gs), minus the master PIN (an owner-menu concern).
+// setupMobileApi_ (Admin.gs), minus the master PIN (an owner-menu concern).
 function renderStoreSetupWeb_() {
   const tmpl = HtmlService.createTemplateFromFile('Setup');
   tmpl.webBootJson = editorWebBoot_({ setup: true });
@@ -104,7 +107,7 @@ function renderManageItemsWeb_() {
 // ?page=areas — the EXISTING Storage Areas modal served as a web page.
 function renderStorageAreasWeb_() {
   const tmpl = HtmlService.createTemplateFromFile('StorageAreas');
-  tmpl.areaListJson = JSON.stringify(getStorageAreaList());
+  tmpl.areaListJson = JSON.stringify(getStorageAreaList_());
   tmpl.webBootJson  = editorWebBoot_();
   return tmpl.evaluate()
     .setTitle(editorTabTitle_())
@@ -113,7 +116,7 @@ function renderStorageAreasWeb_() {
 }
 
 // ?page=pickpath — the EXISTING Reorder Pick Path modal served as a web page.
-// Mirrors showReorderPickPathSidebar's vendor selection + pick-data preload.
+// Mirrors showReorderPickPathSidebar_'s vendor selection + pick-data preload.
 function renderReorderPickPathWeb_() {
   const tmpl    = HtmlService.createTemplateFromFile('ReorderPickPath');
   const vendors = getVendorList();
@@ -121,7 +124,7 @@ function renderReorderPickPathWeb_() {
     const setup    = getSheet_(SHEET_SETUP);
     const b2Vendor = String(setup.getRange(SETUP_VENDOR_CELL).getDisplayValue()).trim();
     const vendor   = (b2Vendor && vendors.indexOf(b2Vendor) !== -1) ? b2Vendor : vendors[0];
-    tmpl.pickDataJson   = JSON.stringify(getPickPathForSidebar(vendor));
+    tmpl.pickDataJson   = JSON.stringify(getPickPathForSidebar_(vendor));
     tmpl.vendorListJson = JSON.stringify(vendors);
   } else {
     tmpl.pickDataJson   = JSON.stringify({});
@@ -150,7 +153,7 @@ function renderOrderHistoryWeb_() {
 function renderManageVendorsWeb_() {
   const tmpl = HtmlService.createTemplateFromFile('ManageVendors');
   tmpl.vendorListJson  = JSON.stringify(getVendorList());
-  tmpl.vendorTableJson = JSON.stringify(getVendorTableData());
+  tmpl.vendorTableJson = JSON.stringify(getVendorTableData_());
   tmpl.webBootJson     = editorWebBoot_();
   return tmpl.evaluate()
     .setTitle(editorTabTitle_())
@@ -160,7 +163,7 @@ function renderManageVendorsWeb_() {
 
 // ?page=healthcheck — the Store Health Check served as a web page. Same
 // HealthCheck.html the Sheet dialog uses, with MOG_WEB=true so the gate +
-// token shim engage. Read-only (report is computed by getStoreHealthReport).
+// token shim engage. Read-only (report is computed by getStoreHealthReport_).
 function renderStoreHealthWeb_() {
   const tmpl = HtmlService.createTemplateFromFile('HealthCheck');
   tmpl.webBootJson = editorWebBoot_();
@@ -212,7 +215,7 @@ function putEditorToken_(token, tier) {
     CacheService.getScriptCache().put(
       EDITOR_TOK_PREFIX + token,
       String(tier || 'store'),
-      EDITOR_TOK_TTL_SEC
+      tier === 'sheet' ? SHEET_TOK_TTL_SEC : EDITOR_TOK_TTL_SEC
     );
   } catch (e) {
     // Non-fatal at mint time; the next guarded call would just reprompt.
@@ -264,7 +267,7 @@ function editorPing(token) {
  * session token can exist (chicken-and-egg). Its safety is a HARD ONE-SHOT
  * GUARD instead — it runs only while MOG_API_PIN is unset and refuses the
  * moment a PIN exists, so a configured store's /exec can never be re-claimed
- * through it. Writes the SAME identity props as setupMobileApi (Admin.gs),
+ * through it. Writes the SAME identity props as setupMobileApi_ (Admin.gs),
  * minus the master PIN (owner-menu only). The /exec URL is unpublished until
  * setup completes (it enters stores.json afterward), so the open window is an
  * unguessable, self-closing one. On success it mints a session token so the
@@ -288,7 +291,7 @@ function commitStoreSetup(payload) {
                   : conceptIn === 'teasnyou'  ? 'teasnyou'
                   : '';
 
-  // Server-side validation — mirrors setupMobileApi's rules. The `error` field
+  // Server-side validation — mirrors setupMobileApi_'s rules. The `error` field
   // name lets the client focus the offending input.
   // abbr is auto-built by the wizard (CONCEPT + first 2 city letters + full
   // BOH/FOH, e.g. TNYROBOH). Cap is 10 (longest real case TNY/LEI + 2 + BOH = 8).
@@ -302,7 +305,7 @@ function commitStoreSetup(payload) {
   props.setProperty(PROP_PIN, pin);
   props.setProperty(PROP_LOCATION, location);
   props.setProperty(PROP_LOCATION_ABBR, abbr);
-  props.setProperty(PROP_GM_EMAIL, gmEmail);     // setupMobileApi sets this even when blank
+  props.setProperty(PROP_GM_EMAIL, gmEmail);     // setupMobileApi_ sets this even when blank
   if (concept) props.setProperty(PROP_CONCEPT, concept);
   else         props.deleteProperty(PROP_CONCEPT);
   // PROP_MASTER_PIN intentionally untouched — owner sets it via the menu.
@@ -317,49 +320,68 @@ function commitStoreSetup(payload) {
 /***********************
  * EDITOR DISPATCHER (single token-guarded entry point)
  *
- * The web page calls webedit_call(token, fnName, args) for EVERY server
- * call. The switch is the allowlist: only these functions are reachable
- * from the web, and only with a valid token. Each delegates to the
- * EXISTING bare function in Items.gs / PickPath.gs — no logic duplicated.
+ * Every page this script serves (the web editor AND the Sheet dialogs) calls
+ * the server through webedit_call(token, action, args). The switch below is
+ * the allowlist: the action names are what the pages send, and each maps to
+ * a PRIVATE function (name ends in _). Private functions are invisible to
+ * google.script.run, so the token check here is the only way in.
+ *
+ * Why it matters (D18, 2026-10-16): the web app runs as the owner for
+ * anonymous visitors (appsscript.json), and Apps Script lets any page it
+ * serves call any PUBLIC function. tests/public_surface.test.js keeps every
+ * function private except the reviewed entry points.
+ *
+ * Token tiers: 'store' / 'master' come from the PIN (editorAuth); 'sheet' is
+ * minted by a Sheet menu when it opens a dialog (mintSheetToken_), for a
+ * person who already has the Sheet open. Sheet-only actions (Admin Reset,
+ * Recalibrate Vendor Pars) need a 'sheet' token.
  ***********************/
 
-// Maps an allowlisted name to the actual function. Returns null for anything
-// not on the list (the switch IS the security allowlist — no globalThis
-// lookups, so an unknown/typo name can never resolve to an owner-side fn).
-function webeditDispatch_(name) {
+// Maps an allowlisted action to its function, or null. No globalThis lookups,
+// so an unknown or mistyped name can never resolve to an owner-side function.
+function webeditDispatch_(name, tier) {
   switch (name) {
-    case 'getManageItemsBootstrap': return getManageItemsBootstrap;
-    case 'getStorageAreaList':      return getStorageAreaList;
-    case 'getItemForEdit':          return getItemForEdit;
-    case 'getUnassignedActiveItems':return getUnassignedActiveItems;
-    case 'getStoreHealthReport':    return getStoreHealthReport;
-    case 'runHealthFix':            return runHealthFix;
-    case 'commitUpsertItem':        return commitUpsertItem;
-    case 'commitSwitchActiveVendor':return commitSwitchActiveVendor;
-    case 'commitSetVendorItems':    return commitSetVendorItems;
-    case 'commitDeleteItem':        return commitDeleteItem;
+    // Manage Items
+    case 'getManageItemsBootstrap':          return getManageItemsBootstrap_;
+    case 'getStorageAreaList':               return getStorageAreaList_;
+    case 'getItemForEdit':                   return getItemForEdit_;
+    case 'getUnassignedActiveItems':         return getUnassignedActiveItems_;
+    case 'commitUpsertItem':                 return commitUpsertItem_;
+    case 'commitSwitchActiveVendor':         return commitSwitchActiveVendor_;
+    case 'commitSetVendorItems':             return commitSetVendorItems_;
+    case 'commitDeleteItem':                 return commitDeleteItem_;
+    // Store Health Check
+    case 'getStoreHealthReport':             return getStoreHealthReport_;
+    case 'runHealthFix':                     return runHealthFix_;
     // Manage Vendors
-    case 'getVendorTableData':              return getVendorTableData;
-    case 'commitUpdateVendorMultsAndCutoff':return commitUpdateVendorMultsAndCutoff;
-    case 'commitAddVendor':                 return commitAddVendor;
-    case 'commitImportVendor':              return commitImportVendor;
-    case 'commitRemoveVendor':              return commitRemoveVendor;
+    case 'getVendorTableData':               return getVendorTableData_;
+    case 'commitUpdateVendorMultsAndCutoff': return commitUpdateVendorMultsAndCutoff_;
+    case 'commitAddVendor':                  return commitAddVendor_;
+    case 'commitImportVendor':               return commitImportVendor_;
+    case 'commitRemoveVendor':               return commitRemoveVendor_;
     // Order History (read-only)
-    case 'getOrderHistoryBootstrap':        return getOrderHistoryBootstrap;
-    case 'getOrderHistory':                 return getOrderHistory;
-    // Storage Areas + Reorder Pick Path (getStorageAreaList already listed above)
-    case 'commitStorageAreasDraft':         return commitStorageAreasDraft;
-    case 'getPickPathForSidebar':           return getPickPathForSidebar;
-    case 'commitReorderPickPath':           return commitReorderPickPath;
+    case 'getOrderHistoryBootstrap':         return getOrderHistoryBootstrap_;
+    case 'getOrderHistory':                  return getOrderHistory_;
+    // Storage Areas + Shelf to Sheet (getStorageAreaList listed above)
+    case 'commitStorageAreasDraft':          return commitStorageAreasDraft_;
+    case 'getPickPathForSidebar':            return getPickPathForSidebar_;
+    case 'commitReorderPickPath':            return commitReorderPickPath_;
     // Supabase catalog sync: the page's background push after a save (Sync.gs)
-    case 'pushCatalogNow':                  return pushCatalogNow;
-    default:                        return null;
+    case 'pushCatalogNow':                   return pushCatalogFromPage_;
   }
+  if (tier !== 'sheet') return null;
+  switch (name) {
+    // Sheet-only dialogs (opened from the Sheet's menu, never on the web)
+    case 'commitSelectiveReset':             return commitSelectiveReset_;
+    case 'getVendorRecalibrationBootstrap':  return getVendorRecalibrationBootstrap_;
+    case 'commitVendorRecalibration':        return commitVendorRecalibration_;
+  }
+  return null;
 }
 
 function webedit_call(token, fnName, args, opts) {
-  requireEditorToken_(token);
-  const fn = webeditDispatch_(String(fnName || ''));
+  const tier = requireEditorToken_(token);
+  const fn = webeditDispatch_(String(fnName || ''), tier);
   if (!fn) throw new Error('Editor action not allowed: ' + fnName);
   // Supabase catalog sync (Sync.gs): a call that changed something says so in
   // an envelope, and the page fires the push as its OWN background request,
@@ -377,4 +399,34 @@ function webedit_call(token, fnName, args, opts) {
     result:        result,
     pushCatalog:   MOG_MUTATED_ && fnName !== 'pushCatalogNow' && supabaseConfig_().connected
   };
+}
+
+// A dialog's session, minted by the Sheet menu that opens it. Whoever runs a
+// Sheet menu already has the Sheet open, so no PIN: the dialog gets a token
+// for the same dispatcher the web editor uses (6 hours, sliding).
+function mintSheetToken_() {
+  const token = Utilities.getUuid();
+  putEditorToken_(token, 'sheet');
+  return token;
+}
+
+// The boot JSON a Sheet dialog's template gets: web bits off, plus its token.
+function sheetBootJson_() {
+  return JSON.stringify({ web: false, token: mintSheetToken_() });
+}
+
+// First line of every PUBLIC function meant to be run by hand from the Apps
+// Script editor (test_*, one-off maintenance). Public functions are callable
+// from any page this web app serves, where the script runs as the owner for
+// an anonymous visitor; there Google can't name the person (active user
+// blank, or someone other than the owner). Run from the editor, the active
+// user is the person running it.
+function requireEditorRun_() {
+  let active = '', effective = '';
+  try { active = Session.getActiveUser().getEmail() || ''; } catch (e) { active = ''; }
+  try { effective = Session.getEffectiveUser().getEmail() || ''; } catch (e) { effective = ''; }
+  if (!active || active !== effective) {
+    throw new Error('Run this from the Apps Script editor. If you already are, Google hasn\'t shared your ' +
+      'email with this script yet: run authorizeSupabase (Sync.gs) once and allow every permission.');
+  }
 }

@@ -56,6 +56,7 @@ Carry these across every session:
 7. **Bump `CACHE_VERSION`** in `template/sw.js` (and `sw.js` for hub changes) when shipping shell changes so old caches evict from KMs' phones.
 8. **Slugs in `stores.json` are immutable once published.** KMs have bookmarks and home-screen icons at `/<slug>/`. Renaming breaks them.
 9. **Source push and web-app redeploy are separate steps.** `clasp push` (default `python deploy.py`) updates the script project, which bound sidebars read from HEAD — that's enough for changes to `ManageVendors.html`, `ManageItems.html`, `OrderHistory.html`, etc. and the `.gs` functions they call directly. The PWA hits each Sheet's `/exec` URL, which serves a *versioned snapshot*, so changes to `MOGApi.gs` (or any `api_*` function the PWA calls) need `python deploy.py --redeploy` to bump the version. When unsure, use `--redeploy`.
+10. **Every server function is private (`_`) unless it's on the reviewed list in `tests/public_surface.test.js`.** The web app runs as the owner for anonymous visitors, and Apps Script lets any page it serves call any public function, so a public function is reachable by anyone with a store's `/exec` URL (D18, 2026-10-16). Pages reach the server only through `webedit_call` (token check, then the `webeditDispatch_` allowlist) and the auth layer. Sheet dialogs get a token from the menu that opens them (`sheetBootJson_`). Menu items and triggers can call private functions; an editor-run function stays public and starts with `requireEditorRun_()`.
 
 ## Skills
 
@@ -67,7 +68,7 @@ Skills auto-load and trigger via the descriptions in their frontmatter.
 |---|---|
 | `mog-session-handoff` | End-of-session capture. Writes `docs/MOG_SessionHandoff_YYYY_MM_DD.md` and updates this file's @-import line. |
 | `mog-deploy-workflow` | Any code change — routes the change to the right layer (`deploy.py` for backend, `build.py` + git push for PWA/config) and enforces canary-first deploys. |
-| `mog-add-store` | New-store onboarding — the full end-to-end procedure (Drive copy → Script ID → `.clasp-targets.json` → `setupMobileApi()` → web-app deploy → `stores.json` → `build.py` → push). |
+| `mog-add-store` | New-store onboarding — the full end-to-end procedure (Drive copy → Script ID → `.clasp-targets.json` → Setup / Re-run Setup → web-app deploy → `stores.json` → `build.py` → push). |
 | `mog-cheatsheet` | On-demand command reference. Triggers on "cheat sheet" / "remind me the command" / "what was that flag" / "how do I deploy". Dumps the relevant `deploy.py` / `build.py` / git invocations verbatim. |
 | `mog-rpc-consolidation` | Pattern for collapsing multiple `google.script.run` calls or duplicate sheet reads in modals into a single bootstrap or commit server fn. Triggers when a modal fires >1 RPC on load/save, on audit-punch-list items, or "consolidate the RPCs" / "merge these calls". |
 | `mog-apps-script-caching` | `CacheService` + `getServerMutationTs_` recipe for `api_*` reads in `MOGApi.gs`. Triggers when adding caching to an existing `api_*` fn or introducing a new aggregation endpoint. Always pairs with `--redeploy`. |
@@ -158,7 +159,7 @@ mog-mobile/
 │   ├── Editor.gs                KM web editor: doGet page routing, PIN gate/token, webedit_call dispatch, per-tool web renderers.
 │   ├── Health.gs                Store Health Check — read-only diagnostic (getStoreHealthReport) + web fixes (runHealthFix).
 │   ├── Recap.gs                 Daily recap email (build + send) + recipients list in SETUP AB-AE (split from MOGApi.gs 2026-07-24).
-│   ├── Admin.gs                 Run-once admin/config fns (setupMobileApi, PINs, concept) + editor-run test fns (split from MOGApi.gs 2026-07-24).
+│   ├── Admin.gs                 Run-once admin/config fns (setupMobileApi_ via the Sheet menu, PINs, concept) + editor-run test fns (split from MOGApi.gs 2026-07-24).
 │   ├── OrderMath.gs             The order math + the PWA's two payload builders. Pure functions, run VERBATIM by the PWA too (gated by tests/).
 │   ├── Sync.gs                  Supabase sync: catalog/PIN push, the Move this store to Supabase menu item, nightly 3:30 AM run, cycle close in Supabase, parity + timing tests.
 │   ├── DbApi.gs                 /exec's count path for a store that counts in Supabase (same answers as the Sheet handlers, no Sheet I/O).

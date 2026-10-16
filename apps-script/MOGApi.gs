@@ -10,7 +10,7 @@
  *   The ?page=setup wizard on a fresh /exec deployment is the primary path
  *   (writes the identity props, minus the master PIN). The full end-to-end
  *   onboarding — Drive copy, Script ID, .clasp-targets.json, web-app deploy,
- *   stores.json — is the repo's mog-add-store skill. setupMobileApi()
+ *   stores.json — is the repo's mog-add-store skill. setupMobileApi_()
  *   (Admin.gs) remains the editor-run fallback. Vendor cutoff times are set
  *   in Manage Vendors (stored in SETUP!AA); the VENDOR_META constant below
  *   is a legacy fallback only.
@@ -62,7 +62,7 @@ const RECAP_SEND_MAX_TRIES = 3;          // bounded retry — see sendPendingRec
 // AB: name, AC: email, AD: active (TRUE/FALSE), AE: GM (TRUE/FALSE).
 // GM rows are visible but locked from the PWA — only editable in the sheet.
 // Header is row 1; written lazily on first read so existing stores get
-// it without re-running setupMobileApi.
+// it without re-running setupMobileApi_.
 const RECIPIENTS_START_COL = 28;  // AB
 const RECIPIENTS_NUM_COLS  = 4;
 const RECIPIENTS_HEADER_ROW = 1;
@@ -74,7 +74,7 @@ const RECIPIENTS_START_ROW  = 2;
 // and further attempts (including correct ones) are rejected until that
 // timestamp passes. Lockout is global per deployment — there's no reliable
 // per-IP signal in Apps Script web apps, so the bucket is shared. If a
-// real manager needs in during a lockout, run clearPinLockout() from the
+// real manager needs in during a lockout, run clearPinLockout_() from the
 // editor or wait it out.
 const PROP_PIN_FAIL_COUNT   = 'MOG_PIN_FAIL_COUNT';
 const PROP_PIN_LOCKOUT_UNTIL = 'MOG_PIN_LOCKOUT_UNTIL';
@@ -237,7 +237,7 @@ function checkPin_(submitted) {
   // a "manager mode" banner when the master PIN was used.
   //
   // Master PIN is OPTIONAL — locations without it set behave exactly
-  // like before. To set, run setMasterPin() from the script editor.
+  // like before. To set, run setMasterPin_() from the script editor.
   const props = PropertiesService.getScriptProperties();
   const storePin  = props.getProperty(PROP_PIN);
   const masterPin = props.getProperty(PROP_MASTER_PIN);
@@ -334,7 +334,7 @@ function api_getResetStatus_() {
 
 function api_commitReset_() {
   // Mirrors the sheet's "Reset On Hand" workflow exactly:
-  //   1. commitLogAndReset() — snapshots current On Hand to LOG_ORDERS for
+  //   1. commitLogAndReset_() — snapshots current On Hand to LOG_ORDERS for
   //      today's order date and clears all On Hand columns. Idempotent
   //      within a day (duplicate guard re-clears but skips re-logging).
   //   2. Stamp AE9 with today so isStale flips to false.
@@ -348,7 +348,7 @@ function api_commitReset_() {
   // and auto-runs this reset on the first open of a new day, so clearing here
   // stops an override from leaking into the new day on PWA-only stores.
 
-  const result = commitLogAndReset();
+  const result = commitLogAndReset_();
 
   const oe = getSheet_(SHEET_ORDER_ENTRY);
   const today = new Date();
@@ -362,7 +362,7 @@ function api_commitReset_() {
   // Per-vendor day picks (SETUP!AF) clear unconditionally — belt-and-braces
   // alongside the AD2-gated clear below, so a pick can never outlive its
   // cycle even if the flag was somehow already off. Runs AFTER
-  // commitLogAndReset above, so the log captured the picked multipliers.
+  // commitLogAndReset_ above, so the log captured the picked multipliers.
   const clearedPicks = clearVendorOverrides_();
   if (overrideRange.getValue() === true) {
     overrideRange.setValue(false);
@@ -421,7 +421,7 @@ function api_setEmergencyOverride_(payload) {
   // ORDER MATTERS: compute AFTER the AD2 write and AFTER the ts bump.
   // api_getDashboard_ keys its cache on getServerMutationTs_(), so computing
   // before the bump would store PRE-mutation data under the POST-bump key and
-  // serve it for the full 300s TTL — the commitAddVendor trap from audit 07-29.
+  // serve it for the full 300s TTL — the commitAddVendor_ trap from audit 07-29.
   //
   // Defensive by design: the write has ALREADY succeeded by this point, so a
   // read failure must never make a successful toggle look failed. Returning
@@ -501,7 +501,7 @@ function api_setVendorOverride_(payload) {
 
 
 // Cached entry point. The compute lives in api_getDashboard_compute_ — this
-// wrapper is a near-copy of the getManageItemsBootstrap pattern: key by
+// wrapper is a near-copy of the getManageItemsBootstrap_ pattern: key by
 // dateStr + getServerMutationTs_ so the cache invalidates on (a) midnight
 // rollover and (b) any admin mutation that already bumps the shared ts.
 // On-hand saves from the PWA also bump that ts (see api_saveOnHand_).
@@ -822,7 +822,7 @@ function api_getHistoryDetail_(payload) {
   // from MASTER_ITEMS as row.itemPack (via buildPackByIdMap_, same map this
   // used to build for itself). Reusing it drops a second full MASTER read that
   // produced an identical map — COL.ID is 1, so the ranges and join matched.
-  const flat = getOrderHistory({ vendorFilter: vendor, dateFrom: date, dateTo: date });
+  const flat = getOrderHistory_({ vendorFilter: vendor, dateFrom: date, dateTo: date });
 
   const items = flat.map(r => ({
     id:     r.itemId,
@@ -870,7 +870,7 @@ function api_getHistoryDates_(payload) {
 
   // needPack:false — this payload is dates + vendor counts only, so the
   // MASTER_ITEMS read that populates itemPack would be pure waste.
-  const flat = getOrderHistory(
+  const flat = getOrderHistory_(
     { vendorFilter: 'ALL', dateFrom: dateFrom, dateTo: dateTo },
     { needPack: false }
   );
@@ -918,7 +918,7 @@ function api_getHistoryVendors_(payload) {
   }
 
   // needPack:false — vendor/itemCount/timestamp only, no pack surfaced.
-  const flat = getOrderHistory(
+  const flat = getOrderHistory_(
     { vendorFilter: 'ALL', dateFrom: date, dateTo: date },
     { needPack: false }
   );

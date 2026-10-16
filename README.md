@@ -71,7 +71,7 @@ The full sequence, end to end:
 In the new location's spreadsheet:
 
 1. Add all the `.gs` files (`MOGApi.gs`, `Core.gs`, `Vendors.gs`, `Items.gs`, `PickPath.gs`, `ResetLog.gs`, `History.gs`, `Dashboard.gs`, `Editor.gs`, `Health.gs`, `Recap.gs`, `Admin.gs`) plus all the HTML modal files from this repo's `apps-script/` folder. (After initial setup, append the new store's Script ID to `apps-script/.clasp-targets.json` and future updates push automatically — see `apps-script/README.md`.)
-2. From the Apps Script editor, run `setupMobileApi()`. Five prompts:
+2. From the Sheet menu **Ordering Guide → 📱 Mobile API → Setup / Re-run Setup** (`setupMobileApi_` in `Admin.gs`; private since 2026-10-16, so it isn't in the editor's Run menu). Five prompts:
    - 4–8 digit store PIN
    - Location name (e.g. "Roll Play Tysons")
    - 2–5 letter abbreviation (e.g. "RPT")
@@ -122,7 +122,7 @@ Two ways:
 
 **Per-store, manually.** For each Apps Script: open the editor, select `setMasterPin` from the function dropdown, run it. Prompt asks for the new master PIN; leave blank to remove. This is what you do for ad-hoc rotation.
 
-**Per-store, at setup.** The 5th prompt of `setupMobileApi()` accepts the master PIN. Use this when onboarding a new store.
+**Per-store, at setup.** The 5th prompt of Setup / Re-run Setup (`setupMobileApi_`) accepts the master PIN. Use this when onboarding a new store.
 
 The master PIN is shared across all stores that should be reachable in manager mode. Today that's: whichever stores have a master PIN set. A store without a master PIN cannot be accessed via manager mode — its store PIN remains the only credential.
 

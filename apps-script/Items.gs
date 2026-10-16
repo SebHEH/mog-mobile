@@ -16,10 +16,10 @@
 /***********************
  * 5) MASTER ITEMS
  ***********************/
-function showManageItemsSidebar() {
+function showManageItemsSidebar_() {
   const tmpl = HtmlService.createTemplateFromFile("ManageItems");
   tmpl.vendorListJson = JSON.stringify(getVendorList());
-  tmpl.webBootJson    = JSON.stringify({ web: false });   // in-Sheet dialog: web bits stay inert
+  tmpl.webBootJson    = sheetBootJson_();   // in-Sheet dialog: web bits off, plus its token for webedit_call
   SpreadsheetApp.getUi().showModalDialog(
     tmpl.evaluate().setWidth(MODAL_LG_W).setHeight(MODAL_LG_H),
     "Manage Items"
@@ -33,7 +33,7 @@ function showManageItemsSidebar() {
 
 
 
-function getAllItemsForView() {
+function getAllItemsForView_() {
   const sh      = getSheet_(SHEET_MASTER);
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
@@ -83,9 +83,9 @@ function getAllItemsForView() {
 
 
 
-// ── getManageItemsBootstrap (cached, combined endpoint) ──────────────────
+// ── getManageItemsBootstrap_ (cached, combined endpoint) ──────────────────
 // Replaces the two parallel google.script.run calls that ManageItems used
-// to make on open (getAllItemsForView + getParReviewFlags). Returns both
+// to make on open (getAllItemsForView_ + getParReviewFlags_). Returns both
 // in a single response, so the modal pays one network round-trip instead
 // of two. The function is also wrapped with CacheService keyed by the
 // current server mutation timestamp -- on the cache-hit path it skips the
@@ -100,10 +100,10 @@ function getAllItemsForView() {
 //     function silently falls through to a fresh compute. The cache layer
 //     must never make the function fail.
 //
-// flags failure tolerance: the old client code treated getParReviewFlags
+// flags failure tolerance: the old client code treated getParReviewFlags_
 // failures as non-fatal (empty flags). Preserved here via try/catch so
 // items still render even if the par-flag computation throws.
-function getManageItemsBootstrap() {
+function getManageItemsBootstrap_() {
   const ts = getServerMutationTs_();
   const cacheKey = 'manageItems_v4_' + ts;
 
@@ -119,9 +119,9 @@ function getManageItemsBootstrap() {
     }
   }
 
-  const items = getAllItemsForView();
-  // Build the par map from the items we just read (getAllItemsForView already
-  // read MASTER) and hand it to getParReviewFlags so it doesn't read MASTER a
+  const items = getAllItemsForView_();
+  // Build the par map from the items we just read (getAllItemsForView_ already
+  // read MASTER) and hand it to getParReviewFlags_ so it doesn't read MASTER a
   // second time on this cold path (audit #13). Same par>0 filter as the standalone
   // read; the modal only renders these (named) items, so omitting blank-name rows
   // is observably identical.
@@ -131,17 +131,17 @@ function getManageItemsBootstrap() {
     if (it.id && !isNaN(par) && par > 0) parMap.set(it.id, par);
   });
   let flags = {};
-  try { flags = getParReviewFlags(parMap); } catch (e) { flags = {}; }
+  try { flags = getParReviewFlags_(parMap); } catch (e) { flags = {}; }
   // Areas + vendor multipliers ride the same response so the modal opens on
-  // ONE round-trip (they used to be 1–2 separate calls: getStorageAreaList
-  // always, getVendorTableData on the web host for the par preview). Same
+  // ONE round-trip (they used to be 1–2 separate calls: getStorageAreaList_
+  // always, getVendorTableData_ on the web host for the par preview). Same
   // failure tolerance as flags — the item list must render even if these
   // side reads throw. Both are invalidated correctly by the mutation-ts key:
   // area and vendor commits all bump the ts.
   let areas = [];
-  try { areas = getStorageAreaList(); } catch (e) { areas = []; }
+  try { areas = getStorageAreaList_(); } catch (e) { areas = []; }
   let vendorTable = [];
-  try { vendorTable = getVendorTableData(); } catch (e) { vendorTable = []; }
+  try { vendorTable = getVendorTableData_(); } catch (e) { vendorTable = []; }
   // minOrders: the server's par-review flag threshold (PAR_FLAG.MIN_ORDERS),
   // carried to the client so ManageItems doesn't re-declare it as a literal that
   // silently desyncs when the threshold is tuned (audit #3).
@@ -173,7 +173,7 @@ function getManageItemsBootstrap() {
 
 
 
-function getUnassignedActiveItems() {
+function getUnassignedActiveItems_() {
   const setup  = getSheet_(SHEET_SETUP);
   const master = getSheet_(SHEET_MASTER);
 
@@ -224,7 +224,7 @@ function getUnassignedActiveItems() {
 
 
 
-function getItemForEdit(query) {
+function getItemForEdit_(query) {
   const found = findItemRow_(query);
   if (!found) return null;
   const r = found.rowValues;
@@ -267,7 +267,7 @@ function getItemForEdit(query) {
 
 
 
-function commitUpsertItem(payload) {
+function commitUpsertItem_(payload) {
   // Pick-DB write lock (see withPickDbLock_ in Core.gs) — serializes this
   // save against concurrent pick-DB writers (other web commits, the in-sheet
   // onEdit auto-save). Reentrant, so the helpers this calls stay unwrapped.
@@ -295,7 +295,7 @@ function commitUpsertItem_locked_(payload) {
 
 
   if (mode === "edit") {
-    existing = getItemForEdit(String(payload.lookup || "").trim());
+    existing = getItemForEdit_(String(payload.lookup || "").trim());
     if (!existing) throw new Error("Could not find an item with that Item ID or name.");
     targetRow = existing.sheetRow;
   } else {
@@ -363,12 +363,12 @@ function commitUpsertItem_locked_(payload) {
 
 
     // Optional inline area assignment — client passes areaName instead of
-    // making a second commitPickPathAreaAssignment roundtrip.
+    // making a second commitPickPathAreaAssignment_ roundtrip.
     let assignedArea = "";
     let areaError    = "";
     if (payload.areaName) {
       try {
-        commitPickPathAreaAssignment(itemId, vendor, String(payload.areaName).trim(), { itemName: name });
+        commitPickPathAreaAssignment_(itemId, vendor, String(payload.areaName).trim(), { itemName: name });
         assignedArea = String(payload.areaName).trim();
       } catch (err) {
         // Don't fail the add — the item row IS created. But surface the reason
@@ -432,8 +432,12 @@ function commitUpsertItem_locked_(payload) {
 
   // Block L:N — cells L and M already have checkbox validation applied
   // from the Add path, so no need to re-apply. Single setValues writes
-  // ACTIVE, USE_MULT, NOTES together.
-  sh.getRange(row, COL.ACTIVE, 1, 3).setValues([[active, useMult, notes]]);
+  // ACTIVE, USE_MULT, NOTES together. A form that doesn't send notes (the
+  // Manage Items form never does) keeps the stored ones: writing "" here
+  // erased column N on every edit (D18).
+  const keepNotes = (payload.notes === undefined || payload.notes === null);
+  const editNotes = keepNotes ? String((existing && existing.notes) || '').trim() : notes;
+  sh.getRange(row, COL.ACTIVE, 1, 3).setValues([[active, useMult, editNotes]]);
 
 
 
@@ -455,7 +459,7 @@ function commitUpsertItem_locked_(payload) {
   let areaError    = "";
   if (active && payload.areaName) {
     try {
-      commitPickPathAreaAssignment(existing.id, vendor, String(payload.areaName).trim(), { itemName: editName });
+      commitPickPathAreaAssignment_(existing.id, vendor, String(payload.areaName).trim(), { itemName: editName });
       assignedArea = String(payload.areaName).trim();
     } catch (err) {
       // The item edits ARE saved; only the area reassignment failed. Surface
@@ -491,7 +495,7 @@ function commitUpsertItem_locked_(payload) {
 // had no storage area to carry over (it was unassigned), so the caller should
 // prompt for one; it's still promoted, it just won't appear on the new
 // primary's order sheet until an area is assigned.
-function commitSwitchActiveVendor(itemId, newVendorRaw) {
+function commitSwitchActiveVendor_(itemId, newVendorRaw) {
   return withPickDbLock_(() => commitSwitchActiveVendor_locked_(itemId, newVendorRaw));
 }
 function commitSwitchActiveVendor_locked_(itemId, newVendorRaw) {
@@ -574,7 +578,7 @@ function commitSwitchActiveVendor_locked_(itemId, newVendorRaw) {
 
 // Reconcile ONE item's pick-path rows to its eligible list (MASTER col O) — the
 // per-item "unify" that keeps col O and the vendor tabs in lockstep. Called by
-// commitUpsertItem after a save, so checking a vendor in the Manage Items
+// commitUpsertItem_ after a save, so checking a vendor in the Manage Items
 // eligible list PLACES the item on that vendor's tab and unchecking REMOVES it:
 //   * add a pick-path row for each eligible vendor that lacks one, defaulting to
 //     the item's current storage area (so it lands next to its siblings);
@@ -584,7 +588,7 @@ function commitSwitchActiveVendor_locked_(itemId, newVendorRaw) {
 // unassigned) — rows appear once an area is assigned. Returns {added, removed}.
 //
 // ctx (optional, ALL-OR-NOTHING): { name, primary, eligible } — passed by
-// commitUpsertItem, which JUST WROTE those exact values to MASTER, so the
+// commitUpsertItem_, which JUST WROTE those exact values to MASTER, so the
 // full-MASTER findItemRow_ re-read (and col-O re-parse) is skipped. eligible
 // must be the freshly-written normalized array — never a pre-edit read, or
 // this reconciles the tabs to a stale list.
@@ -668,7 +672,7 @@ function syncItemEligiblePickRows_(itemId, ctx) {
 // area yet are added to col O but can't be placed until assigned one; they're
 // counted in `unplaced` so the UI can flag them. Batched: one col-O range write
 // + one pick-DB write. Returns { ok, vendor, added, removed, unplaced }.
-function commitSetVendorItems(vendorRaw, itemIds) {
+function commitSetVendorItems_(vendorRaw, itemIds) {
   return withPickDbLock_(() => commitSetVendorItems_locked_(vendorRaw, itemIds));
 }
 function commitSetVendorItems_locked_(vendorRaw, itemIds) {
@@ -783,7 +787,7 @@ function commitSetVendorItems_locked_(vendorRaw, itemIds) {
 // invents placements beyond what the eligible list already declares. Rows where
 // the vendor isn't the item's primary (col C) are flagged as secondaries but are
 // FULLY ORDERABLE — the badge only labels the default source (col C); On Hand
-// per tab routes the order. Menu wrapper: syncEligibleVendorsToPickPath.
+// per tab routes the order. Menu wrapper: syncEligibleVendorsToPickPath_.
 // Pass dryRun=true to COUNT the missing placements without writing (the
 // Store Health Check uses this to decide whether to offer the fix).
 function syncEligibleVendorsToPickPath_core_(dryRun) {
@@ -861,7 +865,7 @@ function syncEligibleVendorsToPickPath_run_(dryRun) {
 
 // Menu wrapper for syncEligibleVendorsToPickPath_core_ (Ordering Guide →
 // 📱 Mobile API → Place Backup Vendors on Tabs). Run per store.
-function syncEligibleVendorsToPickPath() {
+function syncEligibleVendorsToPickPath_() {
   const r  = syncEligibleVendorsToPickPath_core_();
   const ui = SpreadsheetApp.getUi();
   if (!r.added) {
@@ -889,6 +893,7 @@ function syncEligibleVendorsToPickPath() {
 // Safe to re-run: a row already holding a normalized list is left unchanged.
 // Run once per store from Ordering Guide -> Mobile API -> Migrate Item Vendors.
 function migrateItemVendorsColumn() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
   const r  = migrateItemVendorsColumn_core_();
   const ui = SpreadsheetApp.getUi();
   if (!r.hadRows) {
@@ -903,7 +908,7 @@ function migrateItemVendorsColumn() {
 }
 
 // Headless core (no UI) — shared by the Sheet menu wrapper above and the web
-// health-check fix (runHealthFix). Seeds MASTER_ITEMS column O from each row's
+// health-check fix (runHealthFix_). Seeds MASTER_ITEMS column O from each row's
 // active vendor; idempotent. Returns { changed, hadRows }.
 function migrateItemVendorsColumn_core_() {
   const sh = getSheet_(SHEET_MASTER);
@@ -953,7 +958,7 @@ function migrateItemVendorsColumn_core_() {
 
 
 
-function commitDeleteItem(itemId) {
+function commitDeleteItem_(itemId) {
   return withPickDbLock_(() => commitDeleteItem_locked_(itemId));
 }
 function commitDeleteItem_locked_(itemId) {

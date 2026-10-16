@@ -9,12 +9,14 @@
 
 
 
+// Public on purpose: a HOME dashboard drawing button may be assigned to it.
+// It does nothing without the Sheet's UI (getUi throws on the web), and the
+// dialog's server calls go through webedit_call with the token minted here.
 function showAdminResetSidebar() {
-  SpreadsheetApp.getUi().showModalDialog(
-    HtmlService.createTemplateFromFile("AdminReset").evaluate()
-      .setWidth(MODAL_SM_W).setHeight(MODAL_SM_H),
-    "Admin Reset"
-  );
+  const ui   = SpreadsheetApp.getUi();
+  const tmpl = HtmlService.createTemplateFromFile("AdminReset");
+  tmpl.sheetTokenJson = JSON.stringify(mintSheetToken_());
+  ui.showModalDialog(tmpl.evaluate().setWidth(MODAL_SM_W).setHeight(MODAL_SM_H), "Admin Reset");
 }
 
 
@@ -30,7 +32,7 @@ function showAdminResetSidebar() {
  *   options.areas        {boolean} - Clear storage area table (SETUP H:I rows 2-19)
  *   options.orderLog     {boolean} - Clear all rows in LOG_ORDERS (preserves header)
  */
-function commitSelectiveReset(options) {
+function commitSelectiveReset_(options) {
   bumpServerMutationTs_();
   if (!options) throw new Error("No options provided.");
 
@@ -112,7 +114,7 @@ function commitSelectiveReset(options) {
 
   // 5. Order Log (LOG_ORDERS data rows only — header preserved)
   if (options.orderLog) {
-    const res = clearOrderLog();
+    const res = clearOrderLog_();
     result.clearedOrderLog = res.ok;
   }
 
@@ -314,7 +316,7 @@ function resetAllVendorOnHand_() {
 // 3. Clears On Hand on all vendor tabs.
 // 4. Writes today's date to ORDER_ENTRY B3 (Last Reset Date).
 //    B3 has conditional formatting: green = today, red = before today.
-function resetOnHandAllVendors() {
+function resetOnHandAllVendors_() {
   const ui  = SpreadsheetApp.getUi();
   const ss  = SpreadsheetApp.getActiveSpreadsheet();
   const tz  = ss.getSpreadsheetTimeZone();
@@ -357,11 +359,11 @@ function resetOnHandAllVendors() {
 
 
   // ── Run log + reset ──────────────────────────────────────────────────────
-  // The recap email is now sent inside commitLogAndReset (deduped via
+  // The recap email is now sent inside commitLogAndReset_ (deduped via
   // MOG_LAST_RECAP_SENT_DATE), so every reset path — this sheet menu, the
   // PWA reset button, and the PWA new-day auto-reset — emails exactly once
   // per cycle. result.emailResult carries the status for the message below.
-  const result      = commitLogAndReset();
+  const result      = commitLogAndReset_();
   const emailResult = result.emailResult || null;
 
 
@@ -439,9 +441,9 @@ function resetOnHandAllVendors() {
 
 
 
-// Core log + reset logic. Called by resetOnHandAllVendors().
+// Core log + reset logic. Called by resetOnHandAllVendors_().
 // Returns { logged, orderDate, rowsLogged, skippedReason? }
-function commitLogAndReset() {
+function commitLogAndReset_() {
   bumpServerMutationTs_();
   const ss        = SpreadsheetApp.getActiveSpreadsheet();
   const tz        = ss.getSpreadsheetTimeZone();
@@ -566,7 +568,7 @@ function sendRecapIfUnsent_() {
 // Removes every row in LOG_ORDERS where the order_date column matches
 // the given orderDate (yyyy-MM-dd). Returns the number of rows removed.
 //
-// Used by commitLogAndReset to implement overwrite-on-re-reset semantics.
+// Used by commitLogAndReset_ to implement overwrite-on-re-reset semantics.
 // Deletes in a single contiguous-range scan to avoid the O(n²) cost of
 // per-row deletion, walking from the bottom up so row indexes remain
 // valid as we go.
