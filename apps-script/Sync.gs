@@ -200,21 +200,23 @@ function supabaseParityReport_() {
 // First place two payloads differ, or '' when they match. Both sides go
 // through a JSON round trip first, because that's how the PWA receives either
 // one. A list-length difference names the entries only one side has.
-function syncDiff_(server, phone) {
+// labels names the two sides in the message (default: server, phone).
+function syncDiff_(server, phone, labels) {
   const a = JSON.parse(JSON.stringify(server === undefined ? null : server));
   const b = JSON.parse(JSON.stringify(phone === undefined ? null : phone));
-  return syncDiffAt_(a, b, '');
+  return syncDiffAt_(a, b, '', labels || ['server', 'phone']);
 }
 
-function syncDiffAt_(a, b, path) {
+function syncDiffAt_(a, b, path, labels) {
   const kind = function (v) { return Array.isArray(v) ? 'array' : (v === null ? 'null' : typeof v); };
   const show = function (v) {
     const s = JSON.stringify(v);
     return s.length > 120 ? s.slice(0, 117) + '...' : s;
   };
+  const A = labels[0], B = labels[1];
   if (a === b) return '';
   if (kind(a) !== kind(b) || (kind(a) !== 'array' && kind(a) !== 'object')) {
-    return (path || '(root)') + ': server ' + show(a) + ' vs phone ' + show(b);
+    return (path || '(root)') + ': ' + A + ' ' + show(a) + ' vs ' + B + ' ' + show(b);
   }
   if (kind(a) === 'array') {
     if (a.length !== b.length) {
@@ -222,12 +224,12 @@ function syncDiffAt_(a, b, path) {
       const la = a.map(label), lb = b.map(label);
       const onlyA = la.filter(function (x) { return lb.indexOf(x) < 0; });
       const onlyB = lb.filter(function (x) { return la.indexOf(x) < 0; });
-      return path + '.length: server ' + a.length + ' vs phone ' + b.length +
-        (onlyA.length ? ' (server only: ' + onlyA.slice(0, 5).join(', ') + ')' : '') +
-        (onlyB.length ? ' (phone only: ' + onlyB.slice(0, 5).join(', ') + ')' : '');
+      return path + '.length: ' + A + ' ' + a.length + ' vs ' + B + ' ' + b.length +
+        (onlyA.length ? ' (' + A + ' only: ' + onlyA.slice(0, 5).join(', ') + ')' : '') +
+        (onlyB.length ? ' (' + B + ' only: ' + onlyB.slice(0, 5).join(', ') + ')' : '');
     }
     for (let i = 0; i < a.length; i++) {
-      const d = syncDiffAt_(a[i], b[i], path + '[' + i + ']');
+      const d = syncDiffAt_(a[i], b[i], path + '[' + i + ']', labels);
       if (d) return d;
     }
     return '';
@@ -235,9 +237,9 @@ function syncDiffAt_(a, b, path) {
   const keys = Object.keys(a);
   for (const k of Object.keys(b)) if (keys.indexOf(k) < 0) keys.push(k);
   for (const k of keys) {
-    if (!(k in a)) return path + '.' + k + ': only the phone has it';
-    if (!(k in b)) return path + '.' + k + ': only the server has it';
-    const d = syncDiffAt_(a[k], b[k], path + '.' + k);
+    if (!(k in a)) return path + '.' + k + ': only the ' + B + ' has it';
+    if (!(k in b)) return path + '.' + k + ': only the ' + A + ' has it';
+    const d = syncDiffAt_(a[k], b[k], path + '.' + k, labels);
     if (d) return d;
   }
   return '';
@@ -588,8 +590,10 @@ function showFetchGrant_(ui, url) {
 
 // Move this store to Supabase in one step: connect it (a connect code from
 // supabase/provision_stores.sql), push the PINs and catalog, give Supabase the
-// cycle and the counts entered so far, install the 3:30 AM run, and switch.
-// From then on /exec serves the count path from Supabase. Each piece can run
+// cycle and the counts entered so far, install the 3:30 AM run, switch, and
+// then turn on direct phone access (schema v3's phone_direct). From then on
+// phones read and save in Supabase, and /exec serves the count path from it
+// for phones still on an old app. Each piece can run
 // again, so after a failure the same menu item picks up where it stopped, and
 // after Switch back to the Sheet it switches again without a code.
 function moveToSupabase_() {
@@ -662,11 +666,18 @@ function moveToSupabase_() {
       'Run 📱 Mobile API → Move this store to Supabase again; it picks up where it stopped.', ui.ButtonSet.OK);
     return;
   }
+  // Phones last, only once the store counts in Supabase (D12). If this fails
+  // the move still stands: phones keep using /exec, which now serves this
+  // store from Supabase.
+  let phones = 'on';
+  try { supabaseSync_('mog_sync_set_phone_direct', { p_on: true }); }
+  catch (e) { phones = 'NOT turned on (' + e.message + '). Run supabase/phones_direct.sql in the SQL Editor'; }
   ui.alert('Moved to Supabase',
     'Store: ' + slug + '\n' +
     'Counts copied: ' + imported + '\n' +
     'Catalog pushed: ' + Math.round(push.bytes / 1024) + ' KB\n' +
-    'Nightly 3:30 AM run: ' + (nightly.created ? 'installed' : 'already installed') + '\n\n' +
+    'Nightly 3:30 AM run: ' + (nightly.created ? 'installed' : 'already installed') + '\n' +
+    'Phones talk to Supabase directly: ' + phones + '\n\n' +
     'Rollback (emergency only): 📱 Mobile API → Switch back to the Sheet.', ui.ButtonSet.OK);
 }
 
@@ -808,4 +819,304 @@ function test_supabasePushTiming() {
     lines.push('snapshot read ' + i + ': ' + (Date.now() - t0) + ' ms');
   }
   Logger.log(lines.join('\n'));
+}
+
+
+// ===========================================================================
+// Step 6: the catalog in tables (schema v4, design record D19-D22)
+// ===========================================================================
+// Before a store's editor moves to Supabase, its catalog has to come out of
+// Supabase's tables exactly as phones read it today. test_catalogTablesParity
+// copies this Sheet's catalog into the tables (inert until the store's
+// editor_direct switch is on, so a KM sees no change) and checks that every
+// phone screen built from Supabase's version matches the Sheet's: every
+// vendor, every day of the week, Emergency Override off and on.
+
+// This Sheet's catalog as schema v4's tables. Same readers as
+// buildCatalogPayload_, fresh reads only. The tables enforce rules the Sheet
+// doesn't (a pick row names a listed vendor, an existing item and an existing
+// storage area; names are unique ignoring case), so a row that breaks one is
+// cleaned on the way in and the cleanup is listed in `notes`. Whether a
+// cleanup changes what a phone shows is for catalogParityReport_ to say.
+function buildCatalogTables_() {
+  const ss    = SpreadsheetApp.getActiveSpreadsheet();
+  const setup = getSheet_(SHEET_SETUP);
+  const props = PropertiesService.getScriptProperties();
+  const days  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const notes = [];
+  const note  = function (kind, detail) { notes.push({ kind: kind, detail: detail }); };
+
+  // ---- Vendors: the listed ones (SETUP Z deduped ignoring case, first spelling wins) ----
+  const vendorList  = getVendorList_compute_();
+  const canonVendor = new Map(vendorList.map(function (v) { return [v.toLowerCase(), v]; }));
+  const multMap     = readVendorMultipliers_(setup);
+  const cutoffMap   = readVendorCutoffs_(setup);
+  const lastRow     = setup.getLastRow();
+  if (lastRow >= 2) {
+    setup.getRange(2, VENDOR_LIST_COL, lastRow - 1, 1).getValues().forEach(function (r, i) {
+      const v = String(r[0] || '').trim();
+      const canon = v ? canonVendor.get(v.toLowerCase()) : null;
+      if (canon && canon !== v) note('vendor', 'SETUP Z' + (i + 2) + ' "' + v + '" is another spelling of "' + canon + '": left out');
+    });
+  }
+  const vendors = vendorList.map(function (v) {
+    const m = multMap.get(v) || {};   // the row vendorDayMultiplier_ reads for this exact name
+    const mults = days.map(function (d) {
+      const x = Number(m[d]) || 0;
+      if (isFinite(x)) return x;
+      note('vendor', v + ': ' + d + ' multiplier is not a finite number: stored as 0');
+      return 0;
+    });
+    let cutoff = cutoffMap.get(v) || (VENDOR_META[v] || {}).cutoffTime || null;
+    if (cutoff !== null && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(cutoff)) {
+      note('vendor', v + ': cutoff "' + cutoff + '" is not HH:MM: stored as none');
+      cutoff = null;
+    }
+    return { name: v, mults: mults, cutoff: cutoff };
+  });
+
+  // ---- Storage areas (SETUP H:I): a name with a numeric order, one per name ignoring case ----
+  const areas     = [];
+  const canonArea = new Map();
+  const areaOrd   = new Map();
+  readAreaBlock_(setup).block.forEach(function (r, i) {
+    const name = String(r[0] || '').trim();
+    if (!name) return;
+    const ord = Number(r[1]);
+    if (!Number.isFinite(ord)) { note('area', 'SETUP H' + (i + 2) + ' "' + name + '" has no numeric order: left out'); return; }
+    const key = name.toLowerCase();
+    if (canonArea.has(key)) { note('area', 'SETUP H' + (i + 2) + ' "' + name + '" repeats "' + canonArea.get(key) + '": left out'); return; }
+    canonArea.set(key, name);
+    areaOrd.set(name, ord);
+    areas.push({ name: name, ord: ord });
+  });
+
+  // ---- Items (MASTER_ITEMS): the payload's own reader, plus the columns it skips ----
+  const meta   = readMasterItemMeta_();   // a repeated Item ID: the last row wins, as the app reads it
+  const extras = new Map();
+  const master = getSheet_(SHEET_MASTER);
+  const mLast  = master.getLastRow();
+  if (mLast >= 2) {
+    master.getRange(2, 1, mLast - 1, COL.ELIGIBLE_VENDORS).getValues().forEach(function (r, i) {
+      const id  = String(r[COL.ID - 1] || '').trim();
+      const row = i + 2;
+      if (!id) {
+        if (String(r[COL.NAME - 1] || '').trim() || r[COL.ACTIVE - 1] === true) {
+          note('item', 'MASTER_ITEMS row ' + row + ' has no Item ID: left out');
+        }
+        return;
+      }
+      if (extras.has(id)) note('item', id + ' appears again on MASTER_ITEMS row ' + row + ': the last row wins');
+      extras.set(id, {
+        row:         row,
+        notes:       String(r[COL.NOTES - 1] || '').trim(),
+        sku:         String(r[COL.SKU - 1] || '').trim(),
+        category:    String(r[COL.CATEGORY - 1] || '').trim(),
+        eligibleRaw: r[COL.ELIGIBLE_VENDORS - 1]
+      });
+    });
+  }
+  const items = [];
+  meta.forEach(function (m, id) {
+    const x = extras.get(id) || {};
+    const primary = m.primaryVendor ? (canonVendor.get(m.primaryVendor.toLowerCase()) || null) : null;
+    if (m.primaryVendor && !primary) {
+      note('item', id + ': primary vendor "' + m.primaryVendor + '" is not a listed vendor: stored as none');
+    } else if (primary && primary !== m.primaryVendor) {
+      note('item', id + ': primary vendor "' + m.primaryVendor + '" stored as "' + primary + '"');
+    }
+    items.push({
+      id:            id,
+      name:          m.name,
+      primaryVendor: primary,
+      pack:          m.pack,
+      par:           isNaN(m.par) ? null : m.par,
+      active:        m.active,
+      useMult:       m.useMult,
+      notes:         x.notes || '',
+      sku:           x.sku || '',
+      category:      x.category || '',
+      eligible:      normalizeEligibleList_(x.eligibleRaw, primary || '', canonVendor),
+      seq:           x.row || 0
+    });
+  });
+
+  // ---- Pick rows (SETUP K:P) ----
+  const itemIds  = new Set(items.map(function (it) { return it.id; }));
+  const onList   = new Set();
+  const pickRows = [];
+  readPickDb_(setup).map(catalogPickRow_).forEach(function (r, i) {
+    const row  = i + PICKDB.START_ROW;
+    const rawV = (r[0] === null || r[0] === undefined) ? '' : String(r[0]);
+    const vt   = rawV.trim();
+    const id   = String(r[1] || '').trim();
+    if (!vt && !id) return;   // an empty row
+    const at = 'SETUP K' + row + ' ';
+    const vendor = canonVendor.get(vt.toLowerCase());
+    if (!vendor) { note('pick', at + '"' + vt + '" / ' + (id || '(no id)') + ': vendor is not listed: left out'); return; }
+    if (rawV !== vendor) note('pick', at + 'vendor "' + rawV + '" stored as "' + vendor + '"');
+    if (!id) { note('pick', at + vendor + ': no Item ID: left out'); return; }
+    if (!itemIds.has(id)) { note('pick', at + vendor + ' / ' + id + ': not in MASTER_ITEMS: left out'); return; }
+    const key = vendor + '\u0001' + id;
+    if (onList.has(key)) { note('pick', at + vendor + ' / ' + id + ' is on that list already: left out'); return; }
+    onList.add(key);
+
+    const areaText = String(r[3] || '').trim();
+    let area = null;
+    if (areaText) {
+      area = canonArea.get(areaText.toLowerCase()) || null;
+      if (!area) note('pick', at + vendor + ' / ' + id + ': storage area "' + areaText + '" does not exist: stored as none');
+      else if (area !== areaText) note('pick', at + vendor + ' / ' + id + ': storage area "' + areaText + '" stored as "' + area + '"');
+    }
+    // The tables look the order up from the area itself, so it can't drift.
+    const sheetOrd = Number(r[4]) || 999;
+    const tableOrd = area ? (Number(areaOrd.get(area)) || 999) : 999;
+    if (sheetOrd !== tableOrd) {
+      note('pick', at + vendor + ' / ' + id + ': area order ' + JSON.stringify(r[4]) + ' becomes ' +
+        (area ? areaOrd.get(area) + ' (the order of ' + area + ')' : 'none'));
+    }
+    const shelf = (r[5] === '' || r[5] === null || r[5] === undefined) ? null : Number(r[5]);
+    pickRows.push({ vendor: vendor, id: id, area: area,
+                    shelfOrder: (shelf !== null && Number.isFinite(shelf)) ? shelf : null, seq: row });
+  });
+
+  return {
+    tables: {
+      profile: {
+        timeZone: ss.getSpreadsheetTimeZone(),
+        location: props.getProperty(PROP_LOCATION) || 'Unknown',
+        abbr:     props.getProperty(PROP_LOCATION_ABBR) || '',
+        concept:  props.getProperty(PROP_CONCEPT) || ''
+      },
+      vendors:  vendors,
+      areas:    areas,
+      items:    items,
+      pickRows: pickRows
+    },
+    notes: notes
+  };
+}
+
+
+// What a phone shows from two catalogs, compared: the Sheet's payload against
+// the one Supabase built from its tables. Every vendor on either list, every
+// day of the week, Emergency Override off and on (with the cycle's real day
+// picks), the dashboard and every vendor's count screen, over this cycle's
+// counts. Pure (OrderMath.gs only). ok = no screen differs. payloadDiff is the
+// first difference in the raw JSON, for information: some differ without
+// changing any screen (an item name stored on a pick row, say).
+function catalogParityReport_(sheetCatalog, tableCatalog, state, counts) {
+  const labels  = ['Sheet', 'tables'];
+  const a       = JSON.parse(JSON.stringify(sheetCatalog));
+  const b       = JSON.parse(JSON.stringify(tableCatalog));
+  const days    = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const vendors = (a.vendorList || []).slice();
+  for (const v of (b.vendorList || [])) if (vendors.indexOf(v) < 0) vendors.push(v);
+
+  const report = { vendors: vendors.length, checks: 0, diffs: [], diffCount: 0,
+                   payloadDiff: syncDiff_(a, b, labels), ok: true };
+  const add = function (what, d) {
+    report.diffCount++;
+    if (report.diffs.length < 30) report.diffs.push(what + ': ' + d);
+  };
+  const base = state || { cycleDate: '', vendorPicks: {}, todaysLog: [] };
+  for (const day of days) {
+    for (const override of [false, true]) {
+      const st  = Object.assign({}, base, { dayOfWeek: day, emergencyOverride: override });
+      const ia  = orderInputsFromSnapshot_({ catalog: a, state: st, counts: counts || [] });
+      const ib  = orderInputsFromSnapshot_({ catalog: b, state: st, counts: counts || [] });
+      const tag = day + (override ? ' (override on)' : '');
+      report.checks++;
+      const dd = syncDiff_(dashboardFromSnapshot_(ia), dashboardFromSnapshot_(ib), labels);
+      if (dd) add(tag + ' dashboard', dd);
+      for (const v of vendors) {
+        report.checks++;
+        const d = syncDiff_(vendorItemsFromSnapshot_(ia, v), vendorItemsFromSnapshot_(ib, v), labels);
+        if (d) add(tag + ' ' + v, d);
+      }
+    }
+  }
+  report.ok = report.diffCount === 0;
+  return report;
+}
+
+
+// Seed the tables from this Sheet and compare. Never throws: a refused seed
+// (bad data, editor_direct on) comes back as ok:false with the reason.
+function catalogTablesParity_() {
+  const built  = buildCatalogTables_();
+  const t      = built.tables;
+  const result = { store: t.profile.location, slug: supabaseConfig_().slug, notes: built.notes,
+                   seeded: null, error: null, report: null, ok: false };
+  let seeded;
+  try {
+    seeded = supabaseSync_('mog_sync_seed_catalog', { p_tables: t });
+  } catch (e) {
+    result.error = e.message;
+    return result;
+  }
+  result.seeded = seeded.seeded;
+
+  // This cycle's state and counts, so in-progress screens are compared too.
+  let state = null, counts = [];
+  if (supabaseConfig_().switched) {
+    try {
+      const snap = supabaseSnapshot_(true);
+      state  = snap.state;
+      counts = snap.counts || [];
+    } catch (e) { /* compare without counts */ }
+  }
+  result.report = catalogParityReport_(buildCatalogPayload_(), seeded.catalog, state, counts);
+  result.ok = result.report.ok;
+  return result;
+}
+
+function formatCatalogParity_(r) {
+  const lines = ['Catalog tables parity: ' + r.store + (r.slug ? ' (' + r.slug + ')' : '')];
+  if (r.error) {
+    lines.push('Seed refused: ' + r.error);
+    if (/EDITOR_DIRECT/.test(r.error)) {
+      lines.push('This store\'s editor already writes to Supabase, so the Sheet can no longer seed its catalog.');
+    }
+  } else {
+    const s = r.seeded || {};
+    lines.push('Seeded: ' + s.vendors + ' vendors, ' + s.areas + ' storage areas, ' + s.items + ' items, ' +
+               s.pickRows + ' pick rows');
+  }
+  if (r.notes.length) {
+    lines.push('Cleaned on the way in (' + r.notes.length + '):');
+    for (const n of r.notes.slice(0, 50)) lines.push('  [' + n.kind + '] ' + n.detail);
+    if (r.notes.length > 50) lines.push('  ... and ' + (r.notes.length - 50) + ' more');
+  }
+  if (r.report) {
+    const rep = r.report;
+    if (rep.ok) {
+      lines.push('Phones: MATCH on every screen (' + rep.vendors + ' vendors x 7 days x override off/on, ' +
+                 rep.checks + ' screens)');
+    } else {
+      lines.push('Phones: ' + rep.diffCount + ' of ' + rep.checks + ' screens DIFFER:');
+      for (const d of rep.diffs) lines.push('  ' + d);
+      if (rep.diffCount > rep.diffs.length) lines.push('  ... and ' + (rep.diffCount - rep.diffs.length) + ' more');
+      if (r.notes.length) lines.push('The cleanups above are the likely cause: fix those rows in the Sheet, then run this again.');
+    }
+    lines.push('Raw JSON: ' + (rep.payloadDiff ? 'first difference ' + rep.payloadDiff : 'identical'));
+  }
+  lines.push('RESULT: ' + (r.ok ? 'PASS' : 'FAIL'));
+  return lines.join('\n');
+}
+
+// Editor-run (Run > test_catalogTablesParity). Copies this Sheet's catalog
+// into Supabase's catalog tables and checks phones would show exactly the
+// same thing from them. The tables are inert until the store's editor moves
+// to Supabase, so this changes nothing a KM sees. A store's editor can only
+// switch after a PASS (D20).
+function test_catalogTablesParity() {
+  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
+  if (!supabaseConfig_().connected) {
+    Logger.log('Not connected: run 📱 Mobile API → Move this store to Supabase first.');
+    return null;
+  }
+  const r = catalogTablesParity_();
+  Logger.log(formatCatalogParity_(r));
+  return r;
 }

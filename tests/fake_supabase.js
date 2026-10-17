@@ -18,6 +18,98 @@ function toOnHand(v) {
   return null;
 }
 
+// schema_v4.sql's catalog tables: mog.replace_catalog_tables' input checks and
+// the table rules (checks, primary keys, case-insensitive unique names,
+// foreign keys). Throws the first broken rule; returns clean copies.
+const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+function checkCatalogTables(t) {
+  const isArr = k => t && Array.isArray(t[k]);
+  if (!t || typeof t !== 'object' || !isArr('vendors') || !isArr('areas') || !isArr('items') || !isArr('pickRows')) {
+    throw new Error('tables must be an object with vendors, areas, items and pickRows arrays');
+  }
+  const name = (v, max, what) => {
+    if (typeof v !== 'string' || v !== v.trim() || v === '' || v.length > max) throw new Error(what + ' name check: ' + JSON.stringify(v));
+    return v;
+  };
+  const num = (v, what) => {
+    if (v === null || v === undefined) return null;
+    if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error('invalid input syntax for type numeric: ' + what);
+    return v;
+  };
+  const uniq = (rows, keyOf, what) => {
+    const seen = new Set();
+    for (const r of rows) { const k = keyOf(r); if (seen.has(k)) throw new Error('duplicate key value violates unique constraint ' + what); seen.add(k); }
+  };
+  const vendors = t.vendors.map(e => {
+    const mults = e.mults === undefined ? [0, 0, 0, 0, 0, 0, 0] : e.mults;
+    if (!Array.isArray(mults) || mults.length !== 7 || mults.some(m => num(m, 'mult') === null)) throw new Error('vendors_mults_check');
+    const cutoff = (e.cutoff === undefined || e.cutoff === null || e.cutoff === '') ? null : e.cutoff;
+    if (cutoff !== null && !HHMM.test(cutoff)) throw new Error('vendors_cutoff_check');
+    return { name: name(e.name, 100, 'vendor'), mults: mults.slice(), cutoff };
+  });
+  uniq(vendors, v => v.name, 'vendors_pkey');
+  uniq(vendors, v => v.name.toLowerCase(), 'vendors_name_ci');
+  const areas = t.areas.map(e => {
+    const ord = num(e.ord, 'ord');
+    if (ord === null) throw new Error('null value in column "ord"');
+    return { name: name(e.name, 100, 'area'), ord };
+  });
+  uniq(areas, a => a.name, 'areas_pkey');
+  uniq(areas, a => a.name.toLowerCase(), 'areas_name_ci');
+  const vendorNames = new Set(vendors.map(v => v.name));
+  const areaNames = new Set(areas.map(a => a.name));
+  const items = t.items.map((e, i) => {
+    const primary = (e.primaryVendor === undefined || e.primaryVendor === null || e.primaryVendor === '') ? null : e.primaryVendor;
+    if (primary !== null && !vendorNames.has(primary)) throw new Error('items primary_vendor foreign key: ' + primary);
+    const nm = e.name == null ? '' : String(e.name);
+    if (nm.length > 300) throw new Error('items_name_check');
+    return { id: name(e.id, 100, 'item'), name: nm, primaryVendor: primary, pack: e.pack == null ? '' : String(e.pack),
+             par: num(e.par, 'par'), active: e.active == null ? true : e.active === true,
+             useMult: e.useMult == null ? true : e.useMult === true, notes: e.notes || '', sku: e.sku || '',
+             category: e.category || '', eligible: (e.eligible || []).slice(), seq: e.seq == null ? i + 1 : e.seq };
+  });
+  uniq(items, it => it.id, 'items_pkey');
+  const itemIds = new Set(items.map(it => it.id));
+  const pickRows = t.pickRows.map((e, i) => {
+    if (!vendorNames.has(e.vendor)) throw new Error('pick_rows vendor foreign key: ' + e.vendor);
+    if (!itemIds.has(e.id)) throw new Error('pick_rows item foreign key: ' + e.id);
+    const area = (e.area === undefined || e.area === null || e.area === '') ? null : e.area;
+    if (area !== null && !areaNames.has(area)) throw new Error('pick_rows area foreign key: ' + area);
+    return { vendor: e.vendor, id: e.id, area, shelfOrder: num(e.shelfOrder, 'shelf'), seq: e.seq == null ? i + 1 : e.seq };
+  });
+  uniq(pickRows, r => r.vendor + '\u0001' + r.id, 'pick_rows_pkey');
+  return { vendors, areas, items, pickRows };
+}
+
+// mog.catalog_from_tables. vendorList uses localeCompare, which smoke_v4.sql
+// pins the database's ICU sort against.
+function catalogFromTables(s) {
+  const t = s.tables, pr = s.profile;
+  const days = DAYS;
+  const itemById = new Map(t.items.map(it => [it.id, it]));
+  const areaOrd = new Map(t.areas.map(a => [a.name, a.ord]));
+  const obj = pairs => { const o = {}; for (const [k, v] of pairs) o[k] = v; return o; };
+  const counts = rows => { const m = new Map(); for (const k of rows) m.set(k, (m.get(k) || 0) + 1); return obj(m); };
+  return {
+    schema: 1,
+    timeZone: pr.timeZone || 'America/New_York',
+    location: pr.location != null ? pr.location : 'Unknown',
+    abbr: pr.abbr || '',
+    concept: pr.concept || '',
+    vendorList: t.vendors.map(v => v.name).sort((a, b) => a.localeCompare(b)),
+    vendorMults: obj(t.vendors.map(v => [v.name, obj(days.map((d, i) => [d, v.mults[i]]))])),
+    cutoffs: obj(t.vendors.map(v => [v.name, v.cutoff])),
+    items: obj(t.items.map(it => [it.id, { useMult: it.useMult, par: it.par, name: it.name, pack: it.pack,
+                                           primaryVendor: it.primaryVendor || '', active: it.active }])),
+    pickRows: t.pickRows.slice()
+      .sort((a, b) => (a.seq - b.seq) || (a.vendor < b.vendor ? -1 : a.vendor > b.vendor ? 1 : 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map(r => [r.vendor, r.id, itemById.get(r.id).name, r.area || '', r.area ? areaOrd.get(r.area) : null, r.shelfOrder]),
+    itemCounts: counts(t.items.filter(it => it.active && it.primaryVendor).map(it => it.primaryVendor)),
+    backupCounts: counts(t.pickRows.filter(r => { const it = itemById.get(r.id); return it.active && it.primaryVendor !== r.vendor; })
+      .map(r => r.vendor))
+  };
+}
+
 class FakeSupabase {
   constructor(nowMs) {
     this.nowMs = nowMs;
@@ -36,7 +128,8 @@ class FakeSupabase {
   provision(slug) {
     const key = (slug + 'k'.repeat(64)).slice(0, 64).replace(/[^0-9a-f]/g, 'a');
     this.stores.set(slug, { key, pins: {}, catalog: null, version: null, state: null, counts: new Map(), log: [],
-                            phoneDirect: false, failCount: 0, lockedUntil: 0, sessions: new Map() });
+                            phoneDirect: false, failCount: 0, lockedUntil: 0, sessions: new Map(),
+                            editorDirect: false, profile: {}, tables: null });
     return key;
   }
 
@@ -128,6 +221,7 @@ class FakeSupabase {
         return this.snapshot(p.p_slug, s, p.p_have_version);
 
       case 'mog_sync_push_catalog':
+        if (s.editorDirect) return err('EDITOR_DIRECT');
         if (p.p_version == null || !p.p_payload || typeof p.p_payload !== 'object') return err('version and an object payload are required');
         if (s.version != null && s.version > p.p_version) return ok({ applied: false, version: p.p_version });
         s.catalog = clone(p.p_payload);
@@ -193,6 +287,24 @@ class FakeSupabase {
       case 'mog_sync_set_phone_direct':
         s.phoneDirect = !!p.p_on;
         return ok({ phoneDirect: !!p.p_on });
+
+      case 'mog_sync_seed_catalog': {
+        if (s.editorDirect) return err('EDITOR_DIRECT');
+        let next;
+        try { next = checkCatalogTables(p.p_tables); } catch (e) { return err('SEED_REJECTED: ' + e.message); }
+        const pr = (p.p_tables && p.p_tables.profile) || {};
+        for (const k of ['timeZone', 'location', 'abbr', 'concept']) if (pr[k] != null) s.profile[k] = String(pr[k]);
+        s.tables = next;
+        const built = catalogFromTables(s);
+        return ok({ seeded: { vendors: next.vendors.length, areas: next.areas.length, items: next.items.length,
+                              pickRows: next.pickRows.length },
+                    catalog: this.catalogDefect ? this.catalogDefect(built) : built });   // catalogDefect: a test's planted builder bug
+      }
+
+      case 'mog_sync_get_status':
+        return ok({ phoneDirect: s.phoneDirect, editorDirect: s.editorDirect, hasCycle: !!s.state,
+                    tablesSeeded: !!(s.tables && s.tables.vendors.length), catalogVersion: s.version,
+                    catalogPushedAt: s.version == null ? null : 'fake', catalog: clone(s.catalog) });
 
       case 'mog_sync_set_vendor_pick': {
         const vendor = String(p.p_vendor || '').trim();
@@ -344,4 +456,5 @@ function compileStep4(srcOf) {
     ['apps-script/OrderMath.gs', 'apps-script/Sync.gs', 'apps-script/DbApi.gs']);
 }
 
-module.exports = { FakeSupabase, fakeScriptApp, fakeContentService, toOnHand, compileStep4, FAKE_GRANT_URL };
+module.exports = { FakeSupabase, fakeScriptApp, fakeContentService, toOnHand, compileStep4, FAKE_GRANT_URL,
+  checkCatalogTables, catalogFromTables };

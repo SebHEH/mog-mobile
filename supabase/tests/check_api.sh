@@ -46,6 +46,14 @@ check "v2 sync: bad key can't set the override"   200 'BAD_SYNC_KEY'    -X POST 
 check "v3 sync: bad key can't set phone_direct"   200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_on":true}' "$(rpc mog_sync_set_phone_direct)"
 check "v3 helper: phone_direct_on not exposed"    404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo"}' "$(rpc phone_direct_on)"
 
+# schema v4
+check "v4 catalog tables: not reachable"          404 ''   "$URL/rest/v1/items"
+check "v4 catalog tables: private schema"         406 ''   -H 'Accept-Profile: mog' "$URL/rest/v1/pick_rows"
+check "v4 sync: bad key can't seed the catalog"   200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_tables":{}}' "$(rpc mog_sync_seed_catalog)"
+check "v4 sync: bad key can't read the status"    200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus"}' "$(rpc mog_sync_get_status)"
+check "v4 helper: catalog_from_tables not exposed" 404 ''  -X POST "${J[@]}" -d '{"p_slug":"rprfo"}' "$(rpc catalog_from_tables)"
+check "v4 helper: copy_store_catalog not exposed" 404 ''   -X POST "${J[@]}" -d '{"p_from":"rprfo","p_to":"x"}' "$(rpc copy_store_catalog)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

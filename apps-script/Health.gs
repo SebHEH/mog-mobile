@@ -224,6 +224,85 @@ function getStoreHealthReport_() {
     }
   } catch (e) { add('pin_lockout', 'PIN lockout', 'warn', 'Check errored: ' + e.message); }
 
+  // ── 9) Supabase (migration steps 4-5) ────────────────────────────────────
+  // One status read from Supabase (mog_sync_get_status, schema v4) plus this
+  // script's triggers. Reads only: nothing here writes to Supabase either.
+  try {
+    const cfg = supabaseConfig_();
+    if (!cfg.connected) {
+      add('sb_moved', 'Moved to Supabase', 'warn',
+        'Not connected to Supabase: this store counts in the Sheet and every phone screen goes through /exec (~2s each).',
+        'Run 📱 Mobile API → Move this store to Supabase.');
+    } else {
+      if (cfg.switched) {
+        add('sb_moved', 'Moved to Supabase', 'pass',
+          'Counts, the cycle and the order log live in Supabase (store "' + cfg.slug + '").');
+      } else {
+        add('sb_moved', 'Moved to Supabase', 'warn',
+          'Connected as "' + cfg.slug + '", but counting is back on the Sheet (Switch back to the Sheet was run).',
+          'Run 📱 Mobile API → Move this store to Supabase; it switches again without a code.');
+      }
+
+      // Triggers belong to a Google account; the web editor runs as the store's owner.
+      const nightly = ScriptApp.getProjectTriggers()
+        .some(function (t) { return t.getHandlerFunction() === 'nightlyMaintenance_'; });
+      if (nightly) {
+        add('sb_nightly', 'Nightly 3:30 AM run', 'pass', 'The 3:30 AM cycle close is installed.');
+      } else {
+        add('sb_nightly', 'Nightly 3:30 AM run', cfg.switched ? 'fail' : 'warn',
+          'No 3:30 AM run is installed for the Google account running this check, so cycles close on the ' +
+          'first app open instead (14-31s).',
+          'Installs the 3:30 AM run under the account that runs the fix (the web editor runs as the store\'s owner).',
+          'install_nightly');
+      }
+
+      let status = null;
+      try {
+        status = supabaseSync_('mog_sync_get_status', {});
+      } catch (e) {
+        add('sb_status', 'Supabase status', 'fail', 'Could not read this store\'s status from Supabase: ' + e.message,
+          /HTTP 404/.test(e.message) ? 'Run supabase/schema_v4.sql in the Supabase SQL Editor.'
+                                     : 'Check this store\'s connection to Supabase and run the check again.');
+      }
+      if (status) {
+        const direct = status.phoneDirect === true;
+        if (cfg.switched && direct) {
+          add('sb_phones', 'Phones direct', 'pass', 'Phones read and save straight to Supabase.');
+        } else if (cfg.switched) {
+          add('sb_phones', 'Phones direct', 'warn',
+            'Phones still go through /exec (~2s per screen): their switch in Supabase is off. That is right only ' +
+            'if they were turned off on purpose.',
+            'Run supabase/phones_direct.sql in the Supabase SQL Editor.');
+        } else if (direct) {
+          add('sb_phones', 'Phones direct', 'fail',
+            'Phones save counts straight to Supabase while this store counts in the Sheet, so their counts never ' +
+            'reach it.',
+            'In the Supabase SQL Editor: update mog.stores set phone_direct = false where slug = \'' + cfg.slug + '\';');
+        } else {
+          add('sb_phones', 'Phones direct', 'pass', 'Phones use /exec, matching this store counting in the Sheet.');
+        }
+
+        if (status.editorDirect) {
+          add('sb_catalog', 'Catalog in sync', 'pass',
+            'Supabase owns this store\'s catalog (its editor writes there); the Sheet\'s copy is a backup.');
+        } else if (!status.catalog) {
+          add('sb_catalog', 'Catalog in sync', 'fail', 'Supabase holds no catalog for this store, so phones can\'t load it.',
+            'Pushes this Sheet\'s catalog to Supabase now.', 'push_catalog');
+        } else {
+          const d = syncDiff_(buildCatalogPayload_(), status.catalog, ['Sheet', 'Supabase']);
+          if (!d) {
+            add('sb_catalog', 'Catalog in sync', 'pass', 'Phones see the same catalog as this Sheet.');
+          } else {
+            add('sb_catalog', 'Catalog in sync', 'warn',
+              'Phones see a different catalog from this Sheet (first difference: ' + d + '). An edit normally ' +
+              'reaches Supabase within a minute.',
+              'Pushes this Sheet\'s catalog to Supabase now.', 'push_catalog');
+          }
+        }
+      }
+    }
+  } catch (e) { add('sb_moved', 'Moved to Supabase', 'warn', 'Check errored: ' + e.message); }
+
   // ── Summary ──────────────────────────────────────────────────────────────
   const summary = { pass: 0, warn: 0, fail: 0 };
   checks.forEach(c => { if (summary[c.status] != null) summary[c.status]++; });
@@ -311,6 +390,23 @@ function runHealthFix_(fixId) {
           ? 'Repaired the B1 header on ' + r.fixed + ' vendor tab(s): ' + r.names.join(', ') +
             '. Their items should now appear.'
           : 'All vendor tab headers already match — nothing to fix.'
+      };
+    }
+    case 'push_catalog': {
+      if (!supabaseConfig_().connected) return { ok: false, message: 'This store is not connected to Supabase.' };
+      const r = pushCatalogNow_();
+      return {
+        ok: true,
+        message: r.applied
+          ? 'Pushed this Sheet\'s catalog to Supabase (' + Math.round(r.bytes / 1024) + ' KB).'
+          : 'Supabase already holds a newer catalog — nothing changed.'
+      };
+    }
+    case 'install_nightly': {
+      const r = ensureNightlyTrigger_();
+      return {
+        ok: true,
+        message: r.created ? 'Installed the 3:30 AM run.' : 'The 3:30 AM run was already installed — nothing to do.'
       };
     }
     default:

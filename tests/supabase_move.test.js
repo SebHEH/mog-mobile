@@ -9,7 +9,9 @@
 //     a permission error with no link available still explains the fix
 //   - a move leaves Supabase exactly as the step-4 gate's seed path does
 //     (pushPinsNow_ + pushCatalogNow_ + setDbStateFromSheet_ +
-//     importSheetCountsToDb_), with one nightly trigger and MOG_BACKEND set
+//     importSheetCountsToDb_), with one nightly trigger and MOG_BACKEND set,
+//     and turns direct phone access on last; if that fails the move stands
+//     and the message says to run supabase/phones_direct.sql
 //   - a failure part-way leaves the store counting in the Sheet, and running
 //     Move again finishes without asking for the code
 //   - Switch back to the Sheet turns direct phone access off first (schema
@@ -168,6 +170,20 @@ function runSuite(srcOf, stores) {
       return d && /authorizeSupabase/.test(d.msg) && !/href=/.test(d.msg) ? '' : 'no fallback explanation';
     });
 
+    // Phones can't be turned direct: the move still stands, and says what to run.
+    try {
+      const sb = new FakeSupabase(spec.now);
+      const key = sb.provision(SLUG);
+      const side = makeSide(spec, script, sb, {});
+      sb.failFns.add('mog_sync_set_phone_direct');
+      const log = side.menu('moveToSupabase_', [CODE(SLUG + ':' + key), YES]);
+      if (side.scriptProps.get('MOG_BACKEND') !== 'supabase') fail(seed, 'move, phones unreachable', 'not switched');
+      if (sb.stores.get(SLUG).phoneDirect) fail(seed, 'move, phones unreachable', 'phones direct anyway');
+      if (!said(log, /Phones talk to Supabase directly: NOT turned on \(.*\)\. Run supabase\/phones_direct\.sql/)) {
+        fail(seed, 'move, phones unreachable', 'no instructions: ' + JSON.stringify(log.slice(-1)));
+      }
+    } catch (e) { fail(seed, 'move, phones unreachable', 'crashed: ' + e.message); }
+
     // A move that fails part-way, then finishes; checked against the reference.
     try {
       const sb = new FakeSupabase(spec.now);
@@ -189,6 +205,11 @@ function runSuite(srcOf, stores) {
       if (!said(log, new RegExp('Counts copied: ' + refCopied + '\\n'))) fail(seed, 'move', 'reported count is not ' + refCopied);
       const nightly = side.scriptApp.triggers.filter(t => t.getHandlerFunction() === 'nightlyMaintenance_').length;
       if (nightly !== 1) fail(seed, 'move', nightly + ' nightly triggers');
+      if (!sb.stores.get(SLUG).phoneDirect) fail(seed, 'move', 'phones not turned direct');
+      if (!said(log, /Phones talk to Supabase directly: on\n/)) fail(seed, 'move', 'no "Phones ... on" line');
+      if (sb.calls.indexOf('mog_sync_set_phone_direct') < sb.calls.lastIndexOf('mog_sync_put_counts')) {
+        fail(seed, 'move', 'phones turned direct before the counts were copied');
+      }
       stats.moves++;
       stats.countsCopied += refCopied;
 
@@ -285,6 +306,12 @@ const CONTROLS = [
     find: "'<p><a href=\"' + attr(url) + '\"", replace: "'<p><a href=\"' + url + '\"" },
   { name: 'counts not copied', scenario: 'move',
     find: '    imported = importSheetCountsToDb_();', replace: '    imported = 0;' },
+  { name: 'phones never turned direct', scenario: 'move',
+    find: "  try { supabaseSync_('mog_sync_set_phone_direct', { p_on: true }); }",
+    replace: "  try { }" },
+  { name: 'a failed phone switch-on undoes the move', scenario: 'move, phones unreachable',
+    find: "  catch (e) { phones = 'NOT turned on (' + e.message + ').",
+    replace: "  catch (e) { props.deleteProperty(PROP_BACKEND); phones = 'NOT turned on (' + e.message + ')." },
   { name: 'never switches', scenario: 'move',
     find: "    props.setProperty(PROP_BACKEND, 'supabase');\r\n    _SB_CONFIG_ = null;\r\n  } catch (e) {",
     replace: "    _SB_CONFIG_ = null;\r\n  } catch (e) {" },

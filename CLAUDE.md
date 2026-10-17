@@ -183,8 +183,10 @@ mog-mobile/
 │   ├── schema.sql               Private `mog` schema + the public mog_* functions (the only way in).
 │   ├── schema_v2.sql            Order log + one-transaction cycle close + sync-key snapshot/override calls (run after schema.sql).
 │   ├── schema_v3.sql            The per-store phone_direct switch (step 5) on the five PWA functions (run after v2).
+│   ├── schema_v4.sql            Step 6 part 1: catalog tables (vendors/areas/items/pick_rows), the SQL catalog builder, the seed, editor_direct (run after v3).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
-│   └── tests/                   smoke.sql / smoke_v2.sql / smoke_v3.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
+│   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
+│   └── tests/                   smoke.sql … smoke_v4.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.
