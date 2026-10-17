@@ -32,6 +32,13 @@ Don't reflexively redeploy. Confirm it's a rotted single deployment, not somethi
   - ⚠ A store that looks fine proves less than it seems if it has **no data** — an empty store skips
     the load-dependent paths entirely. Compare against a store of similar size.
 - **Signature of a rotted `/exec`:** GET (health ping) returns clean JSON, the code clearly runs (e.g. PIN-lockout counters increment on attempts), but POST returns Google's **HTML error page** instead of JSON, intermittently. rpfr once **self-healed**; rprfo persisted 4+ hrs and **survived a version bump** → the deployment had rotted.
+- **Early warning, before any KM sees "Offline":** a store that flakes right after `--redeploy`, more
+  than once, deserves a note and a watch. On 2026-10-16, tnyt (alone among 10 stores) failed its
+  post-deploy probe after both of the day's redeploys: once a 31s POST that returned Google's HTML
+  error page, once a 27s 404 on the GET health ping. Each cleared on one retry. That is not rot yet;
+  rot persists. Re-probe it after the next deploy. Probe safely: a malformed-body POST
+  (`curl -sL -d not-json <exec>`) must answer `{"ok":false,"error":"Invalid JSON body"}`, because
+  `doPost` returns that before the PIN or lockout check.
 - **A `--redeploy` (same deploymentId) is NOT the fix** and can waste time — it bumps the version of the *same* rotted deployment. You need a *new* deployment.
 - **Caveat — don't probe with dummy PINs.** Failed PIN attempts trip the store's **shared 5-minute lockout** (Apps Script has no per-IP signal). Diagnose with the health GET, not by hammering login. Never ask Sebastian for a PIN either — see the diag route below, which needs none.
 
