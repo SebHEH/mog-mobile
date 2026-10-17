@@ -81,6 +81,88 @@ function syncPickDbAreaOrders_(setup) {
 
 
 
+// Pick rows whose storage area isn't on the Storage Areas list (SETUP H:I).
+// A list typed over, or a Sheet copied from another store, can leave them
+// behind (rpt/rpfr, 2026-10-17). Phones still show the area's name, but the
+// area can't be reordered or chosen in the editor, and Supabase's catalog
+// tables refuse it (step 6). Also finds rows whose area matches a listed one
+// only after ignoring case and spaces: syncPickDbAreaOrders_ matches exactly,
+// so those rows never get their area's order. Read-only.
+// Returns { missing: [{ name, rows }], respell: [{ from, to, rows }] }.
+function findPickAreaDrift_(setup) {
+  const listed = new Map();
+  readAreaBlock_(setup).block.forEach(r => {
+    const n = String(r[0] || "").trim();
+    if (n && !listed.has(n.toLowerCase())) listed.set(n.toLowerCase(), n);
+  });
+  const missing = new Map();
+  const respell = new Map();
+  readPickDb_(setup).forEach(r => {
+    if (!String(r[0] || "").trim() && !String(r[1] || "").trim()) return;   // empty row
+    const raw  = (r[3] === null || r[3] === undefined) ? "" : String(r[3]);
+    const area = raw.trim();
+    if (!area) return;
+    const canon = listed.get(area.toLowerCase());
+    if (!canon) {
+      const m = missing.get(area.toLowerCase()) || { name: area, rows: 0 };
+      m.rows++;
+      missing.set(area.toLowerCase(), m);
+    } else if (raw !== canon) {
+      const key = raw + "\u0001" + canon;
+      const m = respell.get(key) || { from: raw, to: canon, rows: 0 };
+      m.rows++;
+      respell.set(key, m);
+    }
+  });
+  return { missing: Array.from(missing.values()), respell: Array.from(respell.values()) };
+}
+
+// The repair for findPickAreaDrift_ (Health Check fix "restore_areas"): add
+// each missing area to the END of the Storage Areas list, rewrite respelled
+// rows to the listed spelling, then copy every area's order onto its rows.
+// Nothing is removed and no item moves, so phones keep showing the same area
+// names. A vendor whose items sat in several missing areas gets them grouped
+// by area: before, they all shared "no order".
+function restorePickAreas_core_() {
+  return withPickDbLock_(() => restorePickAreas_locked_());
+}
+function restorePickAreas_locked_() {
+  const setup = getSheet_(SHEET_SETUP);
+  const drift = findPickAreaDrift_(setup);
+  if (!drift.missing.length && !drift.respell.length) return { added: [], respelled: 0 };
+
+  const { block, rows } = readAreaBlock_(setup);
+  const current = block
+    .map((r, i) => ({ name: String(r[0] || "").trim(), ord: Number(r[1]), i: i }))
+    .filter(a => a.name)
+    .sort((a, b) => ((Number.isFinite(a.ord) ? a.ord : Infinity) - (Number.isFinite(b.ord) ? b.ord : Infinity)) || (a.i - b.i));
+  const finalList = current.map(a => ({ name: a.name })).concat(drift.missing.map(m => ({ name: m.name })));
+  if (finalList.length > rows) {
+    throw new Error("The Storage Areas list holds " + rows + " areas, and adding " + drift.missing.length +
+      " would make " + finalList.length + ". Remove an unused area first.");
+  }
+
+  bumpServerMutationTs_();
+  let respelled = 0;
+  if (drift.respell.length) {
+    const listed = new Map(current.map(a => [a.name.toLowerCase(), a.name]));
+    const db = readPickDb_(setup).map(r => {
+      const raw = (r[3] === null || r[3] === undefined) ? "" : String(r[3]);
+      const canon = raw.trim() ? listed.get(raw.trim().toLowerCase()) : null;
+      if (!canon || raw === canon) return r;
+      respelled++;
+      return [r[0], r[1], r[2], canon, r[4], r[5]];
+    });
+    writePickDb_(setup, db);
+  }
+  if (drift.missing.length) writeAreaList_(setup, finalList);
+  syncPickDbAreaOrders_(setup);
+  return { added: drift.missing.map(m => m.name), respelled: respelled };
+}
+
+
+
+
 function getAreaOrderMap_() {
   const setup = getSheet_(SHEET_SETUP);
   return new Map(

@@ -1087,3 +1087,78 @@ function findItemRow_(query) {
   }
   return null;
 }
+
+
+
+
+// Item IDs on more than one MASTER_ITEMS row (a pasted copy, or a Sheet built
+// from another store's: rpfr, 2026-10-17). Phones and the order math read the
+// LAST row (readMasterItemMeta_), Manage Items edits the FIRST (findItemRow_
+// above), so an edit to such an item never reaches phones; the dashboard
+// counts every row. Read-only. One plan entry per repeated ID:
+//   { id, keep: copy, steps: [{ row, action: 'delete' | 'reid', newId?, copy }] }
+// The last row always keeps the ID: pick rows and phones already use it.
+// Each earlier copy of the SAME item (name and vendor match, ignoring case and
+// spaces) is deleted. A DIFFERENT item sharing the ID keeps its last row under
+// a new ID (it was never on a phone list under its own name, so no phone
+// changes); its own earlier copies are deleted.
+function planRepeatedItemIds_() {
+  const sh   = getSheet_(SHEET_MASTER);
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+  const vals = sh.getRange(2, 1, last - 1, COL.PAR).getValues();
+  const byId = new Map();
+  let maxN = 0;
+  vals.forEach((r, i) => {
+    const id = String(r[COL.ID - 1] || "").trim();
+    if (!id) return;
+    const m = /^ITEM-(\d+)$/i.exec(id);
+    if (m) maxN = Math.max(maxN, Number(m[1]));
+    if (!byId.has(id)) byId.set(id, []);
+    byId.get(id).push({ row: i + 2, name: String(r[COL.NAME - 1] || "").trim(),
+                        vendor: String(r[COL.VENDOR - 1] || "").trim(), par: r[COL.PAR - 1] });
+  });
+  const itemKey = c => c.name.toLowerCase().replace(/\s+/g, " ") + "\u0001" + c.vendor.toLowerCase();
+  const plan = [];
+  let next = maxN;
+  byId.forEach((copies, id) => {
+    if (copies.length < 2) return;
+    const keep  = copies[copies.length - 1];
+    const steps = [];
+    const lastOf = new Map();   // item key -> its last earlier copy (the one that keeps a row)
+    copies.slice(0, -1).forEach(c => lastOf.set(itemKey(c), c));
+    copies.slice(0, -1).forEach(c => {
+      const k = itemKey(c);
+      if (k === itemKey(keep) || lastOf.get(k) !== c) steps.push({ row: c.row, action: "delete", copy: c });
+      else steps.push({ row: c.row, action: "reid", newId: "ITEM-" + String(++next).padStart(4, "0"), copy: c });
+    });
+    plan.push({ id: id, keep: keep, steps: steps });
+  });
+  return plan;
+}
+
+// One line per repeated ID, for the Health Check and the fix's message.
+function describeRepeatedIdPlan_(plan) {
+  const show = c => 'row ' + c.row + ' ("' + c.name + '", ' + (c.vendor || "no vendor") + ")";
+  return plan.map(p => p.id + ": keep " + show(p.keep) + "; " + p.steps.map(s => s.action === "delete"
+    ? "delete " + show(s.copy) + " (same item)"
+    : "give " + show(s.copy) + " the new ID " + s.newId + " (a different item)").join("; "));
+}
+
+// The repair (Health Check fix "fix_repeated_ids"). New IDs first, then the
+// deletes from the bottom up, so every planned row number stays valid. Pick
+// rows are left alone: they belong to the row that keeps the ID.
+function fixRepeatedItemIds_core_() {
+  return withPickDbLock_(() => {
+    const plan = planRepeatedItemIds_();
+    if (!plan.length) return { deleted: 0, reIded: 0, lines: [] };
+    bumpServerMutationTs_();
+    const sh = getSheet_(SHEET_MASTER);
+    const steps = [];
+    plan.forEach(p => p.steps.forEach(s => steps.push(s)));
+    steps.filter(s => s.action === "reid").forEach(s => sh.getRange(s.row, COL.ID).setValue(s.newId));
+    const doomed = steps.filter(s => s.action === "delete").map(s => s.row).sort((a, b) => b - a);
+    doomed.forEach(row => sh.deleteRow(row));
+    return { deleted: doomed.length, reIded: steps.length - doomed.length, lines: describeRepeatedIdPlan_(plan) };
+  });
+}

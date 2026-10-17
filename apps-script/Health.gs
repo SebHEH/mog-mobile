@@ -207,6 +207,46 @@ function getStoreHealthReport_() {
     }
   } catch (e) { add('backups_placed', 'Backup vendor placement', 'warn', 'Check errored: ' + e.message); }
 
+  // ── 7a) Pick rows in storage areas missing from the list ─────────────────
+  // Supabase's catalog tables refuse these, so test_catalogTablesParity fails
+  // on them (step 6).
+  try {
+    const d = findPickAreaDrift_(getSheet_(SHEET_SETUP));
+    if (d.missing.length || d.respell.length) {
+      const parts = [];
+      if (d.missing.length) {
+        parts.push('Pick rows use storage areas that are not on the Storage Areas list: ' +
+          d.missing.map(m => '"' + m.name + '" (' + m.rows + ' row' + (m.rows === 1 ? '' : 's') + ')').join(', ') +
+          '. Phones still show these names, but the areas can\'t be reordered or chosen in the editor.');
+      }
+      if (d.respell.length) {
+        parts.push('Pick rows spell a listed area differently: ' +
+          d.respell.map(m => '"' + m.from + '" for "' + m.to + '" (' + m.rows + ')').join(', ') + '.');
+      }
+      add('pick_areas', 'Storage areas on pick rows', 'warn', parts.join(' '),
+        'Adds the missing areas to the end of the Storage Areas list and fixes the spellings. Nothing is removed.',
+        'restore_areas');
+    } else {
+      add('pick_areas', 'Storage areas on pick rows', 'pass', 'Every pick row\'s storage area is on the Storage Areas list.');
+    }
+  } catch (e) { add('pick_areas', 'Storage areas on pick rows', 'warn', 'Check errored: ' + e.message); }
+
+  // ── 7b) Repeated Item IDs ────────────────────────────────────────────────
+  try {
+    const plan = planRepeatedItemIds_();
+    if (plan.length) {
+      add('repeated_ids', 'Repeated Item IDs', 'fail',
+        plan.length + ' Item ID(s) are on more than one MASTER_ITEMS row. Phones read the last row but Manage ' +
+        'Items edits the first, so edits to these items never reach phones. Planned: ' +
+        describeRepeatedIdPlan_(plan).join(' | '),
+        'Deletes the extra copies of an item listed twice, and gives a different item sharing an ID its own ' +
+        'new ID. Phones keep showing what they show today.',
+        'fix_repeated_ids', true);
+    } else {
+      add('repeated_ids', 'Repeated Item IDs', 'pass', 'Every Item ID is on one MASTER_ITEMS row.');
+    }
+  } catch (e) { add('repeated_ids', 'Repeated Item IDs', 'warn', 'Check errored: ' + e.message); }
+
   // ── 8) PIN lockout ───────────────────────────────────────────────────────
   // Read the raw property (not getPinLockoutState_, which self-heals by
   // deleting expired keys — this report must stay write-free).
@@ -390,6 +430,25 @@ function runHealthFix_(fixId) {
           ? 'Repaired the B1 header on ' + r.fixed + ' vendor tab(s): ' + r.names.join(', ') +
             '. Their items should now appear.'
           : 'All vendor tab headers already match — nothing to fix.'
+      };
+    }
+    case 'restore_areas': {
+      const r = restorePickAreas_core_();
+      const bits = [];
+      if (r.added.length) bits.push('added ' + r.added.map(n => '"' + n + '"').join(', ') + ' to the Storage Areas list');
+      if (r.respelled) bits.push('fixed the area spelling on ' + r.respelled + ' pick row(s)');
+      return {
+        ok: true,
+        message: bits.length ? 'Done: ' + bits.join('; ') + '.' : 'Every pick row\'s area was already listed — nothing to do.'
+      };
+    }
+    case 'fix_repeated_ids': {
+      const r = fixRepeatedItemIds_core_();
+      return {
+        ok: true,
+        message: (r.deleted || r.reIded)
+          ? 'Deleted ' + r.deleted + ' extra row(s) and gave ' + r.reIded + ' item(s) a new ID. ' + r.lines.join(' | ')
+          : 'Every Item ID was already on one row — nothing to do.'
       };
     }
     case 'push_catalog': {

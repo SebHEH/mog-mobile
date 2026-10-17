@@ -15,6 +15,12 @@
 //     differ always come with a cleanup that explains them
 //   - seeding again gives the same catalog; once editor_direct is on the seed
 //     is refused (and says why), and so is a catalog push from the Sheet
+//   - a copied Sheet's drift (pick rows in an area that's gone, an item pasted
+//     in twice, two items sharing an ID) is flagged by the Store Health Check,
+//     and its two fixes (restore_areas, fix_repeated_ids) make the parity
+//     check pass with nothing left to clean, without changing a phone's count
+//     screen. The ID fix asks for confirmation and gives a different item its
+//     own ID instead of deleting it.
 // Each has a planted-defect control: in Sync.gs, and in the tables' builder.
 //
 // Run bare: node tests/catalog_parity.test.js [stores]   (default 120)
@@ -95,6 +101,55 @@ function heal(spec, rnd) {
   return pick;
 }
 
+// The drift a copied, unmaintained Sheet carries (rpt/rpfr, 2026-10-17):
+//   - pick rows of one vendor in an area the list doesn't have, no area order
+//   - an item on a pick row pasted in again ABOVE itself, with another par
+//     (phones read the later row, so its par must win)
+//   - a different item pasted in above another item, reusing its ID
+function addCopyDrift(spec, pick, rnd) {
+  const setup = spec.sheets.SETUP;
+  const master = spec.sheets.MASTER_ITEMS;
+  const out = { lostRows: 0, same: 0, different: 0, otherName: null };
+  if (pick.length) {
+    const v = pick[Math.floor(rnd() * pick.length)][0];
+    pick.forEach((row, i) => {
+      if (row[0] === v && rnd() < 0.7) { setCell(setup, i + 2, 14, 'Expo'); setCell(setup, i + 2, 15, ''); out.lostRows++; }
+    });
+  }
+  const onPick = new Set(pick.map(p => p[1]));
+  const ids = master.slice(1).filter(r => onPick.has(String(r[0] || '').trim()));
+  if (ids.length >= 2) {
+    const a = ids[Math.floor(rnd() * ids.length)];
+    const copy = a.slice();
+    copy[6] = 99;
+    master.splice(master.indexOf(a), 0, copy);
+    out.same++;
+    const b = ids.find(r => r !== a);
+    const other = b.slice();
+    other[1] = 'Scanned Stamp ' + b[0];
+    other[2] = spec.vendors.find(v => v !== b[2]) || '';
+    other[14] = other[2];
+    master.splice(master.indexOf(b), 0, other);
+    out.different++;
+    out.otherName = other[1];
+  }
+  return out;
+}
+
+// Every count screen (and dashboard, prefixed D) for a catalog, no counts.
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+function screens(c, catalog, state) {
+  const out = [];
+  for (const day of DAYS) for (const override of [false, true]) {
+    const snap = JSON.parse(JSON.stringify({ catalog, state: Object.assign({}, state, { dayOfWeek: day, emergencyOverride: override }), counts: [] }));
+    const inputs = c.orderInputsFromSnapshot_(snap);
+    for (const v of catalog.vendorList) out.push(day + override + ' ' + v + ' ' + JSON.stringify(c.vendorItemsFromSnapshot_(inputs, v)));
+    out.push('D' + day + override + ' ' + JSON.stringify(c.dashboardFromSnapshot_(inputs)));
+  }
+  return out;
+}
+const firstChange = (a, b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) if (a[i] !== b[i]) return (a[i] || '(none)').slice(0, 160); return ''; };
+
 function makeSide(spec, script, sb, props) {
   const logs = [];
   const side = F.makeContext(Object.assign({}, spec, { scriptProps: Object.assign({}, spec.scriptProps, props) }), {
@@ -114,7 +169,7 @@ const run = (side, fn) => { NEW_EXECUTION.runInContext(side.ctx); return fn(side
 function runSuite(srcOf, stores, catalogDefect) {
   const script = compileAll(srcOf || SRC);
   const failures = [];
-  const stats = { healthy: 0, screens: 0, counts: 0, messy: 0, messyDiffer: 0, messyPassWithNotes: 0, notes: {} };
+  const stats = { healthy: 0, screens: 0, counts: 0, repairs: 0, messy: 0, messyDiffer: 0, messyPassWithNotes: 0, notes: {} };
   const fail = (seed, scenario, what) => failures.push('seed ' + seed + ' [' + scenario + ']: ' + what);
 
   for (let seed = 1; seed <= stores; seed++) {
@@ -171,6 +226,69 @@ function runSuite(srcOf, stores, catalogDefect) {
       }
     } catch (e) { fail(seed, 'healthy', 'crashed: ' + e.stack); }
 
+    // ---- A copied Sheet's drift, repaired by the two Health Check fixes ----
+    try {
+      const spec = makeStore(seed + 20000, { realistic: true });
+      const rnd2 = mulberry32(seed * 104729);
+      const pick = heal(spec, rnd2);
+      const drift = addCopyDrift(spec, pick, rnd2);
+      const sb = new FakeSupabase(spec.now);
+      const key = sb.provision(SLUG);
+      const side = makeSide(spec, script, sb, { MOG_SUPABASE_SLUG: SLUG, MOG_SUPABASE_SYNC_KEY: key, MOG_BACKEND: 'supabase' });
+      run(side, c => { c.pushCatalogNow_(); c.setDbStateFromSheet_(); });
+      const state = sb.stores.get(SLUG).state;
+      const health = () => {
+        const out = {};
+        for (const ch of run(side, c => c.getStoreHealthReport_()).checks) out[ch.id] = ch;
+        return out;
+      };
+      const masterRows = () => side.book.sheets.get('MASTER_ITEMS').rows.filter((r, i) => i > 0 && r && String(r[0] || '').trim());
+
+      let h = health();
+      const wantArea = drift.lostRows ? 'warn' : 'pass';
+      if (!h.pick_areas || h.pick_areas.status !== wantArea) fail(seed, 'repair', 'storage-area row is ' + (h.pick_areas && h.pick_areas.status) + ', expected ' + wantArea);
+      if (drift.lostRows && !/"Expo" \(\d+ rows?\)/.test(h.pick_areas.detail)) fail(seed, 'repair', 'storage-area row text: ' + h.pick_areas.detail);
+      if (drift.same) {
+        const r = h.repeated_ids;
+        if (!r || r.status !== 'fail' || !r.destructive) fail(seed, 'repair', 'repeated-ID row: ' + JSON.stringify(r));
+        else if (!/\(same item\)/.test(r.detail) || !/\(a different item\)/.test(r.detail)) fail(seed, 'repair', 'repeated-ID plan: ' + r.detail);
+      }
+      if (drift.lostRows || drift.same) {
+        const pre = run(side, c => c.catalogTablesParity_());
+        if (pre.ok) fail(seed, 'repair', 'parity passed before the repair');
+      }
+
+      const before = screens(side.ctx, run(side, c => c.buildCatalogPayload_()), state);
+      run(side, c => c.runHealthFix_('restore_areas'));
+      const mid = screens(side.ctx, run(side, c => c.buildCatalogPayload_()), state);
+      const d1 = firstChange(before, mid);
+      if (d1) fail(seed, 'repair', 'the area repair changed a phone screen: ' + d1);
+
+      const rowsBefore = masterRows().length;
+      const msg = run(side, c => c.runHealthFix_('fix_repeated_ids')).message;
+      const after = screens(side.ctx, run(side, c => c.buildCatalogPayload_()), state);
+      const d2 = firstChange(mid.filter(s => s[0] !== 'D'), after.filter(s => s[0] !== 'D'));
+      if (d2) fail(seed, 'repair', 'the ID repair changed a count screen: ' + d2);
+      if (masterRows().length !== rowsBefore - drift.same) fail(seed, 'repair', 'MASTER rows ' + rowsBefore + ' -> ' + masterRows().length + ': ' + msg);
+      if (drift.different) {
+        const moved = masterRows().filter(r => r[1] === drift.otherName);
+        const ids = masterRows().map(r => String(r[0]).trim());
+        if (moved.length !== 1 || ids.filter(x => x === String(moved[0][0]).trim()).length !== 1) {
+          fail(seed, 'repair', 'the different item did not get its own ID: ' + msg);
+        }
+      }
+
+      h = health();
+      if (h.pick_areas.status !== 'pass' || h.repeated_ids.status !== 'pass') fail(seed, 'repair', 'Health rows after the fixes: ' + h.pick_areas.status + '/' + h.repeated_ids.status);
+      const r = run(side, c => c.catalogTablesParity_());
+      if (r.error) fail(seed, 'repair', 'seed refused after the repair: ' + r.error);
+      else {
+        if (r.notes.length) fail(seed, 'repair', 'still cleaned after the repair: ' + r.notes[0].detail);
+        if (!r.ok) fail(seed, 'repair', 'parity fails after the repair: ' + r.report.diffs[0]);
+      }
+      if (drift.lostRows || drift.same) stats.repairs++;
+    } catch (e) { fail(seed, 'repair', 'crashed: ' + e.stack); }
+
     // ---- A messy Sheet ----
     try {
       const spec = makeStore(seed + 10000);
@@ -203,7 +321,7 @@ let failed = 0;
 const main = runSuite(null, STORES);
 const st = main.stats;
 console.log(`catalog_parity: ${st.healthy} healthy stores (${st.screens} screens, ${st.counts} counts), ` +
-  `${st.messy} messy (${st.messyDiffer} differ, ${st.messyPassWithNotes} pass after harmless cleanups); ` +
+  `${st.repairs} copied Sheets repaired, ${st.messy} messy (${st.messyDiffer} differ, ${st.messyPassWithNotes} pass after harmless cleanups); ` +
   `cleanups by kind ${JSON.stringify(st.notes)}`);
 if (main.failures.length) {
   failed++;
@@ -214,6 +332,7 @@ if (main.failures.length) {
 }
 if (st.healthy !== STORES) { failed++; console.log('FAIL  only ' + st.healthy + ' of ' + STORES + ' healthy stores ran'); }
 if (!st.counts) { failed++; console.log('FAIL  fixtures never had counts'); }
+if (st.repairs < STORES / 2) { failed++; console.log('FAIL  only ' + st.repairs + ' stores had drift to repair'); }
 if (!st.messyDiffer) { failed++; console.log('FAIL  no messy store ever differed: the gate never saw drift'); }
 if (!st.messyPassWithNotes) { failed++; console.log('FAIL  no messy store passed after harmless cleanups'); }
 for (const k of ['vendor', 'area', 'item', 'pick']) {
@@ -221,6 +340,7 @@ for (const k of ['vendor', 'area', 'item', 'pick']) {
 }
 
 const SYNC = 'apps-script/Sync.gs';
+const NL = String.fromCharCode(13, 10);   // the .gs files use CRLF
 const CONTROLS = [
   { name: 'a non-numeric par seeded as 0', scenario: 'healthy',
     find: "      par:           isNaN(m.par) ? null : m.par,\r\n      active:        m.active,",
@@ -234,7 +354,20 @@ const CONTROLS = [
     find: '    const primary = m.primaryVendor ? (canonVendor.get(m.primaryVendor.toLowerCase()) || null) : null;',
     replace: '    const primary = m.primaryVendor || null;' },
   { name: 'override-on screens not compared', scenario: 'healthy',
-    find: '    for (const override of [false, true]) {', replace: '    for (const override of [false]) {' }
+    find: '    for (const override of [false, true]) {', replace: '    for (const override of [false]) {' },
+  { name: 'restored areas get no order on their rows', scenario: 'repair', file: 'apps-script/PickPath.gs',
+    find: '  if (drift.missing.length) writeAreaList_(setup, finalList);'+NL+'  syncPickDbAreaOrders_(setup);',
+    replace: '  if (drift.missing.length) writeAreaList_(setup, finalList);' },
+  { name: 'restored areas added at the front', scenario: 'repair', file: 'apps-script/PickPath.gs',
+    find: 'const finalList = current.map(a => ({ name: a.name })).concat(drift.missing.map(m => ({ name: m.name })));',
+    replace: 'const finalList = drift.missing.map(m => ({ name: m.name })).concat(current.map(a => ({ name: a.name })));' },
+  { name: 'the row phones read is the one deleted', scenario: 'repair', file: 'apps-script/Items.gs',
+    find: 'steps.push({ row: c.row, action: "delete", copy: c });', replace: 'steps.push({ row: keep.row, action: "delete", copy: c });' },
+  { name: 'a different item deleted instead of given its own ID', scenario: 'repair', file: 'apps-script/Items.gs',
+    find: 'else steps.push({ row: c.row, action: "reid", newId: "ITEM-" + String(++next).padStart(4, "0"), copy: c });',
+    replace: 'else steps.push({ row: c.row, action: "delete", copy: c });' },
+  { name: 'the ID repair runs without a confirmation', scenario: 'repair', file: 'apps-script/Health.gs',
+    find: "        'fix_repeated_ids', true);", replace: "        'fix_repeated_ids', false);" }
 ];
 const DEFECTS = [
   { name: 'tables builder sends a missing primary as null', scenario: 'healthy',
@@ -252,8 +385,9 @@ for (const c of CONTROLS.concat(DEFECTS)) {
   try {
     if (c.fn) res = runSuite(null, N, c.fn);
     else {
-      const planted = F.plant(SRC(SYNC), c.find, c.replace);
-      res = runSuite(file => (file === SYNC ? planted : SRC(file)), N);
+      const file = c.file || SYNC;
+      const planted = F.plant(SRC(file), c.find, c.replace);
+      res = runSuite(f => (f === file ? planted : SRC(f)), N);
     }
   } catch (e) {
     failed++;
