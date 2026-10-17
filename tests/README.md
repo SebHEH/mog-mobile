@@ -21,6 +21,8 @@ A passing run ends with `run_all: ALL PASS (6 gates)`. Run it before deploying a
 | `editor_link.test.js` | `editor_link.py` names the right `.gs` file and links, refuses requests that can't be followed, and every store's Sheet is recorded. |
 | `slice_js_selftest.js` | The slicer the gates use takes exactly one function, never more. |
 
+**Testing any server function at runtime:** every `apps-script/*.gs` file holds only declarations, so the WHOLE codebase loads into one vm context with the fakes. `editor_fixes.test.js` does it in a few lines (`compileAll`); no slicing needed. Add any missing fake method to `fake_apps_script.js`. A fake's reads must never create data (`FakeSupabase.countsIn`).
+
 Every gate carries planted-defect controls: each one breaks the code on purpose, and the gate must catch it. A control that doesn't bite fails the run.
 
 **Never put `.js` files under `apps-script/`.** clasp pushes every `.js` there to all stores as script code. Gates live here.

@@ -204,6 +204,7 @@ Each step ships separately. KMs notice nothing until step 5 switches a store.
    - Built 2026-10-16: `supabase/schema_v3.sql` (+ `smoke_v3.sql`); the shared answers in `OrderMath.gs`, which `DbApi.gs` now calls too; the DIRECT CLIENT block and `api()` routing in `template/index.html`; `build.py` injects `OrderMath.gs` and the Supabase config (URL + publishable key read from `Sync.gs`, plus the slug). Gate: `tests/pwa_direct.test.js`.
    - Measured from a browser on Sebastian's PC (a `mog_login` for an unknown store, so nothing is touched): 1.12s for the first call (TLS + the CORS pre-check, which Supabase lets browsers cache for an hour), then 0.30–0.34s.
    - **Canary:** after the store has moved and its first close checked out, `update mog.stores set phone_direct = true where slug = 'rprfo';` in the SQL Editor. **Gate before any other store:** Settings on a KM phone at rprfo shows a vendor open or a save under 1s. Over that, stop and revisit.
+   - **Order that matters:** the database switch ships before the app that relies on it. Schema v1's `mog_login` had no `phone_direct` check, so app v0.18 going out before schema v3 would have sent rprfo's phones direct with no switch.
    - Rollback for the phones alone: `update mog.stores set phone_direct = false where slug = '<slug>';` (takes effect on each phone's next call).
 6. **Step 6:** the web editor reads and writes the catalog in Supabase, and recipients and order history move too. The Sheet then holds only the script and the nightly backup (D9's end state).
 
