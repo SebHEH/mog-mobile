@@ -1004,6 +1004,17 @@
       margin-top: 16px;
       font-size: 14px;
     }
+    /* Copy order for email: an outline button in the concept's colour, so it
+       reads as a tool next to the filled "Mark as reviewed" CTA. */
+    .cta-copy {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; background: transparent; color: var(--teal-dark);
+      border: 1px solid var(--teal-border); border-radius: var(--r-md);
+      padding: 13px; font-size: 15px; font-weight: 600; margin-top: 12px;
+    }
+    .cta-copy .ti { font-size: 18px; }
+    .cta-copy:active { background: var(--teal-light); }
+    .cta-copy.copied { background: var(--teal-light); }
 
     /* Recap (master summary) view */
     .recap-summary {
@@ -1622,6 +1633,9 @@
   // build.py. Public by design. Supabase decides per store whether phones
   // talk to it directly; null here (an unbuilt template) means never.
   window.MOG_SUPABASE = {"url": "https://mnfwqmrstdeuczveyykv.supabase.co", "key": "sb_publishable_Rk1wXHSydLtczfnc98LJBg_yzQ0sl93", "slug": "rpr"};
+  // This store's profile from stores.json, injected by build.py: the street
+  // address vendors deliver to (Copy order for email). Optional.
+  window.MOG_STORE = {"address": ""};
 </script>
 <!-- The shared order math, apps-script/OrderMath.gs, copied in verbatim by
      build.py so the phone runs the same code as the server. -->
@@ -3111,6 +3125,10 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       saveError:        { en: "Couldn't save. Try again.", es: 'No se pudo guardar. Intenta de nuevo.' },
       backToCount:      { en: 'Back to count', es: 'Volver a contar' },
       markReviewed:     { en: 'Mark as reviewed', es: 'Marcar como revisado' },
+      copyOrder:        { en: 'Copy order for email', es: 'Copiar pedido para correo' },
+      orderCopied:      { en: 'Order copied. Paste it into your email.', es: 'Pedido copiado. Pégalo en tu correo.' },
+      copyOrderFailed:  { en: "Couldn't copy. Try again.", es: 'No se pudo copiar. Intenta de nuevo.' },
+      copied:           { en: 'Copied', es: 'Copiado' },
       itemsReviewed:    { en: 'items reviewed', es: 'artículos revisados' },
       done:             { en: 'Done', es: 'Listo' },
       cancel:           { en: 'Cancel', es: 'Cancelar' },
@@ -6025,13 +6043,133 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       '</div>' +
     '</div>';
 
+    if (toOrder.length) {
+      html += '<button class="cta-copy" id="copyorder-btn"><i class="ti ti-copy" aria-hidden="true"></i>' +
+              '<span>' + escapeHtml(t('copyOrder')) + '</span></button>';
+    }
     html += '<button class="cta" id="markreview-btn">' + escapeHtml(t('markReviewed')) + '</button>';
     html += '<button class="cta-secondary" id="back-count-btn">' + escapeHtml(t('backToCount')) + '</button>';
 
     view.innerHTML = html;
 
+    if ($('copyorder-btn'))     $('copyorder-btn').addEventListener('click', () => onCopyOrderClick_(ctx, toOrder));
     if ($('markreview-btn'))    $('markreview-btn').addEventListener('click', onMarkReviewedClick);
     if ($('back-count-btn'))    $('back-count-btn').addEventListener('click', () => reopenCountFromContext_());
+  }
+
+  // The order as an email to the vendor: a small table (vendor and date, who
+  // to deliver to, then Item | Order) with inline styles so it survives a
+  // paste into Gmail or Outlook, plus a plain-text copy for apps that drop
+  // formatting, plus a subject line. Pure, so a future one-click "email this
+  // vendor" button can send exactly what Copy order copies. Always English:
+  // it goes to the vendor. Colours come from the store's theme; Teas'n You
+  // uses its gold band with charcoal text, as the recap email does.
+  //   o: { vendor, store, address, dateStr, lines: [{ name, qty, pack }], colors: { band, ink, tint } }
+  function buildOrderEmail_(o) {
+    const c = o.colors || {};
+    const band = c.band || '#04342c', ink = c.ink || '#ffffff', tint = c.tint || '#f4f5f7';
+    // Orders go in the day before they arrive (Sunday for Monday), so the
+    // vendor sees the delivery day: the cycle date plus one.
+    const p = String(o.dateStr || '').split('-');
+    const date = p.length === 3
+      ? 'Delivery ' + new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 1).toLocaleDateString('en-US',
+          { weekday: 'long', month: 'short', day: 'numeric' })
+      : '';
+    const title = o.vendor + ' order';
+    const deliverText = o.store ? 'Deliver to ' + o.store + (o.address ? ' - ' + o.address : '') : '';
+    const qtyText = l => l.qty + (l.pack ? ' × ' + l.pack : '');
+    const cell = 'padding:8px 12px;border:1px solid #e3e5e8;';
+    const label = 'color:#6b7280;font-size:12px;font-weight:bold;text-transform:uppercase;';
+    let html = '<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;' +
+      'font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1f2328;min-width:420px">' +
+      '<tr><td style="' + cell + 'background:' + band + ';color:' + ink + ';font-size:16px;font-weight:bold">' +
+        escapeHtml(title) + '</td>' +
+        '<td style="' + cell + 'background:' + band + ';color:' + ink + ';text-align:right;white-space:nowrap">' +
+        escapeHtml(date) + '</td></tr>' +
+      (deliverText ? '<tr><td colspan="2" style="' + cell + 'background:' + tint + ';color:#1f2328">Deliver to <b>' +
+        escapeHtml(o.store) + '</b>' + (o.address ? ' - ' + escapeHtml(o.address) : '') + '</td></tr>' : '') +
+      '<tr><td style="' + cell + label + '">Item</td>' +
+        '<td style="' + cell + label + 'text-align:right">Order</td></tr>';
+    for (const l of o.lines) {
+      html += '<tr><td style="' + cell + '">' + escapeHtml(l.name) + '</td>' +
+        '<td style="' + cell + 'text-align:right;font-weight:bold;white-space:nowrap">' + escapeHtml(qtyText(l)) + '</td></tr>';
+    }
+    html += '</table>';
+    const text = [[title, date].filter(Boolean).join(' - '), deliverText, '']
+      .concat(o.lines.map(l => l.name + ': ' + qtyText(l))).join('\n');
+    const subject = [title, o.store, date].filter(Boolean).join(' - ');
+    return { subject: subject, html: html, text: text };
+  }
+
+  // The store's name for a vendor: the Sheet's location without the
+  // BOH/FOH station ("Roll Play Tysons BOH" -> "Roll Play Tysons").
+  function storeNameForVendor_(location) {
+    return String(location || '').replace(/\s+(BOH|FOH)$/i, '').trim();
+  }
+
+  function orderEmailColors_() {
+    const root = document.documentElement;
+    const css = getComputedStyle(root);
+    const v = name => css.getPropertyValue(name).trim();
+    if (root.getAttribute('data-theme') === 'teasnyou') return { band: v('--teal'), ink: v('--text'), tint: v('--teal-light') };
+    return { band: v('--teal-dark'), ink: '#ffffff', tint: v('--teal-light') };
+  }
+
+  // Rich copy (HTML + plain text) where the browser allows it, then the older
+  // select-and-copy route, then plain text. The first call happens straight
+  // from the tap, which Safari requires.
+  async function copyRich_(html, text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/html':  new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' })
+        })]);
+        return true;
+      }
+    } catch (e) { /* fall through to the older route */ }
+    const box = document.createElement('div');
+    box.contentEditable = 'true';
+    box.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+    box.innerHTML = html;
+    document.body.appendChild(box);
+    let ok = false;
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(box);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      ok = document.execCommand('copy');
+      sel.removeAllRanges();
+    } catch (e) { ok = false; }
+    box.remove();
+    if (ok) return true;
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { return false; }
+  }
+
+  async function onCopyOrderClick_(ctx, toOrder) {
+    const lines = toOrder.map(it => ({ name: it.name, qty: computeSuggested(it), pack: it.pack || '' }));
+    const mail = buildOrderEmail_({
+      vendor:  ctx.vendor,
+      store:   storeNameForVendor_(state.location),
+      address: (window.MOG_STORE && window.MOG_STORE.address) || '',
+      dateStr: ctx.dateStr,
+      lines:   lines,
+      colors:  orderEmailColors_()
+    });
+    const ok = await copyRich_(mail.html, mail.text);
+    showToast(t(ok ? 'orderCopied' : 'copyOrderFailed'), ok ? 'success' : 'error');
+    const btn = $('copyorder-btn');
+    if (ok && btn) {
+      btn.classList.add('copied');
+      btn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i><span>' + escapeHtml(t('copied')) + '</span>';
+      setTimeout(() => {
+        if (!btn.isConnected) return;
+        btn.classList.remove('copied');
+        btn.innerHTML = '<i class="ti ti-copy" aria-hidden="true"></i><span>' + escapeHtml(t('copyOrder')) + '</span>';
+      }, 2000);
+    }
   }
 
   async function onMarkReviewedClick() {
@@ -7127,7 +7265,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.18.0';
+    const versionStr = '0.18.2';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
