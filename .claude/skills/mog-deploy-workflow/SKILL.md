@@ -40,7 +40,8 @@ The canary store is **`rprfo`** (it moved from `rpr` on 2026-05-27 — rprfo is 
 
 For ANY multi-target deploy (clasp to 9 stores; `build.py` regenerating 8 store dirs), do the canary first, then fan out:
 
-1. Deploy to the canary only: `python deploy.py --target rprfo` (add `--redeploy` if the change is in MOGApi.gs or any `api_*` function). For PWA changes, `build.py` already generates all 8 — but ASK Sebastian to test `sebheh.github.io/mog-mobile/rprfo/` first before celebrating.
+1. Deploy to the canary only: `python deploy.py --target rprfo` (add `--redeploy` if the change is in MOGApi.gs or any `api_*` function).
+   **A PWA change CAN be canaried to one store** (2026-10-18; Copy order went to rpt, live counting to rprfo). `build.py` regenerates every store folder, so: run it, then `git checkout -- <every other store folder>`, and commit the `template/` source plus only the canary's `<slug>/index.html` and `<slug>/sw.js`. The other stores keep serving their old page until the fan-out, which is just `python build.py` again with all store folders committed. Afterwards, check the canary's live `sw.js` shows the new `CACHE_VERSION` and another store's still shows the old one. Then ask Sebastian to test the canary's URL.
 2. Wait for Sebastian to actually open the thing and confirm it works. Don't accept "no errors in tooling output" as verification.
 3. Only then run the full deploy: `python deploy.py` (with `--redeploy` if applicable) for Apps Script, or just confirm the other 7 store URLs also work.
 
