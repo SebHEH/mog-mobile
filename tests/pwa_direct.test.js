@@ -295,7 +295,7 @@ async function runSuite(srcOf, stores) {
 // ---- The build placeholders -------------------------------------------------
 function placeholderProblems(html) {
   const want = ['__MOG_API_URL__', '__MOG_THEME__', '__MOG_APPLE_TOUCH_ICON__',
-                '/*__MOG_SUPABASE__*/null', '/* __MOG_ORDER_MATH__ build-injected */'];
+                '/*__MOG_SUPABASE__*/null', '/* __MOG_ORDER_MATH__ build-injected */', '/*__MOG_STORE__*/null'];
   return want.map(p => [p, html.split(p).length - 1]).filter(([, n]) => n !== 1).map(([p, n]) => p + ' x' + n);
 }
 

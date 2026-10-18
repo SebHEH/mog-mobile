@@ -52,6 +52,7 @@ THEME_PLACEHOLDER   = '__MOG_THEME__'
 ICON_PLACEHOLDER    = '__MOG_APPLE_TOUCH_ICON__'
 SUPABASE_PLACEHOLDER   = '/*__MOG_SUPABASE__*/null'
 ORDER_MATH_PLACEHOLDER = '/* __MOG_ORDER_MATH__ build-injected */'
+STORE_PLACEHOLDER      = '/*__MOG_STORE__*/null'
 REGISTRY_MARKER     = '// __STORE_REGISTRY__ build-injected'
 
 # Maps the human-readable concept name (from stores.json) to a CSS theme
@@ -115,6 +116,10 @@ def validate_stores(stores):
         if slug in slugs_seen:
             fail(f"{prefix}: duplicate slug {slug!r} — slugs must be unique")
         slugs_seen.add(slug)
+
+        # Optional: the street address vendors deliver to (the Copy order email).
+        if 'address' in entry and (not isinstance(entry['address'], str) or not entry['address'].strip()):
+            fail(f"{prefix}: field 'address' must be a non-empty string when present")
 
         if not DEPLOY_URL_RE.match(entry['deployment']):
             fail(f"{prefix}: deployment URL does not match Apps Script pattern\n"
@@ -199,6 +204,15 @@ def generate_store(entry, template_html, template_sw, dry_run, order_math, supab
              f"found {sb_count}. Template may be corrupted.")
     sb_json = json.dumps({'url': supabase[0], 'key': supabase[1], 'slug': slug})
     rendered_html = rendered_html.replace(SUPABASE_PLACEHOLDER, sb_json)
+
+    # Store profile for the page itself: the street address vendors deliver
+    # to (Copy order for email). Optional in stores.json.
+    st_count = rendered_html.count(STORE_PLACEHOLDER)
+    if st_count != 1:
+        fail(f"template/index.html: expected exactly 1 {STORE_PLACEHOLDER!r}, "
+             f"found {st_count}. Template may be corrupted.")
+    st_json = json.dumps({'address': entry.get('address', '').strip()}, ensure_ascii=False)
+    rendered_html = rendered_html.replace(STORE_PLACEHOLDER, st_json)
 
     # The shared order math, verbatim.
     om_count = rendered_html.count(ORDER_MATH_PLACEHOLDER)
