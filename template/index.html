@@ -5411,10 +5411,12 @@
   function buildOrderEmail_(o) {
     const c = o.colors || {};
     const band = c.band || '#04342c', ink = c.ink || '#ffffff', tint = c.tint || '#f4f5f7';
+    // Orders go in the day before they arrive (Sunday for Monday), so the
+    // vendor sees the delivery day: the cycle date plus one.
     const p = String(o.dateStr || '').split('-');
     const date = p.length === 3
-      ? new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])).toLocaleDateString('en-US',
-          { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+      ? 'Delivery ' + new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 1).toLocaleDateString('en-US',
+          { weekday: 'long', month: 'short', day: 'numeric' })
       : '';
     const title = o.vendor + ' order';
     const deliverText = o.store ? 'Deliver to ' + o.store + (o.address ? ' - ' + o.address : '') : '';
@@ -6606,7 +6608,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.18.1';
+    const versionStr = '0.18.2';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =

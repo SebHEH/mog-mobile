@@ -4,7 +4,8 @@
 //   - every line is "qty × pack" (just the qty when there's no pack), in the
 //     count list's order, and only the lines it's given
 //   - names and the store are HTML-escaped in the table, raw in the text copy
-//   - the date is the cycle date as written (no time-zone shift)
+//   - the date is the DELIVERY day: the cycle date plus one (orders go in
+//     the day before, Sunday for Monday), with no time-zone shift
 //   - "Deliver to <store> - <address>": the store without BOH/FOH, the
 //     address from stores.json; no address leaves just the store
 //   - the theme's colours reach the table; the labels are English
@@ -56,18 +57,21 @@ function problems(html) {
                                    dateStr: '2026-10-18', lines: lines, colors: colors });
 
   const text = m.text.split('\n');
-  if (text[0] !== 'Chef Center order - Sun, Oct 18, 2026') out.push('text title: ' + text[0]);
+  if (text[0] !== 'Chef Center order - Delivery Monday, Oct 19') out.push('text title: ' + text[0]);
   if (text[1] !== 'Deliver to Roll Play Tysons & Co - 8150 Leesburg Pike, Tysons, VA 22182') out.push('text deliver line: ' + text[1]);
   const want = ['SWEET CHILI SAUCE: 2 × CASE (3)', 'Fish Sauce "3 Crabs" <big> & co: 1', 'Rice Paper: 1.5 × CASE (44)'];
   if (JSON.stringify(text.slice(3)) !== JSON.stringify(want)) out.push('text lines: ' + JSON.stringify(text.slice(3)));
-  if (m.subject !== 'Chef Center order - Roll Play Tysons & Co - Sun, Oct 18, 2026') out.push('subject: ' + m.subject);
+  if (m.subject !== 'Chef Center order - Roll Play Tysons & Co - Delivery Monday, Oct 19') out.push('subject: ' + m.subject);
 
   const rows = m.html.match(/<tr>/g) || [];
   if (rows.length !== 3 + lines.length) out.push('table has ' + rows.length + ' rows, expected ' + (3 + lines.length));
   if (!m.html.includes('Fish Sauce &quot;3 Crabs&quot; &lt;big&gt; &amp; co')) out.push('item name not escaped');
   if (!m.html.includes('Deliver to <b>Roll Play Tysons &amp; Co</b> - 8150 Leesburg Pike, Tysons, VA 22182')) out.push('deliver line missing or store not escaped');
   if (/<big>/.test(m.html)) out.push('raw markup from an item name reached the table');
-  if (!/>Sun, Oct 18, 2026</.test(m.html)) out.push('date missing from the table');
+  if (!/>Delivery Monday, Oct 19</.test(m.html)) out.push('delivery day missing from the table');
+  const ny = ctx.buildOrderEmail_({ vendor: 'Sysco', store: 'X', address: '', dateStr: '2026-12-31', lines: [] });
+  const nyTitle = ny.text.slice(0, ny.text.indexOf(String.fromCharCode(10)));
+  if (nyTitle !== 'Sysco order - Delivery Friday, Jan 1') out.push('delivery across the new year: ' + nyTitle);
   const order = ['>2 × CASE (3)<', '>1<', '>1.5 × CASE (44)<'].map(s => m.html.indexOf(s));
   if (order.some(i => i < 0) || order[0] > order[1] || order[1] > order[2]) out.push('order cells missing or out of order: ' + order);
   if (!m.html.includes('background:#2d8c6b;color:#ffffff') || !m.html.includes('background:#dcf5ea')) out.push('theme colours not used');
@@ -86,15 +90,16 @@ let failed = 0;
 const html = SRC(TEMPLATE);
 const main = problems(html);
 if (main.length) { failed++; console.log('FAIL  ' + main.join('; ')); }
-else console.log('PASS  qty x pack lines in order, escaped table, cycle date as written, theme colours, English labels, plain-text copy');
+else console.log('PASS  qty x pack lines in order, escaped table, delivery day (cycle date + 1), theme colours, English labels, plain-text copy');
 
 const CONTROLS = [
   { name: 'item names not escaped', find: "'<tr><td style=\"' + cell + '\">' + escapeHtml(l.name) + '</td>'",
     replace: "'<tr><td style=\"' + cell + '\">' + l.name + '</td>'" },
   { name: 'pack dropped from the order cell', find: "const qtyText = l => l.qty + (l.pack ? ' × ' + l.pack : '');",
     replace: "const qtyText = l => String(l.qty);" },
-  { name: 'date read through UTC (shifts a day west of Greenwich)', find: "new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]))",
-    replace: "new Date(Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2])) - 86400000)" },
+  { name: 'date read through UTC (shifts a day west of Greenwich)', find: "new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 1)",
+    replace: "new Date(Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 1) - 86400000)" },
+  { name: 'the order date shown instead of the delivery day', find: "Number(p[2]) + 1)", replace: "Number(p[2]))" },
   { name: 'theme band ignored', find: "const band = c.band || '#04342c'", replace: "const band = '#04342c'" },
   { name: 'the station kept in the store name', find: ".replace(/\\s+(BOH|FOH)$/i, '')", replace: "" },
   { name: 'the address dropped from the table', find: "(o.address ? ' - ' + escapeHtml(o.address) : '')", replace: "''" }
