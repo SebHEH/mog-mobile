@@ -1635,7 +1635,7 @@
   window.MOG_SUPABASE = {"url": "https://mnfwqmrstdeuczveyykv.supabase.co", "key": "sb_publishable_Rk1wXHSydLtczfnc98LJBg_yzQ0sl93", "slug": "tnyr"};
   // This store's profile from stores.json, injected by build.py: the street
   // address vendors deliver to (Copy order for email). Optional.
-  window.MOG_STORE = {"address": ""};
+  window.MOG_STORE = {"address": "838 Rockville Pike Unit C, Rockville, MD 20852"};
 </script>
 <!-- The shared order math, apps-script/OrderMath.gs, copied in verbatim by
      build.py so the phone runs the same code as the server. -->
@@ -7265,7 +7265,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.18.2';
+    const versionStr = '0.18.3';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
