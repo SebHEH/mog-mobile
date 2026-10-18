@@ -351,6 +351,28 @@ async function liveSuite(srcOf, stores) {
       if (!act.some(x => x.vendor === vendor && x.by === 'Maria')) fail(seed, 'live', 'activity: ' + JSON.stringify(act));
       else stats.savedBy++;
 
+      // A leaves the vendor: the beat says so at once, with no tick needed.
+      a.run("state.currentView = 'today'; liveBeat_();");
+      await a.run('direct.snapFlight');
+      b.forceFresh();
+      await b.answer('getDashboard');
+      if (JSON.parse(b.run('JSON.stringify(direct.live.presence)')).some(p => p.name === 'Maria' && p.vendor === vendor)) {
+        fail(seed, 'live', 'B still sees Maria on ' + vendor + ' after she left it');
+      }
+      // A opens it again while a read is in flight: that read carries no
+      // vendor, so the beat waits for it and then sends its own.
+      a.forceFresh();
+      const inFlight = a.answer('getDashboard');
+      a.run("state.currentView = 'count'; liveBeat_();");
+      await inFlight;
+      await new Promise(r => setTimeout(r, 0));
+      await a.run('direct.snapFlight');
+      b.forceFresh();
+      await b.answer('getDashboard');
+      if (!JSON.parse(b.run('JSON.stringify(direct.live.presence)')).some(p => p.name === 'Maria' && p.vendor === vendor)) {
+        fail(seed, 'live', 'a beat sent during a read in flight was lost: B does not see Maria back on ' + vendor);
+      }
+
       // A device that skipped its name saves as nobody.
       const c = makePhone(phoneCode, sb, side);
       c.run("setLiveName_('')");
@@ -470,6 +492,10 @@ function placeholderProblems(html) {
       find: "Object.assign({ p_by: liveName_() || null }, saveParams)", replace: "Object.assign({ p_by: null }, saveParams)" },
     { name: 'presence from the snapshot dropped', scenario: 'live',
       find: '      direct.live.presence = data.presence;', replace: '      direct.live.presence = [];' },
+    { name: 'opening or leaving a vendor sends no beat', scenario: 'live',
+      find: '    if (direct.snapFlight) direct.snapFlight.then(send, send); else send();', replace: '    return;' },
+    { name: 'a beat during a read in flight is lost', scenario: 'live',
+      find: '    if (direct.snapFlight) direct.snapFlight.then(send, send); else send();', replace: '    send();' },
     { name: 'a 404 asks for the v5 call again every time', scenario: 'v4 only',
       find: '        direct.live.v5 = false;' + NL, replace: '' }
   ];

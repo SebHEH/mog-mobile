@@ -1,6 +1,6 @@
 # MOG: one app per store (spec)
 
-**Status:** agreed with Sebastian, 2026-10-18 (spec-first). Phase 1 (live counting) is built and gated, not yet deployed: `supabase/schema_v5.sql`, app v0.19.0. It also brought autosave on the count screen (a count saves ~4s after the last change, Supabase stores only), because counts used to reach Supabase only on Save or Review, so nobody else could see them. The Supabase design record (`docs/MOG_SupabaseMigration.md`) still holds how the data moves. This file holds what the app becomes.
+**Status:** agreed with Sebastian, 2026-10-18 (spec-first). Phase 1 (live counting) is live on every store since 2026-10-18: `supabase/schema_v5.sql`, app v0.19.1. It also brought autosave on the count screen (a count saves ~4s after the last change, Supabase stores only), because counts used to reach Supabase only on Save or Review, so nobody else could see them. The Supabase design record (`docs/MOG_SupabaseMigration.md`) still holds how the data moves. This file holds what the app becomes.
 
 ## Why the editor and the ordering app were separate, and why that ends
 
@@ -26,7 +26,7 @@ Several people can work at once and see each other's progress within seconds. Th
 
 ## Success looks like
 
-- Two people counting different vendors each see the other's counts and "in progress" status within about 15 seconds, without touching the screen.
+- Two people counting different vendors each see the other's counts and "in progress" status within about 10 seconds, without touching the screen.
 - Opening a vendor someone else is counting warns who it is ("Maria is counting Chef Center") and shows their counts live. It doesn't lock.
 - On a laptop, a KM signs in once and can count, review, copy an order and edit the catalog with no second tab or PIN. A phone that opens the Editor sees "Use your computer to edit".
 - **Phone, adjust par:** asks "Just today, or from now on?"
@@ -52,14 +52,14 @@ Several people can work at once and see each other's progress within seconds. Th
 
 | # | Decision | Chosen |
 |---|---|---|
-| P1 | Someone else's counts while you're on that vendor | **Fill them in live** within ~15s, with a brief highlight, on items you haven't touched. Anything you typed stays yours. |
+| P1 | Someone else's counts while you're on that vendor | **Fill them in live** within ~10s, with a brief highlight, on items you haven't touched. Anything you typed stays yours. |
 | P2 | The name step | **Asked once per device, Skip allowed** (shown as "Someone"). It never blocks counting. |
 | P3 | Keeping the name list tidy before the People tool exists | **Names unused for 30 days drop out of the picker.** Nothing is deleted. |
-| P4 | How "who's counting" travels | The 15-second refresh read carries this device's name and open vendor (no extra requests). A device unseen for 90s counts as gone. New calls `mog_snapshot2` / `mog_save_counts2`, with the old ones kept for older app versions. |
+| P4 | How "who's counting" travels | The refresh read (every 10s; 15s until v0.19.1) carries this device's name and open vendor (no extra requests). Opening or leaving a vendor, and coming back from the lock screen, send one at once (v0.19.1, after Sebastian's rprfo test found names slow and unreliable). A device unseen for 90s counts as gone, so a phone locked for longer drops off until it's back on screen. New calls `mog_snapshot2` / `mog_save_counts2`, with the old ones kept for older app versions. |
 
 ## Phases
 
-1. **Live counting.** Today and the open vendor refresh every ~15s while the app is on screen (one Supabase read, ~0.3s; no Apps Script). Vendor cards show who is counting. The first-sign-in name picker and the self-building leaders list ship here too. An auto-refresh never overwrites a count you're typing.
+1. **Live counting.** Today and the open vendor refresh every ~10s while the app is on screen (one Supabase read, ~0.3s; no Apps Script). Vendor cards show who is counting. The first-sign-in name picker and the self-building leaders list ship here too. An auto-refresh never overwrites a count you're typing.
 2. **Editor foundation.**
    - The next schema version: the editor's saves in Supabase, the change log, Undo.
    - Manage Items as a computer-only section of the app, re-hosting today's `ManageItems.html` (one copy of the page).

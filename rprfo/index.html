@@ -3836,8 +3836,18 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     return direct.snapFlight;
   }
 
-  // Force the next read to fetch (the 15-second live refresh).
+  // Force the next read to fetch (the 10-second live refresh).
   function directExpire_() { direct.snapAt = 0; }
+
+  // Tell Supabase now which vendor this device has open, instead of at the
+  // next live tick: called when a count screen opens or closes, and when the
+  // app comes back on screen. A read already in flight carries the vendor it
+  // was started with, so the beat waits for it and then sends its own.
+  function liveBeat_() {
+    if (direct.mode !== 'direct' || !state.pin || !direct.live.v5) return;
+    const send = function () { directExpire_(); return directSnapshot_().catch(function () { /* offline: the next tick tries again */ }); };
+    if (direct.snapFlight) direct.snapFlight.then(send, send); else send();
+  }
 
   async function directInputs_() {
     const snap = await directSnapshot_();
@@ -5149,7 +5159,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       // opened a modal, or switched tabs during the round-trip.
       if (state.currentTab !== 'today') return;
       if (uiIsInteractive_()) return;
-      // The 15-second live refresh repaints even when scrolled, keeping the
+      // The 10-second live refresh repaints even when scrolled, keeping the
       // scroll position (below); other refreshes still wait for the top.
       if (reason !== 'tick' && userScrolledAway_()) return;
       if (!state.cache.dashboard) return; // got invalidated mid-fetch
@@ -5814,7 +5824,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
 
     let html = '';
     // "Maria is counting this vendor too" (live counting; filled by
-    // renderLiveBanner_ below and on every 15-second refresh).
+    // renderLiveBanner_ below and on every 10-second refresh).
     html += '<div class="live-banner" id="live-banner" hidden></div>';
     // Emergency Override day picker — leads the screen while override is on
     // so the sizing question is answered before (or while) counting.
@@ -6125,12 +6135,12 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     renderLiveBanner_();
   }
 
-  // Every 15 seconds while the app is on screen: Today repaints its cards
+  // Every 10 seconds while the app is on screen: Today repaints its cards
   // (counts, who's counting), an open count screen fills in other people's
   // counts, and any other screen still sends this device's heartbeat. Each
   // tick is one Supabase read (~0.3s); the catalog only travels when it
   // changed. Never while a dialog or the busy overlay is up.
-  const LIVE_TICK_MS = 15000;
+  const LIVE_TICK_MS = 10000;
   function liveTick_() {
     if (direct.mode !== 'direct' || !state.pin) return;
     if (document.visibilityState !== 'visible' || uiIsInteractive_()) return;
@@ -7640,7 +7650,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.19.0';
+    const versionStr = '0.19.1';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
@@ -8352,10 +8362,14 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   }
 
   function showView(viewName) {
+    const liveVendorBefore = liveVendor_();
     ['today','count','review','recap','history','history-vendors','history-detail','settings','recipients'].forEach(v => {
       $('view-' + v).style.display = v === viewName ? 'block' : 'none';
     });
     state.currentView = viewName;
+    // Opening or leaving a vendor shows on other devices at their next tick,
+    // not after this device's next one too.
+    if (liveVendor_() !== liveVendorBefore) liveBeat_();
     if (!['count','review'].includes(viewName)) setTitle(viewName);
     // The breadcrumb belongs to the History sub-views and the ordering
     // drill-down (count/review); each opener sets it right after this call.
@@ -8656,6 +8670,11 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible') {
       maybeBackgroundRefreshDashboard_('visibility');
+      // Live counting: a phone back from the lock screen on any other screen
+      // (an open count screen above all) refreshes and sends its heartbeat
+      // now. While locked it sends nothing, and after 90s others stop
+      // seeing it.
+      if (state.currentView !== 'today') liveTick_();
       // Foregrounding is the main chance to catch a new app version without
       // the KM doing anything. An iOS home-screen install RESUMES from memory
       // instead of re-navigating, so a frequently-used app can run launch-time
