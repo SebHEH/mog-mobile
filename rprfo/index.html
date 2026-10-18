@@ -1013,6 +1013,55 @@
       padding: 13px; font-size: 15px; font-weight: 600; margin-top: 12px;
     }
     .cta-copy .ti { font-size: 18px; }
+
+    /* Live counting (Phase 1): who else is counting, and counts arriving from
+       other phones. The green dot is fixed (it means "live", on every store). */
+    .vendor-live {
+      font-size: 12px; color: var(--teal-dark); font-weight: 600; margin-top: 4px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .vendor-live.idle { color: var(--text-2); font-weight: 500; }
+    .live-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #22a06b; flex: none;
+      animation: livePulse 1.6s infinite;
+    }
+    @keyframes livePulse {
+      0%   { box-shadow: 0 0 0 0 rgba(34,160,107,0.45); }
+      70%  { box-shadow: 0 0 0 7px rgba(34,160,107,0); }
+      100% { box-shadow: 0 0 0 0 rgba(34,160,107,0); }
+    }
+    .live-banner {
+      display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px;
+      background: var(--teal-light); border: 1px solid var(--teal-border);
+      border-radius: var(--r-md); padding: 10px 12px; font-size: 13px; color: var(--text);
+    }
+    .live-banner .live-dot { margin-top: 4px; }
+    .live-banner[hidden] { display: none; }
+    .item.live-flash { animation: liveFlash 1.8s ease-out; }
+    @keyframes liveFlash { 0% { background: var(--teal-light); } 100% { background: transparent; } }
+
+    /* "Who's counting?" sheet */
+    .name-backdrop {
+      position: fixed; inset: 0; z-index: 95; background: rgba(0,0,0,0.35);
+      display: flex; align-items: flex-end; justify-content: center;
+    }
+    .name-sheet {
+      background: var(--bg); width: 100%; max-width: 480px; border-radius: 16px 16px 0 0;
+      padding: 20px 18px calc(18px + env(safe-area-inset-bottom));
+    }
+    .name-sheet h3 { margin: 0 0 4px; font-size: 18px; }
+    .name-sheet .name-help { margin: 0 0 14px; font-size: 13px; color: var(--text-2); }
+    .name-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .name-chip {
+      border: 1px solid var(--border-2); background: var(--bg); color: var(--text);
+      border-radius: 999px; padding: 9px 14px; font-size: 14px;
+    }
+    .name-chip.on { background: var(--teal); border-color: var(--teal); color: #fff; }
+    .name-input {
+      width: 100%; box-sizing: border-box; border: 1px solid var(--border-2); border-radius: var(--r-md);
+      padding: 12px; font-size: 16px; margin-bottom: 4px;
+    }
+    .name-input[hidden] { display: none; }
     .cta-copy:active { background: var(--teal-light); }
     .cta-copy.copied { background: var(--teal-light); }
 
@@ -3129,6 +3178,19 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       orderCopied:      { en: 'Order copied. Paste it into your email.', es: 'Pedido copiado. Pégalo en tu correo.' },
       copyOrderFailed:  { en: "Couldn't copy. Try again.", es: 'No se pudo copiar. Intenta de nuevo.' },
       copied:           { en: 'Copied', es: 'Copiado' },
+      whoCounting:      { en: "Who's counting?", es: '¿Quién está contando?' },
+      whoCountingHelp:  { en: 'Pick your name so others can see who is counting what.', es: 'Elige tu nombre para que los demás vean quién cuenta qué.' },
+      someoneElse:      { en: 'Someone else…', es: 'Otra persona…' },
+      yourName:         { en: 'Your name', es: 'Tu nombre' },
+      useThisName:      { en: 'Continue', es: 'Continuar' },
+      skipName:         { en: 'Skip', es: 'Omitir' },
+      someone:          { en: 'Someone', es: 'Alguien' },
+      countingNow:      { en: 'counting', es: 'contando' },
+      countingAs:       { en: 'Counting as', es: 'Contando como' },
+      notSet:           { en: 'Not set', es: 'Sin nombre' },
+      lastCountBy:      { en: 'Last count by', es: 'Último conteo de' },
+      liveBannerOne:    { en: 'is counting this vendor too. Their counts show up here as they save.', es: 'también está contando este proveedor. Sus conteos aparecen aquí al guardarse.' },
+      liveBannerMany:   { en: 'are counting this vendor too. Their counts show up here as they save.', es: 'también están contando este proveedor. Sus conteos aparecen aquí al guardarse.' },
       itemsReviewed:    { en: 'items reviewed', es: 'artículos revisados' },
       done:             { en: 'Done', es: 'Listo' },
       cancel:           { en: 'Cancel', es: 'Cancelar' },
@@ -3593,8 +3655,51 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     mode: null,             // 'direct' | 'exec' | null (not decided yet)
     token: null, catalog: null, catalogVersion: null,
     snap: null, snapAt: 0, snapFlight: null, inputs: null, inputsFor: null,
-    netMs: []               // the last few network times, for Settings
+    netMs: [],              // the last few network times, for Settings
+    // Live counting (schema v5, docs/MOG_OneApp_Spec.md Phase 1): who else is
+    // here and on which vendor, the store's names, who saved each vendor's
+    // latest count. v5 turns false for the session if Supabase doesn't have
+    // the v5 calls yet; the v1 calls answer exactly as before.
+    live: { v5: true, presence: [], people: [], activity: [] }
   };
+
+  // This device's id (random, kept on the device) and the name it counts
+  // under for this store: null = not asked yet, '' = skipped ("Someone").
+  // localStorage is shared by every store on this site, so the name is kept
+  // per store.
+  function liveDeviceId_() {
+    let id = null;
+    try { id = localStorage.getItem('mog_device'); } catch (e) { id = null; }
+    if (!id || !/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+      id = 'd' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      try { localStorage.setItem('mog_device', id); } catch (e) { /* private mode: a new id each start */ }
+    }
+    return id;
+  }
+  function liveNameKey_() { return 'mog_name_' + ((window.MOG_SUPABASE && window.MOG_SUPABASE.slug) || ''); }
+  function liveName_() {
+    try { const v = localStorage.getItem(liveNameKey_()); return v === null ? null : v; } catch (e) { return null; }
+  }
+  function setLiveName_(name) {
+    try { localStorage.setItem(liveNameKey_(), String(name || '').trim().slice(0, 40)); } catch (e) { /* best effort */ }
+  }
+  // The vendor this device has open: its count or review screen.
+  function liveVendor_() {
+    const v = (typeof state !== 'undefined' && state) ? state.currentView : null;
+    return ((v === 'count' || v === 'review') && state.countContext) ? state.countContext.vendor : null;
+  }
+  // A v5 call, falling back to its v1 twin for the rest of the session when
+  // Supabase answers 404 (schema v5 not installed yet).
+  async function liveCall_(fnV5, paramsV5, fnV1, paramsV1) {
+    if (direct.live.v5) {
+      try { return await directCall_(fnV5, paramsV5); }
+      catch (e) {
+        if (!/HTTP 404/.test(String(e && e.message))) throw e;
+        direct.live.v5 = false;
+      }
+    }
+    return directCall_(fnV1, paramsV1);
+  }
 
   // Sign-in always tries Supabase first (when this build has its config);
   // the rest of the count path goes direct only once sign-in said so.
@@ -3705,20 +3810,34 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     };
     direct.snapAt = Date.now();
     direct.inputs = null;
+    // mog_snapshot2 also carries who else is here (v1 answers leave it as is).
+    if (Array.isArray(data.presence)) {
+      direct.live.presence = data.presence;
+      direct.live.people = Array.isArray(data.people) ? data.people : [];
+      direct.live.activity = Array.isArray(data.activity) ? data.activity : [];
+    }
     return direct.snap;
   }
 
   // The current snapshot, refreshed when it's older than DIRECT_REUSE_MS.
-  // Reads that land together share one request.
+  // Reads that land together share one request. The refresh also tells
+  // Supabase who this device is and which vendor it has open (schema v5), so
+  // the live-counting heartbeat costs no extra request.
   function directSnapshot_() {
     if (direct.snap && Date.now() - direct.snapAt < DIRECT_REUSE_MS) return Promise.resolve(direct.snap);
     if (!direct.snapFlight) {
-      direct.snapFlight = directCall_('mog_snapshot', { p_have_version: direct.catalogVersion })
+      const have = { p_have_version: direct.catalogVersion };
+      direct.snapFlight = liveCall_('mog_snapshot2',
+          Object.assign({ p_device: liveDeviceId_(), p_name: liveName_(), p_vendor: liveVendor_() }, have),
+          'mog_snapshot', have)
         .then(adoptSnapshot_)
         .finally(function () { direct.snapFlight = null; });
     }
     return direct.snapFlight;
   }
+
+  // Force the next read to fetch (the 15-second live refresh).
+  function directExpire_() { direct.snapAt = 0; }
 
   async function directInputs_() {
     const snap = await directSnapshot_();
@@ -3805,10 +3924,13 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
         // drains after the 3:30 AM close lands in its own day (stale:true)
         // and can never pollute the new one.
         const cycle = payload.cycleDate || (await directSnapshot_()).state.cycleDate;
-        const res = await directCall_('mog_save_counts', {
+        const saveParams = {
           p_cycle_date: cycle, p_vendor: save.vendor,
           p_items: save.rows.map(function (r) { return { id: r.id, onHand: r.onHand }; })
-        });
+        };
+        // v5 also records who saved (null when this device skipped its name).
+        const res = await liveCall_('mog_save_counts2',
+          Object.assign({ p_by: liveName_() || null }, saveParams), 'mog_save_counts', saveParams);
         if (res.stale) directInvalidate_();   // the next read fetches the new cycle
         else applySavedCounts_(cycle, save.rows);
         data = { saved: res.saved, vendor: save.vendor };
@@ -3894,7 +4016,81 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     // Return the promise so callers (e.g. the PIN transition animation)
     // can await the initial dashboard fetch and keep their overlay up
     // until the home screen is fully populated.
-    return switchTab('today');
+    const shown = switchTab('today');
+    // Once the home screen is up: "Who's counting?" on a device that hasn't
+    // answered yet for this store (live counting, P2).
+    Promise.resolve(shown).then(function () { setTimeout(openNamePickerIfNeeded_, 600); }).catch(function () {});
+    return shown;
+  }
+
+  // "Who's counting?" (P2): asked once per device per store, Skip allowed
+  // (shown as "Someone"). The chips are the store's names used in the last
+  // 30 days (P3); a typed name joins the list with this device's next refresh.
+  async function openNamePickerIfNeeded_() {
+    if (direct.mode !== 'direct' || liveName_() !== null) return;
+    try { directExpire_(); await directSnapshot_(); } catch (e) { return; }   // fetches the store's names
+    if (!direct.live.v5 || liveName_() !== null) return;   // no schema v5 yet: nothing to name
+    const overlayUp = function () {
+      const tr = $('transition-overlay');
+      return uiIsInteractive_() || (tr && tr.classList.contains('open'));
+    };
+    for (let i = 0; i < 20 && overlayUp(); i++) await new Promise(function (r) { setTimeout(r, 300); });
+    if (!overlayUp()) openNamePicker_();
+  }
+
+  function openNamePicker_() {
+    if ($('name-backdrop')) return;
+    const current = liveName_();
+    const people = (direct.live.people || []).slice();
+    const listed = current && people.some(function (n) { return n.toLowerCase() === current.toLowerCase(); });
+    const wrap = document.createElement('div');
+    wrap.className = 'name-backdrop';
+    wrap.id = 'name-backdrop';
+    wrap.innerHTML =
+      '<div class="name-sheet" role="dialog" aria-modal="true" aria-labelledby="name-title">' +
+        '<h3 id="name-title">' + escapeHtml(t('whoCounting')) + '</h3>' +
+        '<p class="name-help">' + escapeHtml(t('whoCountingHelp')) + '</p>' +
+        '<div class="name-chips">' +
+          people.map(function (n) { return '<button class="name-chip" data-name="' + escapeHtml(n) + '">' + escapeHtml(n) + '</button>'; }).join('') +
+          '<button class="name-chip" data-other="1">' + escapeHtml(t('someoneElse')) + '</button>' +
+        '</div>' +
+        '<input class="name-input" id="name-input" maxlength="40" autocomplete="off" placeholder="' + escapeHtml(t('yourName')) + '" hidden>' +
+        '<button class="cta" id="name-ok" disabled>' + escapeHtml(t('useThisName')) + '</button>' +
+        '<button class="cta-secondary" id="name-skip">' + escapeHtml(t('skipName')) + '</button>' +
+      '</div>';
+    document.body.appendChild(wrap);
+
+    let chosen = '';
+    const input = $('name-input'), ok = $('name-ok');
+    const pick = function (btn) {
+      wrap.querySelectorAll('.name-chip').forEach(function (b) { b.classList.toggle('on', b === btn); });
+      if (btn.getAttribute('data-other')) {
+        input.hidden = false;
+        input.focus();
+        chosen = input.value.trim();
+      } else {
+        input.hidden = true;
+        chosen = btn.getAttribute('data-name');
+      }
+      ok.disabled = !chosen;
+    };
+    wrap.querySelectorAll('.name-chip').forEach(function (b) { b.addEventListener('click', function () { pick(b); }); });
+    input.addEventListener('input', function () { chosen = input.value.trim(); ok.disabled = !chosen; });
+    if (current) {
+      const match = listed && Array.from(wrap.querySelectorAll('.name-chip[data-name]'))
+        .find(function (b) { return b.getAttribute('data-name').toLowerCase() === current.toLowerCase(); });
+      if (match) pick(match);
+      else { input.value = current; pick(wrap.querySelector('.name-chip[data-other]')); }
+    }
+    const done = function (name) {
+      setLiveName_(name);
+      wrap.remove();
+      directExpire_();
+      directSnapshot_().catch(function () {});   // tell the others right away
+      if (state.currentView === 'settings') renderSettings();
+    };
+    ok.addEventListener('click', function () { if (chosen) done(chosen); });
+    $('name-skip').addEventListener('click', function () { done(''); });
   }
 
   // Shown only when the new-day auto-reset couldn't be confirmed (timeout or
@@ -4357,6 +4553,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
 
   function renderToday(data) {
     const view = $('view-today');
+    state.lastLiveSig = liveSignature_();   // what the live lines below are drawn from
     if (!data || !data.vendors || !data.vendors.length) {
       view.innerHTML =
         '<p class="hero-day">' + escapeHtml(formatDateLong(data ? data.date : '', data ? data.dayOfWeek : '')) + '</p>' +
@@ -4829,6 +5026,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
           '<div>' +
             '<div class="vendor-name">' + escapeHtml(v.name) + '</div>' +
             '<div class="vendor-meta">' + metaText + '</div>' +
+            vendorLiveHtml_(v.name, status) +
           '</div>' +
           pillHtml +
         '</div>' +
@@ -4951,16 +5149,18 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       // opened a modal, or switched tabs during the round-trip.
       if (state.currentTab !== 'today') return;
       if (uiIsInteractive_()) return;
-      if (userScrolledAway_()) return;
+      // The 15-second live refresh repaints even when scrolled, keeping the
+      // scroll position (below); other refreshes still wait for the top.
+      if (reason !== 'tick' && userScrolledAway_()) return;
       if (!state.cache.dashboard) return; // got invalidated mid-fetch
       // Different cycle date means a reset happened (e.g. via another
       // device); we shouldn't paint yesterday's data over today's.
       // The next loadToday triggered by reset detection elsewhere
       // will sort this out. For now, drop.
       if (data.date !== state.cache.dashboard.date) return;
-      if (!dashboardsDiffer_(state.cache.dashboard, data)) {
-        // No visual changes; just bump the timestamp so we don't
-        // immediately re-check on the next interaction.
+      if (!dashboardsDiffer_(state.cache.dashboard, data) && liveSignature_() === state.lastLiveSig) {
+        // No visual changes (counts nor who's counting); just bump the
+        // timestamp so we don't immediately re-check on the next interaction.
         setDashboardFetchedAt_(Date.now());
         return;
       }
@@ -4982,7 +5182,10 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       // Only re-render if Today is still showing (gates above checked
       // this, but the renderToday call itself is no-op-safe if not).
       if (state.currentView === 'today' || state.currentView === undefined) {
+        const scroller = $('scroll-area');
+        const top = scroller ? scroller.scrollTop : 0;
         renderToday(data);
+        if (scroller) scroller.scrollTop = top;
       }
     } catch (err) {
       // Offline, server error, anything — silent.
@@ -5610,6 +5813,9 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     }
 
     let html = '';
+    // "Maria is counting this vendor too" (live counting; filled by
+    // renderLiveBanner_ below and on every 15-second refresh).
+    html += '<div class="live-banner" id="live-banner" hidden></div>';
     // Emergency Override day picker — leads the screen while override is on
     // so the sizing question is answered before (or while) counting.
     html += overridePickerHtml_(ctx);
@@ -5689,6 +5895,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
 
     if ($('review-btn'))         $('review-btn').addEventListener('click', onReviewClick);
     if ($('save-continue-btn'))  $('save-continue-btn').addEventListener('click', onSaveContinueClick);
+    renderLiveBanner_();
 
     // Override day-picker wiring (chips only exist while override is on).
     view.querySelectorAll('.ovr-chip').forEach(btn => {
@@ -5733,23 +5940,42 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     if (!item) return;
     item.onHand = val;
     ctx.dirty[id] = val;
+    paintItem_(id, false);
+    paintProgress_();
+    // Persist draft to localStorage so a crash doesn't lose work
+    saveDraft(ctx.dateStr, ctx.vendor, ctx.dirty);
+    scheduleAutosave_();
+  }
 
-    // Update suggestion pill
-    const row = $('view-count').querySelector('.item[data-id="' + cssEscape(id) + '"]');
-    if (row) {
-      const pill = row.querySelector('.suggest');
-      const sug = computeSuggested(item);
-      pill.classList.remove('zero', 'empty');
-      if (sug == null) {
-        pill.textContent = '—';
-        pill.classList.add('empty');
-      } else {
-        pill.textContent = sug;
-        if (sug === 0) pill.classList.add('zero');
-      }
+  // One row's suggestion pill (and, for a count that arrived from another
+  // phone, its input and a brief highlight). Never touches an input the
+  // person is typing in: live counts skip those (liveMergeCounts_).
+  function paintItem_(id, fromElsewhere) {
+    const ctx = state.countContext;
+    const item = ctx && ctx.items.find(i => i.id === id);
+    const row = item && $('view-count').querySelector('.item[data-id="' + cssEscape(id) + '"]');
+    if (!row) return;
+    const pill = row.querySelector('.suggest');
+    const sug = computeSuggested(item);
+    pill.classList.remove('zero', 'empty');
+    if (sug == null) {
+      pill.textContent = '—';
+      pill.classList.add('empty');
+    } else {
+      pill.textContent = sug;
+      if (sug === 0) pill.classList.add('zero');
     }
+    if (fromElsewhere) {
+      const input = row.querySelector('.step-val');
+      if (input) input.value = (item.onHand === null || item.onHand === undefined) ? '' : item.onHand;
+      row.classList.remove('live-flash');
+      void row.offsetWidth;   // restart the animation
+      row.classList.add('live-flash');
+    }
+  }
 
-    // Update progress block
+  function paintProgress_() {
+    const ctx = state.countContext;
     const items = ctx.items;
     let toOrder = 0, counted = 0;
     for (const it of items) {
@@ -5763,9 +5989,6 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     if (prog) prog.textContent = counted + ' ' + (state.lang === 'en' ? 'of' : 'de') + ' ' + items.length;
     const orderEl = $('view-count').querySelector('.count-progress span:nth-child(2)');
     if (orderEl) orderEl.innerHTML = toOrder > 0 ? toOrder + ' ' + escapeHtml(t('itemsToOrder')) : '&nbsp;';
-
-    // Persist draft to localStorage so a crash doesn't lose work
-    saveDraft(ctx.dateStr, ctx.vendor, ctx.dirty);
   }
 
   function cssEscape(s) {
@@ -5773,19 +5996,168 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   }
 
+  // ---- Live counting (docs/MOG_OneApp_Spec.md, Phase 1) ----------------------
+
+  // Counts save themselves a few seconds after the last change, so other
+  // phones see them while they're being entered. Supabase stores only: on
+  // /exec a save costs ~2s and the explicit buttons stay the way to save.
+  const AUTOSAVE_MS = 4000;
+  let autosaveTimer_ = null;
+  function scheduleAutosave_() {
+    if (direct.mode !== 'direct') return;
+    clearTimeout(autosaveTimer_);
+    const ctx = state.countContext;
+    autosaveTimer_ = setTimeout(function () { autosaveNow_(ctx); }, AUTOSAVE_MS);
+  }
+  async function autosaveNow_(ctx) {
+    if (state.countContext !== ctx || state.currentView !== 'count') return;
+    if (state._autosaving || !Object.keys(ctx.dirty).length) return;
+    state._autosaving = true;
+    try {
+      await flushDirtyToServer({ quiet: true });
+    } finally {
+      state._autosaving = false;
+      if (state.countContext === ctx && Object.keys(ctx.dirty).length) scheduleAutosave_();
+    }
+  }
+
+  // What's left unsaved after a save: an id typed again while the save was in
+  // flight keeps its newer value; only what was sent, unchanged since, clears.
+  function clearSentDirty_(dirty, sent) {
+    const out = {};
+    for (const id of Object.keys(dirty)) {
+      if (Object.prototype.hasOwnProperty.call(sent, id) && dirty[id] === sent[id]) continue;
+      out[id] = dirty[id];
+    }
+    return out;
+  }
+
+  // Other people's saved counts, applied to the open count screen (P1). An
+  // item with unsaved typing (dirty) or the input being typed in keeps this
+  // device's value; every other item takes the server's. Mutates items;
+  // returns the ids that changed.
+  function liveMergeCounts_(items, freshItems, dirty, focusedId) {
+    const fresh = new Map((freshItems || []).map(function (f) { return [f.id, f]; }));
+    const blank = function (v) { return v === null || v === undefined || v === ''; };
+    const changed = [];
+    for (const it of items) {
+      if (it.id === focusedId || Object.prototype.hasOwnProperty.call(dirty || {}, it.id)) continue;
+      const f = fresh.get(it.id);
+      if (!f) continue;
+      if (blank(it.onHand) && blank(f.onHand)) continue;
+      if (!blank(it.onHand) && !blank(f.onHand) && Number(it.onHand) === Number(f.onHand)) continue;
+      it.onHand = blank(f.onHand) ? null : f.onHand;
+      changed.push(it.id);
+    }
+    return changed;
+  }
+
+  // Who else (presence from mog_snapshot2) has this vendor open, as names
+  // ("Someone" for a skipped name), without repeats.
+  function livePeopleOn_(presence, vendor) {
+    const out = [];
+    for (const p of presence || []) {
+      if (p.vendor !== vendor) continue;
+      const n = p.name || t('someone');
+      if (out.indexOf(n) < 0) out.push(n);
+    }
+    return out;
+  }
+
+  // The live line under a vendor card: who has it open, or who saved its
+  // latest count while it's in progress.
+  function vendorLiveHtml_(vendor, status) {
+    if (direct.mode !== 'direct') return '';
+    const here = livePeopleOn_(direct.live.presence, vendor);
+    if (here.length) {
+      return '<div class="vendor-live"><span class="live-dot" aria-hidden="true"></span>' +
+        escapeHtml(here.join(', ')) + ' ' + escapeHtml(t('countingNow')) + '</div>';
+    }
+    if (status === 'in_progress') {
+      const a = (direct.live.activity || []).find(function (x) { return x.vendor === vendor; });
+      if (a && a.by) return '<div class="vendor-live idle">' + escapeHtml(t('lastCountBy')) + ' ' + escapeHtml(a.by) + '</div>';
+    }
+    return '';
+  }
+
+  // The count screen's "someone else is here" banner.
+  function renderLiveBanner_() {
+    const el = $('live-banner');
+    const ctx = state.countContext;
+    if (!el || !ctx) return;
+    const here = direct.mode === 'direct' ? livePeopleOn_(direct.live.presence, ctx.vendor) : [];
+    if (!here.length) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    el.innerHTML = '<span class="live-dot" aria-hidden="true"></span><span><b>' + escapeHtml(here.join(', ')) + '</b> ' +
+      escapeHtml(t(here.length === 1 ? 'liveBannerOne' : 'liveBannerMany')) + '</span>';
+  }
+
+  // A signature of what the live lines show, so the Today refresh re-renders
+  // when only presence changed.
+  function liveSignature_() {
+    if (direct.mode !== 'direct') return '';
+    return JSON.stringify([
+      (direct.live.presence || []).map(function (p) { return [p.name, p.vendor]; }),
+      (direct.live.activity || []).map(function (a) { return [a.vendor, a.by]; })
+    ]);
+  }
+
+  // The open count screen, refreshed: other people's counts fill in (P1). A
+  // change to the list itself (items added or removed, pars, override sizing)
+  // goes through revalidateOrderItems_, which re-renders safely.
+  async function liveRefreshCount_() {
+    const ctx = state.countContext;
+    if (!ctx || !ctx.vendor || state.currentView !== 'count') return;
+    let fresh;
+    try { fresh = await fetchVendorItems_(ctx.vendor, { force: true }); } catch (e) { return; }
+    if (state.countContext !== ctx || state.currentView !== 'count' || !fresh || !Array.isArray(fresh.items)) return;
+    const ids = function (list) { return list.map(function (i) { return i.id; }).join('\u0001'); };
+    const freshById = new Map(fresh.items.map(function (i) { return [i.id, i]; }));
+    const structural = ids(ctx.items) !== ids(fresh.items) ||
+      ctx.items.some(function (o) { const f = freshById.get(o.id); return f && (!sameNum_(o.targetPar, f.targetPar) || !sameNum_(o.par, f.par)); }) ||
+      (!!fresh.emergencyOverride !== !!ctx.emergencyOverride) || ((Number(fresh.overrideMult) || 0) !== (ctx.overrideMult || 0));
+    if (structural) { revalidateOrderItems_(ctx.vendor, 'count'); return; }
+    const ae = document.activeElement;
+    const focusedRow = (ae && ae.classList && ae.classList.contains('step-val')) ? ae.closest('.item') : null;
+    const changed = liveMergeCounts_(ctx.items, fresh.items, ctx.dirty, focusedRow ? focusedRow.getAttribute('data-id') : null);
+    for (const id of changed) paintItem_(id, true);
+    if (changed.length) paintProgress_();
+    renderLiveBanner_();
+  }
+
+  // Every 15 seconds while the app is on screen: Today repaints its cards
+  // (counts, who's counting), an open count screen fills in other people's
+  // counts, and any other screen still sends this device's heartbeat. Each
+  // tick is one Supabase read (~0.3s); the catalog only travels when it
+  // changed. Never while a dialog or the busy overlay is up.
+  const LIVE_TICK_MS = 15000;
+  function liveTick_() {
+    if (direct.mode !== 'direct' || !state.pin) return;
+    if (document.visibilityState !== 'visible' || uiIsInteractive_()) return;
+    directExpire_();
+    if (state.currentTab === 'today' && state.currentView === 'today') maybeBackgroundRefreshDashboard_('tick');
+    else if (state.currentView === 'count') liveRefreshCount_();
+    else directSnapshot_().catch(function () { /* offline: the next tick tries again */ });
+  }
+  setInterval(liveTick_, LIVE_TICK_MS);
+
   async function flushDirtyToServer(opts) {
     // opts.refetch: if true, after a successful save (or even with no dirty
     // items), pull fresh vendor items from the API. Used before the review
     // screen so it shows accurate, formula-resolved suggestions — including
     // for items where we couldn't infer target par locally.
+    // opts.quiet: the live-counting autosave; no "saved offline" toast.
     const refetch = !!(opts && opts.refetch);
+    const quiet = !!(opts && opts.quiet);
     const ctx = state.countContext;
     if (!ctx) return { saved: 0, ok: true };
     const dirtyIds = Object.keys(ctx.dirty);
+    const sent = {};
+    dirtyIds.forEach(id => { sent[id] = ctx.dirty[id]; });
 
     try {
       if (dirtyIds.length) {
-        const items = dirtyIds.map(id => ({ id: id, onHand: ctx.dirty[id] }));
+        const items = dirtyIds.map(id => ({ id: id, onHand: sent[id] }));
         try {
           await api('saveOnHand', { vendor: ctx.vendor, items: items });
         } catch (saveErr) {
@@ -5810,12 +6182,15 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
             writeVendorOfflineCache_(ctx.vendor, vCacheData);
             state.cache.vendorItems[ctx.vendor] = vCacheData;
           }
-          showToast(t('savedOffline'), 'success');
+          if (!quiet) showToast(t('savedOffline'), 'success');
           // Fall through to the success path below so the dashboard
           // patch, dirty clear, etc. happen identically.
         }
-        ctx.dirty = {};
-        clearDraft(ctx.dateStr, ctx.vendor);
+        // Only what was sent, unchanged since, stops being unsaved: a count
+        // typed while this save was in flight stays dirty for the next one.
+        ctx.dirty = clearSentDirty_(ctx.dirty, sent);
+        if (Object.keys(ctx.dirty).length) saveDraft(ctx.dateStr, ctx.vendor, ctx.dirty);
+        else clearDraft(ctx.dateStr, ctx.vendor);
 
         // If this vendor was previously marked reviewed, the new edits
         // mean the review is no longer up-to-date. Clear the reviewed
@@ -7265,7 +7640,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.18.3';
+    const versionStr = '0.19.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
@@ -7303,6 +7678,13 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
           '<div class="settings-label"><i class="ti ti-language" aria-hidden="true"></i>' + escapeHtml(t('language')) + '</div>' +
           '<div class="settings-value">' + langLabel + '<i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
         '</div>' +
+        (direct.mode === 'direct'
+          ? '<div class="settings-row tappable" id="settings-name">' +
+              '<div class="settings-label"><i class="ti ti-user" aria-hidden="true"></i>' + escapeHtml(t('countingAs')) + '</div>' +
+              '<div class="settings-value">' + escapeHtml(liveName_() === null ? t('notSet') : (liveName_() || t('someone'))) +
+                '<i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
+            '</div>'
+          : '') +
       '</div>' +
 
       '<div class="settings-section-label"><span class="lang-en">About</span><span class="lang-es">Acerca de</span></div>' +
@@ -7327,6 +7709,10 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     });
     $('settings-recipients').addEventListener('click', openRecipients);
     $('settings-summary').addEventListener('click', onDailySummaryClick);
+    if ($('settings-name')) $('settings-name').addEventListener('click', async () => {
+      try { directExpire_(); await directSnapshot_(); } catch (e) { /* offline: the list we have */ }
+      openNamePicker_();
+    });
     $('signout-btn').addEventListener('click', signOut);
   }
 
