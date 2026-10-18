@@ -107,6 +107,12 @@ class FakeSheet {
     this.book.writes.push({ sheet: this.name, deleteRows: start, count: n });
   }
   deleteRow(r) { this.deleteRows(r, 1); }
+  // Sheet.insertRowAfter: an empty row below r; the rows under it move down.
+  insertRowAfter(r) {
+    while (this.rows.length < r) this.rows.push([]);
+    this.rows.splice(r, 0, []);
+    this.book.writes.push({ sheet: this.name, insertRowAfter: r });
+  }
   getRange(a, b, c, d) {
     if (typeof a === 'string') {
       const m = /^([A-Z]+)(\d+)$/.exec(a);

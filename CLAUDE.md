@@ -145,7 +145,10 @@ mog-mobile/
 ├── icons/                       Branding (heh-180.png, rp-180.png, etc.).
 ├── template/                    PER-STORE PWA SOURCE.
 │   ├── index.html               (311 KB — the store app UI).
-│   └── sw.js                    (6.9 KB — store SW).
+│   ├── sw.js                    (6.9 KB — store SW).
+│   └── editor/                  The editor on Supabase (one-app Phase 2): catalogEdit.js (Manage Items' logic over
+│                                the catalog tables, gated against Items.gs) + host.js (runs the UNCHANGED
+│                                ManageItems.html as a static page). build.py --preview writes it for a test store.
 ├── apps-script/                 APPS SCRIPT SOURCE.
 │   ├── README.md                Apps Script workflow docs (setup + day-to-day).
 │   ├── MOGApi.gs                Core API surface for PWA ↔ Sheet (doGet/doPost, api_* fns, page routing).
@@ -185,9 +188,10 @@ mog-mobile/
 │   ├── schema_v3.sql            The per-store phone_direct switch (step 5) on the five PWA functions (run after v2).
 │   ├── schema_v4.sql            Step 6 part 1: catalog tables (vendors/areas/items/pick_rows), the SQL catalog builder, the seed, editor_direct (run after v3).
 │   ├── schema_v5.sql            Live counting (one-app Phase 1): presence, the store's name list, who saved each count, mog_snapshot2 / mog_save_counts2 (run after v4).
+│   ├── schema_v6.sql            The editor writes the catalog (one-app Phase 2): change log, mog_editor_login/_get/_apply/_undo, D23 (run after v5).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v5.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
+│   └── tests/                   smoke.sql … smoke_v6.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.
@@ -196,6 +200,7 @@ mog-mobile/
 │   └── MOG_SessionHandoff_*.md  Per-session handoffs (newest @-imported above).
 ├── .claude/
 │   └── skills/                  Repo-specific skills.
+├── _preview/                    GENERATED, git-ignored: build.py --preview output for Supabase test stores (rprfotest).
 └── rpr/ rprfo/ rpt/ rptfo/      GENERATED — do not edit.
     rpfr/ rpfrf/ tnyt/ tnytf/    (per-store dirs from build.py)
 ```

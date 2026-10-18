@@ -57,6 +57,23 @@ Several people can work at once and see each other's progress within seconds. Th
 | P3 | Keeping the name list tidy before the People tool exists | **Names unused for 30 days drop out of the picker.** Nothing is deleted. |
 | P4 | How "who's counting" travels | The refresh read (every 10s; 15s until v0.19.1) carries this device's name and open vendor (no extra requests). Opening or leaving a vendor, and coming back from the lock screen, send one at once (v0.19.1, after Sebastian's rprfo test found names slow and unreliable). A device unseen for 90s counts as gone, so a phone locked for longer drops off until it's back on screen. New calls `mog_snapshot2` / `mog_save_counts2`, with the old ones kept for older app versions. |
 
+### Phase 2 decisions (2026-10-18)
+
+| # | Decision | Chosen |
+|---|---|---|
+| E1 | Where Manage Items' logic runs | **One shared JS file, `template/editor/catalogEdit.js`, in the browser**, checked automatically against today's `Items.gs` on random stores (`tests/catalog_edit.test.js`, like `OrderMath.gs`). Supabase gets one general write, `mog_editor_apply`: it writes the changed rows only if each is still what the editor read, logs them, and rebuilds the phones' catalog. The same call serves the later tools and Undo. Rejected: the 7 actions written in SQL (no automatic comparison with `Items.gs` possible). Each store stays separate: the store comes from the sign-in token on the server, never from the page. |
+| E2 | How `ManageItems.html` runs in the app | **The unchanged file, rendered static by `build.py`**, with `template/editor/host.js` standing in for `google.script.run`. No `apps-script/` file changes, so the live Sheet dialog and `/exec` editor can't break. Rejected: a Supabase mode inside `EditorShell.html` / `ManageItems.html` (every change a `--redeploy` and a risk to the editor every store uses). |
+| E3 | Testing on `rprfotest` | **A local preview**: `python build.py --preview rprfotest --like rprfo` writes a git-ignored `_preview/` folder, served on localhost. Nothing public. |
+| E4 | Par Review flags on Supabase | **Phase 4, with History**: the order log is copied from LOG_ORDERS at each store's switch, and the flag math moves to shared JS then. Until then a Supabase store's flags show "No data yet". |
+
+**Phase 2 status (2026-10-18):** built and gated, not yet run against Supabase:
+- `supabase/schema_v6.sql` + `smoke_v6.sql`: the change log, `mog_editor_login` / `_get` / `_apply` / `_undo`, D23.
+- `catalogEdit.js` + `host.js` + the `build.py` preview.
+- Gates `catalog_edit` (3,000 random steps, no difference from `Items.gs`) and `editor_host`.
+- The Changes panel (Undo) shows on the page.
+
+Intended differences from the Sheet: a pick row's item name and area order are looked up, not stored (D19); deleting an item removes its pick rows by ID.
+
 ## Phases
 
 1. **Live counting.** Today and the open vendor refresh every ~10s while the app is on screen (one Supabase read, ~0.3s; no Apps Script). Vendor cards show who is counting. The first-sign-in name picker and the self-building leaders list ship here too. An auto-refresh never overwrites a count you're typing.

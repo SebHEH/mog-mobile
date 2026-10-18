@@ -246,6 +246,7 @@ class FakeSupabase {
   handle(fn, p) {
     this.calls.push(fn);
     if (PHONE_FNS[fn]) return this.handlePhone(fn, p);
+    if (EDITOR_FNS[fn]) return this.handleEditor(fn, p);
     const s = this.stores.get(p.p_slug);
     const ok = data => ({ ok: true, data });
     const err = error => ({ ok: false, error });
@@ -440,6 +441,159 @@ class FakeSupabase {
 
 const PHONE_FNS = { mog_login: 1, mog_snapshot: 1, mog_save_counts: 1, mog_set_override: 1, mog_set_vendor_pick: 1,
                     mog_snapshot2: 1, mog_save_counts2: 1 };
+
+// ---- The editor's calls (schema_v6.sql) -------------------------------------
+// Written apart from template/editor/catalogEdit.js on purpose, so the host
+// test checks one against the other.
+const EDITOR_FNS = { mog_editor_login: 1, mog_editor_get: 1, mog_editor_apply: 1, mog_editor_undo: 1 };
+const EDITOR_FIELDS = {
+  items: ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible'],
+  pickRows: ['area', 'shelfOrder'], vendors: ['mults', 'cutoff'], areas: ['ord']
+};
+const editorIdent = (t, r) => (t === 'items' ? r.id : t === 'pickRows' ? r.vendor + ' / ' + r.id : r.name);
+function editorSame(t, cur, want) {
+  const v = x => JSON.stringify(x === undefined || x === null || x === '' ? null : x);
+  return EDITOR_FIELDS[t].every(f => v(cur[f]) === v(want[f]));
+}
+// mog.editor_apply_ops: the tables after ops, or an Error (CONFLICT: ..., or
+// what the database would refuse: links, unique names, unlisted vendors).
+function editorApplyOps(tables, ops) {
+  const t = clone(tables);
+  for (const op of ops) {
+    if (!op || typeof op !== 'object') throw new Error('BAD_OP');
+    if ('shift' in op) {
+      if (op.shift !== 'items' || typeof op.from !== 'number') throw new Error('BAD_OP');
+      for (const it of t.items) if (it.seq >= op.from) it.seq += 1;
+      continue;
+    }
+    const b = op.before || null, a = op.after || null, row = a || b;
+    if (!row || !EDITOR_FIELDS[op.t]) throw new Error('BAD_OP: ' + JSON.stringify(op).slice(0, 100));
+    if (a && b && editorIdent(op.t, a) !== editorIdent(op.t, b)) throw new Error('BAD_OP: before and after are different rows');
+    const list = t[op.t];
+    const i = list.findIndex(r => editorIdent(op.t, r) === editorIdent(op.t, row));
+    if (!b && i >= 0) throw new Error('CONFLICT: ' + op.t + ' ' + editorIdent(op.t, row) + ' is already there');
+    if (b && (i < 0 || !editorSame(op.t, list[i], b))) throw new Error('CONFLICT: ' + op.t + ' ' + editorIdent(op.t, row) + ' has changed');
+    if (op.t === 'items' && a) {
+      const bad = (a.eligible || []).find(x => !t.vendors.some(v => v.name === x));
+      if (bad) throw new Error('Vendor "' + bad + '" is not listed');
+    }
+    if (!a) {
+      list.splice(i, 1);
+      if (op.t === 'items') t.pickRows = t.pickRows.filter(r => r.id !== b.id);           // on delete cascade
+      if (op.t === 'areas') t.pickRows = t.pickRows.filter(r => r.area !== b.name);
+      if (op.t === 'vendors') {
+        t.pickRows = t.pickRows.filter(r => r.vendor !== b.name);
+        for (const it of t.items) if (it.primaryVendor === b.name) it.primaryVendor = null;  // D23
+      }
+    } else if (i < 0) {
+      const seqs = list.map(r => r.seq || 0);
+      list.push(Object.assign({}, clone(a), { seq: a.seq != null ? a.seq : Math.max(0, ...seqs) + 1 }));
+    } else {
+      const keep = op.t === 'items' ? list[i].seq : (a.seq != null ? a.seq : list[i].seq);
+      list[i] = Object.assign({}, clone(a), op.t === 'items' || op.t === 'pickRows' ? { seq: keep } : {});
+    }
+  }
+  return checkCatalogTables(t);
+}
+function editorTablesJson(t) {
+  const c = clone(t);
+  c.vendors.sort((x, y) => x.name.localeCompare(y.name));
+  c.areas.sort((x, y) => (x.ord - y.ord) || (x.name < y.name ? -1 : 1));
+  c.items.sort((x, y) => (x.seq - y.seq) || (x.id < y.id ? -1 : 1));
+  c.pickRows.sort((x, y) => (x.seq - y.seq) || (x.vendor < y.vendor ? -1 : x.vendor > y.vendor ? 1 : 0) || (x.id < y.id ? -1 : 1));
+  return c;
+}
+
+FakeSupabase.prototype.editorData = function (slug, s) {
+  return { store: { slug, location: s.profile.location || null, abbr: s.profile.abbr || null, concept: s.profile.concept || null },
+           tables: editorTablesJson(s.tables),
+           changes: (s.changeLog || []).slice(-100).reverse().map(l => ({ id: l.id, at: l.at, by: l.by, label: l.label,
+                                                                          undoes: l.undoes, undoneBy: l.undoneBy })),
+           catalogVersion: s.version };
+};
+FakeSupabase.prototype.editorPublish = function (s) {
+  s.version = Math.max(this.nowMs, (s.version || 0) + 1);
+  s.catalog = catalogFromTables(s);
+  return s.version;
+};
+FakeSupabase.prototype.editorLog = function (s, by, label, ops, undoes) {
+  s.changeLog = s.changeLog || [];
+  this.changeSeq = (this.changeSeq || 0) + 1;
+  const entry = { id: this.changeSeq, at: new Date(this.nowMs).toISOString(), by: String(by == null ? '' : by).trim().slice(0, 40) || null,
+                  label, ops: clone(ops), undoes: undoes || null, undoneBy: null };
+  s.changeLog.push(entry);
+  return entry;
+};
+FakeSupabase.prototype.handleEditor = function (fn, p) {
+  const ok = data => ({ ok: true, data });
+  const err = (error, extra) => Object.assign({ ok: false, error }, extra || {});
+  if (fn === 'mog_editor_login') {
+    const slug = String(p.p_slug || '').trim().toLowerCase();
+    const s = this.stores.get(slug);
+    if (!s) return err('Unknown store');
+    if (!s.editorDirect) return err('EDITOR_NOT_DIRECT');
+    if (s.lockedUntil) {
+      if (s.lockedUntil > this.nowMs) return err('Too many attempts', { lockout: true, retryAfterMs: s.lockedUntil - this.nowMs });
+      s.failCount = 0; s.lockedUntil = 0;
+    }
+    const pin = String(p.p_pin == null ? '' : p.p_pin);
+    const type = (s.pins.pin && pin === s.pins.pin) ? 'store' : (s.pins.master && pin === s.pins.master) ? 'master' : null;
+    if (!type) {
+      s.failCount++;
+      if (s.failCount >= 5) { s.lockedUntil = this.nowMs + 300000; return err('Too many attempts', { lockout: true, retryAfterMs: 300000 }); }
+      return err('Invalid PIN');
+    }
+    s.failCount = 0;
+    const token = 'etok' + (++this.tokenSeq) + '-' + slug;
+    s.sessions.set(token, { authType: type, expires: this.nowMs + 12 * 3600000 });
+    return ok(Object.assign(this.editorData(slug, s), { token, expiresAt: 'fake' }));
+  }
+  let slug = null;
+  for (const [sl, st] of this.stores) {
+    const x = st.sessions.get(p.p_token);
+    if (x && x.expires > this.nowMs) { slug = sl; break; }
+  }
+  if (!slug) return err('SESSION_EXPIRED');
+  const s = this.stores.get(slug);
+  if (!s.editorDirect) return err('EDITOR_NOT_DIRECT');
+  if (fn === 'mog_editor_get') return ok(this.editorData(slug, s));
+
+  const tryApply = ops => {
+    try { s.tables = editorApplyOps(s.tables, ops); return null; } catch (e) {
+      const m = String(e.message);
+      return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: m.slice(10) }) : err('REJECTED: ' + m);
+    }
+  };
+  if (fn === 'mog_editor_apply') {
+    const ops = p.p_ops;
+    if (!Array.isArray(ops)) return err('ops must be an array');
+    if (ops.length > 5000) return err('Too many changes at once');
+    if (!ops.length) return ok({ changeId: null, catalogVersion: s.version });
+    const bad = tryApply(ops);
+    if (bad) return bad;
+    const entry = this.editorLog(s, p.p_by, String(p.p_label || '').trim().slice(0, 300) || 'Catalog change', ops, null);
+    return ok({ changeId: entry.id, catalogVersion: this.editorPublish(s) });
+  }
+  // mog_editor_undo
+  const c = (s.changeLog || []).find(l => l.id === Number(p.p_change_id));
+  if (!c) return err('Unknown change');
+  if (c.undoneBy) return err('ALREADY_UNDONE');
+  const inv = c.ops.filter(op => !('shift' in op)).reverse().map(op => ({ t: op.t, before: op.after, after: op.before }));
+  const bad = tryApply(inv);
+  if (bad) {
+    if (bad.error === 'CONFLICT') {
+      const idOf = op => op.t + ' ' + editorIdent(op.t, op.after || op.before);
+      const mine = new Set(c.ops.filter(op => !('shift' in op)).map(idOf));
+      const later = s.changeLog.filter(l => l.id > c.id && !l.undoneBy && l.ops.some(op => !('shift' in op) && mine.has(idOf(op)))).pop();
+      bad.laterChange = later ? { id: later.id, label: later.label, by: later.by, at: later.at } : null;
+    }
+    return bad;
+  }
+  const entry = this.editorLog(s, p.p_by, ('Undo: ' + c.label).slice(0, 300), inv, c.id);
+  c.undoneBy = entry.id;
+  if (c.undoes) { const orig = s.changeLog.find(l => l.id === c.undoes); if (orig) orig.undoneBy = null; }
+  return ok({ changeId: entry.id, catalogVersion: this.editorPublish(s) });
+};
 
 // A fake ScriptApp that records triggers. opts.auth is this person's grant of
 // the external-request scope: 'granted' (default), 'required', or 'unavailable'

@@ -11,3 +11,6 @@ node_modules/
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Editor previews for Supabase test stores (build.py --preview): never published
+_preview/

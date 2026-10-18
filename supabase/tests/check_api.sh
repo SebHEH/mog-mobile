@@ -62,6 +62,15 @@ check "v5 save_counts2: bad token refused"        200 'SESSION_EXPIRED' -X POST 
 check "v5 helper: touch_presence not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_device":"deviceXXXX0000","p_name":"x","p_vendor":"y"}' "$(rpc touch_presence)"
 check "v5 helper: live_json not exposed"          404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_device":"x"}' "$(rpc live_json)"
 
+# schema v6 (rprfo's editor is still in the Sheet: refused before the PIN, so no lockout risk)
+check "v6 tables: change log not reachable"       404 ''   "$URL/rest/v1/change_log"
+check "v6 editor_login: Sheet store refused"      200 'EDITOR_NOT_DIRECT' -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_pin":"0"}' "$(rpc mog_editor_login)"
+check "v6 editor_get: bad token refused"          200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_editor_get)"
+check "v6 editor_apply: bad token refused"        200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_label":"x","p_by":"x","p_ops":[]}' "$(rpc mog_editor_apply)"
+check "v6 editor_undo: bad token refused"         200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_change_id":1,"p_by":"x"}' "$(rpc mog_editor_undo)"
+check "v6 helper: editor_apply_ops not exposed"   404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_ops":[]}' "$(rpc editor_apply_ops)"
+check "v6 helper: tables_json not exposed"        404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo"}' "$(rpc tables_json)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

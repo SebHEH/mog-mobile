@@ -185,6 +185,10 @@ Tables live in the private schema `mog`, which the Data API doesn't expose. **Th
 | `mog.catalog_from_tables(slug)` (schema v4) | internal | builds the schema-1 catalog JSON from the tables (D22) |
 | `mog.copy_store_catalog(from, to)` (schema v4) | SQL Editor only | copies a seeded catalog to a test store (D21); refuses to overwrite a store that isn't a test store |
 | `mog.provision_store(slug)` → sync key | SQL Editor only | not exposed to the API at all |
+| `mog_editor_login(slug, pin)` (schema v6) | the editor page | store or master PIN, the same lockout counter as `mog_login`; answers `EDITOR_NOT_DIRECT` before the PIN while the store's editor is in the Sheet |
+| `mog_editor_get(token)` (schema v6) | the editor page | any session token for the store (the phones' too); the catalog tables, the last 100 changes, the catalog version |
+| `mog_editor_apply(token, label, by, ops)` (schema v6) | the editor page | token; writes only if every row is still what the editor read (else `CONFLICT`, nothing written), logs the change, rebuilds `mog.catalog` |
+| `mog_editor_undo(token, changeId, by)` (schema v6) | the editor page | token; a change replayed backwards as a new change; `CONFLICT` names the later change to undo first |
 
 **Per-store sync keys instead of the service-role key:** a bound script's Script Properties can be read by anyone who can edit that store's Sheet. A leaked sync key reaches only that one store; the service-role key would expose every store. The service-role key is never used outside the Supabase dashboard.
 
@@ -221,7 +225,7 @@ Each step ships separately. KMs notice nothing until step 5 switches a store.
 6. **Step 6:** the web editor reads and writes the catalog in Supabase, and recipients and order history move too. The Sheet then holds only the script and the nightly backup (D9's end state).
    1. **Catalog tables + parity gate** (built 2026-10-17, D19-D22). Schema v4 adds the tables, `mog.catalog_from_tables`, the seed, the status call, `editor_direct` (off) and `mog.copy_store_catalog`. `buildCatalogTables_` (Sync.gs) turns the Sheet into tables and lists every cleanup; `catalogParityReport_` compares every phone screen. **Order:** Sebastian runs `schema_v4.sql`, then `smoke_v4.sql` (every row PASS) and `check_api.sh`. Then `deploy.py --redeploy`, canary rprfo, then the rest. Then `test_catalogTablesParity` on each store until it says PASS, fixing in the Sheet whatever its cleanup list names.
    2. **Test store:** `select mog.copy_store_catalog('rprfo', 'rprfotest');` once rprfo passes.
-   3. **Manage Items port** against `rprfotest`: schema v5 adds the editor's sign-in and write functions (each rebuilds `mog.catalog` while `editor_direct` is on); a static page on GitHub Pages. Target: page open and save each under 1s.
+   3. **Manage Items port** against `rprfotest` (built 2026-10-18, one-app spec E1-E4): schema v6 adds the editor's sign-in, read, write and Undo, plus the change log; `template/editor/catalogEdit.js` runs Manage Items' logic over the tables, and `host.js` runs the unchanged `ManageItems.html` as a static page (`build.py --preview rprfotest --like rprfo`). Target: page open and save each under 1s.
    4. Then Vendors, Areas, Shelf to Sheet, History, Health and Recipients, the flip procedure (D16, D17), and rprfo first.
 
 **Cutover:** **Move this store to Supabase** imports the current column-E counts and override settings once, then `/exec` serves that store from Supabase. Do it right after a reset, when column E is empty, and there's nothing to import.

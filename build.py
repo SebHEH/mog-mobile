@@ -22,6 +22,9 @@ a manual `git rm -r <slug>/` step on the operator's side.
 Usage:
   python3 build.py            # generate / inject
   python3 build.py --dry-run  # show what would happen, write nothing
+  python3 build.py --preview rprfotest --like rprfo
+                              # the editor for a Supabase test store, under
+                              # _preview/ (git-ignored); builds nothing else
 """
 
 import json
@@ -37,6 +40,17 @@ TEMPLATE_SW    = os.path.join(TEMPLATE_DIR, 'sw.js')
 HUB_INDEX      = os.path.join(ROOT, 'index.html')
 ORDER_MATH     = os.path.join(ROOT, 'apps-script', 'OrderMath.gs')
 SYNC_GS        = os.path.join(ROOT, 'apps-script', 'Sync.gs')
+APPS_SCRIPT    = os.path.join(ROOT, 'apps-script')
+DASHBOARD_GS   = os.path.join(APPS_SCRIPT, 'Dashboard.gs')
+EDITOR_SRC     = os.path.join(TEMPLATE_DIR, 'editor')
+PREVIEW_DIR    = os.path.join(ROOT, '_preview')   # git-ignored: test stores, never published
+
+# The editor on Supabase (docs/MOG_OneApp_Spec.md Phase 2): each published
+# page is an Apps Script page rendered as-is, its scriptlets filled in here,
+# plus the files that answer its server calls from Supabase.
+EDITOR_PAGES  = {'items.html': ('ManageItems', 'Manage Items')}
+EDITOR_ASSETS = ('catalogEdit.js', 'host.js')
+SCRIPTLET_RE  = re.compile(r'<\?!=\s*(.*?)\s*\?>', re.S)
 
 # Slugs that would collide with our repo structure.
 RESERVED_SLUGS = {
@@ -158,6 +172,112 @@ def read_supabase_project():
     if not url or not key:
         fail("apps-script/Sync.gs: SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY not found in the expected form")
     return url.group(1), key.group(1)
+
+
+# ---------------------------------------------------------------------------
+# The editor's static pages (Phase 2)
+# ---------------------------------------------------------------------------
+
+def read_concept_themes():
+    """CONCEPT_THEMES from Dashboard.gs: the accent the Sheet dashboard and
+    the /exec editor already use, so the static editor can't drift from
+    them. {concept: {accent, bannerFont, ink}}, with 'default'."""
+    with open(DASHBOARD_GS, 'r', encoding='utf-8') as f:
+        text = f.read()
+    colors_m = re.search(r'^const DASH_COLORS = \{(.*?)^\};', text, re.M | re.S)
+    themes_m = re.search(r'^const CONCEPT_THEMES = \{(.*?)^\};', text, re.M | re.S)
+    if not colors_m or not themes_m:
+        fail("apps-script/Dashboard.gs: DASH_COLORS / CONCEPT_THEMES not found in the expected form")
+    colors = dict(re.findall(r'^\s*([A-Z_]+):\s*"([^"]+)"', colors_m.group(1), re.M))
+    themes = {}
+    for m in re.finditer(r"'([a-z-]+)':\s*\{([^}]*)\}", themes_m.group(1)):
+        fields = {}
+        for k, v in re.findall(r'(\w+):\s*("[^"]*"|DASH_COLORS\.\w+)', m.group(2)):
+            if v.startswith('"'):
+                fields[k] = v.strip('"')
+            elif v.split('.')[1] in colors:
+                fields[k] = colors[v.split('.')[1]]
+            else:
+                fail(f"apps-script/Dashboard.gs: CONCEPT_THEMES['{m.group(1)}'] uses unknown color {v}")
+        if 'accent' not in fields or 'bannerFont' not in fields:
+            fail(f"apps-script/Dashboard.gs: CONCEPT_THEMES['{m.group(1)}'] needs accent and bannerFont")
+        themes[m.group(1)] = {'accent': fields['accent'], 'bannerFont': fields['bannerFont'],
+                              'ink': fields.get('ink', fields['accent'])}
+    if 'default' not in themes:
+        fail("apps-script/Dashboard.gs: CONCEPT_THEMES has no 'default'")
+    return themes
+
+
+def js_json(obj):
+    """JSON that is safe inside a <script> block."""
+    return json.dumps(obj, ensure_ascii=False).replace('</', '<\\/')
+
+
+def render_editor_page(page, title, boot, sb_cfg):
+    """apps-script/<page>.html as a static page. Its scriptlets are filled in
+    the way the /exec editor fills them (include() inserts a file as-is);
+    vendorListJson starts empty because host.js fills it from Supabase before
+    the page starts. Any other scriptlet fails the build."""
+    path = os.path.join(APPS_SCRIPT, page + '.html')
+    with open(path, 'r', encoding='utf-8') as f:
+        text = f.read()
+
+    def fill(m):
+        expr = m.group(1).strip().rstrip(';').strip()
+        inc = re.fullmatch(r"include\('([A-Za-z]+)'\)", expr)
+        if inc:
+            inc_path = os.path.join(APPS_SCRIPT, inc.group(1) + '.html')
+            if not os.path.exists(inc_path):
+                fail(f"apps-script/{page}.html includes {inc.group(1)}, which doesn't exist")
+            with open(inc_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        if expr == 'vendorListJson':
+            return '[]'
+        if expr == 'webBootJson':
+            return js_json(boot)
+        fail(f"apps-script/{page}.html: no static value for the scriptlet <?!= {expr} ?>")
+
+    if text.count('<?') != len(SCRIPTLET_RE.findall(text)):
+        fail(f"apps-script/{page}.html has a scriptlet form the static build doesn't handle (only <?!= ... ?>)")
+    # host.js goes first in <head>, before the page's own scripts: the PIN
+    # gate calls google.script.run as soon as the page parses. (The page's
+    # own <head>, not one an included file mentions.)
+    if text.count('<head>') != 1:
+        fail(f"apps-script/{page}.html: expected exactly one <head>")
+    # The charset and viewport come from HtmlService's response on /exec
+    # (addMetaTag); a static page has to say them itself.
+    head = ('<head>\n    <meta charset="utf-8">'
+            '\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">'
+            '\n    <title>' + title + ' · ' + boot['store'] + '</title>'
+            '\n    <script>window.MOG_SUPABASE = ' + js_json(sb_cfg) + ';</script>'
+            '\n    <script src="catalogEdit.js"></script>'
+            '\n    <script src="host.js"></script>')
+    text = text.replace('<head>', head, 1)
+    return SCRIPTLET_RE.sub(fill, text)   # included files are inserted as-is, never re-read
+
+
+def generate_editor(target_dir, entry, slug, location, supabase, themes, dry_run):
+    """<target_dir>/editor/: every editor page plus the files it loads."""
+    concept = CONCEPT_TO_THEME.get(entry['concept'], '')
+    boot = {'web': True, 'store': location, 'abbr': slug.upper(), 'base': '../',
+            'theme': themes.get(concept, themes['default']), 'concept': concept}
+    sb_cfg = {'url': supabase[0], 'key': supabase[1], 'slug': slug}
+    out_dir = os.path.join(target_dir, 'editor')
+    files = {}
+    for name, (page, title) in EDITOR_PAGES.items():
+        files[name] = render_editor_page(page, title, boot, sb_cfg)
+    for name in EDITOR_ASSETS:
+        with open(os.path.join(EDITOR_SRC, name), 'r', encoding='utf-8') as f:
+            files[name] = f.read()
+    rel = os.path.relpath(out_dir, ROOT).replace(os.sep, '/')
+    for name, body in files.items():
+        if dry_run:
+            print(f"  [dry-run] write {rel}/{name} ({len(body):,} bytes)")
+            continue
+        os.makedirs(out_dir, exist_ok=True)
+        with open(os.path.join(out_dir, name), 'w', encoding='utf-8') as f:
+            f.write(body)
+        print(f"  [done]    write {rel}/{name} ({len(body):,} bytes)")
 
 
 def generate_store(entry, template_html, template_sw, dry_run, order_math, supabase):
@@ -306,8 +426,38 @@ def inject_hub_registry(stores, dry_run):
 # Entry point
 # ---------------------------------------------------------------------------
 
+def arg_after(flag):
+    if flag not in sys.argv:
+        return None
+    i = sys.argv.index(flag)
+    if i + 1 >= len(sys.argv) or sys.argv[i + 1].startswith('--'):
+        fail(f"{flag} needs a value")
+    return sys.argv[i + 1]
+
+
+def build_preview(stores, slug, like, dry_run):
+    """A test store's editor (e.g. rprfotest, D21) under _preview/<slug>/,
+    which git ignores: nothing here is ever published. It borrows the look of
+    the real store it was copied from (--like); Supabase decides what the
+    test store holds and that its editor is on."""
+    if not SLUG_RE.match(slug):
+        fail(f"--preview: invalid slug {slug!r}")
+    entry = next((e for e in stores if e['slug'] == like), None)
+    if not entry:
+        fail(f"--like {like!r} is not a store in stores.json")
+    if any(e['slug'] == slug for e in stores):
+        fail(f"--preview {slug!r} is a real store; previews are for test stores only")
+    supabase = read_supabase_project()
+    themes = read_concept_themes()
+    print(f"[preview] {slug}, looking like {like}" + (" (DRY RUN, no writes)" if dry_run else ""))
+    generate_editor(os.path.join(PREVIEW_DIR, slug), entry, slug, entry['location'] + ' (TEST)',
+                    supabase, themes, dry_run)
+    print(f"[done] serve the repo root and open /_preview/{slug}/editor/items.html")
+
+
 def main():
     dry_run = '--dry-run' in sys.argv
+    preview = arg_after('--preview')
 
     if not os.path.exists(STORES_JSON):
         fail(f"stores.json not found at {STORES_JSON}")
@@ -319,6 +469,13 @@ def main():
 
     validate_stores(stores)
     print(f"[validate] stores.json: {len(stores)} entries OK")
+
+    if preview:
+        like = arg_after('--like')
+        if not like:
+            fail('--preview needs --like <store it was copied from>')
+        build_preview(stores, preview, like, dry_run)
+        return
 
     if not os.path.exists(TEMPLATE_INDEX):
         fail(f"template/index.html not found at {TEMPLATE_INDEX}")
