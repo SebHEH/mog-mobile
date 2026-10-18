@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: e37ef98 (2026-10-17) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: f2ac2a5 (2026-10-18) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -94,7 +94,7 @@ rebuild can replace. The stated goal for a rebuild is to capture the logic; the 
 - **What happens:**
   1. The app confirms it is still the same order day. If a new day has started it resets first (see the reset flow) so counts begin clean.
   2. The user picks a vendor. The app shows that vendor's items in the user's chosen walking order (by storage area / pick path).
-  3. For each item the user enters the on-hand count (whole or decimal).
+  3. For each item the user enters the on-hand count (whole or decimal). Each count saves itself a few seconds after the user stops typing, so others counting at the same time see it (R25).
   4. As counts are entered, the system computes a suggested order quantity per item: it takes the item's par, scales it by how many days this vendor's order must cover today, subtracts what is on hand, and rounds up to a whole unit. Items where the vendor does not deliver today, or where on-hand already meets coverage, show nothing to order.
   5. The user reviews the vendor's full suggested order, adjusts any quantity, and submits the count.
   6. The session is recorded and the recap email goes to the store's recipients (once per cycle, no duplicates).
@@ -309,6 +309,12 @@ naive rebuild silently loses.*
   - If the same item appears twice on one vendor's route, both rows share one count.
   - Two phones counting different items of the same vendor never overwrite each other.
   - Why: the old row-position storage could put a count on the wrong item when a list changed mid-day. *(Confirmed: `mog.counts` key; design record §9 "intended differences".)*
+- **R25. Several people can count at once and see each other within seconds; nothing locks.**
+  - A count saves itself a few seconds after the last change, not only on Save or Review, so the others can see it.
+  - Someone else's count fills in only on items this device hasn't touched. What you typed stays yours.
+  - Each vendor card shows who has it open ("Maria counting"), or who saved its latest count. Opening a vendor someone else has open shows a warning naming them. It does not lock: counts are kept per item, so a collision needs the exact same item, and then the last save wins.
+  - Each device says once who is counting, picked from the store's own list of names (or typed, which adds it to the list; Skip shows "Someone"). It is a label, not a password: the shared store PIN stays the only gate (R15).
+  - Why: KMs, GMs and shift leads often split the vendors between two people at the same time, and each needs to know what the other has done without asking. A lock would strand a vendor when someone walks away mid-count. *(Confirmed: `docs/MOG_OneApp_Spec.md` A5, A6, P1-P4, owner 2026-10-18.)*
 
 ---
 
@@ -357,6 +363,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 |---|---|---|
 | item id + vendor | composite ref | Each (item, vendor) tracks its own on-hand (R8). |
 | on hand | number (decimal ok) | The user's count (R5). |
+| counted by | name (optional) | Who saved it last, from the store's name list (R25). |
 | suggested qty | number | Derived, not stored raw; computed via R1. |
 | storage area + position | area ref + order | The user's walking route (R18). |
 
@@ -409,9 +416,9 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 #### Contract: Submit a daily count
 - **Inputs:** vendor; the per-item on-hand counts (and any user-adjusted quantities).
 - **Validations:** same-day check; offline queue drained first (R14).
-- **Outputs / side effects:** lines with positive suggested qty logged to history; recap email sent if not already sent this cycle (R12); on-hand persisted.
+- **Outputs / side effects:** on-hand persisted per item a few seconds after the last change, with who saved it (R25); at the cycle's close, lines with positive suggested qty are logged to history and the recap email is sent if not already sent this cycle (R12).
 - **On failure:** the submit runs under an extended timeout; if the client aborts but the server finished, the app re-checks status and enters the app rather than double-submitting or stranding the user.
-- **Rules applied:** R0, R12, R14.
+- **Rules applied:** R0, R12, R14, R25.
 
 #### Contract: New-day reset
 - **Inputs:** active order date vs. today.
@@ -439,6 +446,8 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | The manual "start the new day" button was removed; the day closes itself every night, and the first app open is the fallback. | It was pure friction, and the close took 14 to 31 seconds when it ran on a KM's first open; at night nobody waits for it. It is still what guarantees the recap sends and the day logs. |
 | A count saved after its day closed lands in its own day, not the new one. | A phone that queued counts offline overnight must not pollute the fresh day; the late count is kept as evidence for the day it was made. |
 | The same item twice on one vendor's route shares one count. | A count belongs to the item, not the row (R24). |
+| Two people on the same vendor get a warning, not a lock. | A lock strands a vendor when someone walks away mid-count; counts are per item, so only the exact same item can collide (R25). |
+| An incoming count never overwrites one this device typed. | The person holding the phone is looking at that shelf; their number is the fresher one (R25). |
 | Secondary/backup vendors are fully orderable, not reference-only. | A user needs to order from a backup when the primary is out of stock or not delivering that day, or when the backup is cheaper this week. |
 | Only lines with a positive suggested quantity are logged. | History records what was actually meant to be ordered, not zero rows, which keeps the usage history clean. |
 | Offline counts must flush before reset. | A user on a flaky connection must never lose a count to an auto-reset that fires first. |
@@ -473,6 +482,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | Over-flag on-hand cutoff (75%) and whole-unit floors | Par-review noise threshold | **Business decision encoded as a knob** |
 | Par-review window / min-orders (28 days / 3 orders) | How much history before flagging | Technical tuning of a business signal |
 | PIN lockout threshold + cooldown | Brute-force protection | **Technical** |
+| Live refresh (10s), autosave delay (~4s), "gone" after 90s unseen, names unused 30 days leave the picker | How quickly concurrent counters see each other (R25) | **Technical** |
 | Cache TTLs, mutation timestamps | Read freshness vs. speed | **Technical** (platform note) |
 
 ### Growth seams
