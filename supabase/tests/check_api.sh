@@ -54,6 +54,14 @@ check "v4 sync: bad key can't read the status"    200 'BAD_SYNC_KEY'    -X POST 
 check "v4 helper: catalog_from_tables not exposed" 404 ''  -X POST "${J[@]}" -d '{"p_slug":"rprfo"}' "$(rpc catalog_from_tables)"
 check "v4 helper: copy_store_catalog not exposed" 404 ''   -X POST "${J[@]}" -d '{"p_from":"rprfo","p_to":"x"}' "$(rpc copy_store_catalog)"
 
+# schema v5
+check "v5 tables: presence not reachable"         404 ''   "$URL/rest/v1/presence"
+check "v5 tables: names not reachable"            404 ''   "$URL/rest/v1/store_people"
+check "v5 snapshot2: bad token refused"           200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_device":"deviceXXXX0000","p_name":"x","p_vendor":"y"}' "$(rpc mog_snapshot2)"
+check "v5 save_counts2: bad token refused"        200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_cycle_date":"2026-10-18","p_vendor":"V","p_items":[],"p_by":"x"}' "$(rpc mog_save_counts2)"
+check "v5 helper: touch_presence not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_device":"deviceXXXX0000","p_name":"x","p_vendor":"y"}' "$(rpc touch_presence)"
+check "v5 helper: live_json not exposed"          404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_device":"x"}' "$(rpc live_json)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

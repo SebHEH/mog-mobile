@@ -184,13 +184,15 @@ mog-mobile/
 │   ├── schema_v2.sql            Order log + one-transaction cycle close + sync-key snapshot/override calls (run after schema.sql).
 │   ├── schema_v3.sql            The per-store phone_direct switch (step 5) on the five PWA functions (run after v2).
 │   ├── schema_v4.sql            Step 6 part 1: catalog tables (vendors/areas/items/pick_rows), the SQL catalog builder, the seed, editor_direct (run after v3).
+│   ├── schema_v5.sql            Live counting (one-app Phase 1): presence, the store's name list, who saved each count, mog_snapshot2 / mog_save_counts2 (run after v4).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v4.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
+│   └── tests/                   smoke.sql … smoke_v5.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.
 │   ├── MOG_SupabaseMigration.md Design record for the count-path move to Supabase (decisions, ownership, rollout).
+│   ├── MOG_OneApp_Spec.md       Agreed spec: the ordering app and the editor become one app per store (decisions A1-A7, P1-P4, phases).
 │   └── MOG_SessionHandoff_*.md  Per-session handoffs (newest @-imported above).
 ├── .claude/
 │   └── skills/                  Repo-specific skills.

@@ -129,7 +129,8 @@ class FakeSupabase {
     const key = (slug + 'k'.repeat(64)).slice(0, 64).replace(/[^0-9a-f]/g, 'a');
     this.stores.set(slug, { key, pins: {}, catalog: null, version: null, state: null, counts: new Map(), log: [],
                             phoneDirect: false, failCount: 0, lockedUntil: 0, sessions: new Map(),
-                            editorDirect: false, profile: {}, tables: null });
+                            editorDirect: false, profile: {}, tables: null,
+                            presence: new Map(), people: new Map() });
     return key;
   }
 
@@ -175,7 +176,9 @@ class FakeSupabase {
     return s.counts.get(cycle);
   }
 
-  upsert(s, cycle, defaultVendor, rows) {
+  // by: who saved (mog_save_counts2); undefined keeps the stored one, as
+  // mog.upsert_counts leaves counted_by alone.
+  upsert(s, cycle, defaultVendor, rows, by) {
     const latest = new Map();
     for (const e of rows) {
       const vendor = String((defaultVendor != null ? defaultVendor : e.vendor) || '').trim();
@@ -184,8 +187,44 @@ class FakeSupabase {
       latest.set(vendor + '\u0001' + id, { vendor, id, onHand: toOnHand(e.onHand) });
     }
     const m = this.countsFor(s, cycle);
-    for (const [k, v] of latest) m.set(k, v);
+    for (const [k, v] of latest) {
+      const prev = m.get(k);
+      v.updatedAt = this.nowMs;
+      v.countedBy = by !== undefined ? by : (prev ? prev.countedBy : null);
+      m.set(k, v);
+    }
     return latest.size;
+  }
+
+  // mog.touch_presence + mog.live_json (schema_v5.sql).
+  touch(s, device, name, vendor) {
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(device || ''))) return;
+    const nm = String(name == null ? '' : name).trim().slice(0, 40) || null;
+    const vd = String(vendor == null ? '' : vendor).trim().slice(0, 100) || null;
+    s.presence.set(device, { name: nm, vendor: vd, seenAt: this.nowMs });
+    if (nm) {
+      const k = nm.toLowerCase();
+      const had = s.people.get(k);
+      s.people.set(k, { name: had ? had.name : nm, lastUsed: this.nowMs });
+    }
+  }
+  live(s, device) {
+    const presence = Array.from(s.presence.entries())
+      .filter(([d, p]) => d !== (device || '') && p.seenAt > this.nowMs - 90000)
+      .sort((a, b) => b[1].seenAt - a[1].seenAt)
+      .map(([, p]) => ({ name: p.name, vendor: p.vendor, secondsAgo: Math.floor((this.nowMs - p.seenAt) / 1000) }));
+    const lower = x => x.toLowerCase();
+    const people = Array.from(s.people.values()).filter(p => p.lastUsed > this.nowMs - 30 * 86400000)
+      .map(p => p.name).sort((a, b) => (lower(a) < lower(b) ? -1 : lower(a) > lower(b) ? 1 : 0));
+    const latest = new Map();
+    for (const c of this.countsIn(s, s.state ? s.state.cycleDate : null).values()) {
+      if (c.countedBy == null) continue;
+      const had = latest.get(c.vendor);
+      if (!had || c.updatedAt > had.updatedAt) latest.set(c.vendor, c);
+    }
+    const activity = Array.from(latest.values()).sort((a, b) => (a.vendor < b.vendor ? -1 : 1))
+      .map(c => ({ vendor: c.vendor, by: c.countedBy, secondsAgo: Math.floor((this.nowMs - c.updatedAt) / 1000) }));
+    return { presence, people, activity };
   }
 
   snapshot(slug, s, have, auth) {
@@ -215,7 +254,8 @@ class FakeSupabase {
     switch (fn) {
       case 'mog_sync_get_cycle':
         if (!s.state) return err('STORE_NOT_SYNCED');
-        return ok({ state: clone(s.state), counts: Array.from(this.countsIn(s, s.state.cycleDate).values()) });
+        return ok({ state: clone(s.state), counts: Array.from(this.countsIn(s, s.state.cycleDate).values())
+          .map(c => ({ vendor: c.vendor, id: c.id, onHand: c.onHand })) });
 
       case 'mog_sync_get_snapshot':
         return this.snapshot(p.p_slug, s, p.p_have_version);
@@ -359,13 +399,21 @@ class FakeSupabase {
     switch (fn) {
       case 'mog_snapshot':
         return this.snapshot(slug, s, p.p_have_version, sess.authType);
-      case 'mog_save_counts': {
+      case 'mog_snapshot2': {
+        const snap = this.snapshot(slug, s, p.p_have_version, sess.authType);
+        if (!snap.ok) return snap;
+        if (p.p_device != null) this.touch(s, p.p_device, p.p_name, p.p_vendor);
+        return ok(Object.assign(snap.data, this.live(s, p.p_device)));
+      }
+      case 'mog_save_counts':
+      case 'mog_save_counts2': {
         const vendor = String(p.p_vendor || '').trim();
         if (!vendor || vendor.length > 100) return err('Vendor is required.');
         if (!p.p_cycle_date) return err('Cycle date is required.');
         if (!Array.isArray(p.p_items)) return err('items must be an array');
         if (p.p_items.length > 1000) return err('Too many items in one save');
-        const n = this.upsert(s, p.p_cycle_date, vendor, p.p_items);
+        const by = fn === 'mog_save_counts2' ? (String(p.p_by == null ? '' : p.p_by).trim().slice(0, 40) || null) : undefined;
+        const n = this.upsert(s, p.p_cycle_date, vendor, p.p_items, by);
         const cycle = s.state && s.state.cycleDate;
         return ok({ saved: n, vendor, cycleDate: cycle, stale: cycle !== p.p_cycle_date });
       }
@@ -390,7 +438,8 @@ class FakeSupabase {
   }
 }
 
-const PHONE_FNS = { mog_login: 1, mog_snapshot: 1, mog_save_counts: 1, mog_set_override: 1, mog_set_vendor_pick: 1 };
+const PHONE_FNS = { mog_login: 1, mog_snapshot: 1, mog_save_counts: 1, mog_set_override: 1, mog_set_vendor_pick: 1,
+                    mog_snapshot2: 1, mog_save_counts2: 1 };
 
 // A fake ScriptApp that records triggers. opts.auth is this person's grant of
 // the external-request scope: 'granted' (default), 'required', or 'unavailable'

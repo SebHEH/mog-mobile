@@ -292,6 +292,98 @@ async function runSuite(srcOf, stores) {
   return { failures, stats };
 }
 
+// ---- Live counting (schema v5) ---------------------------------------------
+// Two phones on one store, through the real DIRECT CLIENT code: the refresh
+// tells Supabase who this device is and which vendor it has open, the other
+// phone sees it (and the store's names), a save records who made it, a
+// skipped name saves as nobody, and a Supabase without the v5 calls falls back
+// to the v1 calls once and for the rest of the session.
+async function liveSuite(srcOf, stores) {
+  srcOf = srcOf || SRC;
+  const server = compileStep4(srcOf);
+  const phoneCode = phoneScript(srcOf);
+  const failures = [];
+  const stats = { stores: 0, presenceSeen: 0, savedBy: 0, fallbacks: 0 };
+  const fail = (seed, scenario, what) => failures.push('seed ' + seed + ' [' + scenario + ']: ' + what);
+
+  for (let seed = 1; seed <= stores; seed++) {
+    const spec = makeStore(seed, { realistic: true });
+    const sb = new FakeSupabase(spec.now);
+    const key = sb.provision(SLUG);
+    const side = makeSide(spec, server, sb, { connected: true, switched: true, key });
+    const st = sb.stores.get(SLUG);
+    st.phoneDirect = true;
+    let vendor = null, item = null;
+    try {
+      const a = makePhone(phoneCode, sb, side), b = makePhone(phoneCode, sb, side);
+      a.run("setLiveName_('Maria')");
+      b.run("setLiveName_('Luis')");
+      if (!(await a.answer('ping')).ok || !(await b.answer('ping')).ok) { fail(seed, 'live', 'sign-in failed'); continue; }
+      for (const v of spec.vendors) {
+        const r = await a.answer('getVendorItems', { vendor: v });
+        if (r.ok && r.data.items && r.data.items.length) { vendor = v; item = r.data.items[0]; break; }
+      }
+      if (!vendor) continue;
+      stats.stores++;
+
+      // A opens the vendor; its next refresh says so, and B sees it.
+      a.run("state.currentView = 'count'; state.countContext = { vendor: " + JSON.stringify(vendor) + ' };');
+      a.forceFresh();
+      await a.answer('getDashboard');
+      if (a.calls.sb.indexOf('mog_snapshot2') < 0) fail(seed, 'live', 'phone A never sent mog_snapshot2');
+      b.forceFresh();
+      await b.answer('getDashboard');
+      const live = JSON.parse(b.run('JSON.stringify(direct.live)'));
+      if (!(live.presence || []).some(p => p.name === 'Maria' && p.vendor === vendor)) {
+        fail(seed, 'live', 'B does not see Maria on ' + vendor + ': ' + JSON.stringify(live.presence));
+      } else stats.presenceSeen++;
+      if (JSON.stringify(live.people) !== '["Luis","Maria"]') fail(seed, 'live', 'names: ' + JSON.stringify(live.people));
+
+      // A saves; B sees the count and who saved it.
+      const saved = await a.answer('saveOnHand', { vendor, items: [{ id: item.id, onHand: 3 }] });
+      if (!saved.ok) fail(seed, 'live', 'save failed: ' + saved.error);
+      if (a.calls.sb.indexOf('mog_save_counts2') < 0) fail(seed, 'live', 'the save did not use mog_save_counts2');
+      b.forceFresh();
+      const bv = await b.answer('getVendorItems', { vendor });
+      const bi = bv.ok && bv.data.items.find(i => i.id === item.id);
+      if (!bi || bi.onHand !== 3) fail(seed, 'live', 'B does not see the count: ' + JSON.stringify(bi));
+      const act = JSON.parse(b.run('JSON.stringify(direct.live.activity)'));
+      if (!act.some(x => x.vendor === vendor && x.by === 'Maria')) fail(seed, 'live', 'activity: ' + JSON.stringify(act));
+      else stats.savedBy++;
+
+      // A device that skipped its name saves as nobody.
+      const c = makePhone(phoneCode, sb, side);
+      c.run("setLiveName_('')");
+      await c.answer('ping');
+      await c.answer('saveOnHand', { vendor, items: [{ id: item.id, onHand: 4 }] });
+      const row = Array.from(sb.countsIn(st, st.state.cycleDate).values()).find(r => r.id === item.id && r.vendor === vendor);
+      if (!row || row.countedBy !== null) fail(seed, 'live', 'a skipped name saved as ' + JSON.stringify(row && row.countedBy));
+    } catch (e) { fail(seed, 'live', 'crashed: ' + e.stack); }
+
+    // Supabase without schema v5: the v1 calls, found out once.
+    if (!vendor) continue;
+    try {
+      sb.httpFor.mog_snapshot2 = 404;
+      sb.httpFor.mog_save_counts2 = 404;
+      const d = makePhone(phoneCode, sb, side);
+      d.run("setLiveName_('Ana')");
+      const answers = [await d.answer('ping')];
+      d.forceFresh(); answers.push(await d.answer('getDashboard'));
+      answers.push(await d.answer('saveOnHand', { vendor, items: [{ id: item.id, onHand: 2 }] }));
+      d.forceFresh(); answers.push(await d.answer('getDashboard'));
+      const bad = answers.find(r => !r.ok);
+      if (bad) fail(seed, 'v4 only', 'an answer failed: ' + bad.error);
+      if (d.run('direct.live.v5')) fail(seed, 'v4 only', 'still on the v5 calls');
+      if (d.calls.sb.filter(f => f === 'mog_snapshot2').length !== 1) fail(seed, 'v4 only', 'mog_snapshot2 asked ' + d.calls.sb.filter(f => f === 'mog_snapshot2').length + ' times');
+      if (d.calls.sb.indexOf('mog_save_counts2') >= 0) fail(seed, 'v4 only', 'tried mog_save_counts2 after finding out');
+      if (d.calls.sb.indexOf('mog_snapshot') < 0 || d.calls.sb.indexOf('mog_save_counts') < 0) fail(seed, 'v4 only', 'v1 calls missing: ' + d.calls.sb.join(','));
+      stats.fallbacks++;
+    } catch (e) { fail(seed, 'v4 only', 'crashed: ' + e.stack); }
+    finally { delete sb.httpFor.mog_snapshot2; delete sb.httpFor.mog_save_counts2; }
+  }
+  return { failures, stats };
+}
+
 // ---- The build placeholders -------------------------------------------------
 function placeholderProblems(html) {
   const want = ['__MOG_API_URL__', '__MOG_THEME__', '__MOG_APPLE_TOUCH_ICON__',
@@ -358,6 +450,44 @@ function placeholderProblems(html) {
     if (hits) console.log(`PASS  control "${c.name}" bites (${hits} in "${c.scenario}")`);
     else { failed++; console.log(`FAIL  control "${c.name}" did NOT bite "${c.scenario}" (${r.failures.length} other: ${r.failures[0] || '-'})`); }
   }
+  const live = await liveSuite(null, Math.min(STORES, 30));
+  const ls = live.stats;
+  console.log(`pwa_direct live: ${ls.stores} stores, presence seen ${ls.presenceSeen}, saved-by ${ls.savedBy}, v4 fallbacks ${ls.fallbacks}`);
+  if (live.failures.length) {
+    failed++;
+    console.log(`FAIL  ${live.failures.length} live-counting problem(s):`);
+    for (const f of live.failures.slice(0, 10)) console.log('      ' + f);
+  } else if (!ls.presenceSeen || !ls.savedBy || !ls.fallbacks) {
+    failed++;
+    console.log('FAIL  live counting never exercised (no vendor with items?)');
+  } else {
+    console.log('PASS  live counting: presence and names reach the other phone, saves record who, v1 fallback once');
+  }
+  const LIVE_CONTROLS = [
+    { name: 'the refresh does not say which vendor is open', scenario: 'live',
+      find: 'p_vendor: liveVendor_() }', replace: 'p_vendor: null }' },
+    { name: 'saves do not say who', scenario: 'live',
+      find: "Object.assign({ p_by: liveName_() || null }, saveParams)", replace: "Object.assign({ p_by: null }, saveParams)" },
+    { name: 'presence from the snapshot dropped', scenario: 'live',
+      find: '      direct.live.presence = data.presence;', replace: '      direct.live.presence = [];' },
+    { name: 'a 404 asks for the v5 call again every time', scenario: 'v4 only',
+      find: '        direct.live.v5 = false;' + NL, replace: '' }
+  ];
+  for (const c of LIVE_CONTROLS) {
+    let r;
+    try {
+      const planted = F.plant(SRC(T), c.find, c.replace);
+      r = await liveSuite(file => (file === T ? planted : SRC(file)), Math.min(STORES, 10));
+    } catch (e) {
+      failed++;
+      console.log(`FAIL  control "${c.name}" crashed instead of biting: ${e.message}`);
+      continue;
+    }
+    const hits = r.failures.filter(f => f.includes('[' + c.scenario + ']')).length;
+    if (hits) console.log(`PASS  control "${c.name}" bites (${hits} in "${c.scenario}")`);
+    else { failed++; console.log(`FAIL  control "${c.name}" did NOT bite "${c.scenario}" (${r.failures.length} other: ${r.failures[0] || '-'})`); }
+  }
+
   const phPlanted = placeholderProblems(F.plant(SRC(T), '/* __MOG_ORDER_MATH__ build-injected */', ''));
   if (phPlanted.length) console.log('PASS  control "the order-math marker removed" bites');
   else { failed++; console.log('FAIL  control "the order-math marker removed" did NOT bite'); }
