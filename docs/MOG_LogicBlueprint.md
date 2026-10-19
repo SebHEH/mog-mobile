@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: 232d408 (2026-10-18) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: 09b3279 (2026-10-19) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -302,10 +302,17 @@ naive rebuild silently loses.*
   currently built by hand, so standardization is a goal, not a guarantee. See growth seams.)*
 - **R23. One writer per kind of data; nothing syncs both ways.**
   - The database owns the counts, the current order day, the overrides and the order log.
-  - The store's catalog (items, pars, vendors, the pick path) is still owned by the Sheet. It is copied one way into the database after every edit and nightly.
-  - Where a store's catalog has moved to the database (its editor switched; so far only the test store), the editor writes it there directly. Every catalog change is logged (what, before and after, who, when) and can be undone; a change is refused, and nothing written, if a row it touches changed since the editor read it. *(One-app Phase 2, `docs/MOG_OneApp_Spec.md` E1-E4.)*
+  - A store's catalog (items, pars, vendors, storage areas, the pick path) is owned by its Sheet until the store moves, and copied one way into the database after every edit and nightly.
+  - A store moves its catalog to the database in one step, from its Sheet's menu: either copying the Sheet's catalog (after the parity check passes, so every phone screen stays the same; the menu doesn't enforce that check yet) or starting empty, for a store whose Sheet is an unused copy. From then on the app's editor (Manage Items, Manage Vendors, Storage Areas, Shelf to Sheet) writes the catalog there directly, on a computer. So far: TNY Rockville BOH (2026-10-19) and the test store.
+  - Every catalog change is logged (what, before and after, who, when) and can be undone; a change is refused, and nothing written, if a row it touches changed since the editor read it. *(One-app Phases 2 and 4, `docs/MOG_OneApp_Spec.md` E1-E4, S1-S5.)*
+  - After a store moves, its Sheet keeps the catalog it had and is never updated again; its catalog tools refuse and point to the app. *(Owner decision 2026-10-18, S2: no copy back.)*
   - Nothing is copied back into the Sheet except a nightly backup of the order log.
   - Why: two copies that both accept writes eventually disagree, and then nobody knows which is right. Moving the catalog's ownership to the database is the planned next step (the web editor on the database), done in one step per store so the catalog never has two owners. *(Confirmed: design record `docs/MOG_SupabaseMigration.md` §3, D9, D16; owner direction 2026-10-15.)*
+- **R27. Removing a vendor or a storage area never removes items.**
+  - Removing a vendor takes it off every list it was on and off every item's vendors; the items it supplied keep their active flag and have no primary vendor until someone picks one.
+  - Removing a storage area takes its items off the lists in that area; the items stay in the catalog.
+  - Either way the items show as Unassigned in Manage Items, ready to be placed again.
+  - Why: nothing is lost by removing a vendor or an area, because the item list already shows which items need a vendor or an area. *(Confirmed: design record D23, owner 2026-10-17. Stores still edited in their Sheet deactivate a removed vendor's items instead.)*
 - **R24. A count belongs to its item, vendor and day, not to a row on a list.**
   - If the same item appears twice on one vendor's route, both rows share one count.
   - Two phones counting different items of the same vendor never overwrite each other.
@@ -475,7 +482,8 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | Count engine to recipients | Out | Recap email ("today's suggested order") | Once per order cycle | The session still records; recipients do not get the email. Desired: retry on failure, still capped at once per cycle (Q-INT-1). |
 | Recipients to vendors | Out (outside MOG) | The actual purchase order | Per order | Not a MOG boundary; MOG's job ends at the recap. Documented so a rebuilder does not try to place orders from MOG. |
 | Count engine and per-store Sheet | Both | Catalog reads and writes (the editor), the nightly order-log backup | Per editor action, nightly | Catalog edits wait; counting is unaffected (it runs on the database). |
-| **Future:** MarginEdge | In (planned) | Item catalog to seed a store's item list, plus item / waste cost | TBD | Not built. Highest-leverage integration: reduces the manual store-setup labor. See growth seams. |
+| MarginEdge | In | Vendor Items export (CSV), uploaded in the editor: vendors first, then the items they sell. Each product becomes one item under its MarginEdge name; the vendor bought from most recently is its primary. Items arrive with no par, pack or storage area. | Once, when a store's catalog is set up (stores whose editor is on the database) | A bad or wrong file is refused before anything is saved; one import is one logged change, undoable. Not yet: pack sizes (MarginEdge's API has them, the CSV doesn't) and cost. |
+| Web editor and database | Both | The catalog tables, the change log, saves and Undo | Per editor action, on a store whose catalog moved (R23) | Editor unusable until back; each save is all-or-nothing. |
 | **Future:** Toast (POS) | In (planned) | Sales / usage to inform pars | TBD | Not built; see growth seams. |
 
 ### Configuration and constants
@@ -504,9 +512,10 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
   Manage Vendors is the existing partial step toward this, and it is meant to draw from MarginEdge
   (below) rather than being typed in by hand.
 - **Seed the catalog from MarginEdge.** Beyond cost, MarginEdge should be able to populate a store's
-  item list, so onboarding a store becomes "pull the items" instead of "type in the items." This is
-  the same data path as cost/sales below and is the highest-leverage integration for reducing setup
-  labor. The Item entity is where seeded items land; the concept-standardization model (R22) is what
+  item list, so onboarding a store becomes "pull the items" instead of "type in the items." The first
+  version is built (2026-10-18): the Vendor Items CSV imported in the editor. Next steps are the API
+  (pack sizes, no export step) and cost. This is the same data path as cost/sales below and is the
+  highest-leverage integration for reducing setup labor. The Item entity is where seeded items land; the concept-standardization model (R22) is what
   they should conform to.
 - **Standardize the catalog per concept (R22).** Every store of a concept should share one item list,
   with par, cadence, and vendor selection varying per store. The natural shape is a per-concept master

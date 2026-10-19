@@ -8,6 +8,28 @@ If this doc and `CLAUDE.md` conflict on a specific fact, `CLAUDE.md` wins for st
 
 ## Pinned focus
 
+**TNY Rockville BOH edits its catalog in the app; Phase 4's catalog tools and Import from MarginEdge are live (2026-10-18 → 10-19). 3 commits (`62a356d`→`09b3279`), all pushed. Read `docs/MOG_OneApp_Spec.md` (M1-M5, S1-S5) before touching the editor.**
+
+- **Import from MarginEdge:**
+  - Upload the Vendor Items CSV (`template/editor/meImport.js`, on Manage Items).
+  - Step 1 vendors, step 2 items; one logged, undoable save.
+  - Items arrive with no par, pack or storage area.
+- **Phase 4 tools:**
+  - Manage Vendors, Storage Areas and Shelf to Sheet run on Supabase, gated against `Vendors.gs` / `PickPath.gs` (`catalog_edit`).
+  - Area renames keep their pick rows (schema v8 `rename` step).
+  - Removing a vendor keeps its items active (R27).
+- **The switch:** 📱 Mobile API → **Move the editor to the app** (start empty, or copy the Sheet's catalog).
+  - **The copy path doesn't run `test_catalogTablesParity` yet: run it first.**
+  - After a store moves, its Sheet is never updated again (S2, no copy back), and its catalog tools refuse and point to the app.
+- **Live:**
+  - schema v8 (smoke 18/18, check_api 43/43);
+  - Apps Script on all 10 stores + template;
+  - app v0.21.0 / cache v61 (Settings → Editor on a computer where the editor has moved);
+  - **`tnyr` switched, starting empty**: editor at `sebheh.github.io/mog-mobile/tnyr/editor/`, not yet set up.
+  - `tnyrf` and every other store are still edited in their Sheets.
+- **Tests:** 18 gates (new: `me_import`).
+- **Detail:** `docs/MOG_SessionHandoff_2026_10_19.md`.
+
 **One app per store: Phases 1 (live counting) and 3 (phone quick edits) LIVE on all 10 stores; Phase 2 (Manage Items on Supabase) built and tested on `rprfotest` only (2026-10-18, later session). 6 commits (`f2ac2a5`→`232d408`), all pushed. Read `docs/MOG_OneApp_Spec.md` before touching the app or the editor.**
 
 - **Live counting everywhere (v0.19.1):** a phone says which vendor it has open the moment it opens or leaves one (and on return from the lock screen); the refresh is every 10s. Rule R25.
@@ -157,6 +179,16 @@ _Earlier the same day (later session) — superseded context:_ Two shipped + #4 
 **2026-05-28:** Five wins (StorageAreas draft mode `ed49a62`, PWA transition-floor cut `6f9197f`, PWA fetch timeout `ba30b8e`, chunked Order History `47a1966`, Recalibrate Vendor Pars tool) — all live; `CACHE_VERSION` v8→v11. See the Recent-changes table below + handoffs for detail. *Recalibrate Vendor still to be run per-vendor at rpr at Sebastian's pace.*
 
 ### Next-session candidates (impact-ranked)
+
+000000. **Order guide / editor switch on a computer, then the rest of Phase 4** (TOP).
+   - Sebastian's next ask: on a computer, move between the order guide and the editor easily. **Start with a mockup artifact of the design options** (shared top strip vs a button in each header), then build the one he picks.
+   - Decided: once the switch exists, remove the app's Settings → Editor row and the editor's "← Ordering" button.
+   - Set up Rockville BOH in its editor: Import from MarginEdge, delivery days, areas, item areas and pars.
+   - Make "copy the Sheet's catalog" refuse unless `test_catalogTablesParity` passes, before any store copies.
+   - Port History (order log backfill, par flags in shared JS), Health, Recipients and People before rprfo moves.
+   - Rockville FOH moves when Sebastian says (start empty + MarginEdge).
+
+*(Done 2026-10-18 → 10-19: Import from MarginEdge, Manage Vendors / Storage Areas / Shelf to Sheet on Supabase, schema v8, the switch, and Rockville BOH's move. That replaces item 00000's Phase 4 port of those three tools.)*
 
 00000. **Check the first closes with quick edits, then Phase 4** (TOP).
    - Once KMs use quick edits, check a store's recap email and order log carry them.
@@ -332,6 +364,7 @@ Most recent first. Trim entries older than ~5 sessions when this list gets unwie
 
 | Date | Session | Outcome |
 |---|---|---|
+| 2026-10-18 → 10-19 | MarginEdge import, Phase 4 editor tools, Rockville BOH moves | **3 commits (`62a356d`→`09b3279`), all pushed; schema v8 installed; Apps Script on all 10 + template (`--redeploy`, canary rprfo); app v0.21.0 / cache v61.**<br>- **Import from MarginEdge** (M1-M5): the Vendor Items CSV in the Supabase editor, vendors then items, one undoable save; gate `me_import`.<br>- **Phase 4 tools** (S1, S4): Manage Vendors, Storage Areas, Shelf to Sheet ported to `catalogEdit.js`, gated against `Vendors.gs` / `PickPath.gs`; two pages read their data at start-up.<br>- **Schema v8:** the area `rename` step (Undo renames back) and `mog_sync_switch_editor`; saves ordered so the database's links hold (R27: removing a vendor keeps its items).<br>- **The switch** (S2, S3): Move the editor to the app; no copy back; a moved store's Sheet tools refuse and point to the app; `stores.json` `"editor": "supabase"` publishes `/<slug>/editor/`.<br>- **Rockville BOH (`tnyr`) moved, starting empty** (S5); FOH stays on the Sheet.<br>- **Blueprint:** R23 updated, new R27, MarginEdge integration row.<br>Detail: `docs/MOG_SessionHandoff_2026_10_19.md`. |
 | 2026-10-18 (later) | Live counting everywhere, Phase 2 editor, Phase 3 quick edits | **6 commits (`f2ac2a5`→`232d408`), all pushed; app v0.20.0 / cache v60 on all 10 stores; `OrderMath.gs` on all 10 + template (`--redeploy`, every `/exec` healthy).**<br>- **Phase 1 everywhere (v0.19.1):** instant heartbeat on opening/leaving a vendor and on return from the lock screen; 10s refresh. R25.<br>- **Phase 2 (schema v6):** `catalogEdit.js` (gated against `Items.gs`, 3,000 random steps identical) + `host.js` (the unchanged `ManageItems.html` as a static page) + change log / Undo / CONFLICT; tested by Sebastian on `rprfotest` (open 353 ms, save 596 ms, Undo 296 ms).<br>- **Phase 3 (schema v7):** "just today" par and adds in the snapshot, applied in `orderInputsFromSnapshot_`; "from now on" where Supabase owns the catalog; Needs review in the editor. R26.<br>- **Gates:** 17 (new: catalog_edit, editor_host, quick_edits). smoke_v6 + smoke_v7 all PASS, check_api 42/42.<br>Detail: `docs/MOG_SessionHandoff_2026_10_18.md` (Later-session block). |
 | 2026-10-17 → 10-18 | Catalog tables, Copy order, the one-app spec, live counting | **10 commits (`ffe9bf7`→`c13a8cb`), all pushed.**<br>- **Step 6 part 1:** schema v4 (catalog tables, SQL builder, seed, `editor_direct` off, the `rprfotest` copy); the parity gate (`test_catalogTablesParity`) passes on 7 of 10 stores; Health Check repairs `restore_areas` + `fix_repeated_ids`; Move turns `phone_direct` on; 4 Health Supabase rows; D19-D23.<br>- **Copy order for email** on every store (v0.18.3): delivery day, store address (`stores.json` + the sixth placeholder), subject ready for a future one-click send.<br>- **The one-app spec** (`docs/MOG_OneApp_Spec.md`, A1-A7, P1-P4).<br>- **Phase 1 live counting**, schema v5 (smoke 25/25, check_api 29/29): presence, the name list, who saved, a 15s refresh, autosave; **rprfo only** (v0.19.0).<br>- **Gates:** 14 (new: catalog_parity, health_supabase, order_copy, live_counting).<br>Detail: `docs/MOG_SessionHandoff_2026_10_18.md`. |
 | 2026-10-15 → 10-17 | Supabase migration steps 1-5 + D18 security fixes | **12 commits (`a401999`→`e37ef98`), all pushed; backend on all 10 stores + template; PWA v0.18.0 / cache v54.**<br>- **Measured first:** `/exec` costs ~1.7s per request; a Supabase read takes 0.39s.<br>- **Schema v1-v3** (Sebastian ran all; smoke tests 40/40, 21/21, 20/20; public-key check 17/17).<br>- **Shared order math:** `OrderMath.gs`, gated by the equivalence, phone-parity and purity tests.<br>- **Step 4:** cycles close at 3:30 AM in Supabase in one transaction; LOG_ORDERS gets a nightly backup; `/exec` serves moved stores from Supabase (`DbApi.gs`).<br>- **Moving a store:** one menu item plus `provision_stores.sql`.<br>- **Step 5:** phones go direct behind `phone_direct`; `build.py` injects `OrderMath.gs` and the Supabase config.<br>- **Live:** all 10 stores moved and `phone_direct` on (10-17); rprfo's first close sent its recap.<br>- **D18:** 51 functions made private (PIN bypass closed); vendor removal and the Notes erase fixed; canary rprfo, then all stores.<br>- **Step 6** designed and measured, not built.<br>- **New:** conventions #8 and #9, invariant #10, 10 Node gates.<br>- **Blueprint:** bumped to `e37ef98` (R13, R14, R15; new R23, R24).<br>Detail: `docs/MOG_SessionHandoff_2026_10_17.md`. |
