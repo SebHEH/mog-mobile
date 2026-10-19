@@ -23,6 +23,10 @@
 //
 // It also adds the Changes panel (the store's change log, with Undo), the
 // Needs review panel, and the Import from MarginEdge button (meImport.js).
+//
+// On a computer these pages run inside the app (?embed=1, a frame beside the
+// app's sidebar; docs/MOG_OneApp_Spec.md U2): the app holds the session and
+// the language, and a page opened by itself there goes to the app.
 (function () {
   'use strict';
 
@@ -31,10 +35,40 @@
   const PAGE = window.MOG_EDITOR_PAGE || 'items';
   // The pages in the app, by the ?page= name the Apps Script editor uses.
   const PAGES = { editor: 'index.html', items: 'items.html', vendors: 'vendors.html', areas: 'areas.html', pickpath: 'pickpath.html',
-                  history: 'history.html', healthcheck: 'healthcheck.html' };
+                  history: 'history.html', healthcheck: 'healthcheck.html', changes: 'changes.html' };
+
+  // Inside the app (docs/MOG_OneApp_Spec.md U2): on a computer the app is the
+  // one page that loads, and this page runs in a frame beside its sidebar
+  // (<page>.html?embed=1). The app (window.MOG_SHELL) holds the session and
+  // the language. EditorShell reads MOG_EMBED to drop its own chrome.
+  const SHELL = (function () {
+    try {
+      if (window.parent === window || new URLSearchParams(location.search).get('embed') !== '1') return null;
+      return window.parent.MOG_SHELL || null;   // same site, so same origin
+    } catch (e) { return null; }
+  })();
+  window.MOG_EMBED = !!SHELL;
+  if (SHELL) window.MOG_EMBED_OPEN = function (page) { SHELL.open(page); };   // EditorShell's "← Editor home"
+  // The app's name for this page (its #<route>).
+  const ROUTE = (function () {
+    if (PAGE !== 'home') return PAGE;
+    let want = null;
+    try { want = new URLSearchParams(location.search).get('page'); } catch (e) { want = null; }
+    return (want && want !== 'editor' && PAGES[want]) ? want : 'overview';
+  })();
+  // An editor page opened by itself on a computer (a bookmark, an old link)
+  // goes to the app, which opens it beside the sidebar.
+  if (!SHELL && window.parent === window && typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: fine) and (min-width: 900px)').matches) {
+    location.replace('../#' + ROUTE);
+    return;
+  }
+  if (SHELL) {
+    try { localStorage.setItem('mog_edit_lang', SHELL.lang() === 'es' ? 'es' : 'en'); } catch (e) { /* the page opens in English */ }
+  }
 
   // Editor Home reached as index.html?page=<name>: open that page instead.
-  if (PAGE === 'home' && typeof location !== 'undefined' && location.search) {
+  if (PAGE === 'home' && typeof location !== 'undefined' && location.search && !SHELL) {
     const params = new URLSearchParams(location.search);
     const want = params.get('page');
     if (want && want !== 'editor' && PAGES[want]) {
@@ -243,15 +277,38 @@
     editorPing: async function (token) {
       const r = await rpc('mog_editor_get', { p_token: String(token || '') });
       if (r.ok && adopt(r.data)) { H.token = token; return { ok: true }; }
+      // Inside the app, a session that ran out is the app's to renew: it
+      // signs in again with the PIN it holds, so this page never asks.
+      if (SHELL) {
+        const fresh = await SHELL.token(String(token || ''));
+        if (fresh && fresh !== token) {
+          const again = await rpc('mog_editor_get', { p_token: fresh });
+          if (again.ok && adopt(again.data)) {
+            H.token = fresh;
+            try { localStorage.setItem('mog_edit_token', fresh); } catch (e) { /* the app hands it over again */ }
+            return { ok: true };
+          }
+        }
+      }
       return { ok: false };
     },
     webedit_call: async function (token, fn, args) {
       if (fn === 'pushCatalogNow') return { __mogEnvelope: 1, result: null };   // Supabase rebuilds it on every save
+      if (SHELL && H.token) token = H.token;   // the session the app renewed, not the page's first one
       if (!H.tables || token !== H.token) {
         if (!token || !(await SERVER.editorPing(token)).ok) throw new Error('SESSION_EXPIRED');
       }
       const own = Object.prototype.hasOwnProperty.call(HOST_CALLS, fn) ? HOST_CALLS[fn] : null;
-      return { __mogEnvelope: 1, result: own ? await own(args || []) : await callTool(fn, args || []), pushCatalog: false };
+      const run = () => (own ? own(args || []) : callTool(fn, args || []));
+      let result;
+      try {
+        result = await run();
+      } catch (e) {
+        // Ran out mid-session inside the app: renew through the app, once.
+        if (!SHELL || !e || e.message !== 'SESSION_EXPIRED' || !(await SERVER.editorPing(H.token)).ok) throw e;
+        result = await run();
+      }
+      return { __mogEnvelope: 1, result: result, pushCatalog: false };
     }
   };
 
@@ -299,7 +356,7 @@
           setTimeout(function () { cb({ parameter: parameter, hash: window.location.hash.replace(/^#/, '') }); }, 0);
         }
       },
-      host: { close: function () { window.location.href = '../'; } }
+      host: { close: function () { if (SHELL) SHELL.open('overview'); else window.location.href = '../'; } }
     }
   };
 
@@ -333,6 +390,7 @@
   ];
 
   function mountRail() {
+    if (SHELL) { mountEmbed(); return; }   // the app's sidebar is the rail
     if (document.getElementById('mge-rail') || !document.body) return;
     const css = document.createElement('style');
     css.textContent =
@@ -387,6 +445,29 @@
     renderRail();
   }
 
+  // Inside the app: the app's title font, and a link to another editor page
+  // (?page=<name>, Editor Home's tiles and the tools' "Open ... →") opens it
+  // beside the sidebar instead of loading over the app.
+  let embedMounted = false;
+  function mountEmbed() {
+    if (embedMounted || !document.body) return;
+    embedMounted = true;
+    const font = document.createElement('link');
+    font.rel = 'stylesheet';
+    font.href = 'https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap';
+    document.head.appendChild(font);
+    document.addEventListener('click', function (e) {
+      const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (!a) return;
+      let want = null;
+      try { want = new URL(a.getAttribute('href'), location.href).searchParams.get('page'); } catch (err) { want = null; }
+      if (!want) return;
+      e.preventDefault();
+      e.stopPropagation();
+      SHELL.open(want === 'editor' ? 'overview' : want);
+    }, true);
+  }
+
   function renderRail() {
     for (const it of RAIL_ITEMS) {
       const a = it.id && document.querySelector('#mge-rail a[data-rail="' + it.id + '"] span');
@@ -420,12 +501,19 @@
       'body.mge-host-raised #mge-host-bar{bottom:84px}body.mge-host-raised .mge-panel{bottom:130px}';
     document.head.appendChild(css);
     if (PAGE === 'areas' || PAGE === 'pickpath') document.body.classList.add('mge-host-raised');
+    // Inside the app, Changes is a page in the sidebar (spec U8) and Import
+    // from MarginEdge sits by Manage Items' title; the bar keeps only
+    // ⚑ Needs review (it moves to the Overview later), along the left edge.
+    if (SHELL) css.textContent += '#mge-host-bar{left:16px}.mge-panel{left:16px}' +
+      '#mge-import-btn.mge-title-import{order:2;margin-left:auto;border:1px solid #d0d4da;background:#fff;color:#222;border-radius:10px;' +
+      'padding:10px 16px;font:600 14px Inter,Arial,sans-serif;cursor:pointer}#mge-import-btn.mge-title-import:hover{background:#f4f5f7}';
     const bar = document.createElement('div');
     bar.id = 'mge-host-bar';
     const changesBtn = document.createElement('button');
     changesBtn.id = 'mge-changes-btn';
     changesBtn.type = 'button';
     changesBtn.onclick = function () { togglePanel('mge-changes'); };
+    if (SHELL) changesBtn.hidden = true;
     const reviewsBtn = document.createElement('button');
     reviewsBtn.id = 'mge-reviews-btn';
     reviewsBtn.type = 'button';
@@ -437,7 +525,9 @@
       importBtn.id = 'mge-import-btn';
       importBtn.type = 'button';
       importBtn.onclick = openImport;
-      bar.appendChild(importBtn);
+      const title = SHELL && document.querySelector('.web-titlebar .web-title');
+      if (title) { importBtn.className = 'mge-title-import'; title.appendChild(importBtn); }
+      else bar.appendChild(importBtn);
     }
     document.body.appendChild(bar);
     for (const id of ['mge-changes', 'mge-reviews']) {
@@ -467,8 +557,16 @@
     const importBtn = document.getElementById('mge-import-btn');
     if (importBtn) importBtn.textContent = '⬇ ' + tr('Import from MarginEdge', 'Importar de MarginEdge');
     renderReviews();
+    // The Changes page (changes.html, spec U8): the whole log, on the page.
+    const page = document.getElementById('mge-changes-page');
+    if (page) fillChanges(page, false);
     if (panel.hidden) return;
-    let html = '<h3>' + esc(tr('Catalog changes', 'Cambios al catálogo')) + '</h3>';
+    fillChanges(panel, true);
+  }
+
+  // The change log, newest first, Undo on each change not yet undone.
+  function fillChanges(el, withTitle) {
+    let html = withTitle ? '<h3>' + esc(tr('Catalog changes', 'Cambios al catálogo')) + '</h3>' : '';
     if (!H.changes.length) html += '<div class="mge-ch-empty">' + esc(tr('No changes yet.', 'Todavía no hay cambios.')) + '</div>';
     for (const c of H.changes) {
       const undone = !!c.undoneBy;
@@ -479,8 +577,8 @@
         (undone ? '' : '<button type="button" data-undo="' + esc(c.id) + '">' + esc(tr('Undo', 'Deshacer')) + '</button>') +
         '</div>';
     }
-    panel.innerHTML = html;
-    panel.querySelectorAll('button[data-undo]').forEach(function (b) {
+    el.innerHTML = html;
+    el.querySelectorAll('button[data-undo]').forEach(function (b) {
       b.onclick = function () { askUndo(Number(b.getAttribute('data-undo'))); };
     });
   }

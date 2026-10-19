@@ -58,7 +58,10 @@ EDITOR_PAGES  = {'index.html':    ('EditorHome', 'Editor', 'home'),
                  'areas.html':    ('StorageAreas', 'Storage Areas', 'areas'),
                  'pickpath.html': ('ReorderPickPath', 'Shelf to Sheet', 'pickpath'),
                  'history.html':  ('OrderHistory', 'Order History', 'history'),
-                 'healthcheck.html': ('HealthCheck', 'Store Health Check', 'healthcheck')}
+                 'healthcheck.html': ('HealthCheck', 'Store Health Check', 'healthcheck'),
+                 # Pages only the app's editor has (no Apps Script twin) come
+                 # from template/editor/ ('editor:<name>').
+                 'changes.html':  ('editor:Changes', 'Changes', 'changes')}
 # Scriptlets the static pages start empty; host.js fills them from Supabase
 # after sign-in, before each page's start-up function reads them.
 EDITOR_EMPTY  = {'vendorListJson': '[]', 'vendorTableJson': '[]', 'areaListJson': '[]', 'pickDataJson': '{}'}
@@ -234,8 +237,15 @@ def render_editor_page(page, title, name, boot, sb_cfg):
     """apps-script/<page>.html as a static page. Its scriptlets are filled in
     the way the /exec editor fills them (include() inserts a file as-is); the
     data ones (EDITOR_EMPTY) start empty because host.js fills them from
-    Supabase before the page starts. Any other scriptlet fails the build."""
-    path = os.path.join(APPS_SCRIPT, page + '.html')
+    Supabase before the page starts. Any other scriptlet fails the build.
+    'editor:<name>' is template/editor/<name>.html, a page only the app's
+    editor has; its includes still come from apps-script/."""
+    if page.startswith('editor:'):
+        page = page[len('editor:'):]
+        path = os.path.join(EDITOR_SRC, page + '.html')
+    else:
+        path = os.path.join(APPS_SCRIPT, page + '.html')
+    src = os.path.relpath(path, ROOT).replace(os.sep, '/')
     with open(path, 'r', encoding='utf-8') as f:
         text = f.read()
 
@@ -245,22 +255,22 @@ def render_editor_page(page, title, name, boot, sb_cfg):
         if inc:
             inc_path = os.path.join(APPS_SCRIPT, inc.group(1) + '.html')
             if not os.path.exists(inc_path):
-                fail(f"apps-script/{page}.html includes {inc.group(1)}, which doesn't exist")
+                fail(f"{src} includes {inc.group(1)}, which doesn't exist")
             with open(inc_path, 'r', encoding='utf-8') as f:
                 return f.read()
         if expr in EDITOR_EMPTY:
             return EDITOR_EMPTY[expr]
         if expr == 'webBootJson':
             return js_json(boot)
-        fail(f"apps-script/{page}.html: no static value for the scriptlet <?!= {expr} ?>")
+        fail(f"{src}: no static value for the scriptlet <?!= {expr} ?>")
 
     if text.count('<?') != len(SCRIPTLET_RE.findall(text)):
-        fail(f"apps-script/{page}.html has a scriptlet form the static build doesn't handle (only <?!= ... ?>)")
+        fail(f"{src} has a scriptlet form the static build doesn't handle (only <?!= ... ?>)")
     # host.js goes first in <head>, before the page's own scripts: the PIN
     # gate calls google.script.run as soon as the page parses. (The page's
     # own <head>, not one an included file mentions.)
     if text.count('<head>') != 1:
-        fail(f"apps-script/{page}.html: expected exactly one <head>")
+        fail(f"{src}: expected exactly one <head>")
     # The charset and viewport come from HtmlService's response on /exec
     # (addMetaTag); a static page has to say them itself.
     head = ('<head>\n    <meta charset="utf-8">'

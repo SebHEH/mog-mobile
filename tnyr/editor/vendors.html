@@ -525,7 +525,8 @@
   /* Prominent ? next to the current page (the MVS .vh-help look): a filled
      accent circle with a soft halo, relocated out of the band by setBreadcrumb_.
      !important beats each tool's own .help-btn base rules. */
-  body.mge-web .mge-crumb .mge-crumb-help {
+  body.mge-web .mge-crumb .mge-crumb-help,
+  body.mge-embed .web-title .mge-crumb-help {
     display: inline-flex !important; align-items: center; justify-content: center;
     width: 25px !important; height: 25px !important; margin: 0 0 0 8px !important; padding: 0 !important;
     border: none !important; border-radius: 50% !important;
@@ -534,6 +535,18 @@
     box-shadow: 0 0 0 3px var(--web-accent-soft, #eef0f4) !important; transition: transform .12s, box-shadow .12s;
   }
   body.mge-web .mge-crumb .mge-crumb-help:hover { transform: scale(1.12); box-shadow: 0 0 0 4px var(--web-accent-soft, #eef0f4) !important; }
+
+  /* Inside the app (static editor only, window.MOG_EMBED; docs/MOG_OneApp_Spec.md
+     U2): the page sits in a frame beside the app's sidebar, which is the
+     navigation and holds the language. So no band, breadcrumb or EN/ES here;
+     the page title is the header, with the ? beside it; and the sign-in check
+     is a blank page for a moment, not a card. */
+  body.mge-embed .mge-web-hd, body.mge-embed .mge-crumb, body.mge-embed .lang-btn { display: none !important; }
+  body.mge-embed .web-titlebar { display: block; padding: 28px 24px 4px; }
+  body.mge-embed .web-title { display: flex; align-items: center; gap: 4px; font-family: 'Archivo Black', 'Helvetica Neue', Arial, sans-serif; font-size: 28px; font-weight: 400; letter-spacing: -0.01em; color: #1f1e1b; }
+  body.mge-embed .web-title .mge-crumb-help { margin-left: 12px !important; }
+  .mge-overlay.mge-quiet { background: #fff; }
+  .mge-overlay.mge-quiet .mge-card { display: none !important; }
 
   /* ── Shared web-app header band (shown only when a tool calls mgeMountWebChrome_) ── */
   .mge-web-hd { display: none; }
@@ -1592,6 +1605,13 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
   // The home never calls this, so it keeps its own header.
   function mgeMountWebChrome_() {
     document.body.classList.add('mge-web');
+    if (window.MOG_EMBED) {
+      // Inside the app: the band stays hidden; the ? goes next to the title
+      // (setBreadcrumb_).
+      document.body.classList.add('mge-embed');
+      MGE_HELPBTN = document.querySelector('.help-btn');
+      return;
+    }
     var hd = mgeEl_('mge-web-hd');
     if (!hd) return;
     hd.removeAttribute('hidden');
@@ -1619,6 +1639,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
 
   function mgeShow_(which) {
     mgeEl_('mge-overlay').removeAttribute('hidden');
+    mgeEl_('mge-overlay').classList.toggle('mge-quiet', !!window.MOG_EMBED && which === 'checking');
     mgeEl_('mge-device').hidden = (which !== 'device');
     var chk = mgeEl_('mge-checking'); if (chk) chk.hidden = (which !== 'checking');
     mgeEl_('mge-pin-card').hidden = (which !== 'pin');
@@ -1793,6 +1814,8 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
   // Base "Close": no host dialog in the web app, so return to the editor home;
   // in the Sheet, close the modal dialog.
   function mgeEditorClose_() {
+    // Inside the app: back to the Manage home beside the sidebar (host.js).
+    if (window.MOG_EMBED && typeof window.MOG_EMBED_OPEN === 'function') { window.MOG_EMBED_OPEN('overview'); return; }
     if (window.MOG_WEB) { window.open((window.BASE_URL || '') + '?page=editor', '_top'); }
     else { google.script.host.close(); }
   }
@@ -1946,6 +1969,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     mgeWireCrumbGuard_();   // wire the leave-guard interceptor once
     if (!ancestors || !ancestors.length) { bar.setAttribute('hidden', ''); bar.innerHTML = ''; return; }
     var es = (mgeGetLang_() === 'es');
+    if (window.MOG_EMBED) { mgeEmbedTitle_(current, es); return; }
     var h = '';
     for (var i = 0; i < ancestors.length; i++) {
       var a = ancestors[i];
@@ -1961,6 +1985,26 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     if (MGE_HELPBTN) { MGE_HELPBTN.className = 'help-btn mge-crumb-help'; bar.appendChild(MGE_HELPBTN); }
     bar.removeAttribute('hidden');
     mgeDecorateLinks_();   // carry the session token onto the freshly-built crumb links
+  }
+
+  // Inside the app the page title is the header: the page's own titlebar if
+  // it has one, else one made from the breadcrumb's current name. The ? goes
+  // beside it.
+  function mgeEmbedTitle_(current, es) {
+    var title = document.querySelector('.web-titlebar .web-title');
+    if (!title) {
+      var head = document.createElement('div');
+      head.className = 'web-titlebar mge-embed-head';
+      title = document.createElement('h1');
+      title.className = 'web-title';
+      head.appendChild(title);
+      var bar = mgeEl_('mge-crumb');
+      bar.parentNode.insertBefore(head, bar.nextSibling);
+    }
+    if (title.parentNode.className.indexOf('mge-embed-head') >= 0) {
+      title.textContent = es ? (current.es || current.en) : current.en;
+    }
+    if (MGE_HELPBTN) { MGE_HELPBTN.className = 'help-btn mge-crumb-help'; title.appendChild(MGE_HELPBTN); }
   }
 
 

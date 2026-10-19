@@ -132,6 +132,24 @@ Sebastian picked from mockups (top strip, a button in each header, a side rail; 
 | L3 | Clicking another vendor while counting | **Save, then switch**: the open vendor's counts save quietly (the autosave's save); a failed save keeps it open. |
 | L4 | Which stores, and when | **Every store on a computer** (a mouse and a window at least 900px wide), built **before** the History, Health, Recipients and People ports (A4 and A7 had it last); rprfo's switch waits for it. |
 
+### Computer redesign decisions (2026-10-19, latest)
+
+Sebastian found the editor's home and header dated next to the order guide, the computer sign-in still phone-shaped, and two flashes when switching: the order guide's PIN screen (editor → order guide) and the editor's "Checking your session" card (order guide → editor). Mockups (Overview, Today, Items, two sign-ins): https://claude.ai/artifact/5AzTC1GpAYepis3kPrxzHr
+
+| # | Decision | Chosen |
+|---|---|---|
+| U1 | Navigation on a computer | **One sidebar** replaces the rail: the store's logo and name at the top; **Order guide** (Today, Order history); **Manage** (Overview, Items, Vendors, Storage areas, Shelf to Sheet, Health check), only where the store's editor has moved; Changes, Settings and EN/ES at the bottom. No Editor button: the Manage tools are in the sidebar. The editor's tile home and its colored header band go. Phones don't change. |
+| U2 | How the Manage pages run | **One shell**: the order guide page stays loaded and draws the sidebar; a Manage page opens in its main area, its own code unchanged apart from its header. Switching never reloads the app, so neither flash can happen. |
+| U3 | History and Order History | **One entry, Order history**: on a computer where the editor has moved it opens the editor's Order History (Recent, Item history, Vendor summary); elsewhere it's the app's History. Phones keep their History tab. |
+| U4 | The Manage home | **Overview**, as in the mockup: today's order, item / vendor / area counts, a setup checklist until every step is done, Needs attention (phone edits to review, Par Review, the Health Check) and Recent changes with Undo. |
+| U5 | Signing in on a computer | **A brand panel**: the concept's color and big logo with the store name on the left, the PIN form on the right. Phones keep today's PIN screen. |
+| U6 | The store's mark | **The concept's circular logo** (Roll Play, Teas'n You and ĂN have one in the brand kit). Lei'd has none yet, so its initials stay until one exists. |
+| U7 | How it ships | **Three phases**, each pushed and checked on tnyr before the next: (1) the shell, the sidebar and the Manage pages inside it; (2) the Overview; (3) the order guide's pane headers, the computer sign-in and no PIN screen while a saved session signs back in. |
+| U8 | The change log | **Changes is its own Manage page** in the sidebar (the whole log, Undo on each row); the Overview shows the last few. Inside the app the floating ↶ Changes button goes. |
+| U9 | The setup checklist's Shelf to Sheet step | **Done after its first save** (a Shelf to Sheet save in the change log). The card hides once all five steps are done. |
+
+How it works: on a computer the order guide page is the only page that loads. Each Manage page is the editor's own page (`editor/<page>.html?embed=1`) in a frame beside the sidebar: host.js takes the app's session (and asks the app for a fresh one instead of showing its own PIN), and EditorShell drops its band, breadcrumb and "Checking your session" card there. A bookmarked editor page opened on a computer goes to the app at `#<page>`. `/exec` and the Sheet dialogs are unchanged.
+
 ### Phase 4 port decisions (2026-10-19, later)
 
 | # | Decision | Chosen |

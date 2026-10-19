@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- The change log as a page (docs/MOG_OneApp_Spec.md U8): every catalog
+       change, newest first, with Undo. Only in the app's editor (there is no
+       Apps Script twin); host.js fills #mge-changes-page after sign-in. -->
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', Arial, Helvetica, sans-serif; margin: 0; color: #1f1e1b; background: #fff; }
+    .lang-en .es, .lang-es .en { display: none; }
+    #chg-wrap { max-width: 760px; margin: 0 auto; padding: 4px 24px 40px; }
+    #mge-changes-page { margin-top: 14px; border: 1px solid #e6e4dd; border-radius: 14px; overflow: hidden; background: #fff; }
+    #mge-changes-page .mge-ch { display: flex; gap: 12px; align-items: center; padding: 14px 18px; border-bottom: 1px solid #efeee9; }
+    #mge-changes-page .mge-ch:last-child { border-bottom: none; }
+    #mge-changes-page .mge-ch-main { flex: 1; min-width: 0; }
+    #mge-changes-page .mge-ch-label { font-size: 15px; font-weight: 600; word-wrap: break-word; }
+    #mge-changes-page .mge-ch-meta { font-size: 13px; color: #5f5e5a; margin-top: 3px; }
+    #mge-changes-page .mge-ch.undone .mge-ch-label { color: #8a8a85; text-decoration: line-through; font-weight: 500; }
+    #mge-changes-page button { height: 36px; padding: 0 14px; border: 1px solid rgba(0,0,0,0.18); border-radius: 8px; background: #fff; color: #1f1e1b; font: 600 13px Inter, Arial, sans-serif; cursor: pointer; }
+    #mge-changes-page button:hover { background: #f5f4ed; }
+    #mge-changes-page .mge-ch-empty { padding: 18px; color: #5f5e5a; }
+  </style>
+</head>
+<body class="lang-en">
+  <!-- Boot vars FIRST — EditorShell (included below) reads WEB_BOOT/MOG_WEB. -->
+  <script>
+    var WEB_BOOT  = <?!= webBootJson ?>;
+    var MOG_WEB   = !!(WEB_BOOT && WEB_BOOT.web);
+    var MOG_STORE = (WEB_BOOT && WEB_BOOT.store)   || '';
+    var MOG_ABBR  = (WEB_BOOT && WEB_BOOT.abbr)    || '';
+    var BASE_URL  = (WEB_BOOT && WEB_BOOT.base)    || '';
+    var THEME     = (WEB_BOOT && WEB_BOOT.theme)   || {};
+    var CONCEPT   = (WEB_BOOT && WEB_BOOT.concept) || '';
+    var MOG_TOKEN = null;   // set by the PIN gate (EditorShell)
+  </script>
+
+  <?!= include('EditorShell'); ?>
+
+  <div class="web-titlebar">
+    <h1 class="web-title"><span class="en">Changes</span><span class="es">Cambios</span></h1>
+    <p class="web-subtitle"><span class="en">Every change to the catalog, newest first. Undo puts it back the way it was.</span><span class="es">Cada cambio al catálogo, el más reciente primero. Deshacer lo deja como estaba.</span></p>
+  </div>
+  <div id="chg-wrap">
+    <div id="mge-changes-page"><div class="mge-ch-empty"><span class="en">Loading…</span><span class="es">Cargando…</span></div></div>
+  </div>
+
+  <script>
+    // The language first: host.js fills the log in it as soon as the
+    // session is checked, before startChanges_ runs.
+    document.body.className = 'lang-' + mgeGetLang_();
+    function startChanges_() {
+      mgeMountWebChrome_();
+      document.documentElement.classList.add('mge-web');
+      setBreadcrumb_(
+        [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+        { en: 'Changes', es: 'Cambios' }
+      );
+    }
+    mgeStartGate_(startChanges_);
+  </script>
+</body>
+</html>

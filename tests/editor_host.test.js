@@ -87,6 +87,7 @@ function makeTab(sb, slug, srcOf, opts) {
     document: { body: null, head: null, getElementById: () => null }
   };
   ctx.window = ctx;
+  if (opts && opts.top) ctx.parent = ctx;   // a page in its own tab, not in the app's frame
   ctx.MOG_SUPABASE = { url: SB_URL, key: 'pub', slug };
   if (opts && opts.page) ctx.MOG_EDITOR_PAGE = opts.page;
   if (opts && opts.globals) Object.assign(ctx, opts.globals);   // what the page itself declares
@@ -365,6 +366,42 @@ async function runSuite(srcOf) {
   if (loc.parameter.t) fail('url', 'the URL token was handed to the optimistic path');
   if (urlTab.store.get('mog_edit_token') !== token) fail('url', 'the URL token was not kept for the validate-first check');
 
+  // ---- Inside the app (docs/MOG_OneApp_Spec.md U2): its session and language, never a PIN ----
+  {
+    const asked = [];
+    const shell = { token: async failed => { asked.push(failed); return token; }, lang: () => 'es', open: page => { shell.opened = page; } };
+    const emb = makeTab(sb, 'zzedit', srcOf, { search: '?embed=1', globals: { parent: { MOG_SHELL: shell } } });
+    if (emb.ctx.MOG_EMBED !== true) fail('embed', 'the page did not see the app');
+    if (emb.store.get('mog_edit_lang') !== 'es') fail('embed', 'the page did not open in the app\'s language');
+    // The session the page was handed ran out: the app renews it.
+    if (!(await emb.run('editorPing', 'ran-out')).ok) fail('embed', 'a run-out session was not renewed through the app');
+    if (asked[0] !== 'ran-out' || emb.H().token !== token) fail('embed', 'renewed with ' + JSON.stringify(asked) + ', holding ' + emb.H().token);
+    // The page still sends the session it was handed; the renewed one is used, with no second check.
+    try { await emb.tool('ran-out', 'getManageItemsBootstrap'); } catch (e) { fail('embed', 'a call with the page\'s first session failed: ' + e.message); }
+    if (asked.length !== 1) fail('embed', 'a call with the page\'s first session went back to the app (' + asked.length + ' asks)');
+    // It runs out mid-page: the call is answered with the app's fresh session.
+    emb.H().token = 'ran-out-later';
+    let report = null;
+    try { report = await emb.tool('ran-out-later', 'getStoreHealthReport'); } catch (e) { fail('embed', 'a call after the session ran out failed: ' + e.message); }
+    if (report && !Array.isArray(report.checks)) fail('embed', 'the retried call answered ' + JSON.stringify(report).slice(0, 80));
+    if (emb.H().token !== token) fail('embed', 'the page kept the run-out session');
+    // "← Editor home" goes to the app's Manage home, beside the sidebar.
+    emb.ctx.MOG_EMBED_OPEN('overview');
+    if (shell.opened !== 'overview') fail('embed', '"Editor home" went to ' + shell.opened);
+    // Not in the app: a page signs in itself, and asks nobody.
+    const plain = makeTab(sb, 'zzedit', srcOf, { search: '?embed=1', top: true });
+    if (plain.ctx.MOG_EMBED !== false || (await plain.run('editorPing', 'ran-out')).ok) fail('embed', 'a page in its own tab acted as if inside the app');
+    // Opened by itself on a computer: the app opens it, at #<page>.
+    const desk = { matchMedia: () => ({ matches: true }) };
+    const alone = makeTab(sb, 'zzedit', srcOf, { page: 'vendors', top: true, globals: desk });
+    if (alone.ctx.__replaced !== '../#vendors') fail('embed', 'Manage Vendors opened by itself went to ' + alone.ctx.__replaced);
+    const aloneHome = makeTab(sb, 'zzedit', srcOf, { page: 'home', search: '?page=items', top: true, globals: desk });
+    if (aloneHome.ctx.__replaced !== '../#items') fail('embed', 'Editor Home ?page=items by itself went to ' + aloneHome.ctx.__replaced);
+    const phone = makeTab(sb, 'zzedit', srcOf, { page: 'vendors', top: true, globals: { matchMedia: () => ({ matches: false }) } });
+    if (phone.ctx.__replaced) fail('embed', 'a page on a phone left for ' + phone.ctx.__replaced);
+    stats.embed = 1;
+  }
+
   return { failures, stats };
 }
 
@@ -392,7 +429,13 @@ const CONTROLS = [
   { name: 'Editor Home offers tools not in the app', scenario: 'pages',
     find: '      for (const sec of window.HOME_SECTIONS) for (const c of sec.cards || []) if (!PAGES[c.page]) c.live = false;', replace: '' },
   { name: 'a renamed area is sent as a delete and an add', scenario: 'tools', file: CE_FILE,
-    find: '    for (const r of renames) renameArea(b, r.from, r.to);', replace: '' }
+    find: '    for (const r of renames) renameArea(b, r.from, r.to);', replace: '' },
+  { name: 'a page inside the app asks for the PIN when its session runs out', scenario: 'embed',
+    find: '        const fresh = await SHELL.token(String(token || \'\'));', replace: '        const fresh = null;' },
+  { name: 'a call inside the app keeps the run-out session', scenario: 'embed',
+    find: '      if (SHELL && H.token) token = H.token;   // the session the app renewed, not the page\'s first one', replace: '' },
+  { name: 'an editor page opened by itself on a computer stays put', scenario: 'embed',
+    find: "    location.replace('../#' + ROUTE);", replace: '' }
 ];
 
 (async () => {
@@ -404,7 +447,7 @@ const CONTROLS = [
     failed++;
     console.log(`FAIL  ${live.failures.length} problem(s):`);
     for (const f of live.failures.slice(0, 10)) console.log('      ' + f);
-  } else if (!st.conflicts || !st.undos || st.logged < 40 || st.reviews !== 3 || st.tools !== 7 || !st.pages) {
+  } else if (!st.conflicts || !st.undos || st.logged < 40 || st.reviews !== 3 || st.tools !== 7 || !st.pages || !st.embed) {
     failed++;
     console.log('FAIL  a case was never exercised');
   } else {
