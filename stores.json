@@ -4,56 +4,64 @@
     "concept": "Roll Play",
     "location": "Rosslyn BOH",
     "address": "1800 N Lynn St #102, Arlington, VA 22209",
-    "deployment": "https://script.google.com/macros/s/AKfycbxRbLvqVy8aU1S_bzc6jwWvNzGD6_lUA0aKPyANckBxj9g3qd_3bYf6a3MviuK3oZNZJw/exec"
+    "deployment": "https://script.google.com/macros/s/AKfycbxRbLvqVy8aU1S_bzc6jwWvNzGD6_lUA0aKPyANckBxj9g3qd_3bYf6a3MviuK3oZNZJw/exec",
+    "editor": "supabase"
   },
   {
     "slug": "rprfo",
     "concept": "Roll Play",
     "location": "Rosslyn FOH",
     "address": "1800 N Lynn St #102, Arlington, VA 22209",
-    "deployment": "https://script.google.com/macros/s/AKfycby8-_goEnDKGXc45PXt9ZpXbDGzInmwetBpEBpRA-_BVjs1cwOqiIqtsBqvu75Q8Fmh/exec"
+    "deployment": "https://script.google.com/macros/s/AKfycby8-_goEnDKGXc45PXt9ZpXbDGzInmwetBpEBpRA-_BVjs1cwOqiIqtsBqvu75Q8Fmh/exec",
+    "editor": "supabase"
   },
   {
     "slug": "rpt",
     "concept": "Roll Play",
     "location": "Tysons BOH",
     "address": "8150 Leesburg Pike, Tysons, VA 22182",
-    "deployment": "https://script.google.com/macros/s/AKfycbybndYIG-bwC0rXzwYUiMTJUexuAGZMnixnBwsVUyPW6MpzUik5iFKEAprmVzcss6A7sg/exec"
+    "deployment": "https://script.google.com/macros/s/AKfycbybndYIG-bwC0rXzwYUiMTJUexuAGZMnixnBwsVUyPW6MpzUik5iFKEAprmVzcss6A7sg/exec",
+    "editor": "supabase"
   },
   {
     "slug": "rptfo",
     "concept": "Roll Play",
     "location": "Tysons FOH",
     "address": "8150 Leesburg Pike, Tysons, VA 22182",
-    "deployment": "https://script.google.com/macros/s/AKfycbxR7VJbt6Uc5zgznuPf1lkFl_1vPeZ-rDmNsSS9ByKxpopt1TylrIISSG9O7zbI5Otq/exec"
+    "deployment": "https://script.google.com/macros/s/AKfycbxR7VJbt6Uc5zgznuPf1lkFl_1vPeZ-rDmNsSS9ByKxpopt1TylrIISSG9O7zbI5Otq/exec",
+    "editor": "supabase"
   },
   {
     "slug": "rpfr",
     "concept": "Roll Play",
     "location": "Founders BOH",
     "address": "944 W Broad St, Falls Church, VA 22046",
-    "deployment": "https://script.google.com/macros/s/AKfycbzdQyjNQrd0PZv0X4c8uJxSiniKtWoramL3YNH1RxpGZubBRcoGPyBMIxWyI-RqW47Q/exec"
+    "deployment": "https://script.google.com/macros/s/AKfycbzdQyjNQrd0PZv0X4c8uJxSiniKtWoramL3YNH1RxpGZubBRcoGPyBMIxWyI-RqW47Q/exec",
+    "editor": "supabase"
   },
   {
     "slug": "rpfrf",
     "concept": "Roll Play",
     "location": "Founders FOH",
     "address": "944 W Broad St, Falls Church, VA 22046",
-    "deployment": "https://script.google.com/macros/s/AKfycbyQ9f6JcM7dgI2Ng4WAsHWbrVENW_o9WTnkvjSVyLC6VAHnLHsJ5qnnXOhy7oqn-Kh9AQ/exec"
+    "deployment": "https://script.google.com/macros/s/AKfycbyQ9f6JcM7dgI2Ng4WAsHWbrVENW_o9WTnkvjSVyLC6VAHnLHsJ5qnnXOhy7oqn-Kh9AQ/exec",
+    "editor": "supabase"
   },
   {
     "slug": "tnytf",
     "concept": "Teas’n You",
     "location": "Tysons FOH",
     "address": "8032 Leesburg Pike, Vienna, VA 22182",
-    "deployment": "https://script.google.com/macros/s/AKfycbwu1tg87fi65QUkS6IUCt6gI9fR23Q4T_bH5btrRR9zNXJ-6JvStkzida1zONomVfdREw/exec"
+    "deployment": "https://script.google.com/macros/s/AKfycbwu1tg87fi65QUkS6IUCt6gI9fR23Q4T_bH5btrRR9zNXJ-6JvStkzida1zONomVfdREw/exec",
+    "editor": "supabase"
   },
   {
     "slug": "tnyt",
     "concept": "Teas’n You",
     "location": "Tysons BOH",
     "address": "8032 Leesburg Pike, Vienna, VA 22182",
-    "deployment": "https://script.google.com/macros/s/AKfycbzb2173ENr43g4Y7r7QnaykAaFOEby0bpwlZwcpzpeBuFhpmrlv1NJFxD3J84jTnORKtw/exec"
+    "deployment": "https://script.google.com/macros/s/AKfycbzb2173ENr43g4Y7r7QnaykAaFOEby0bpwlZwcpzpeBuFhpmrlv1NJFxD3J84jTnORKtw/exec",
+    "editor": "supabase"
   },
   {
     "slug": "tnyr",
@@ -68,6 +76,7 @@
     "concept": "Teas’n You",
     "location": "Rockville FOH",
     "address": "838 Rockville Pike Unit C, Rockville, MD 20852",
-    "deployment": "https://script.google.com/macros/s/AKfycbyGQeDq3M8MmHx4Ves1-youGAe3_PfFEUsl2jGbXfbLzLUO4yyvt7WgH9P2Xjfj3Rd0/exec"
+    "deployment": "https://script.google.com/macros/s/AKfycbyGQeDq3M8MmHx4Ves1-youGAe3_PfFEUsl2jGbXfbLzLUO4yyvt7WgH9P2Xjfj3Rd0/exec",
+    "editor": "supabase"
   }
 ]

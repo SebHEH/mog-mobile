@@ -35,7 +35,7 @@
   const PAGE = window.MOG_EDITOR_PAGE || 'items';
   // The pages in the app, by the ?page= name the Apps Script editor uses.
   const PAGES = { editor: 'index.html', items: 'items.html', vendors: 'vendors.html', areas: 'areas.html', pickpath: 'pickpath.html',
-                  history: 'history.html', healthcheck: 'healthcheck.html', changes: 'changes.html' };
+                  history: 'history.html', healthcheck: 'healthcheck.html', changes: 'changes.html', overview: 'overview.html' };
 
   // Inside the app (docs/MOG_OneApp_Spec.md U2): on a computer the app is the
   // one page that loads, and this page runs in a frame beside its sidebar
@@ -49,6 +49,16 @@
   })();
   window.MOG_EMBED = !!SHELL;
   if (SHELL) window.MOG_EMBED_OPEN = function (page) { SHELL.open(page); };   // EditorShell's "← Editor home"
+  // Until its header is in place (EditorShell's mgeMountWebChrome_, or its
+  // PIN card), the page stays hidden, so its in-Sheet look never flashes in
+  // the app. Shown after 6 seconds whatever happens.
+  if (SHELL && document.head && document.documentElement) {
+    const hide = document.createElement('style');
+    hide.textContent = 'html.mge-embed-boot body{visibility:hidden}';
+    document.head.appendChild(hide);
+    document.documentElement.classList.add('mge-embed-boot');
+    setTimeout(function () { document.documentElement.classList.remove('mge-embed-boot'); }, 6000);
+  }
   // The app's name for this page (its #<route>).
   const ROUTE = (function () {
     if (PAGE !== 'home') return PAGE;
@@ -501,10 +511,10 @@
       'body.mge-host-raised #mge-host-bar{bottom:84px}body.mge-host-raised .mge-panel{bottom:130px}';
     document.head.appendChild(css);
     if (PAGE === 'areas' || PAGE === 'pickpath') document.body.classList.add('mge-host-raised');
-    // Inside the app, Changes is a page in the sidebar (spec U8) and Import
-    // from MarginEdge sits by Manage Items' title; the bar keeps only
-    // ⚑ Needs review (it moves to the Overview later), along the left edge.
-    if (SHELL) css.textContent += '#mge-host-bar{left:16px}.mge-panel{left:16px}' +
+    // Inside the app the bar goes: Changes is a page in the sidebar (spec
+    // U8), ⚑ Needs review is on the Overview, and Import from MarginEdge sits
+    // by Manage Items' title (and the Overview's).
+    if (SHELL) css.textContent += '#mge-host-bar{display:none}' +
       '#mge-import-btn.mge-title-import{order:2;margin-left:auto;border:1px solid #d0d4da;background:#fff;color:#222;border-radius:10px;' +
       'padding:10px 16px;font:600 14px Inter,Arial,sans-serif;cursor:pointer}#mge-import-btn.mge-title-import:hover{background:#f4f5f7}';
     const bar = document.createElement('div');
@@ -560,6 +570,7 @@
     // The Changes page (changes.html, spec U8): the whole log, on the page.
     const page = document.getElementById('mge-changes-page');
     if (page) fillChanges(page, false);
+    if (typeof window.MOG_OVERVIEW_REFRESH === 'function') window.MOG_OVERVIEW_REFRESH();
     if (panel.hidden) return;
     fillChanges(panel, true);
   }
@@ -722,6 +733,7 @@
     if (status === 'applied') { window.location.reload(); return; }
     H.reviews = H.reviews.filter(x => x.id !== r.id);
     renderReviews();
+    if (typeof window.MOG_OVERVIEW_REFRESH === 'function') window.MOG_OVERVIEW_REFRESH();
   }
 
   function say(en, es) {
@@ -770,6 +782,25 @@
     say(r.error || 'Undo failed', r.error || 'No se pudo deshacer');
   }
 
-  // For tests.
-  window.__MOG_EDITOR_HOST__ = { state: H, server: SERVER, timings: timings, reviewOps: reviewOps, doReview: doReview };
+  // What the Overview page (Overview.html, spec U4) reads and does: the same
+  // tables, change log and phone edits this page signed in with, and the
+  // same Undo / Apply / Dismiss / Import as the panels.
+  const overview = {
+    counts: () => CE.call(H.tables, 'getOverviewCounts', [H.changes]).result,
+    changes: () => H.changes.slice(),
+    reviews: () => (H.reviews || []).slice(),
+    reviewLabel: reviewLabel,
+    when: when,
+    undo: askUndo,
+    review: askReview,
+    importItems: () => (window.MeImport ? openImport() : null),
+    parFlags: parFlags,
+    health: () => HOST_CALLS.getStoreHealthReport([]),
+    today: () => (SHELL && typeof SHELL.today === 'function' ? SHELL.today() : null),
+    goToday: () => { if (SHELL && typeof SHELL.go === 'function') SHELL.go('today'); },
+    store: () => H.store
+  };
+
+  // For tests (and the Overview).
+  window.__MOG_EDITOR_HOST__ = { state: H, server: SERVER, timings: timings, reviewOps: reviewOps, doReview: doReview, overview: overview };
 })();

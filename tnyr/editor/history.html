@@ -1651,6 +1651,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       // Inside the app: the band stays hidden; the ? goes next to the title
       // (setBreadcrumb_).
       document.body.classList.add('mge-embed');
+      document.documentElement.classList.remove('mge-embed-boot');   // host.js hid the page until now
       MGE_HELPBTN = document.querySelector('.help-btn');
       return;
     }
@@ -1682,6 +1683,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
   function mgeShow_(which) {
     mgeEl_('mge-overlay').removeAttribute('hidden');
     mgeEl_('mge-overlay').classList.toggle('mge-quiet', !!window.MOG_EMBED && which === 'checking');
+    if (which !== 'checking') document.documentElement.classList.remove('mge-embed-boot');   // a PIN card must show
     mgeEl_('mge-device').hidden = (which !== 'device');
     var chk = mgeEl_('mge-checking'); if (chk) chk.hidden = (which !== 'checking');
     mgeEl_('mge-pin-card').hidden = (which !== 'pin');

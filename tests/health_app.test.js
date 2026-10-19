@@ -117,6 +117,27 @@ async function runSuite(srcOf) {
     onlyWarn('catalog', t, '', null);
   }
 
+  // ---- The Overview's numbers (docs/MOG_OneApp_Spec.md U4, U9): the rows' own rules ----
+  {
+    const counts = (t, changes) => CE.call(t, 'getOverviewCounts', [changes || []]).result;
+    let c = counts(healthy());
+    if (c.items !== 2 || c.inactive !== 1 || c.vendors.join() !== 'Amazon,Sysco' || c.vendorsNoDays.length ||
+        c.areas.join() !== 'Walk-in,Dry Storage' || c.itemsNoArea || c.itemsNoPar || c.shelfSaved) fail('overview', 'a healthy store: ' + JSON.stringify(c));
+    const t = healthy();
+    t.vendors[0].mults = [0, 0, 0, 0, 0, 0, 0];
+    t.pickRows = t.pickRows.filter(r => r.id !== 'ITEM-0002');
+    t.items[0].par = null;
+    c = counts(t);
+    if (c.vendorsNoDays.join() !== 'Amazon' || c.itemsNoArea !== 1 || c.itemsNoPar !== 1) fail('overview', 'a store with gaps: ' + JSON.stringify(c));
+    // Shelf to Sheet is done once a save of it (its real change label) is in the log, not undone.
+    const save = CE.call(healthy(), 'commitReorderPickPath', ['Amazon', [{ id: 'ITEM-0002', area: 'Dry Storage' }, { id: 'ITEM-0001', area: 'Walk-in' }]]);
+    if (!save.label) fail('overview', 'the Shelf to Sheet save has no label');
+    const log = [{ id: 1, label: 'Edited "Lime": par 3 → 5' }, { id: 2, label: save.label }];
+    if (!counts(healthy(), log).shelfSaved) fail('overview', 'a Shelf to Sheet save ("' + save.label + '") did not count');
+    if (counts(healthy(), [log[0]]).shelfSaved) fail('overview', 'another change counted as a Shelf to Sheet save');
+    if (counts(healthy(), [Object.assign({}, log[1], { undoneBy: 3 })]).shelfSaved) fail('overview', 'an undone Shelf to Sheet save counted');
+  }
+
   // ---- The store's rows ----
   {
     const t = healthy();
@@ -204,6 +225,11 @@ async function runSuite(srcOf) {
   }
   const CE_FILE = 'template/editor/catalogEdit.js', HOST = 'template/editor/host.js';
   const CONTROLS = [
+    { name: 'the Overview counts an undone Shelf to Sheet save', scenario: 'overview', file: CE_FILE,
+      find: '      shelfSaved: (changes || []).some(c => c && !c.undoneBy && !c.undoes && SHELF_SAVE_RE.test(String(c.label || \'\')))',
+      replace: '      shelfSaved: (changes || []).some(c => c && SHELF_SAVE_RE.test(String(c.label || \'\')))' },
+    { name: 'the Overview counts inactive items', scenario: 'overview', file: CE_FILE,
+      find: '      items: live.length,', replace: '      items: t.items.length,' },
     { name: 'inactive items counted', scenario: 'catalog', file: CE_FILE,
       find: "    const active = t.items.filter(it => it.active === true && s_(it.id) && s_(it.name));",
       replace: "    const active = t.items.filter(it => s_(it.id) && s_(it.name));" },

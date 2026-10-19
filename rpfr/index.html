@@ -8581,7 +8581,7 @@ function parFlagCutoff_(today) {
   // whole app: the editor accepts this session's token (mog_editor_get), and
   // when it runs out the page asks for a fresh one through MOG_SHELL instead
   // of showing its own PIN.
-  const MANAGE_PAGES_ = { overview: 'index.html', items: 'items.html', vendors: 'vendors.html', areas: 'areas.html',
+  const MANAGE_PAGES_ = { overview: 'overview.html', items: 'items.html', vendors: 'vendors.html', areas: 'areas.html',
                           pickpath: 'pickpath.html', history: 'history.html', healthcheck: 'healthcheck.html',
                           changes: 'changes.html' };
 
@@ -8679,13 +8679,20 @@ function parFlagCutoff_(today) {
       try { direct.token = null; await directLogin_(); return direct.token; } catch (e) { return null; }
     },
     lang: function () { return state.lang; },
-    open: function (page) { if (MANAGE_PAGES_[page]) leaveManage_(() => openManage_(page)); }
+    open: function (page) { if (MANAGE_PAGES_[page]) leaveManage_(() => openManage_(page)); },
+    // The Overview's "Today's order" card: today's vendors as Today shows them.
+    today: function () {
+      const d = state.cache.dashboard;
+      if (!d || !Array.isArray(d.vendors)) return null;
+      return { date: d.date, vendors: d.vendors.map(v => ({ name: v.name, status: v.status, cutoffTime: v.cutoffTime })) };
+    },
+    go: function (tab) { if (tab === 'today') leaveManage_(() => requestSwitchTab('today')); }
   };
 
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.24.0';
+    const versionStr = '0.25.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =

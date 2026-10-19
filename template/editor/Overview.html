@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- The Manage home (docs/MOG_OneApp_Spec.md U4, U9): today's order, the
+       catalog's counts, a setup checklist until every step is done, what
+       needs attention, and the latest changes. Only in the app's editor (no
+       Apps Script twin); host.js supplies the data (__MOG_EDITOR_HOST__.overview). -->
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', Arial, Helvetica, sans-serif; margin: 0; color: #1f1e1b; background: #fff; }
+    .lang-en .es, .lang-es .en { display: none; }
+    #ov-wrap { max-width: 1080px; margin: 0 auto; padding: 8px 24px 48px; display: flex; flex-direction: column; gap: 22px; }
+    body.mge-web .web-titlebar { max-width: 1080px; }
+    .ov-head-btn { order: 2; margin-left: auto; height: 42px; padding: 0 16px; border: 1px solid rgba(0,0,0,0.18); border-radius: 10px;
+                   background: #fff; color: #1f1e1b; font: 600 14px Inter, Arial, sans-serif; letter-spacing: 0; cursor: pointer; }
+    .ov-head-btn:hover { background: #f5f4ed; }
+    .ov-cards { display: flex; flex-wrap: wrap; gap: 14px; }
+    .ov-card { flex: 1 1 210px; display: block; padding: 16px 18px; background: #fff; border: 1px solid #e6e4dd; border-radius: 14px;
+               color: #1f1e1b; text-decoration: none; }
+    a.ov-card:hover { border-color: #c9c6bc; }
+    .ov-card-label { font-size: 13px; font-weight: 600; color: #5f5e5a; }
+    .ov-card-num { margin-top: 6px; font-family: 'Archivo Black', 'Helvetica Neue', Arial, sans-serif; font-size: 26px; line-height: 1.1; }
+    .ov-card-sub { margin-top: 4px; font-size: 13px; color: #5f5e5a; }
+    .ov-box { padding: 20px 22px; background: #fff; border: 1px solid #e6e4dd; border-radius: 14px; }
+    .ov-box h2 { margin: 0; font-family: 'Archivo Black', 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: 400; }
+    .ov-box-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .ov-box-head a, .ov-box-head span { font-size: 13px; font-weight: 700; color: #5f5e5a; }
+    .ov-bar { margin-top: 12px; height: 8px; border-radius: 999px; background: #ecebe5; overflow: hidden; }
+    .ov-bar div { height: 8px; border-radius: 999px; background: var(--web-accent, #2d8c6b); }
+    .ov-row { display: flex; align-items: center; gap: 14px; padding: 13px 0; border-bottom: 1px solid #efeee9; }
+    .ov-row:last-child { border-bottom: none; padding-bottom: 2px; }
+    a.ov-link { color: inherit; text-decoration: none; }
+    a.ov-link:hover .ov-row-title { text-decoration: underline; }
+    .ov-row-main { flex: 1; min-width: 0; }
+    .ov-row-title { font-size: 15px; font-weight: 600; }
+    .ov-row-sub { margin-top: 2px; font-size: 13px; color: #5f5e5a; }
+    .ov-row.done .ov-row-title { color: #6b6a65; text-decoration: line-through; }
+    .ov-step { width: 24px; height: 24px; flex: none; border-radius: 50%; border: 2px solid #c4c2ba; }
+    .ov-row.done .ov-step { border: none; background: var(--web-accent, #2d8c6b);
+                            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-8.5'/%3E%3C/svg%3E");
+                            background-size: 16px; background-position: center; background-repeat: no-repeat; }
+    .ov-btn { flex: none; display: inline-flex; align-items: center; height: 38px; padding: 0 14px; border: 1px solid rgba(0,0,0,0.18); border-radius: 10px;
+              background: #fff; color: #1f1e1b; font: 600 13px Inter, Arial, sans-serif; text-decoration: none; cursor: pointer; }
+    .ov-btn:hover { background: #f5f4ed; }
+    .ov-btn.primary { border-color: transparent; background: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff); }
+    .ov-btn.primary:hover { filter: brightness(0.95); }
+    .ov-icon { width: 38px; height: 38px; flex: none; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+    .ov-icon svg { width: 20px; height: 20px; }
+    .ov-icon.warn { background: #fef6e0; color: #7a5a13; }
+    .ov-icon.bad { background: #fde4e4; color: #8a2020; }
+    .ov-icon.ok { background: #e2f6ee; color: #1a6b48; }
+    .ov-icon.plain { background: #f2f1ec; color: #4a4a4a; }
+    .ov-two { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start; }
+    .ov-two > .ov-box { flex: 1 1 420px; min-width: 0; }
+    .ov-quiet { padding: 12px 0 2px; font-size: 14px; color: #5f5e5a; }
+    .ov-btns { display: flex; gap: 6px; flex: none; }
+    .ov-ch.undone .ov-row-title { color: #8a8a85; text-decoration: line-through; font-weight: 500; }
+  </style>
+</head>
+<body class="lang-en">
+  <!-- Boot vars FIRST — EditorShell (included below) reads WEB_BOOT/MOG_WEB. -->
+  <script>
+    var WEB_BOOT  = <?!= webBootJson ?>;
+    var MOG_WEB   = !!(WEB_BOOT && WEB_BOOT.web);
+    var MOG_STORE = (WEB_BOOT && WEB_BOOT.store)   || '';
+    var MOG_ABBR  = (WEB_BOOT && WEB_BOOT.abbr)    || '';
+    var BASE_URL  = (WEB_BOOT && WEB_BOOT.base)    || '';
+    var THEME     = (WEB_BOOT && WEB_BOOT.theme)   || {};
+    var CONCEPT   = (WEB_BOOT && WEB_BOOT.concept) || '';
+    var MOG_TOKEN = null;   // set by the PIN gate (EditorShell)
+  </script>
+
+  <?!= include('EditorShell'); ?>
+
+  <div class="web-titlebar">
+    <h1 class="web-title"><span class="en">Overview</span><span class="es">Resumen</span></h1>
+    <p class="web-subtitle" id="ov-sub"></p>
+  </div>
+  <div id="ov-wrap"></div>
+
+  <script>
+    document.body.className = 'lang-' + mgeGetLang_();
+    var OV_ES = (mgeGetLang_() === 'es');
+    function ovT(en, es) { return OV_ES ? es : en; }
+    function ovEsc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function ovPlural(n, en, enMany, es, esMany) { return n + ' ' + (n === 1 ? ovT(en, es) : ovT(enMany, esMany)); }
+    function ovPage(name) { return ovEsc((BASE_URL || 'index.html') + '?page=' + name); }
+    function ovTime(hhmm) {
+      var m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ''));
+      if (!m) return '';
+      var h = Number(m[1]);
+      return ((h % 12) || 12) + ':' + m[2] + ' ' + (h < 12 ? 'AM' : 'PM');
+    }
+    var OV_ICONS = {
+      flag: '<path d="M5 5a5 5 0 0 1 7 0a5 5 0 0 0 7 0v9a5 5 0 0 1 -7 0a5 5 0 0 0 -7 0v-9z"/><path d="M5 21v-7"/>',
+      alert: '<path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/><path d="M12 16h.01"/>',
+      box: '<path d="M12 3l8 4.5l0 9l-8 4.5l-8 -4.5l0 -9l8 -4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12l0 9"/><path d="M12 12l-8 -4.5"/>',
+      shield: '<path d="M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06"/><path d="M15 19l2 2l4 -4"/>'
+    };
+    function ovIcon(kind, name) {
+      return '<span class="ov-icon ' + kind + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + OV_ICONS[name] + '</svg></span>';
+    }
+
+    var OV = { flags: null, health: null };
+    function ovHost() { return window.__MOG_EDITOR_HOST__ && window.__MOG_EDITOR_HOST__.overview; }
+    function ovSetupKey() { return 'mog_setup_done_' + ((window.MOG_SUPABASE && window.MOG_SUPABASE.slug) || ''); }
+
+    // Today's order, from the app's own Today (none outside the app).
+    function ovTodayCard() {
+      var d = ovHost().today();
+      if (!d || !d.vendors) return '';
+      var n = d.vendors.length, sent = 0, going = 0, next = null;
+      d.vendors.forEach(function (v) {
+        if (v.status === 'sent') sent++;
+        else {
+          if (v.status === 'in_progress') going++;
+          if (v.cutoffTime && (!next || v.cutoffTime < next.cutoffTime)) next = v;
+        }
+      });
+      var bits = [];
+      if (n) bits.push(ovPlural(sent, 'submitted', 'submitted', 'enviado', 'enviados'));
+      if (going) bits.push(ovPlural(going, 'in progress', 'in progress', 'en curso', 'en curso'));
+      if (next) bits.push(ovT('next cutoff ', 'próximo corte ') + ovTime(next.cutoffTime) + ' (' + next.name + ')');
+      return '<a class="ov-card" href="#" id="ov-today">' +
+        '<div class="ov-card-label">' + ovT("Today's order", 'Pedido de hoy') + '</div>' +
+        '<div class="ov-card-num">' + (n ? ovEsc(ovPlural(n, 'vendor', 'vendors', 'proveedor', 'proveedores')) : ovT('No vendors', 'Sin proveedores')) + '</div>' +
+        '<div class="ov-card-sub">' + ovEsc(n ? bits.join(' · ') : ovT('Nothing is scheduled today.', 'Nada programado hoy.')) + '</div></a>';
+    }
+
+    function ovCard(page, label, num, sub) {
+      return '<a class="ov-card" href="' + ovPage(page) + '"><div class="ov-card-label">' + label + '</div>' +
+        '<div class="ov-card-num">' + ovEsc(num) + '</div><div class="ov-card-sub">' + ovEsc(sub) + '</div></a>';
+    }
+
+    // The setup checklist (U9). Hidden for good once every step was done.
+    function ovSetup(c) {
+      var withDays = c.vendors.length - c.vendorsNoDays.length;
+      var steps = [
+        { done: c.items > 0, title: ovT('Add your items', 'Agrega tus artículos'),
+          sub: c.items ? ovPlural(c.items, 'item', 'items', 'artículo', 'artículos') + ' · ' + ovPlural(c.vendors.length, 'vendor', 'vendors', 'proveedor', 'proveedores')
+                       : ovT('Import them from MarginEdge, or add them one by one in Items.', 'Impórtalos de MarginEdge, o agrégalos uno por uno en Artículos.'),
+          action: '<button type="button" class="ov-btn primary" id="ov-step-import">' + ovT('Import from MarginEdge', 'Importar de MarginEdge') + '</button>' },
+        { done: c.vendors.length > 0 && c.vendorsNoDays.length === 0, title: ovT("Set each vendor's delivery days", 'Pon los días de entrega de cada proveedor'),
+          sub: !c.vendors.length ? ovT('No vendors yet.', 'Todavía no hay proveedores.')
+             : !c.vendorsNoDays.length ? ovT('Every vendor has delivery days.', 'Todos los proveedores tienen días de entrega.')
+             : withDays + ovT(' of ', ' de ') + c.vendors.length + ovT(' vendors have delivery days. One without never shows on Today.', ' proveedores tienen días de entrega. Uno sin ellos nunca aparece en Hoy.'),
+          action: '<a class="ov-btn" href="' + ovPage('vendors') + '">' + ovT('Open Vendors', 'Abrir Proveedores') + '</a>' },
+        { done: c.areas.length > 0, title: ovT('Create storage areas', 'Crea las áreas de almacenamiento'),
+          sub: c.areas.length ? ovPlural(c.areas.length, 'area', 'areas', 'área', 'áreas') : ovT('The places you count, like the walk-in or dry storage.', 'Los lugares donde cuentas, como el refrigerador o el almacén.'),
+          action: '<a class="ov-btn" href="' + ovPage('areas') + '">' + ovT('Open Storage areas', 'Abrir Áreas') + '</a>' },
+        { done: c.items > 0 && c.itemsNoArea === 0 && c.itemsNoPar === 0, title: ovT('Give each item a storage area and a par', 'Dale a cada artículo un área y un par'),
+          sub: c.items ? ovT(c.itemsNoArea + ' with no storage area · ' + c.itemsNoPar + ' with no par',
+                             c.itemsNoArea + ' sin área · ' + c.itemsNoPar + ' sin par')
+                       : ovT('Once there are items.', 'Cuando haya artículos.'),
+          action: '<a class="ov-btn" href="' + ovPage('items') + '">' + ovT('Open Items', 'Abrir Artículos') + '</a>' },
+        { done: c.shelfSaved, title: ovT('Put each area in shelf order', 'Ordena cada área como los estantes'),
+          sub: ovT('Shelf to Sheet: the count list follows the shelves.', 'Estante a Hoja: la lista de conteo sigue los estantes.'),
+          action: '<a class="ov-btn" href="' + ovPage('pickpath') + '">' + ovT('Open Shelf to Sheet', 'Abrir Estante a Hoja') + '</a>' }
+      ];
+      var done = steps.filter(function (s) { return s.done; }).length;
+      var remembered = false;
+      try { remembered = localStorage.getItem(ovSetupKey()) === '1'; } catch (e) { remembered = false; }
+      if (done === steps.length) { try { localStorage.setItem(ovSetupKey(), '1'); } catch (e) { /* shows again next time */ } }
+      if (done === steps.length || remembered) return '';
+      var h = '<section class="ov-box" aria-labelledby="ov-setup-h"><div class="ov-box-head"><h2 id="ov-setup-h">' +
+        ovT('Set up ', 'Configura ') + ovEsc(MOG_STORE || ovT('this store', 'esta tienda')) + '</h2><span>' + done + ovT(' of ', ' de ') + steps.length +
+        ovT(' done', ' listos') + '</span></div><div class="ov-bar"><div style="width:' + Math.round(100 * done / steps.length) + '%"></div></div><div>';
+      steps.forEach(function (s) {
+        h += '<div class="ov-row' + (s.done ? ' done' : '') + '"><span class="ov-step" role="img" aria-label="' + (s.done ? ovT('Done', 'Listo') : ovT('Not done', 'Pendiente')) + '"></span>' +
+          '<div class="ov-row-main"><div class="ov-row-title">' + ovEsc(s.title) + '</div><div class="ov-row-sub">' + ovEsc(s.sub) + '</div></div>' +
+          (s.done ? '' : s.action) + '</div>';
+      });
+      return h + '</div></section>';
+    }
+
+    // Needs attention: phones' one-day edits (Apply / Dismiss here, U8), Par
+    // Review, and the Health Check.
+    function ovAttention() {
+      var rows = '';
+      ovHost().reviews().forEach(function (r) {
+        rows += '<div class="ov-row">' + ovIcon('warn', 'flag') + '<div class="ov-row-main"><div class="ov-row-title">' + ovEsc(ovHost().reviewLabel(r)) + '</div>' +
+          '<div class="ov-row-sub">' + ovEsc(ovT('Phone edit for one day', 'Cambio de un día desde un teléfono') + ' · ' + ovHost().when(r.at) + ' · ' + (r.by || ovT('Someone', 'Alguien'))) + '</div></div>' +
+          '<div class="ov-btns"><button type="button" class="ov-btn primary" data-apply="' + ovEsc(r.id) + '">' + ovT('Apply', 'Aplicar') + '</button>' +
+          '<button type="button" class="ov-btn" data-dismiss="' + ovEsc(r.id) + '">' + ovT('Dismiss', 'Descartar') + '</button></div></div>';
+      });
+      if (OV.flags) {
+        var under = 0, over = 0;
+        Object.keys(OV.flags).forEach(function (id) {
+          var f = OV.flags[id] && OV.flags[id].flag;
+          if (f === 'empty' || f === 'both') under++;
+          if (f === 'over' || f === 'both') over++;
+        });
+        if (under) rows += '<a class="ov-row ov-link" href="' + ovPage('items') + '">' + ovIcon('bad', 'alert') +
+          '<div class="ov-row-main"><div class="ov-row-title">' + ovEsc(ovPlural(under, 'item may be running short', 'items may be running short', 'artículo podría quedarse corto', 'artículos podrían quedarse cortos')) + '</div>' +
+          '<div class="ov-row-sub">' + ovT('Par Review, last 28 days', 'Revisión de pares, últimos 28 días') + '</div></div></a>';
+        if (over) rows += '<a class="ov-row ov-link" href="' + ovPage('items') + '">' + ovIcon('plain', 'box') +
+          '<div class="ov-row-main"><div class="ov-row-title">' + ovEsc(ovPlural(over, 'item may be over-ordered', 'items may be over-ordered', 'artículo podría pedirse de más', 'artículos podrían pedirse de más')) + '</div>' +
+          '<div class="ov-row-sub">' + ovT('Par Review, last 28 days', 'Revisión de pares, últimos 28 días') + '</div></div></a>';
+      }
+      if (OV.health) {
+        var s = OV.health.summary || {}, bad = (s.warn || 0) + (s.fail || 0);
+        if (bad) rows += '<a class="ov-row ov-link" href="' + ovPage('healthcheck') + '">' + ovIcon(s.fail ? 'bad' : 'warn', 'shield') +
+          '<div class="ov-row-main"><div class="ov-row-title">' + ovT('Health check: ', 'Chequeo: ') +
+          ovEsc([s.fail ? ovPlural(s.fail, 'problem', 'problems', 'problema', 'problemas') : '', s.warn ? ovPlural(s.warn, 'warning', 'warnings', 'aviso', 'avisos') : ''].filter(Boolean).join(', ')) + '</div>' +
+          '<div class="ov-row-sub">' + ovEsc(ovPlural(s.pass || 0, 'check is OK', 'checks are OK', 'chequeo está bien', 'chequeos están bien')) + '</div></div></a>';
+      }
+      var loading = !OV.flags || !OV.health;
+      if (!rows) rows = '<div class="ov-quiet">' + (loading ? ovT('Checking…', 'Revisando…') : ovT('Nothing needs attention.', 'Nada necesita atención.')) + '</div>';
+      return '<section class="ov-box" aria-labelledby="ov-attn-h"><div class="ov-box-head"><h2 id="ov-attn-h">' + ovT('Needs attention', 'Por revisar') + '</h2></div>' + rows + '</section>';
+    }
+
+    function ovChanges() {
+      var list = ovHost().changes().slice(0, 5);
+      var h = '<section class="ov-box" aria-labelledby="ov-chg-h"><div class="ov-box-head"><h2 id="ov-chg-h">' + ovT('Recent changes', 'Cambios recientes') + '</h2>' +
+        '<a href="' + ovPage('changes') + '">' + ovT('See all', 'Ver todos') + '</a></div>';
+      if (!list.length) return h + '<div class="ov-quiet">' + ovT('No changes yet.', 'Todavía no hay cambios.') + '</div></section>';
+      list.forEach(function (c) {
+        var undone = !!c.undoneBy;
+        h += '<div class="ov-row ov-ch' + (undone ? ' undone' : '') + '"><div class="ov-row-main"><div class="ov-row-title">' + ovEsc(c.label) + '</div>' +
+          '<div class="ov-row-sub">' + ovEsc((c.by || ovT('Someone', 'Alguien')) + ' · ' + ovHost().when(c.at) + (undone ? ' · ' + ovT('undone', 'deshecho') : '')) + '</div></div>' +
+          (undone ? '' : '<button type="button" class="ov-btn" data-undo="' + ovEsc(c.id) + '">' + ovT('Undo', 'Deshacer') + '</button>') + '</div>';
+      });
+      return h + '</section>';
+    }
+
+    function ovRender() {
+      var host = ovHost();
+      if (!host || !host.store()) return;
+      var c = host.counts();
+      var d = host.today();
+      var date = d && /^\d{4}-\d{2}-\d{2}$/.test(String(d.date || '')) ? new Date(d.date + 'T12:00:00') : new Date();
+      var sub = document.getElementById('ov-sub');
+      if (sub) sub.textContent = (MOG_STORE ? MOG_STORE + ' · ' : '') +
+        date.toLocaleDateString(OV_ES ? 'es-US' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      var h = '<div class="ov-cards">' + ovTodayCard() +
+        ovCard('items', ovT('Items', 'Artículos'), String(c.items), ovT('active', 'activos') + (c.inactive ? ' · ' + c.inactive + ovT(' inactive', ' inactivos') : '')) +
+        ovCard('vendors', ovT('Vendors', 'Proveedores'), String(c.vendors.length),
+               c.vendorsNoDays.length ? ovPlural(c.vendorsNoDays.length, 'has no delivery days', 'have no delivery days', 'sin días de entrega', 'sin días de entrega')
+                                      : (c.vendors.length ? ovT('all have delivery days', 'todos tienen días de entrega') : ovT('none yet', 'ninguno todavía'))) +
+        ovCard('areas', ovT('Storage areas', 'Áreas'), String(c.areas.length), c.areas.length ? c.areas.slice(0, 3).join(', ') + (c.areas.length > 3 ? '…' : '') : ovT('none yet', 'ninguna todavía')) +
+        '</div>' + ovSetup(c) + '<div class="ov-two">' + ovAttention() + ovChanges() + '</div>';
+      document.getElementById('ov-wrap').innerHTML = h;
+      var today = document.getElementById('ov-today');
+      if (today) today.onclick = function (e) { e.preventDefault(); host.goToday(); };
+      var imp = document.getElementById('ov-step-import');
+      if (imp) imp.onclick = function () { host.importItems(); };
+      document.querySelectorAll('#ov-wrap [data-undo]').forEach(function (b) { b.onclick = function () { host.undo(Number(b.getAttribute('data-undo'))); }; });
+      document.querySelectorAll('#ov-wrap [data-apply]').forEach(function (b) { b.onclick = function () { host.review(Number(b.getAttribute('data-apply')), 'applied'); }; });
+      document.querySelectorAll('#ov-wrap [data-dismiss]').forEach(function (b) { b.onclick = function () { host.review(Number(b.getAttribute('data-dismiss')), 'dismissed'); }; });
+    }
+    // host.js calls this after a dismissed phone edit or a change, so the page keeps up.
+    window.MOG_OVERVIEW_REFRESH = ovRender;
+
+    function startOverview_() {
+      mgeMountWebChrome_();
+      document.documentElement.classList.add('mge-web');
+      setBreadcrumb_(
+        [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+        { en: 'Overview', es: 'Resumen' }
+      );
+      var title = document.querySelector('.web-title');
+      if (title && window.MeImport && !document.getElementById('ov-head-import')) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.id = 'ov-head-import'; b.className = 'ov-head-btn';
+        b.textContent = '⬇ ' + ovT('Import from MarginEdge', 'Importar de MarginEdge');
+        b.onclick = function () { ovHost().importItems(); };
+        title.appendChild(b);
+      }
+      ovRender();
+      var host = ovHost();
+      host.parFlags().then(function (f) { OV.flags = f || {}; }, function () { OV.flags = {}; }).then(ovRender);
+      host.health().then(function (r) { OV.health = r; }, function () { OV.health = { summary: {} }; }).then(ovRender);
+    }
+    mgeStartGate_(startOverview_);
+  </script>
+</body>
+</html>

@@ -151,8 +151,10 @@ mog-mobile/
 │                                PickPath.gs) + host.js (runs those Apps Script pages and Editor Home as static pages) + meImport.js
 │                                (Import from MarginEdge: vendors, then items, then one logged save). host.js also answers Order
 │                                History, the Par Review flags (OrderMath.gs, copied in as orderMath.js) and the Health Check
-│                                (catalogEdit.js getStoreHealthReport) from Supabase. build.py publishes it at
-│                                <slug>/editor/ for a store marked "editor": "supabase", and --preview for a test store.
+│                                (catalogEdit.js getStoreHealthReport) from Supabase. Overview.html + Changes.html are
+│                                pages only the app has (the Manage home and the change log). On a computer every page runs
+│                                inside the app, in a frame beside its sidebar (?embed=1, spec U2). build.py publishes it at
+│                                <slug>/editor/ for a store marked "editor": "supabase" (every store), and --preview for a test store.
 ├── apps-script/                 APPS SCRIPT SOURCE.
 │   ├── README.md                Apps Script workflow docs (setup + day-to-day).
 │   ├── MOGApi.gs                Core API surface for PWA ↔ Sheet (doGet/doPost, api_* fns, page routing).

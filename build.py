@@ -50,8 +50,9 @@ PREVIEW_DIR    = os.path.join(ROOT, '_preview')   # git-ignored: test stores, ne
 # in here, plus the files that answer its server calls from Supabase. A page
 # is file: (Apps Script page, title, the name host.js knows it by). Published
 # under <slug>/editor/ for a store whose stores.json entry says
-# "editor": "supabase" (its catalog moved with schema v8's switch), and for a
-# test store by --preview.
+# "editor": "supabase" (every store since 2026-10-19, docs/MOG_OneApp_Spec.md
+# U11: the app shows its Manage section only once Supabase says the store's
+# editor has moved, schema v8's switch), and for a test store by --preview.
 EDITOR_PAGES  = {'index.html':    ('EditorHome', 'Editor', 'home'),
                  'items.html':    ('ManageItems', 'Manage Items', 'items'),
                  'vendors.html':  ('ManageVendors', 'Manage Vendors', 'vendors'),
@@ -61,7 +62,8 @@ EDITOR_PAGES  = {'index.html':    ('EditorHome', 'Editor', 'home'),
                  'healthcheck.html': ('HealthCheck', 'Store Health Check', 'healthcheck'),
                  # Pages only the app's editor has (no Apps Script twin) come
                  # from template/editor/ ('editor:<name>').
-                 'changes.html':  ('editor:Changes', 'Changes', 'changes')}
+                 'changes.html':  ('editor:Changes', 'Changes', 'changes'),
+                 'overview.html': ('editor:Overview', 'Overview', 'overview')}
 # Scriptlets the static pages start empty; host.js fills them from Supabase
 # after sign-in, before each page's start-up function reads them.
 EDITOR_EMPTY  = {'vendorListJson': '[]', 'vendorTableJson': '[]', 'areaListJson': '[]', 'pickDataJson': '{}'}

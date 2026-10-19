@@ -292,6 +292,25 @@
     return { generatedAt: fmtLocal(st.localNow), store: storeName || 'Store', summary: summary, checks: checks };
   }
 
+  // The Overview's numbers (docs/MOG_OneApp_Spec.md U4, U9): its count cards
+  // and setup checklist, by the Health Check's own rules above. Shelf to Sheet
+  // counts as done once the change log holds one of its saves (its label,
+  // changeLabel below) that wasn't undone.
+  const SHELF_SAVE_RE = /^Saved the .+ list \(/;
+  function getOverviewCounts(t, changes) {
+    const live = t.items.filter(it => it.active === true && s_(it.id) && s_(it.name));
+    return {
+      items: live.length,
+      inactive: t.items.filter(it => it.active !== true && s_(it.id)).length,
+      vendors: t.vendors.map(v => s_(v.name)),
+      vendorsNoDays: t.vendors.filter(v => !(v.mults || []).some(x => Number(x) > 0)).map(v => s_(v.name)),
+      areas: t.areas.slice().sort((a, b) => (a.ord - b.ord) || (s_(a.name) < s_(b.name) ? -1 : 1)).map(a => s_(a.name)),
+      itemsNoArea: getUnassignedActiveItems(t).length,
+      itemsNoPar: live.filter(it => typeof it.par !== 'number').length,
+      shelfSaved: (changes || []).some(c => c && !c.undoneBy && !c.undoes && SHELF_SAVE_RE.test(String(c.label || '')))
+    };
+  }
+
   // The Health Check's fix: each missing backup row, in the item's current
   // area at the end of that area, as syncItemEligiblePickRows_ adds them.
   function placeBackupVendors(w) {
@@ -1114,6 +1133,7 @@
   const READS = {
     getManageItemsBootstrap: (t, args) => getManageItemsBootstrap(t, args[0], args[1]),
     getStoreHealthReport: (t, args) => getStoreHealthReport(t, args[0], args[1]),
+    getOverviewCounts: (t, args) => getOverviewCounts(t, args[0]),
     getAllItemsForView: t => getAllItemsForView(t),
     getUnassignedActiveItems: t => getUnassignedActiveItems(t),
     getItemForEdit: (t, args) => getItemForEdit(t, args[0]),
