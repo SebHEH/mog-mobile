@@ -82,6 +82,23 @@ check "v7 helper: today_edits_json not exposed"   404 ''   -X POST "${J[@]}" -d 
 # schema v8
 check "v8 sync: bad key can't switch the editor"  200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_start_empty":true}' "$(rpc mog_sync_switch_editor)"
 
+# schema v9
+check "v9 tables: recipients not reachable"       404 ''   "$URL/rest/v1/recipients"
+check "v9 history: bad token refused"             200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_from":null,"p_to":null}' "$(rpc mog_history)"
+check "v9 recipients_get: bad token refused"      200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_recipients_get)"
+check "v9 recipients_save: bad token refused"     200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_recipients":[],"p_gm_edit":true}' "$(rpc mog_recipients_save)"
+check "v9 people_list: bad token refused"         200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_people_list)"
+check "v9 people_rename: bad token refused"       200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_from":"a","p_to":"b"}' "$(rpc mog_people_rename)"
+check "v9 people_remove: bad token refused"       200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_name":"a"}' "$(rpc mog_people_remove)"
+check "v9 people_join: bad token refused"         200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_name":"a"}' "$(rpc mog_people_join)"
+check "v9 editor_status: bad token refused"       200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_editor_status)"
+check "v9 clear_lockout: bad token refused"       200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_editor_clear_lockout)"
+check "v9 sync: bad key can't copy a log in"      200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_rows":[]}' "$(rpc mog_sync_backfill_log)"
+check "v9 sync: bad key can't read recipients"    200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus"}' "$(rpc mog_sync_get_recipients)"
+check "v9 sync: bad key can't seed recipients"    200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_recipients":[]}' "$(rpc mog_sync_seed_recipients)"
+check "v9 helper: recipients_check not exposed"   404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_list":[],"p_gm_edit":true}' "$(rpc recipients_check)"
+check "v9 helper: person_now not exposed"         404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_name":"x"}' "$(rpc person_now)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -319,11 +319,20 @@ function runSuite(srcOf, stores, catalogDefect) {
       // Repaired, the copy goes through: the app's catalog is this Sheet's.
       const m = moveEditor(side, sb, false);
       const s = sb.stores.get(SLUG);
-      if (!m.moved) fail(seed, 'move', 'a Sheet that passes the parity check did not move: ' + m.said.slice(0, 200));
+      if (!m.moved) fail(seed, "move", "a Sheet that passes the parity check did not move: " + m.said.slice(-400));
       else if (!/^The editor is in the app\n/m.test(m.said) || !/this Sheet's catalog/.test(m.said)) fail(seed, 'move', 'move text: ' + m.said.slice(0, 200));
       else if (JSON.stringify(s.catalog) !== JSON.stringify(catalogFromTables(s))) fail(seed, 'move', 'the app\'s catalog is not built from its tables');
       else if (s.tables.items.length !== run(side, c => c.buildCatalogTables_()).tables.items.length) fail(seed, 'move', 'the app did not get the Sheet\'s items');
-      else stats.moved++;
+      else if (!s.recipientsSeeded) fail(seed, 'move', 'the recipients were not copied');
+      else {
+        // T1: every Sheet date with orders is in the app's log now.
+        const sheetDates = new Set(run(side, c => c.getOrderHistory_({}, { needPack: false })).map(r => r.orderDate)
+          .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)));
+        const logDates = new Set(s.log.map(r => r.cycleDate));
+        const missing = Array.from(sheetDates).filter(d => !logDates.has(d));
+        if (missing.length) fail(seed, 'move', 'order history not copied for ' + missing.join(', '));
+        else stats.moved++;
+      }
       if (!/Already in the app/.test(moveEditor(side, sb, false).said)) fail(seed, 'move', 'a second move did not say it already had');
     } catch (e) { fail(seed, 'repair', 'crashed: ' + e.stack); }
 
@@ -352,10 +361,13 @@ function runSuite(srcOf, stores, catalogDefect) {
 
       // Starting empty doesn't depend on the parity check (S3: an unused copy).
       if (switched && seed % 4 === 0) {
+        const logBefore = sb.stores.get(SLUG).log.length;
         const m = moveEditor(side, sb, true);
         const s = sb.stores.get(SLUG);
         if (!m.moved) fail(seed, 'move', 'starting empty did not move: ' + m.said.slice(0, 200));
         else if (s.tables.vendors.length || s.tables.items.length || s.tables.areas.length || s.tables.pickRows.length) fail(seed, 'move', 'starting empty left a catalog');
+        else if (s.log.length !== logBefore) fail(seed, 'move', 'starting empty copied the Sheet\'s order history (another store\'s)');
+        else if (!s.recipientsSeeded) fail(seed, 'move', 'starting empty did not copy the recipients');
         else stats.movedEmpty++;
       }
     } catch (e) { fail(seed, 'messy', 'crashed: ' + e.stack); }
@@ -404,6 +416,10 @@ const CONTROLS = [
     replace: '    const primary = m.primaryVendor || null;' },
   { name: 'a copy that fails the parity check moves anyway', scenario: 'move',
     find: '      if (!parity.ok) {', replace: '      if (false) {' },
+  { name: 'the order history not copied at the switch', scenario: 'move',
+    find: '      history = backfillOrderLogToDb_();', replace: '      history = { inserted: 0, dates: 0, skippedDates: 0 };' },
+  { name: 'a store starting empty copies the Sheet\'s history', scenario: 'move',
+    find: '    if (!startEmpty) {\r\n      const parity', replace: '    if (startEmpty) history = backfillOrderLogToDb_();\r\n    if (!startEmpty) {\r\n      const parity' },
   { name: 'override-on screens not compared', scenario: 'healthy',
     find: '    for (const override of [false, true]) {', replace: '    for (const override of [false]) {' },
   { name: 'restored areas get no order on their rows', scenario: 'repair', file: 'apps-script/PickPath.gs',

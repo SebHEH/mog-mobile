@@ -2464,6 +2464,199 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   return { vendor: vendor, overrideMult: mult, itemsPayload: itemsPayload };
 }
 
+
+// ---- Order history (docs/MOG_OneApp_Spec.md T1) ----------------------------
+// One copy for the Sheet (History.gs and MOGApi.gs, over LOG_ORDERS) and the
+// app (the phone's History tab and the editor's Order History, over Supabase's
+// order log). Each side turns its rows into history rows
+//   { timestamp: 'yyyy-MM-dd HH:mm', orderDate: 'yyyy-MM-dd', vendor, itemId,
+//     itemName, itemPack, onHandPrev, qtyOrdered }
+// in their log order, and everything from there on is shared.
+
+// buildHistoryRows_'s filter and sort: rows for filters { vendorFilter ('ALL'
+// or a vendor, any case), dateFrom, dateTo ('yyyy-MM-dd', inclusive) }, newest
+// order date first (a stable sort, so one date keeps its log order), plus
+// every vendor in the rows given, A-Z, for the vendor dropdown.
+function historyRowsFiltered_(rows, filters) {
+  const vendorFilter = String(filters && filters.vendorFilter || 'ALL').trim();
+  const dateFrom     = String(filters && filters.dateFrom     || '').trim();
+  const dateTo       = String(filters && filters.dateTo       || '').trim();
+  const vendorSet = new Set();
+  for (const row of rows) if (row.vendor) vendorSet.add(row.vendor);
+  const out = rows
+    .filter(row => {
+      if (!row.vendor && !row.itemName) return false;
+      if (vendorFilter !== 'ALL' && row.vendor.toLowerCase() !== vendorFilter.toLowerCase()) return false;
+      if (dateFrom && row.orderDate < dateFrom) return false;
+      if (dateTo   && row.orderDate > dateTo)   return false;
+      return true;
+    })
+    .sort((a, b) => b.orderDate.localeCompare(a.orderDate));
+  return { rows: out, vendors: Array.from(vendorSet).sort() };
+}
+
+// A vendor's order reference, e.g. RPRFO-1019-SYS: the store's abbreviation,
+// the order date's month and day, the vendor's first three letters.
+function historyReference_(abbr, vendor, dateStr) {
+  const parts = String(dateStr).split('-');
+  if (parts.length < 3) return '';
+  const md = parts[1] + parts[2];
+  const a  = String(abbr || 'LOC').toUpperCase();
+  const v  = String(vendor).replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase();
+  return a + '-' + md + '-' + v;
+}
+
+// The History tab's three answers, from filtered history rows.
+// getHistoryDates: the dates, newest first, each with how many vendors ordered.
+function historyDatesFromRows_(rows) {
+  const vendorsByDate = new Map();
+  for (const r of rows) {
+    if (!vendorsByDate.has(r.orderDate)) vendorsByDate.set(r.orderDate, new Set());
+    vendorsByDate.get(r.orderDate).add(r.vendor);
+  }
+  const dates = Array.from(vendorsByDate.keys())
+    .sort()
+    .reverse()
+    .map(d => ({ date: d, vendorCount: vendorsByDate.get(d).size }));
+  return { dates: dates };
+}
+
+// getHistoryVendors: one date's vendors, the latest order first.
+function historyVendorsFromRows_(rows, date, abbr) {
+  const byVendor = new Map();
+  for (const r of rows) {
+    if (!byVendor.has(r.vendor)) {
+      byVendor.set(r.vendor, {
+        vendor:    r.vendor,
+        itemCount: 0,
+        timestamp: r.timestamp,
+        reference: historyReference_(abbr, r.vendor, date)
+      });
+    }
+    byVendor.get(r.vendor).itemCount++;
+  }
+  const vendors = Array.from(byVendor.values())
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  return { date: date, vendors: vendors };
+}
+
+// getHistoryDetail: one vendor's order on one date.
+function historyDetailFromRows_(rows, vendor, date, abbr) {
+  const items = rows.map(r => ({
+    id:     r.itemId,
+    name:   r.itemName,
+    pack:   r.itemPack,
+    onHand: r.onHandPrev,
+    qty:    r.qtyOrdered
+  }));
+  return {
+    vendor:    vendor,
+    date:      date,
+    timestamp: rows.length ? rows[0].timestamp : null,
+    reference: historyReference_(abbr, vendor, date),
+    items:     items,
+    itemCount: items.length
+  };
+}
+
+// Supabase's order-log rows (mog_history) as history rows.
+function historyRowsFromLog_(logRows) {
+  return (logRows || []).map(r => ({
+    timestamp:  String(r.at || ''),
+    orderDate:  String(r.date || ''),
+    vendor:     String(r.vendor || '').trim(),
+    itemId:     String(r.id || '').trim(),
+    itemName:   String(r.name || '').trim(),
+    itemPack:   String(r.pack || '').trim(),
+    onHandPrev: Number(r.onHandPrev) || 0,
+    qtyOrdered: Number(r.qty) || 0
+  }));
+}
+
+// ---- Par Review flags (Manage Items; History.gs's thresholds, set by
+// Sebastian, Path A, 2026-05; the why of each is in History.gs) ----
+function parFlagRules_() {
+  return {
+    MIN_ORDERS:          3,     // logged orders in the window before any verdict
+    WINDOW_DAYS:         28,    // orders from the last 28 days count
+    UNDER_PAR_MIN:       3,     // under applies only at par >= 3
+    UNDER_ONHAND_PCT:    0.10,  // On Hand <= 10% of par is "under"
+    UNDER_FREQ_PCT:      0.75,  // ... on >= 75% of orders
+    OVER_ONHAND_PCT:     0.75,  // On Hand >= 75% of par is "over"
+    OVER_FREQ_PCT:       0.50,  // ... on >= 50% of orders
+    OVER_MIN_BASE_PAR:   1,     // no over flag below a base par of 1
+    OVER_MIN_EFF_PAR:    2,     // ... or an average multiplied order (qty + on hand) below 2
+    OVER_MIN_AVG_ONHAND: 1      // ... or an average On Hand below 1
+  };
+}
+
+// The flags for every item ordered in the window. rows: history rows (only
+// itemId, orderDate, onHandPrev, qtyOrdered are read); parMap: a Map of item
+// id -> base par (> 0); cutoffDate: the window's first day, 'yyyy-MM-dd'
+// (today minus WINDOW_DAYS in the store's calendar). Returns
+// { [itemId]: { flag: 'empty'|'over'|'both'|null, timesOrdered, emptyCount,
+//   overCount, avgOnHand, par } }; emptyCount is the legacy name of the under
+// count, which ManageItems.html reads.
+function parReviewFlags_(rows, parMap, cutoffDate) {
+  const R = parFlagRules_();
+  const agg = new Map();
+  for (const r of rows) {
+    const itemId     = String(r.itemId || '').trim();
+    const onHand     = Number(r.onHandPrev) || 0;
+    const qtyOrdered = Number(r.qtyOrdered) || 0;
+    if (!itemId || qtyOrdered <= 0) continue;
+    const date = String(r.orderDate || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < cutoffDate) continue;
+
+    if (!agg.has(itemId)) {
+      agg.set(itemId, { timesOrdered: 0, underCount: 0, overCount: 0, totalOnHand: 0, totalEffPar: 0,
+                        par: parMap.get(itemId) || '' });
+    }
+    const entry = agg.get(itemId);
+    entry.timesOrdered++;
+    entry.totalOnHand += onHand;
+    entry.totalEffPar += (qtyOrdered + onHand);
+
+    const par = parMap.get(itemId);
+    if (!par || par <= 0) continue;
+    if (par >= R.UNDER_PAR_MIN && onHand <= par * R.UNDER_ONHAND_PCT) entry.underCount++;
+    if (onHand >= par * R.OVER_ONHAND_PCT) entry.overCount++;
+  }
+
+  const result = {};
+  agg.forEach((entry, itemId) => {
+    const avgOnHand = Math.round((entry.totalOnHand / entry.timesOrdered) * 10) / 10;
+    if (entry.timesOrdered < R.MIN_ORDERS) {
+      result[itemId] = { flag: null, timesOrdered: entry.timesOrdered, emptyCount: entry.underCount,
+                         overCount: entry.overCount, avgOnHand: avgOnHand, par: entry.par };
+      return;
+    }
+    const isUnder = entry.underCount / entry.timesOrdered >= R.UNDER_FREQ_PCT;
+    const basePar = Number(entry.par) || 0;
+    const overActionable = basePar >= R.OVER_MIN_BASE_PAR
+                        && entry.totalEffPar / entry.timesOrdered >= R.OVER_MIN_EFF_PAR
+                        && entry.totalOnHand / entry.timesOrdered >= R.OVER_MIN_AVG_ONHAND;
+    const isOver = entry.overCount / entry.timesOrdered >= R.OVER_FREQ_PCT && overActionable;
+    result[itemId] = {
+      flag:         isUnder && isOver ? 'both' : isUnder ? 'empty' : isOver ? 'over' : null,
+      timesOrdered: entry.timesOrdered,
+      emptyCount:   entry.underCount,
+      overCount:    entry.overCount,
+      avgOnHand:    avgOnHand,
+      par:          entry.par
+    };
+  });
+  return result;
+}
+
+// The par flags' window start: 'yyyy-MM-dd' WINDOW_DAYS before today
+// ('yyyy-MM-dd', the store's calendar).
+function parFlagCutoff_(today) {
+  const p = String(today).split('-').map(Number);
+  const d = new Date(Date.UTC(p[0], p[1] - 1, p[2] - parFlagRules_().WINDOW_DAYS));
+  return d.toISOString().slice(0, 10);
+}
+
 </script>
 
 <div class="app en" id="app">
@@ -2657,6 +2850,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       <div class="screen" id="view-history-detail" style="display:none"></div>
       <div class="screen" id="view-settings" style="display:none"></div>
       <div class="screen" id="view-recipients" style="display:none"></div>
+      <div class="screen" id="view-people" style="display:none"></div>
     </div>
 
     <div class="tabbar">
@@ -3289,7 +3483,8 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       'history-vendors':{ en: 'Order history',    es: 'Historial' },
       'history-detail': { en: 'Order details',   es: 'Detalles' },
       settings:         { en: 'Settings',        es: 'Ajustes' },
-      recipients:       { en: 'Email recipients', es: 'Destinatarios' }
+      recipients:       { en: 'Email recipients', es: 'Destinatarios' },
+      people:           { en: 'People', es: 'Personas' }
     },
     msg: {
       settings:         { en: 'Settings', es: 'Ajustes' },
@@ -3484,6 +3679,21 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       recipientsActive: { en: 'Active', es: 'Activo' },
       recipientsInactive: { en: 'Inactive', es: 'Inactivo' },
       recipientsGmLock: { en: 'Managed by GM — edit in the spreadsheet', es: 'Gestionado por el GM — editar en la hoja' },
+      recipientsGmLockApp: { en: 'The GM row is changed on a computer', es: 'La fila del GM se cambia en una computadora' },
+      recipientsGmTitle: { en: 'The GM: kept on the email, changed only on a computer', es: 'El GM: siempre en el correo, se cambia solo en una computadora' },
+      // People (T3)
+      peopleTitle:      { en: 'People', es: 'Personas' },
+      peopleHelp:       { en: 'The names in "Who\'s counting?"', es: 'Los nombres de "¿Quién cuenta?"' },
+      peopleEmpty:      { en: 'No names yet. They appear here once someone picks or types one.', es: 'Aún no hay nombres. Aparecen aquí cuando alguien elige o escribe uno.' },
+      peopleRename:     { en: 'Rename', es: 'Renombrar' },
+      peopleRemove:     { en: 'Remove', es: 'Quitar' },
+      peopleSave:       { en: 'Save', es: 'Guardar' },
+      peopleNewName:    { en: 'New name', es: 'Nombre nuevo' },
+      peopleOld:        { en: 'Not used in 30 days, so not offered when someone picks a name', es: 'Sin usar en 30 días: no se ofrece al elegir un nombre' },
+      peopleRemoveTitle: { en: 'Remove {name}?', es: '¿Quitar a {name}?' },
+      peopleRemoveMsg:  { en: 'The name leaves the list. A phone using it asks "Who\'s counting?" again. Counts already saved keep the name.', es: 'El nombre sale de la lista. Un teléfono que lo use pregunta otra vez "¿Quién cuenta?". Los conteos ya guardados conservan el nombre.' },
+      peopleRenameHelp: { en: 'Phones using the old name switch to the new one. Counts already saved keep the old name.', es: 'Los teléfonos con el nombre anterior pasan al nuevo. Los conteos ya guardados conservan el anterior.' },
+      peopleSaved:      { en: 'Saved', es: 'Guardado' },
       recipientsRemove: { en: 'Remove', es: 'Quitar' },
       recipientsRemoveConfirmTitle: { en: 'Remove recipient?', es: '¿Quitar destinatario?' },
       recipientsRemoveConfirmMsg: {
@@ -3821,12 +4031,19 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   // phone_direct) answers the count path here: one snapshot (catalog + state
   // + this cycle's counts) and the shared OrderMath.gs builders, giving the
   // SAME answers and shapes /exec gives (DbApi.gs runs the same functions).
-  // Writes go straight to Supabase. The reset fallback, the recap email,
-  // history and recipients stay on /exec. Design record: D12-D14.
+  // Writes go straight to Supabase. The reset fallback and the recap email
+  // stay on /exec. Design record: D12-D14.
   const DIRECT_ACTIONS = {
     ping: 1, getResetStatus: 1, getDashboard: 1, getVendorItems: 1, getVendorItemsBulk: 1,
     getRecapData: 1, saveOnHand: 1, setEmergencyOverride: 1, setVendorOverride: 1,
-    quickEdit: 1, setPar: 1   // Supabase only (schema v7): /exec has no quick edits
+    quickEdit: 1, setPar: 1,   // Supabase only (schema v7): /exec has no quick edits
+    getPeople: 1, renamePerson: 1, removePerson: 1, joinPerson: 1   // Supabase only (schema v9, T3)
+  };
+  // Order history and recipients move to Supabase with the store's editor
+  // (schema v9, docs/MOG_OneApp_Spec.md T1, T2): direct once the snapshot says
+  // the editor has moved, /exec (the Sheet's) until then.
+  const DIRECT_WHEN_MOVED = {
+    getHistoryDates: 1, getHistoryVendors: 1, getHistoryDetail: 1, getRecipients: 1, saveRecipients: 1
   };
   // Answers that mean "this store's phones use /exec" (not switched, not yet
   // moved to Supabase, or a schema without the switch).
@@ -3887,7 +4104,9 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   // Sign-in always tries Supabase first (when this build has its config);
   // the rest of the count path goes direct only once sign-in said so.
   function directRoutes_(action) {
-    if (!window.MOG_SUPABASE || !DIRECT_ACTIONS[action]) return false;
+    if (!window.MOG_SUPABASE) return false;
+    if (DIRECT_WHEN_MOVED[action]) return direct.mode === 'direct' && direct.editorDirect === true;
+    if (!DIRECT_ACTIONS[action]) return false;
     return action === 'ping' || direct.mode === 'direct';
   }
 
@@ -4002,7 +4221,22 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       direct.live.people = Array.isArray(data.people) ? data.people : [];
       direct.live.activity = Array.isArray(data.activity) ? data.activity : [];
     }
+    // People (schema v9, T3): this device's name was renamed (keep the new
+    // one) or removed (ask "Who's counting?" again; the app asks on its next
+    // live tick).
+    if (typeof data.nameNow === 'string' && data.nameNow && liveName_()) setLiveName_(data.nameNow);
+    if (data.nameGone === true && liveName_()) {
+      try { localStorage.removeItem(liveNameKey_()); } catch (e) { /* asks again next start */ }
+      direct.live.askName = true;
+    }
     return direct.snap;
+  }
+
+  // The order log for a date range (schema v9, T1), as history rows.
+  async function directHistory_(dateFrom, dateTo) {
+    const h = await directCall_('mog_history', { p_from: dateFrom || null, p_to: dateTo || null });
+    const abbr = h.abbr || (direct.catalog && direct.catalog.abbr) || 'LOC';
+    return { rows: historyRowsFromLog_(h.rows), abbr: abbr };
   }
 
   // The current snapshot, refreshed when it's older than DIRECT_REUSE_MS.
@@ -4169,6 +4403,51 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
         data = { itemsPayload: vendorItemsFromSnapshot_(inputs, vendorNameFromInputs_(inputs, payload.vendor)), cycleDate: snap.state.cycleDate };
         break;
       }
+      // The History tab (T1): MOGApi.gs api_getHistory*_'s answers, from the
+      // order log and the same OrderMath.gs functions.
+      case 'getHistoryDates': {
+        const h = await directHistory_(payload.dateFrom, payload.dateTo);
+        data = historyDatesFromRows_(historyRowsFiltered_(h.rows,
+          { vendorFilter: 'ALL', dateFrom: payload.dateFrom, dateTo: payload.dateTo }).rows);
+        break;
+      }
+      case 'getHistoryVendors': {
+        const date = String(payload.date || '');
+        if (!date) throw new Error('date is required.');
+        const h = await directHistory_(date, date);
+        data = historyVendorsFromRows_(historyRowsFiltered_(h.rows,
+          { vendorFilter: 'ALL', dateFrom: date, dateTo: date }).rows, date, h.abbr);
+        break;
+      }
+      case 'getHistoryDetail': {
+        const date = String(payload.date || ''), vendor = String(payload.vendor || '');
+        if (!date || !vendor) throw new Error('date and vendor are required.');
+        const h = await directHistory_(date, date);
+        data = historyDetailFromRows_(historyRowsFiltered_(h.rows,
+          { vendorFilter: vendor, dateFrom: date, dateTo: date }).rows, vendor, date, h.abbr);
+        break;
+      }
+      // Recipients (T2). gmEdit: the GM row may change (a computer).
+      case 'getRecipients':
+        data = await directCall_('mog_recipients_get', {});
+        break;
+      case 'saveRecipients':
+        data = await directCall_('mog_recipients_save',
+          { p_recipients: Array.isArray(payload.recipients) ? payload.recipients : [], p_gm_edit: payload.gmEdit === true });
+        break;
+      // People (T3).
+      case 'getPeople':
+        data = await directCall_('mog_people_list', {});
+        break;
+      case 'renamePerson':
+        data = await directCall_('mog_people_rename', { p_from: payload.from, p_to: payload.to });
+        break;
+      case 'removePerson':
+        data = await directCall_('mog_people_remove', { p_name: payload.name });
+        break;
+      case 'joinPerson':
+        data = await directCall_('mog_people_join', { p_name: payload.name });
+        break;
       default:
         throw new Error('Unknown action: ' + action);
     }
@@ -4312,9 +4591,17 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       if (match) pick(match);
       else { input.value = current; pick(wrap.querySelector('.name-chip[data-other]')); }
     }
-    const done = function (name) {
+    const done = async function (name) {
       setLiveName_(name);
       wrap.remove();
+      // A name picked or typed joins the store's list (schema v9, T3): the one
+      // way a removed name comes back, and an old name gives its new one.
+      if (name) {
+        try {
+          const joined = await api('joinPerson', { name: name });
+          if (joined && joined.name) setLiveName_(joined.name);
+        } catch (e) { /* schema v8 or offline: the next read adds it, as before */ }
+      }
       directExpire_();
       directSnapshot_().catch(function () {});   // tell the others right away
       if (state.currentView === 'settings') renderSettings();
@@ -6576,6 +6863,11 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     if (state.currentView === 'count') liveRefreshCount_();
     if (todayShown) maybeBackgroundRefreshDashboard_('tick');
     else if (state.currentView !== 'count') directSnapshot_().catch(function () { /* offline: the next tick tries again */ });
+    // This device's name was removed in People: ask "Who's counting?" again.
+    if (direct.live.askName) {
+      direct.live.askName = false;
+      setTimeout(openNamePickerIfNeeded_, 1500);
+    }
   }
   setInterval(liveTick_, LIVE_TICK_MS);
 
@@ -7854,24 +8146,33 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
         '<div class="empty-sub">' + escapeHtml(t('recipientsEmptySub')) + '</div>' +
       '</div>';
     } else {
-      // Render every recipient. GM rows get the locked treatment.
+      // Render every recipient. GM rows get the locked treatment, except on a
+      // computer once the list is Supabase's (T2): there the GM row changes
+      // like any other, and a GM button marks who the GM is.
+      const gmEditable = recipientsGmEditable_();
       for (let i = 0; i < recipients.length; i++) {
         const r = recipients[i];
         const isGm = !!r.gm;
-        html += '<div class="recipient-card' + (isGm ? ' locked' : '') + '">' +
+        const locked = isGm && !gmEditable;
+        html += '<div class="recipient-card' + (locked ? ' locked' : '') + '">' +
           '<div class="recipient-info">' +
             '<div class="recipient-name">' +
               escapeHtml(r.name) +
-              (isGm ? '<i class="ti ti-lock lock-icon" aria-hidden="true" title="' + escapeHtml(t('recipientsGmLock')) + '"></i>' : '') +
+              (locked ? '<i class="ti ti-lock lock-icon" aria-hidden="true" title="' +
+                escapeHtml(t(direct.editorDirect === true ? 'recipientsGmLockApp' : 'recipientsGmLock')) + '"></i>' : '') +
             '</div>' +
             '<div class="recipient-email">' + escapeHtml(r.email) + '</div>' +
           '</div>' +
           '<div class="recipient-actions">' +
-            '<button class="recipient-toggle ' + (r.active ? 'on' : 'off') + (isGm ? ' locked' : '') + '" ' +
-              'data-idx="' + i + '"' + (isGm ? ' disabled' : '') + '>' +
+            (gmEditable
+              ? '<button class="recipient-toggle recipient-gm ' + (isGm ? 'on' : 'off') + '" data-gm-idx="' + i + '" ' +
+                  'title="' + escapeHtml(t('recipientsGmTitle')) + '" aria-pressed="' + (isGm ? 'true' : 'false') + '">GM</button>'
+              : '') +
+            '<button class="recipient-toggle ' + (r.active ? 'on' : 'off') + (locked ? ' locked' : '') + '" ' +
+              'data-idx="' + i + '"' + (locked ? ' disabled' : '') + '>' +
               (r.active ? escapeHtml(t('recipientsActive')) : escapeHtml(t('recipientsInactive'))) +
             '</button>' +
-            (isGm
+            (locked
               ? ''
               : '<button class="recipient-remove" data-idx="' + i + '" aria-label="' + escapeHtml(t('recipientsRemove')) + '">' +
                   '<i class="ti ti-trash" aria-hidden="true"></i>' +
@@ -7927,7 +8228,16 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     }
 
     // Toggle and remove buttons — delegated per-card by data-idx.
-    view.querySelectorAll('.recipient-toggle:not(.locked)').forEach(btn => {
+    view.querySelectorAll('.recipient-gm[data-gm-idx]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const r = state.recipients[parseInt(btn.getAttribute('data-gm-idx'), 10)];
+        if (!r) return;
+        r.gm = !r.gm;
+        state.recipientsDirty = true;
+        renderRecipients_();
+      });
+    });
+    view.querySelectorAll('.recipient-toggle[data-idx]:not(.locked)').forEach(btn => {
       btn.addEventListener('click', () => {
         const idx = parseInt(btn.getAttribute('data-idx'), 10);
         onRecipientToggleClick_(idx);
@@ -8038,6 +8348,119 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
     renderRecipients_();
   }
 
+  // ============================================================
+  // PEOPLE (docs/MOG_OneApp_Spec.md T3): the names in "Who's counting?",
+  // renamed or removed on a computer. Each change saves as it is made.
+  // ============================================================
+  async function openPeople_() {
+    showView('people');
+    state.peopleEditing = null;
+    const view = $('view-people');
+    if (state.people) renderPeople_();
+    else renderLoading(view);
+    try {
+      state.people = (await api('getPeople')).people || [];
+      renderPeople_();
+    } catch (err) {
+      console.error('getPeople error:', err);
+      if (!state.people) renderError(view, openPeople_);
+    }
+  }
+
+  function renderPeople_() {
+    const view = $('view-people');
+    const people = state.people || [];
+    let html = '<p class="hero-day" style="margin-bottom:6px">' + escapeHtml(t('peopleTitle')) + '</p>' +
+      '<p style="font-size:13px;color:var(--text-2);margin:0 0 16px">' + escapeHtml(t('peopleHelp')) + '</p>';
+    if (!people.length) {
+      html += '<div class="recipients-empty"><div class="empty-sub">' + escapeHtml(t('peopleEmpty')) + '</div></div>';
+    }
+    people.forEach(function (p, i) {
+      const editing = state.peopleEditing === i;
+      html += '<div class="recipient-card">' +
+        '<div class="recipient-info">' +
+          (editing
+            ? '<label class="sr-only" for="people-new-name">' + escapeHtml(t('peopleNewName')) + '</label>' +
+              '<input class="name-input" id="people-new-name" maxlength="40" value="' + escapeHtml(p.name) + '" style="margin:0">' +
+              '<div style="font-size:12px;color:var(--text-3);margin-top:6px">' + escapeHtml(t('peopleRenameHelp')) + '</div>'
+            : '<div class="recipient-name">' + escapeHtml(p.name) + '</div>' +
+              (p.inPicker === false ? '<div class="recipient-email">' + escapeHtml(t('peopleOld')) + '</div>' : '')) +
+        '</div>' +
+        '<div class="recipient-actions">' +
+          (editing
+            ? '<button class="cta-secondary" data-people-cancel="1" style="margin:0;padding:6px 12px">' + escapeHtml(t('recipientsCancel')) + '</button>' +
+              '<button class="cta" data-people-save="' + i + '" style="margin:0;padding:6px 12px">' + escapeHtml(t('peopleSave')) + '</button>'
+            : '<button class="recipient-toggle off" data-people-rename="' + i + '">' + escapeHtml(t('peopleRename')) + '</button>' +
+              '<button class="recipient-remove" data-people-remove="' + i + '" aria-label="' + escapeHtml(t('peopleRemove') + ' ' + p.name) + '">' +
+                '<i class="ti ti-trash" aria-hidden="true"></i></button>') +
+        '</div>' +
+      '</div>';
+    });
+    view.innerHTML = html;
+
+    view.querySelectorAll('[data-people-rename]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.peopleEditing = Number(b.getAttribute('data-people-rename'));
+        renderPeople_();
+        const input = $('people-new-name');
+        if (input) { input.focus(); input.select(); }
+      });
+    });
+    view.querySelectorAll('[data-people-cancel]').forEach(function (b) {
+      b.addEventListener('click', function () { state.peopleEditing = null; renderPeople_(); });
+    });
+    const save = async function (i) {
+      const p = people[i];
+      const to = ($('people-new-name') ? $('people-new-name').value : '').trim();
+      if (!p || !to || to === p.name) { state.peopleEditing = null; renderPeople_(); return; }
+      try {
+        const res = await api('renamePerson', { from: p.name, to: to });
+        state.people = res.people || [];
+        state.peopleEditing = null;
+        // This device follows its own rename at once.
+        if (liveName_() && liveName_().toLowerCase() === p.name.toLowerCase()) setLiveName_(res.name || to);
+        renderPeople_();
+        showToast(t('peopleSaved'), 'success');
+      } catch (err) {
+        showToast(isNetworkError_(err) ? t('offlineRetry') : String(err.message || err), 'error');
+      }
+    };
+    view.querySelectorAll('[data-people-save]').forEach(function (b) {
+      b.addEventListener('click', function () { save(Number(b.getAttribute('data-people-save'))); });
+    });
+    if ($('people-new-name')) {
+      $('people-new-name').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') save(state.peopleEditing);
+        if (e.key === 'Escape') { state.peopleEditing = null; renderPeople_(); }
+      });
+    }
+    view.querySelectorAll('[data-people-remove]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        const p = people[Number(b.getAttribute('data-people-remove'))];
+        if (!p) return;
+        const ok = await showConfirm({
+          kind: 'danger', icon: 'trash',
+          title: t('peopleRemoveTitle').replace('{name}', p.name),
+          msg: t('peopleRemoveMsg'),
+          confirmLabel: t('peopleRemove'), cancelLabel: t('cancel')
+        });
+        if (!ok) return;
+        try {
+          state.people = (await api('removePerson', { name: p.name })).people || [];
+          renderPeople_();
+          showToast(t('peopleSaved'), 'success');
+        } catch (err) {
+          showToast(isNetworkError_(err) ? t('offlineRetry') : String(err.message || err), 'error');
+        }
+      });
+    });
+  }
+
+  // The GM row changes only on a computer, once the list is Supabase's (T2).
+  function recipientsGmEditable_() {
+    return isDesk_() && direct.mode === 'direct' && direct.editorDirect === true;
+  }
+
   async function onRecipientsSaveClick_() {
     const btn = $('recipients-save-btn');
     if (btn) {
@@ -8046,7 +8469,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       if (span) span.textContent = t('recipientsSaving');
     }
     try {
-      const result = await api('saveRecipients', { recipients: state.recipients });
+      const result = await api('saveRecipients', { recipients: state.recipients, gmEdit: recipientsGmEditable_() });
       // Server returns the canonical sanitized list — adopt it as the
       // new source of truth in case sanitization changed anything
       // (e.g. trimmed whitespace, coerced gm flags).
@@ -8110,7 +8533,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.22.0';
+    const versionStr = '0.23.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
@@ -8140,6 +8563,16 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
           '</div>' +
           '<div class="settings-value"><i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
         '</div>' +
+        // People (T3): on a computer, for a store whose phones are on Supabase.
+        ((isDesk_() && direct.mode === 'direct')
+          ? '<div class="settings-row tappable" id="settings-people">' +
+              '<div>' +
+                '<div class="settings-label"><i class="ti ti-user-edit" aria-hidden="true"></i>' + escapeHtml(t('peopleTitle')) + '</div>' +
+                '<div style="font-size:12px;color:var(--text-3);margin-top:4px;margin-left:28px">' + escapeHtml(t('peopleHelp')) + '</div>' +
+              '</div>' +
+              '<div class="settings-value"><i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
+            '</div>'
+          : '') +
       '</div>' +
 
       '<div class="settings-section-label"><span class="lang-en">Preferences</span><span class="lang-es">Preferencias</span></div>' +
@@ -8178,6 +8611,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
       if (state.cache.historyDates) renderHistoryDates(state.cache.historyDates);
     });
     $('settings-recipients').addEventListener('click', openRecipients);
+    if ($('settings-people')) $('settings-people').addEventListener('click', openPeople_);
     $('settings-summary').addEventListener('click', onDailySummaryClick);
     if ($('settings-name')) $('settings-name').addEventListener('click', async () => {
       try { directExpire_(); await directSnapshot_(); } catch (e) { /* offline: the list we have */ }
@@ -8824,7 +9258,7 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   // ---- Computer layout (spec L1-L4) ------------------------------------
   // Today's vendor list stays on the left while one of these is open on the
   // right; with none open, the right side asks for a vendor (#view-pick).
-  const ALL_VIEWS_ = ['today','count','review','recap','history','history-vendors','history-detail','settings','recipients'];
+  const ALL_VIEWS_ = ['today','count','review','recap','history','history-vendors','history-detail','settings','recipients','people'];
   const SPLIT_VIEWS_ = ['today', 'count', 'review', 'recap'];
 
   function layoutViews_() {
@@ -9074,6 +9508,13 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
         if (!ok) return;
         state.recipientsDirty = false;
       }
+      showView('settings');
+      renderSettings();
+      return;
+    }
+
+    // People → settings (each rename/remove saved as it was made).
+    if (v === 'people') {
       showView('settings');
       renderSettings();
       return;

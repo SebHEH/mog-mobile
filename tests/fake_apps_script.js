@@ -106,6 +106,8 @@ class FakeSheet {
     }
     return 0;
   }
+  // Sheet.getMaxRows: the grid's height (here: the rows held, or the last one used).
+  getMaxRows() { return Math.max(this.rows.length, 1); }
   deleteRows(start, n) {
     this.rows.splice(start - 1, n);
     this.book.writes.push({ sheet: this.name, deleteRows: start, count: n });
@@ -350,6 +352,6 @@ function plant(text, find, replace) {
 }
 
 module.exports = {
-  REPO, D, makeContext, source, compile, deepDiff, plant,
+  REPO, D, makeContext, source, compile, deepDiff, plant, clockShim,
   READERS_PLAN, API_FNS, API_CONSTS, BUILD_CTX
 };

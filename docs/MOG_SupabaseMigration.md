@@ -80,9 +80,9 @@ Rejected: stopping column-E writes but staying on `/exec` (still ~2s per screen)
 | **Store-wide Emergency Override** (was ORDER_ENTRY!AD2) | **Supabase `mog.store_state`** | none |
 | **Per-vendor day picks** (was SETUP!AF) | **Supabase `mog.store_state`** | none |
 | **Cycle date** (was ORDER_ENTRY!AE9) | **Supabase `mog.store_state`** on a switched store (the Sheet's AE9 is no longer updated there) | none |
-| **Order log** | **Supabase `mog.order_log`** | Sheet `LOG_ORDERS`, appended nightly as a backup (D10) |
+| **Order log** | **Supabase `mog.order_log`** | Sheet `LOG_ORDERS`, appended nightly as a backup (D10). Once a store's editor moves, its older `LOG_ORDERS` dates are copied in and the History tab, Order History and the par flags read `mog.order_log` (schema v9, T1). |
 | Recap email | Apps Script (MailApp), built from `mog.order_log` | — |
-| Recap recipients | Sheet SETUP AB:AE, read once per close (moves in step 6) | — |
+| Recap recipients | Sheet SETUP AB:AE; **Supabase `mog.recipients` once the store's editor moves** (schema v9, docs/MOG_OneApp_Spec.md T2: copied at the switch, read by the nightly email) | — |
 | **Catalog tables** (`mog.vendors`, `mog.areas`, `mog.items`, `mog.pick_rows`, schema v4) | The Sheet, until the store's `editor_direct` flips (D16); Supabase after | Before the flip: an inert copy, written only by `test_catalogTablesParity`'s seed and read by nothing a phone uses. After: `mog.catalog` is built from them (D22). |
 
 ## 4. How a day works after the switch

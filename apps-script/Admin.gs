@@ -199,6 +199,11 @@ function setGmEmail_() {
   // point is the supported way to rotate the GM email without editing
   // SETUP directly.
   const ui = SpreadsheetApp.getUi();
+  if (editorInApp_()) {   // the list is Supabase's now (docs/MOG_OneApp_Spec.md T2)
+    ui.alert('Edited in the app', 'This store\'s daily summary recipients, the GM row included, are changed in ' +
+      'the app now: Settings → Recipients, on a computer for the GM row.', ui.ButtonSet.OK);
+    return;
+  }
   const props = PropertiesService.getScriptProperties();
   const current = props.getProperty(PROP_GM_EMAIL);
 
@@ -221,7 +226,7 @@ function setGmEmail_() {
 
   // Ensure header row exists before reading/writing the recipients block.
   ensureRecipientsHeader_();
-  const recipients = readRecipients_();
+  const recipients = readRecipientsSheet_();
   let gmIdx = recipients.findIndex(r => r.gm);
 
   if (!gmEmail) {

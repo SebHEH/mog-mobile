@@ -149,7 +149,9 @@ mog-mobile/
 │   └── editor/                  The editor on Supabase (one-app Phases 2 and 4): catalogEdit.js (Manage Items, Manage Vendors,
 │                                Storage Areas and Shelf to Sheet over the catalog tables, gated against Items.gs / Vendors.gs /
 │                                PickPath.gs) + host.js (runs those Apps Script pages and Editor Home as static pages) + meImport.js
-│                                (Import from MarginEdge: vendors, then items, then one logged save). build.py publishes it at
+│                                (Import from MarginEdge: vendors, then items, then one logged save). host.js also answers Order
+│                                History, the Par Review flags (OrderMath.gs, copied in as orderMath.js) and the Health Check
+│                                (catalogEdit.js getStoreHealthReport) from Supabase. build.py publishes it at
 │                                <slug>/editor/ for a store marked "editor": "supabase", and --preview for a test store.
 ├── apps-script/                 APPS SCRIPT SOURCE.
 │   ├── README.md                Apps Script workflow docs (setup + day-to-day).
@@ -193,6 +195,7 @@ mog-mobile/
 │   ├── schema_v6.sql            The editor writes the catalog (one-app Phase 2): change log, mog_editor_login/_get/_apply/_undo, D23 (run after v5).
 │   ├── schema_v7.sql            Phone quick edits (one-app Phase 3): "just today" par/add in mog.quick_edits + the snapshot, mog_set_par, review list (run after v6).
 │   ├── schema_v8.sql            One-app Phase 4: the area rename step for the editor's saves and Undo, mog_sync_switch_editor (run after v7).
+│   ├── schema_v9.sql            Phase 4's rest: the order log read (mog_history) + the switch's LOG_ORDERS copy, recipients, People (rename/remove), the Health status (run after v8).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
 │   └── tests/                   smoke.sql … smoke_v8.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).

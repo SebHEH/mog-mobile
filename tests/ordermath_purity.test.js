@@ -28,7 +28,10 @@ const EXPECTED = ['vendorDayMultiplier_', 'computeSuggestedQty_', 'buildPickInfo
   'vendorItemsFromSnapshot_', 'dashboardFromSnapshot_', 'orderLogRowsFromInputs_', 'recapSectionsFromInputs_',
   'recapFromLogRows_', 'resetStatusFromSnapshot_', 'vendorNameFromInputs_', 'vendorItemsBulkFromInputs_',
   'recapDataFromInputs_', 'countRowsFromSave_', 'vendorPickFromPayload_', 'overrideAnswerFromSnapshot_',
-  'vendorPickAnswerFromSnapshot_'];
+  'vendorPickAnswerFromSnapshot_',
+  // order history and the par flags (docs/MOG_OneApp_Spec.md T1): the Sheet, the phone and the editor
+  'historyRowsFiltered_', 'historyReference_', 'historyDatesFromRows_', 'historyVendorsFromRows_',
+  'historyDetailFromRows_', 'historyRowsFromLog_', 'parFlagRules_', 'parReviewFlags_', 'parFlagCutoff_'];
 const FORBIDDEN = ['SpreadsheetApp', 'Utilities', 'PropertiesService', 'CacheService', 'Logger', 'Session',
   'MailApp', 'GmailApp', 'ScriptApp', 'LockService', 'UrlFetchApp', 'HtmlService', 'DriveApp', 'ContentService',
   'document', 'window', 'localStorage', 'sessionStorage', 'fetch', 'getSheet_', 'VENDOR_META', 'VENDOR_TAB',

@@ -165,11 +165,145 @@
     }));
   }
 
-  // getManageItemsBootstrap_. Par Review flags read the order history, which
-  // moves with History (Phase 4); until then they are empty ("No data yet").
-  function getManageItemsBootstrap(t) {
-    return { items: getAllItemsForView(t), flags: {}, areas: getStorageAreaList(t),
-             vendorTable: getVendorTableData(t), minOrders: MIN_ORDERS };
+  // getManageItemsBootstrap_. The Par Review flags come from the order log
+  // (docs/MOG_OneApp_Spec.md E4, T1): host.js reads it and works them out with
+  // OrderMath.gs parReviewFlags_, the Sheet's own math, and passes them in
+  // with its threshold; none given, they are empty ("No data yet").
+  function getManageItemsBootstrap(t, flags, minOrders) {
+    return { items: getAllItemsForView(t), flags: flags || {}, areas: getStorageAreaList(t),
+             vendorTable: getVendorTableData(t), minOrders: minOrders || MIN_ORDERS };
+  }
+
+  // ---- Store Health Check (T4) ------------------------------------------------
+  // The app's own checks for a store whose catalog lives here: what can still
+  // go wrong in the tables (the database already rules out orphan pick rows,
+  // repeated item ids and areas that don't exist), and the store's status
+  // from mog_editor_status: phones on Supabase, last night's close, the PIN
+  // lockout. Same report shape as Health.gs getStoreHealthReport_.
+
+  // Backup vendors missing from their lists: (item, vendor) pairs where the
+  // item is eligible with the vendor, has a storage area, and has no row on
+  // that vendor's list (Health.gs "Backup vendor placement").
+  function missingBackupRows(t) {
+    const map = vendorMap(t);
+    const out = [];
+    for (const it of t.items) {
+      if (it.active !== true || !s_(it.id)) continue;
+      const id = s_(it.id);
+      const rows = t.pickRows.filter(r => s_(r.id) === id);
+      const area = (rows.find(r => s_(r.area)) || {}).area;
+      if (!area) continue;
+      const have = new Set(rows.map(r => s_(r.vendor).toLowerCase()));
+      for (const v of normalizeEligibleList(it.eligible, s_(it.primaryVendor), map)) {
+        if (!have.has(v.toLowerCase())) out.push({ id: id, name: s_(it.name), vendor: v, area: s_(area) });
+      }
+    }
+    return out;
+  }
+
+  const listOf = (names, max) => names.slice(0, max || 8).join(', ') + (names.length > (max || 8) ? ' and ' + (names.length - (max || 8)) + ' more' : '');
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function fmtLocal(s) {   // 'YYYY-MM-DD HH:MM' -> 'Oct 19, 2026 3:30 PM' (Health.gs's format)
+    const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(String(s || ''));
+    if (!m) return String(s || '');
+    const h = Number(m[4]);
+    return MONTHS[Number(m[2]) - 1] + ' ' + Number(m[3]) + ', ' + m[1] + ' ' + ((h % 12) || 12) + ':' + m[5] + ' ' + (h < 12 ? 'AM' : 'PM');
+  }
+
+  function getStoreHealthReport(t, status, storeName) {
+    const checks = [];
+    const add = (id, label, st, detail, fix, fixId) =>
+      checks.push({ id: id, label: label, status: st, detail: detail || '', fix: fix || '', fixId: fixId || '', destructive: false });
+    const st = status || {};
+
+    // ── The store ──
+    add('phones', 'Phones on Supabase', st.phoneDirect ? 'pass' : 'warn',
+      st.phoneDirect ? 'Phones read and save straight to Supabase.'
+                     : 'Phones still go through the Sheet\'s /exec web app, which is slower.',
+      st.phoneDirect ? '' : 'In the Supabase SQL Editor run supabase/phones_direct.sql for this store.');
+    const today = String(st.localNow || '').slice(0, 10), hhmm = String(st.localNow || '').slice(11, 16);
+    if (!st.cycleDate) {
+      add('nightly', 'Last night\'s close', 'fail', 'The store has no cycle in Supabase yet.',
+        'Open the Sheet: 📱 Mobile API → Move this store to Supabase.');
+    } else if (st.cycleDate >= today || hhmm < '04:00') {
+      add('nightly', 'Last night\'s close', 'pass', 'The cycle open now is ' + st.cycleDate + '; the next close is at 3:30 AM.');
+    } else {
+      add('nightly', 'Last night\'s close', 'fail',
+        'The cycle open now is still ' + st.cycleDate + ', so last night\'s 3:30 AM close did not run.',
+        'Open the app on a phone to start the new day, then install the nightly run: in the Sheet, 📱 Mobile API → 🩺 Store Health Check → "Nightly 3:30 AM run" → Fix.');
+    }
+    const mins = Math.ceil((Number(st.lockedForMs) || 0) / 60000);
+    add('lockout', 'PIN lockout', mins > 0 ? 'warn' : 'pass',
+      mins > 0 ? 'The PIN is locked for ' + mins + ' more minute' + (mins === 1 ? '' : 's') + ' after 5 wrong tries.' : 'No lockout.',
+      mins > 0 ? 'Clear it so the right PIN works now.' : '', mins > 0 ? 'clear_lockout' : '');
+
+    // ── The catalog ──
+    const noDays = t.vendors.filter(v => !(v.mults || []).some(x => Number(x) > 0)).map(v => s_(v.name));
+    add('vendors_days', 'Vendors with delivery days', noDays.length ? 'warn' : 'pass',
+      noDays.length ? noDays.length + ' vendor' + (noDays.length === 1 ? ' has' : 's have') + ' no delivery days, so ' +
+                      (noDays.length === 1 ? 'it orders' : 'they order') + ' nothing: ' + listOf(noDays) + '.'
+                    : 'Every vendor has delivery days.',
+      noDays.length ? 'Manage Vendors: set each one\'s delivery days.' : '');
+
+    const active = t.items.filter(it => it.active === true && s_(it.id) && s_(it.name));
+    const unassigned = getUnassignedActiveItems(t);
+    add('items_area', 'Items on a count list', unassigned.length ? 'warn' : 'pass',
+      unassigned.length ? unassigned.length + ' active item' + (unassigned.length === 1 ? ' has' : 's have') +
+                          ' no storage area, so ' + (unassigned.length === 1 ? 'it is' : 'they are') + ' on no count list: ' +
+                          listOf(unassigned.map(u => u.name)) + '.'
+                        : 'Every active item has a storage area.',
+      unassigned.length ? 'Manage Items → Unassigned: give each a storage area.' : '');
+
+    const noPar = active.filter(it => typeof it.par !== 'number').map(it => s_(it.name));
+    add('items_par', 'Items with a par', noPar.length ? 'warn' : 'pass',
+      noPar.length ? noPar.length + ' active item' + (noPar.length === 1 ? ' has' : 's have') + ' no par, so ' +
+                     (noPar.length === 1 ? 'it is' : 'they are') + ' never ordered: ' + listOf(noPar) + '.'
+                   : 'Every active item has a par.',
+      noPar.length ? 'Manage Items: set each one\'s par.' : '');
+
+    const noVendor = active.filter(it => !s_(it.primaryVendor)).map(it => s_(it.name));
+    add('items_primary', 'Items with a primary vendor', noVendor.length ? 'warn' : 'pass',
+      noVendor.length ? noVendor.length + ' active item' + (noVendor.length === 1 ? ' has' : 's have') +
+                        ' no primary vendor (its vendor was removed): ' + listOf(noVendor) + '.'
+                      : 'Every active item has a primary vendor.',
+      noVendor.length ? 'Manage Items: pick a primary vendor for each.' : '');
+
+    const missing = missingBackupRows(t);
+    add('backups_placed', 'Backup vendor placement', missing.length ? 'warn' : 'pass',
+      missing.length ? missing.length + ' item' + (missing.length === 1 ? ' is' : 's are') + ' missing from a backup vendor\'s list: ' +
+                       listOf(missing.map(m => m.name + ' (' + m.vendor + ')'), 6) + '.'
+                     : 'Every item is on each of its vendors\' lists.',
+      missing.length ? 'Place them, in their current storage area. You can undo it from Changes.' : '',
+      missing.length ? 'place_backups' : '');
+
+    const byName = new Map();
+    for (const it of active) {
+      const k = s_(it.name).toLowerCase();
+      byName.set(k, (byName.get(k) || []).concat([s_(it.name)]));
+    }
+    const repeated = Array.from(byName.values()).filter(v => v.length > 1).map(v => v[0] + ' (' + v.length + ')');
+    add('item_names', 'Item names', repeated.length ? 'warn' : 'pass',
+      repeated.length ? 'Active items sharing a name, which is easy to mix up when counting: ' + listOf(repeated) + '.'
+                      : 'Every active item has its own name.',
+      repeated.length ? 'Manage Items: rename or deactivate the extra copies.' : '');
+
+    const summary = { pass: 0, warn: 0, fail: 0 };
+    checks.forEach(c => { summary[c.status]++; });
+    return { generatedAt: fmtLocal(st.localNow), store: storeName || 'Store', summary: summary, checks: checks };
+  }
+
+  // The Health Check's fix: each missing backup row, in the item's current
+  // area at the end of that area, as syncItemEligiblePickRows_ adds them.
+  function placeBackupVendors(w) {
+    const missing = missingBackupRows(w);
+    for (const m of missing) {
+      const vLow = m.vendor.toLowerCase();
+      const maxShelf = w.pickRows
+        .filter(r => s_(r.vendor).toLowerCase() === vLow && s_(r.area) === m.area)
+        .reduce((x, r) => Math.max(x, shelfNum(r)), 0);
+      w.pickRows.push({ vendor: m.vendor, id: m.id, area: m.area, shelfOrder: maxShelf + 10, seq: nextPickSeq(w) });
+    }
+    return { placed: missing.length };
   }
 
   // getUnassignedActiveItems_: active items with no storage area anywhere.
@@ -971,13 +1105,15 @@
       return 'Saved the storage areas' + (parts.length ? ': ' + parts.join('; ') : ' (new order)');
     }
     if (fn === 'commitReorderPickPath') return 'Saved the ' + normalizeVendorOrThrow(base, args[0]) + ' list (' + plural(result.count, 'item') + ')';
+    if (fn === 'commitPlaceBackupVendors') return 'Placed ' + plural(result.placed, 'item') + ' on their backup vendors\' lists (Health Check)';
     return fn;
   }
 
   // ---- The page's server calls, by name -------------------------------------
 
   const READS = {
-    getManageItemsBootstrap: t => getManageItemsBootstrap(t),
+    getManageItemsBootstrap: (t, args) => getManageItemsBootstrap(t, args[0], args[1]),
+    getStoreHealthReport: (t, args) => getStoreHealthReport(t, args[0], args[1]),
     getAllItemsForView: t => getAllItemsForView(t),
     getUnassignedActiveItems: t => getUnassignedActiveItems(t),
     getItemForEdit: (t, args) => getItemForEdit(t, args[0]),
@@ -997,7 +1133,8 @@
     commitUpdateVendorMultsAndCutoff: (w, args) => updateVendor(w, args[0], args[1], args[2]),
     commitRemoveVendor: (w, args) => removeVendor(w, args[0]),
     commitStorageAreasDraft: (w, args, shifts, renames) => storageAreasDraft(w, args[0], renames),
-    commitReorderPickPath: (w, args) => reorderPickPath(w, args[0], args[1])
+    commitReorderPickPath: (w, args) => reorderPickPath(w, args[0], args[1]),
+    commitPlaceBackupVendors: w => placeBackupVendors(w)
   };
 
   // A read answers { result }; a write { result, ops, label }. A name this

@@ -561,7 +561,28 @@ function escapeHtml_(s) {
  * GM=FALSE regardless of what the client sends.
  ***********************/
 
+// The daily summary's recipients: Supabase's list once the store's editor has
+// moved (docs/MOG_OneApp_Spec.md T2), else the Sheet's. A moved store not yet
+// copied (the nightly run copies it) is copied first. If Supabase can't be
+// reached the Sheet's list is used, so the email still goes out.
 function readRecipients_() {
+  if (!editorInApp_() || !supabaseConfig_().connected) return readRecipientsSheet_();
+  try {
+    let got = supabaseSync_('mog_sync_get_recipients', {});
+    if (!got.seeded) {
+      seedRecipientsToDb_();
+      got = supabaseSync_('mog_sync_get_recipients', {});
+    }
+    return (got.recipients || []).map(function (r) {
+      return { name: String(r.name || ''), email: String(r.email || ''), active: r.active === true, gm: r.gm === true };
+    });
+  } catch (e) {
+    Logger.log('Recipients from Supabase failed, using the Sheet\'s: ' + e.message);
+    return readRecipientsSheet_();
+  }
+}
+
+function readRecipientsSheet_() {
   // Returns [{name, email, active, gm}] from SETUP AB-AE, rows 2+.
   //
   // Uses backward value-scan in column AB to find the last non-empty
@@ -658,7 +679,7 @@ function migrateGmEmailToRecipients_() {
   const props = PropertiesService.getScriptProperties();
   const gmEmail = (props.getProperty(PROP_GM_EMAIL) || '').trim();
   if (!gmEmail) return;
-  const existing = readRecipients_();
+  const existing = readRecipientsSheet_();
   if (existing.length) return;
   writeRecipients_([{
     name:   'GM',
@@ -673,10 +694,12 @@ function api_getRecipients_() {
   // Returns the full recipients list as { recipients: [...] }. Includes
   // both active and inactive entries so the PWA can render the toggle
   // state correctly. GM rows are flagged for the client to render with
-  // a lock icon and no edit controls.
+  // a lock icon and no edit controls. Once the editor has moved the list is
+  // Supabase's (an older app still asking here gets it, read-only).
+  if (editorInApp_()) return { recipients: readRecipients_() };
   ensureRecipientsHeader_();
   migrateGmEmailToRecipients_();
-  return { recipients: readRecipients_() };
+  return { recipients: readRecipientsSheet_() };
 }
 
 
@@ -695,10 +718,16 @@ function api_saveRecipients_(payload) {
   //
   // Email shape validated per non-empty row; duplicates rejected with a
   // clear error. Blank rows silently dropped.
+  //
+  // Once the store's editor has moved, the app saves to Supabase
+  // (mog_recipients_save, the same rules); only an app not yet updated still
+  // sends the save here, and it is refused rather than written to a Sheet
+  // nothing reads any more.
+  if (editorInApp_()) throw new Error('Recipients are changed in the app now. Reload the app and try again.');
   ensureRecipientsHeader_();
   const incoming = (payload && Array.isArray(payload.recipients)) ? payload.recipients : [];
 
-  const existing = readRecipients_();
+  const existing = readRecipientsSheet_();
   const existingGms = existing.filter(r => r.gm);
   const incomingByEmail = new Map();
   for (const r of incoming) {

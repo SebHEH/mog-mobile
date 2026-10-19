@@ -91,6 +91,7 @@ function makeTab(sb, slug, srcOf, opts) {
   if (opts && opts.page) ctx.MOG_EDITOR_PAGE = opts.page;
   if (opts && opts.globals) Object.assign(ctx, opts.globals);   // what the page itself declares
   vm.createContext(ctx);
+  vm.runInContext(srcOf('apps-script/OrderMath.gs'), ctx, { filename: 'orderMath.js' });   // as build.py serves it
   vm.runInContext(srcOf(CE_FILE), ctx, { filename: CE_FILE });
   vm.runInContext(srcOf(HOST_FILE), ctx, { filename: HOST_FILE });
   const run = (name, ...args) => new Promise((resolve, reject) =>
@@ -344,13 +345,16 @@ async function runSuite(srcOf) {
     if (!ptab.ctx.PICK_DATA || ptab.ctx.PICK_DATA.vendor !== firstVendor || !Array.isArray(ptab.ctx.PICK_DATA.groups)) {
       fail('pages', 'Shelf to Sheet got ' + JSON.stringify(ptab.ctx.PICK_DATA).slice(0, 120));
     }
-    const sections = [{ cards: [{ page: 'items', live: true }, { page: 'pickpath', live: true }, { page: 'history', live: true }, { page: 'healthcheck', live: true }] }];
+    const sections = [{ cards: [{ page: 'items', live: true }, { page: 'pickpath', live: true }, { page: 'history', live: true },
+                                { page: 'healthcheck', live: true }, { page: 'nosuchtool', live: true }] }];
     const htab = makeTab(sb, 'zzedit', srcOf, { page: 'home', globals: { HOME_SECTIONS: sections } });
     await htab.run('editorAuth', '4321');
-    if (JSON.stringify(sections[0].cards.map(c => c.live)) !== '[true,true,false,false]') fail('pages', 'Editor Home tiles: ' + JSON.stringify(sections[0].cards));
+    if (JSON.stringify(sections[0].cards.map(c => c.live)) !== '[true,true,true,true,false]') fail('pages', 'Editor Home tiles: ' + JSON.stringify(sections[0].cards));
     const jump = makeTab(sb, 'zzedit', srcOf, { page: 'home', search: '?page=vendors&t=abc' });
     if (jump.ctx.__replaced !== 'vendors.html?t=abc') fail('pages', '?page=vendors went to ' + jump.ctx.__replaced);
-    const stay = makeTab(sb, 'zzedit', srcOf, { page: 'home', search: '?page=history' });
+    const hist = makeTab(sb, 'zzedit', srcOf, { page: 'home', search: '?page=history' });
+    if (hist.ctx.__replaced !== 'history.html') fail('pages', '?page=history went to ' + hist.ctx.__replaced);
+    const stay = makeTab(sb, 'zzedit', srcOf, { page: 'home', search: '?page=nosuchtool' });
     if (stay.ctx.__replaced) fail('pages', 'a page not in the app left Editor Home for ' + stay.ctx.__replaced);
     stats.pages = 1;
   }

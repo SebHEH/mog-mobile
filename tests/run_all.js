@@ -16,7 +16,8 @@ const HELPERS = {
   'slice_js.js': 'library: slices one function out of .gs source',
   'fake_apps_script.js': 'library: fake Sheets/services + loaders',
   'mog_fixture.js': 'library: seeded randomized stores',
-  'fake_supabase.js': 'library: in-memory mog_sync_* + fake UrlFetchApp/ScriptApp'
+  'fake_supabase.js': 'library: in-memory mog_sync_* + fake UrlFetchApp/ScriptApp',
+  'phone_harness.js': 'library: the phone (api() + the DIRECT CLIENT block) in its own context'
 };
 
 const dir = __dirname;

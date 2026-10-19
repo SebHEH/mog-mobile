@@ -30,7 +30,8 @@
   const CE = window.CatalogEdit;
   const PAGE = window.MOG_EDITOR_PAGE || 'items';
   // The pages in the app, by the ?page= name the Apps Script editor uses.
-  const PAGES = { editor: 'index.html', items: 'items.html', vendors: 'vendors.html', areas: 'areas.html', pickpath: 'pickpath.html' };
+  const PAGES = { editor: 'index.html', items: 'items.html', vendors: 'vendors.html', areas: 'areas.html', pickpath: 'pickpath.html',
+                  history: 'history.html', healthcheck: 'healthcheck.html' };
 
   // Editor Home reached as index.html?page=<name>: open that page instead.
   if (PAGE === 'home' && typeof location !== 'undefined' && location.search) {
@@ -167,6 +168,71 @@
     }
   }
 
+  // ---- Calls answered here, not by catalogEdit.js --------------------------------
+  // Order History and the Par Review flags read Supabase's order log, and the
+  // Health Check the store's status (docs/MOG_OneApp_Spec.md T1, T4); the
+  // history and flag math is OrderMath.gs's (orderMath.js), the Sheet's own.
+
+  async function history(dateFrom, dateTo) {
+    const r = await rpc('mog_history', { p_token: H.token, p_from: dateFrom || null, p_to: dateTo || null });
+    if (!r.ok) throw new Error(r.error === 'SESSION_EXPIRED' ? 'SESSION_EXPIRED' : String(r.error));
+    return { rows: historyRowsFromLog_(r.data.rows), vendors: r.data.vendors || [], today: r.data.today };
+  }
+
+  // Items.gs getManageItemsBootstrap_: flags over the last 28 days, base pars
+  // from the items Manage Items shows (par > 0).
+  async function parFlags() {
+    // A few days more than the 28-day window, so a computer clock a little
+    // off still reads every row the window needs; the cutoff itself is the
+    // store's own today (mog_history), as on the Sheet.
+    const from = new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10);
+    const h = await history(from, null);
+    const parMap = new Map();
+    for (const it of CE.call(H.tables, 'getAllItemsForView', []).result) {
+      const par = Number(it.par);
+      if (it.id && !isNaN(par) && par > 0) parMap.set(it.id, par);
+    }
+    return parReviewFlags_(h.rows, parMap, parFlagCutoff_(h.today));
+  }
+
+  const HOST_CALLS = {
+    getManageItemsBootstrap: async function () {
+      let flags = {};
+      try { flags = await parFlags(); } catch (e) { flags = {}; }   // as Items.gs: no flags beats no page
+      return CE.call(H.tables, 'getManageItemsBootstrap', [flags, parFlagRules_().MIN_ORDERS]).result;
+    },
+    // History.gs getOrderHistoryBootstrap_ / getOrderHistory_.
+    getOrderHistoryBootstrap: async function (args) {
+      const f = args[0] || {};
+      const h = await history(f.dateFrom, f.dateTo);
+      const vendors = h.vendors.slice().sort();
+      return { vendors: vendors.length ? vendors : CE.vendorList(H.tables), rows: historyRowsFiltered_(h.rows, f).rows };
+    },
+    getOrderHistory: async function (args) {
+      const f = args[0] || {};
+      const h = await history(f.dateFrom, f.dateTo);
+      return historyRowsFiltered_(h.rows, f).rows;
+    },
+    getStoreHealthReport: async function () {
+      const r = await rpc('mog_editor_status', { p_token: H.token });
+      if (!r.ok) throw new Error(r.error === 'SESSION_EXPIRED' ? 'SESSION_EXPIRED' : String(r.error));
+      return CE.call(H.tables, 'getStoreHealthReport', [r.data, (H.store && H.store.location) || window.MOG_STORE]).result;
+    },
+    runHealthFix: async function (args) {
+      if (args[0] === 'place_backups') {
+        const res = await callTool('commitPlaceBackupVendors', []);
+        return { ok: true, message: 'Placed ' + res.placed + ' item' + (res.placed === 1 ? '' : 's') +
+                                    ' on their backup vendors\' lists. Undo it from Changes if needed.' };
+      }
+      if (args[0] === 'clear_lockout') {
+        const r = await rpc('mog_editor_clear_lockout', { p_token: H.token });
+        if (!r.ok) throw new Error(String(r.error));
+        return { ok: true, message: 'The PIN lockout is cleared.' };
+      }
+      return { ok: false, message: 'That fix is not part of the app\'s Health Check.' };
+    }
+  };
+
   const SERVER = {
     editorAuth: async function (pin) {
       const r = await rpc('mog_editor_login', { p_slug: cfg.slug, p_pin: String(pin == null ? '' : pin) });
@@ -184,7 +250,8 @@
       if (!H.tables || token !== H.token) {
         if (!token || !(await SERVER.editorPing(token)).ok) throw new Error('SESSION_EXPIRED');
       }
-      return { __mogEnvelope: 1, result: await callTool(fn, args || []), pushCatalog: false };
+      const own = Object.prototype.hasOwnProperty.call(HOST_CALLS, fn) ? HOST_CALLS[fn] : null;
+      return { __mogEnvelope: 1, result: own ? await own(args || []) : await callTool(fn, args || []), pushCatalog: false };
     }
   };
 

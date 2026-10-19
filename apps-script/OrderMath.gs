@@ -706,3 +706,196 @@ function vendorPickAnswerFromSnapshot_(snap, vendor, mult) {
   try { itemsPayload = vendorItemsFromSnapshot_(orderInputsFromSnapshot_(snap), vendor); } catch (e) { itemsPayload = null; }
   return { vendor: vendor, overrideMult: mult, itemsPayload: itemsPayload };
 }
+
+
+// ---- Order history (docs/MOG_OneApp_Spec.md T1) ----------------------------
+// One copy for the Sheet (History.gs and MOGApi.gs, over LOG_ORDERS) and the
+// app (the phone's History tab and the editor's Order History, over Supabase's
+// order log). Each side turns its rows into history rows
+//   { timestamp: 'yyyy-MM-dd HH:mm', orderDate: 'yyyy-MM-dd', vendor, itemId,
+//     itemName, itemPack, onHandPrev, qtyOrdered }
+// in their log order, and everything from there on is shared.
+
+// buildHistoryRows_'s filter and sort: rows for filters { vendorFilter ('ALL'
+// or a vendor, any case), dateFrom, dateTo ('yyyy-MM-dd', inclusive) }, newest
+// order date first (a stable sort, so one date keeps its log order), plus
+// every vendor in the rows given, A-Z, for the vendor dropdown.
+function historyRowsFiltered_(rows, filters) {
+  const vendorFilter = String(filters && filters.vendorFilter || 'ALL').trim();
+  const dateFrom     = String(filters && filters.dateFrom     || '').trim();
+  const dateTo       = String(filters && filters.dateTo       || '').trim();
+  const vendorSet = new Set();
+  for (const row of rows) if (row.vendor) vendorSet.add(row.vendor);
+  const out = rows
+    .filter(row => {
+      if (!row.vendor && !row.itemName) return false;
+      if (vendorFilter !== 'ALL' && row.vendor.toLowerCase() !== vendorFilter.toLowerCase()) return false;
+      if (dateFrom && row.orderDate < dateFrom) return false;
+      if (dateTo   && row.orderDate > dateTo)   return false;
+      return true;
+    })
+    .sort((a, b) => b.orderDate.localeCompare(a.orderDate));
+  return { rows: out, vendors: Array.from(vendorSet).sort() };
+}
+
+// A vendor's order reference, e.g. RPRFO-1019-SYS: the store's abbreviation,
+// the order date's month and day, the vendor's first three letters.
+function historyReference_(abbr, vendor, dateStr) {
+  const parts = String(dateStr).split('-');
+  if (parts.length < 3) return '';
+  const md = parts[1] + parts[2];
+  const a  = String(abbr || 'LOC').toUpperCase();
+  const v  = String(vendor).replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase();
+  return a + '-' + md + '-' + v;
+}
+
+// The History tab's three answers, from filtered history rows.
+// getHistoryDates: the dates, newest first, each with how many vendors ordered.
+function historyDatesFromRows_(rows) {
+  const vendorsByDate = new Map();
+  for (const r of rows) {
+    if (!vendorsByDate.has(r.orderDate)) vendorsByDate.set(r.orderDate, new Set());
+    vendorsByDate.get(r.orderDate).add(r.vendor);
+  }
+  const dates = Array.from(vendorsByDate.keys())
+    .sort()
+    .reverse()
+    .map(d => ({ date: d, vendorCount: vendorsByDate.get(d).size }));
+  return { dates: dates };
+}
+
+// getHistoryVendors: one date's vendors, the latest order first.
+function historyVendorsFromRows_(rows, date, abbr) {
+  const byVendor = new Map();
+  for (const r of rows) {
+    if (!byVendor.has(r.vendor)) {
+      byVendor.set(r.vendor, {
+        vendor:    r.vendor,
+        itemCount: 0,
+        timestamp: r.timestamp,
+        reference: historyReference_(abbr, r.vendor, date)
+      });
+    }
+    byVendor.get(r.vendor).itemCount++;
+  }
+  const vendors = Array.from(byVendor.values())
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  return { date: date, vendors: vendors };
+}
+
+// getHistoryDetail: one vendor's order on one date.
+function historyDetailFromRows_(rows, vendor, date, abbr) {
+  const items = rows.map(r => ({
+    id:     r.itemId,
+    name:   r.itemName,
+    pack:   r.itemPack,
+    onHand: r.onHandPrev,
+    qty:    r.qtyOrdered
+  }));
+  return {
+    vendor:    vendor,
+    date:      date,
+    timestamp: rows.length ? rows[0].timestamp : null,
+    reference: historyReference_(abbr, vendor, date),
+    items:     items,
+    itemCount: items.length
+  };
+}
+
+// Supabase's order-log rows (mog_history) as history rows.
+function historyRowsFromLog_(logRows) {
+  return (logRows || []).map(r => ({
+    timestamp:  String(r.at || ''),
+    orderDate:  String(r.date || ''),
+    vendor:     String(r.vendor || '').trim(),
+    itemId:     String(r.id || '').trim(),
+    itemName:   String(r.name || '').trim(),
+    itemPack:   String(r.pack || '').trim(),
+    onHandPrev: Number(r.onHandPrev) || 0,
+    qtyOrdered: Number(r.qty) || 0
+  }));
+}
+
+// ---- Par Review flags (Manage Items; History.gs's thresholds, set by
+// Sebastian, Path A, 2026-05; the why of each is in History.gs) ----
+function parFlagRules_() {
+  return {
+    MIN_ORDERS:          3,     // logged orders in the window before any verdict
+    WINDOW_DAYS:         28,    // orders from the last 28 days count
+    UNDER_PAR_MIN:       3,     // under applies only at par >= 3
+    UNDER_ONHAND_PCT:    0.10,  // On Hand <= 10% of par is "under"
+    UNDER_FREQ_PCT:      0.75,  // ... on >= 75% of orders
+    OVER_ONHAND_PCT:     0.75,  // On Hand >= 75% of par is "over"
+    OVER_FREQ_PCT:       0.50,  // ... on >= 50% of orders
+    OVER_MIN_BASE_PAR:   1,     // no over flag below a base par of 1
+    OVER_MIN_EFF_PAR:    2,     // ... or an average multiplied order (qty + on hand) below 2
+    OVER_MIN_AVG_ONHAND: 1      // ... or an average On Hand below 1
+  };
+}
+
+// The flags for every item ordered in the window. rows: history rows (only
+// itemId, orderDate, onHandPrev, qtyOrdered are read); parMap: a Map of item
+// id -> base par (> 0); cutoffDate: the window's first day, 'yyyy-MM-dd'
+// (today minus WINDOW_DAYS in the store's calendar). Returns
+// { [itemId]: { flag: 'empty'|'over'|'both'|null, timesOrdered, emptyCount,
+//   overCount, avgOnHand, par } }; emptyCount is the legacy name of the under
+// count, which ManageItems.html reads.
+function parReviewFlags_(rows, parMap, cutoffDate) {
+  const R = parFlagRules_();
+  const agg = new Map();
+  for (const r of rows) {
+    const itemId     = String(r.itemId || '').trim();
+    const onHand     = Number(r.onHandPrev) || 0;
+    const qtyOrdered = Number(r.qtyOrdered) || 0;
+    if (!itemId || qtyOrdered <= 0) continue;
+    const date = String(r.orderDate || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < cutoffDate) continue;
+
+    if (!agg.has(itemId)) {
+      agg.set(itemId, { timesOrdered: 0, underCount: 0, overCount: 0, totalOnHand: 0, totalEffPar: 0,
+                        par: parMap.get(itemId) || '' });
+    }
+    const entry = agg.get(itemId);
+    entry.timesOrdered++;
+    entry.totalOnHand += onHand;
+    entry.totalEffPar += (qtyOrdered + onHand);
+
+    const par = parMap.get(itemId);
+    if (!par || par <= 0) continue;
+    if (par >= R.UNDER_PAR_MIN && onHand <= par * R.UNDER_ONHAND_PCT) entry.underCount++;
+    if (onHand >= par * R.OVER_ONHAND_PCT) entry.overCount++;
+  }
+
+  const result = {};
+  agg.forEach((entry, itemId) => {
+    const avgOnHand = Math.round((entry.totalOnHand / entry.timesOrdered) * 10) / 10;
+    if (entry.timesOrdered < R.MIN_ORDERS) {
+      result[itemId] = { flag: null, timesOrdered: entry.timesOrdered, emptyCount: entry.underCount,
+                         overCount: entry.overCount, avgOnHand: avgOnHand, par: entry.par };
+      return;
+    }
+    const isUnder = entry.underCount / entry.timesOrdered >= R.UNDER_FREQ_PCT;
+    const basePar = Number(entry.par) || 0;
+    const overActionable = basePar >= R.OVER_MIN_BASE_PAR
+                        && entry.totalEffPar / entry.timesOrdered >= R.OVER_MIN_EFF_PAR
+                        && entry.totalOnHand / entry.timesOrdered >= R.OVER_MIN_AVG_ONHAND;
+    const isOver = entry.overCount / entry.timesOrdered >= R.OVER_FREQ_PCT && overActionable;
+    result[itemId] = {
+      flag:         isUnder && isOver ? 'both' : isUnder ? 'empty' : isOver ? 'over' : null,
+      timesOrdered: entry.timesOrdered,
+      emptyCount:   entry.underCount,
+      overCount:    entry.overCount,
+      avgOnHand:    avgOnHand,
+      par:          entry.par
+    };
+  });
+  return result;
+}
+
+// The par flags' window start: 'yyyy-MM-dd' WINDOW_DAYS before today
+// ('yyyy-MM-dd', the store's calendar).
+function parFlagCutoff_(today) {
+  const p = String(today).split('-').map(Number);
+  const d = new Date(Date.UTC(p[0], p[1] - 1, p[2] - parFlagRules_().WINDOW_DAYS));
+  return d.toISOString().slice(0, 10);
+}

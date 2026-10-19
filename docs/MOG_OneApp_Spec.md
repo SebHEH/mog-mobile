@@ -132,6 +132,24 @@ Sebastian picked from mockups (top strip, a button in each header, a side rail; 
 | L3 | Clicking another vendor while counting | **Save, then switch**: the open vendor's counts save quietly (the autosave's save); a failed save keeps it open. |
 | L4 | Which stores, and when | **Every store on a computer** (a mouse and a window at least 900px wide), built **before** the History, Health, Recipients and People ports (A4 and A7 had it last); rprfo's switch waits for it. |
 
+### Phase 4 port decisions (2026-10-19, later)
+
+| # | Decision | Chosen |
+|---|---|---|
+| T1 | Order history once a store's editor moves | **Copied at each switch** (E4 as written): the Sheet's LOG_ORDERS dates that `mog.order_log` doesn't have are copied in (copy path only; a store that starts empty gets none, so tnyr gets none). From then on the phone's History tab and the editor's Order History read `mog.order_log`. Stores still on the Sheet keep `/exec`. Par Review flags move to shared JS, read from the same log. |
+| T2 | Daily summary recipients | **Supabase, in Settings** (Sebastian): copied from the Sheet at the switch (and once for a store already moved); Settings → Recipients stays on phone and computer, answered by Supabase; the nightly email reads the list there. The GM row stays locked on a phone and is editable on a computer. |
+| T3 | People ("Who's counting?" names) | **Settings → People, on a computer, every store**: rename or remove. A removed name isn't re-added by devices still holding it (they ask again); a rename follows to devices using the old name. Past counts keep the name they were saved with. |
+| T4 | Health Check in the app (a moved store) | **Store and catalog checks**: phones on Supabase, last night's close ran, PIN lockout; vendors with no delivery days, active items with no area, par or primary vendor, backup vendors not on their vendor's list (one-click fix, logged and undoable), repeated item names. The Sheet-structure checks don't apply. |
+
+How it works (schema v9):
+- History: `mog_history` reads the order log; the History tab's answers, Order History's rows and the Par Review flags are `OrderMath.gs` functions (`historyRowsFiltered_`, `historyDatesFromRows_`, ..., `parReviewFlags_`), the ones `History.gs` and `MOGApi.gs` now run too, so the app and the Sheet can't drift. The switch's copy (`Sync.gs backfillOrderLogToDb_`, `mog_sync_backfill_log`) adds only dates the log lacks, with the pack the Sheet showed. Gate: `history_app`.
+- Recipients: `mog.recipients`; `Recap.gs readRecipients_` reads it once the editor moved (the Sheet's list if Supabase can't be reached). The switch copies the Sheet's list, and so does the nightly run once for a store already moved; once a store has a list, the copy is refused. An older app's `/exec` save is refused. Gate: `recipients_people`.
+- People: a removed name is marked, not deleted (`removed_at`), so a device still holding it can't add it back; picking it in "Who's counting?" (`mog_people_join`) does. A rename leaves the old name pointing at the new one (`renamed_to`). Gate: `recipients_people`.
+- Health: `mog_editor_status` and `mog_editor_clear_lockout`; the report is `catalogEdit.js getStoreHealthReport`, in `Health.gs`'s shape, so the unchanged `HealthCheck.html` shows it. Gate: `health_app`.
+- Still on `/exec`: the Daily summary button and the new-day reset fallback, so opening the editor first and then the order guide asks for the PIN once.
+
+**Rollout order:** run `supabase/schema_v9.sql`, then `smoke_v9.sql` and `check_api.sh`. Then Apps Script with `deploy.py --redeploy`. Then `build.py` and push (app v0.23.0, cache v63). Until a store's editor moves, only People and the shared history math change anything there.
+
 ## Phases
 
 1. **Live counting.** Today and the open vendor refresh every ~10s while the app is on screen (one Supabase read, ~0.3s; no Apps Script). Vendor cards show who is counting. The first-sign-in name picker and the self-building leaders list ship here too. An auto-refresh never overwrites a count you're typing.

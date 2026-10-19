@@ -56,7 +56,9 @@ EDITOR_PAGES  = {'index.html':    ('EditorHome', 'Editor', 'home'),
                  'items.html':    ('ManageItems', 'Manage Items', 'items'),
                  'vendors.html':  ('ManageVendors', 'Manage Vendors', 'vendors'),
                  'areas.html':    ('StorageAreas', 'Storage Areas', 'areas'),
-                 'pickpath.html': ('ReorderPickPath', 'Shelf to Sheet', 'pickpath')}
+                 'pickpath.html': ('ReorderPickPath', 'Shelf to Sheet', 'pickpath'),
+                 'history.html':  ('OrderHistory', 'Order History', 'history'),
+                 'healthcheck.html': ('HealthCheck', 'Store Health Check', 'healthcheck')}
 # Scriptlets the static pages start empty; host.js fills them from Supabase
 # after sign-in, before each page's start-up function reads them.
 EDITOR_EMPTY  = {'vendorListJson': '[]', 'vendorTableJson': '[]', 'areaListJson': '[]', 'pickDataJson': '{}'}
@@ -265,6 +267,7 @@ def render_editor_page(page, title, name, boot, sb_cfg):
             '\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">'
             '\n    <title>' + title + ' · ' + boot['store'] + '</title>'
             '\n    <script>window.MOG_SUPABASE = ' + js_json(sb_cfg) + '; window.MOG_EDITOR_PAGE = ' + js_json(name) + ';</script>'
+            '\n    <script src="orderMath.js"></script>'
             '\n    <script src="catalogEdit.js"></script>'
             '\n    <script src="meImport.js"></script>'
             '\n    <script src="host.js"></script>')
@@ -285,6 +288,10 @@ def generate_editor(target_dir, entry, slug, location, supabase, themes, dry_run
     for name in EDITOR_ASSETS:
         with open(os.path.join(EDITOR_SRC, name), 'r', encoding='utf-8') as f:
             files[name] = f.read()
+    # The order math the phone runs, verbatim: Order History's rows and the
+    # Par Review flags (docs/MOG_OneApp_Spec.md T1).
+    with open(ORDER_MATH, 'r', encoding='utf-8') as f:
+        files['orderMath.js'] = f.read()
     rel = os.path.relpath(out_dir, ROOT).replace(os.sep, '/')
     for name, body in files.items():
         if dry_run:

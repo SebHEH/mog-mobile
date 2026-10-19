@@ -826,23 +826,7 @@ function api_getHistoryDetail_(payload) {
   // used to build for itself). Reusing it drops a second full MASTER read that
   // produced an identical map — COL.ID is 1, so the ranges and join matched.
   const flat = getOrderHistory_({ vendorFilter: vendor, dateFrom: date, dateTo: date });
-
-  const items = flat.map(r => ({
-    id:     r.itemId,
-    name:   r.itemName,
-    pack:   r.itemPack,
-    onHand: r.onHandPrev,
-    qty:    r.qtyOrdered
-  }));
-
-  return {
-    vendor:    vendor,
-    date:      date,
-    timestamp: flat.length ? flat[0].timestamp : null,
-    reference: generateReferenceFromDateStr_(vendor, date),
-    items:     items,
-    itemCount: items.length
-  };
+  return historyDetailFromRows_(flat, vendor, date, historyAbbr_());   // OrderMath.gs, shared with the app
 }
 
 // ── History — chunked endpoints ──────────────────────────────────────────────
@@ -878,20 +862,11 @@ function api_getHistoryDates_(payload) {
     { needPack: false }
   );
 
-  // Group by date → set of unique vendors. The set's size becomes the
-  // "N vendors" badge on the dates-view card; the vendor list itself
-  // ships separately via getHistoryVendors so this payload stays tiny.
-  const vendorsByDate = new Map();
-  for (const r of flat) {
-    if (!vendorsByDate.has(r.orderDate)) vendorsByDate.set(r.orderDate, new Set());
-    vendorsByDate.get(r.orderDate).add(r.vendor);
-  }
-  const dates = Array.from(vendorsByDate.keys())
-    .sort()
-    .reverse()
-    .map(d => ({ date: d, vendorCount: vendorsByDate.get(d).size }));
-
-  const payloadOut = { dates: dates };
+  // Group by date → the number of vendors (the "N vendors" badge on the
+  // dates-view card); the vendor list itself ships separately via
+  // getHistoryVendors so this payload stays tiny. OrderMath.gs, shared with
+  // the app's order log.
+  const payloadOut = historyDatesFromRows_(flat);
 
   if (cache) {
     try {
@@ -926,23 +901,8 @@ function api_getHistoryVendors_(payload) {
     { needPack: false }
   );
 
-  // Group by vendor — itemCount + the vendor's order timestamp.
-  const byVendor = new Map();
-  for (const r of flat) {
-    if (!byVendor.has(r.vendor)) {
-      byVendor.set(r.vendor, {
-        vendor:    r.vendor,
-        itemCount: 0,
-        timestamp: r.timestamp,
-        reference: generateReferenceFromDateStr_(r.vendor, date)
-      });
-    }
-    byVendor.get(r.vendor).itemCount++;
-  }
-  const vendors = Array.from(byVendor.values())
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-
-  const payloadOut = { date: date, vendors: vendors };
+  // Group by vendor — itemCount + the vendor's order timestamp (OrderMath.gs).
+  const payloadOut = historyVendorsFromRows_(flat, date, historyAbbr_());
 
   if (cache) {
     try {
@@ -1276,14 +1236,16 @@ function getTodaysLogByVendor_(dateStr) {
 }
 
 
+// The store's abbreviation for order references ('LOC' when unset).
+function historyAbbr_() {
+  return PropertiesService.getScriptProperties().getProperty(PROP_LOCATION_ABBR) || 'LOC';
+}
+
 function generateReferenceFromDateStr_(vendor, dateStr) {
-  // dateStr in 'yyyy-MM-dd' form
-  const parts = String(dateStr).split('-');
-  if (parts.length < 3) return '';
-  const md   = parts[1] + parts[2];
-  const abbr = (PropertiesService.getScriptProperties().getProperty(PROP_LOCATION_ABBR) || 'LOC').toUpperCase();
-  const v    = vendor.replace(/[^A-Za-z]/g, '').substring(0, 3).toUpperCase();
-  return abbr + '-' + md + '-' + v;
+  // dateStr 'yyyy-MM-dd'. Reads the property itself (not historyAbbr_) so the
+  // gates' slices of this function stand alone.
+  const abbr = PropertiesService.getScriptProperties().getProperty(PROP_LOCATION_ABBR) || 'LOC';
+  return historyReference_(abbr, vendor, dateStr);   // OrderMath.gs
 }
 
 

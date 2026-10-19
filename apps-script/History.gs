@@ -133,37 +133,22 @@ function buildHistoryRows_(data, filters, opts, fmtDateShared) {
   const fmtDate      = fmtDateShared || makeLogDateFormatter_(tz, "yyyy-MM-dd");
   const fmtTimestamp = makeLogDateFormatter_(tz, "yyyy-MM-dd HH:mm");
 
-  const vendorFilter = String(filters && filters.vendorFilter || "ALL").trim();
-  const dateFrom     = String(filters && filters.dateFrom     || "").trim();
-  const dateTo       = String(filters && filters.dateTo       || "").trim();
-
-  const vendorSet = new Set();
-  const rows = data
-    .map(r => {
-      const itemId = String(r[LOG_COL.ITEM_ID - 1] || "").trim();
-      const vendor = String(r[LOG_COL.VENDOR  - 1] || "").trim();
-      if (vendor) vendorSet.add(vendor);
-      return {
-        timestamp:  fmtTimestamp(r[LOG_COL.TIMESTAMP   - 1]),
-        orderDate:  fmtDate(r[LOG_COL.ORDER_DATE   - 1]),
-        vendor:     vendor,
-        itemId:     itemId,
-        itemName:   String(r[LOG_COL.ITEM_NAME   - 1] || "").trim(),
-        itemPack:   packMap ? (packMap.get(itemId) || "") : "",
-        onHandPrev: Number(r[LOG_COL.ON_HAND_PRV - 1]) || 0,
-        qtyOrdered: Number(r[LOG_COL.QTY_ORDERED - 1]) || 0
-      };
-    })
-    .filter(row => {
-      if (!row.vendor && !row.itemName) return false;
-      if (vendorFilter !== "ALL" && row.vendor.toLowerCase() !== vendorFilter.toLowerCase()) return false;
-      if (dateFrom && row.orderDate < dateFrom) return false;
-      if (dateTo   && row.orderDate > dateTo)   return false;
-      return true;
-    })
-    .sort((a, b) => b.orderDate.localeCompare(a.orderDate));
-
-  return { rows: rows, vendors: Array.from(vendorSet).sort() };
+  // LOG_ORDERS cells as history rows; the filter, sort and vendor list are
+  // OrderMath.gs's (historyRowsFiltered_), shared with the app's order log.
+  const rows = data.map(r => {
+    const itemId = String(r[LOG_COL.ITEM_ID - 1] || "").trim();
+    return {
+      timestamp:  fmtTimestamp(r[LOG_COL.TIMESTAMP   - 1]),
+      orderDate:  fmtDate(r[LOG_COL.ORDER_DATE   - 1]),
+      vendor:     String(r[LOG_COL.VENDOR  - 1] || "").trim(),
+      itemId:     itemId,
+      itemName:   String(r[LOG_COL.ITEM_NAME   - 1] || "").trim(),
+      itemPack:   packMap ? (packMap.get(itemId) || "") : "",
+      onHandPrev: Number(r[LOG_COL.ON_HAND_PRV - 1]) || 0,
+      qtyOrdered: Number(r[LOG_COL.QTY_ORDERED - 1]) || 0
+    };
+  });
+  return historyRowsFiltered_(rows, filters);
 }
 
 
@@ -273,22 +258,12 @@ function toggleOrderLogVisibility() {
 //     < 2 units (post-calc, reconstructed as qty + on hand). You can't order a
 //     fraction of a unit, so trimming a 1–2-unit item's par isn't actionable
 //     (mirrors UNDER_PAR_MIN on the under side).
-const PAR_FLAG = {
-  MIN_ORDERS:        3,    // minimum logged orders within the window (2→3, 2026-07-07)
-  WINDOW_DAYS:       28,   // only count orders from the last 28 days (14→28, 2026-07-07)
-
-  // Under-ordered ("Always Empty")
-  UNDER_PAR_MIN:     3,    // par must be ≥ this for the flag to apply
-  UNDER_ONHAND_PCT:  0.10, // On Hand ≤ 10% of par counts as "under"
-  UNDER_FREQ_PCT:    0.75, // ≥ 75% of orders were "under" → flag
-
-  // Over-ordered
-  OVER_ONHAND_PCT:   0.75, // On Hand ≥ 75% of par counts as "over" (50%→75%, 2026-07-08: counts are post-lunch, ~half a daily par is reserved for dinner + PM prep)
-  OVER_FREQ_PCT:     0.50, // ≥ 50% of orders were "over"  → flag
-  OVER_MIN_BASE_PAR: 1,    // skip over-flag when base par < 1 unit (nothing to trim, 2026-07-07)
-  OVER_MIN_EFF_PAR:  2,    // skip over-flag when avg multiplied order (qty+onHand) < 2 units
-  OVER_MIN_AVG_ONHAND: 1   // skip over-flag when avg On Hand left < 1 unit (2026-07-08: base-par detection can flag a case-pack item on a fraction of a unit)
-};
+//   • Over-ordered absolute floor (2026-07-08): skip it when the average On
+//     Hand left is under 1 unit; base-par detection can flag a case-pack item
+//     (a case of Pellegrino) on a fraction of a unit.
+// The numbers themselves are parFlagRules_ in OrderMath.gs, and the math is
+// parReviewFlags_ there: one copy for this Sheet and for the app's editor,
+// which reads Supabase's order log (docs/MOG_OneApp_Spec.md E4, T1).
 
 
 
@@ -331,24 +306,12 @@ function getParReviewFlags_(parMap) {
   const logSheet = ensureLogSheet_();
   const lastRow  = logSheet.getLastRow();
   if (lastRow < 2) return {};
+  const data = logSheet.getRange(2, 1, lastRow - 1, 7).getValues();
 
-
-
-
-  // Read entire log in one batch
-  const data = logSheet
-    .getRange(2, 1, lastRow - 1, 7)
-    .getValues();
-
-
-
-
-  // Par lookup (itemId → par number, par>0 only) so we can compute % of par per
-  // item. getManageItemsBootstrap_ passes a prebuilt map — it already read MASTER
-  // via getAllItemsForView_, so this avoids a second MASTER read on the modal-open
-  // path (audit #13). Called standalone (parMap omitted) it reads MASTER here, as
-  // before. The map is only used to look up par for logged item IDs, so the extra
-  // blank-name MASTER rows the bootstrap map omits are never referenced.
+  // Par lookup (itemId → par number, par>0 only). getManageItemsBootstrap_
+  // passes a prebuilt map — it already read MASTER via getAllItemsForView_, so
+  // this avoids a second MASTER read on the modal-open path (audit #13).
+  // Called standalone (parMap omitted) it reads MASTER here, as before.
   if (!parMap) {
     parMap = new Map();
     const master     = getSheet_(SHEET_MASTER);
@@ -364,159 +327,24 @@ function getParReviewFlags_(parMap) {
     }
   }
 
-
-
-
-  // Aggregate per item
-  const agg = new Map(); // itemId → { timesOrdered, underCount, overCount, totalOnHand, par }
-
-
-
-
-  // Rolling window cutoff: only count orders from the last WINDOW_DAYS.
-  // Anything older is excluded from the aggregation, so a par change made
-  // recently isn't dragged down by old behavior. A 4-week window gives
-  // 3x/week vendors ~12 data points and daily vendors ~28.
+  // The window is counted in the script's calendar: an order date (a Date
+  // cell, or text parsed as before) on or after the day WINDOW_DAYS before
+  // today. Formatting both sides in the script's time zone keeps exactly the
+  // old Date comparison (order date >= local midnight of the cutoff day).
+  const tz = Session.getScriptTimeZone();
   const cutoff = new Date();
   cutoff.setHours(0, 0, 0, 0);
-  cutoff.setDate(cutoff.getDate() - PAR_FLAG.WINDOW_DAYS);
-
-
-
-
-  data.forEach(r => {
-    const rawDate    = r[LOG_COL.ORDER_DATE   - 1];
-    const itemId     = String(r[LOG_COL.ITEM_ID     - 1] || "").trim();
-    const onHand     = Number(r[LOG_COL.ON_HAND_PRV - 1]) || 0;
-    const qtyOrdered = Number(r[LOG_COL.QTY_ORDERED - 1]) || 0;
-
-
-
-
-    if (!itemId || qtyOrdered <= 0) return; // skip blank / unordered rows
-
-
-
-
-    // Window filter — order date can be Date object or yyyy-mm-dd string.
-    const orderDate = (rawDate instanceof Date) ? rawDate : new Date(rawDate);
-    if (isNaN(orderDate.getTime()) || orderDate < cutoff) return;
-
-
-
-
-    if (!agg.has(itemId)) {
-      agg.set(itemId, {
-        timesOrdered: 0,
-        underCount:   0,
-        overCount:    0,
-        totalOnHand:  0,
-        totalEffPar:  0,
-        par:          parMap.get(itemId) || ""
-      });
-    }
-
-
-
-
-    const entry = agg.get(itemId);
-    entry.timesOrdered++;
-    entry.totalOnHand += onHand;
-    // Effective (multiplied) par for this order ≈ qty ordered + on hand, since
-    // qty = ceil(par×mult − onHand). Averaged later to gate the over flag.
-    entry.totalEffPar += (qtyOrdered + onHand);
-
-
-
-
-    const par = parMap.get(itemId);
-    if (!par || par <= 0) return;  // no par → can't compute either flag
-
-
-
-
-    // Under-ordered: on hand ≤ 10% of par, AND par is high enough that
-    // 0 is a meaningful signal (not just an artifact of par=1 or par=2).
-    if (par >= PAR_FLAG.UNDER_PAR_MIN && onHand <= par * PAR_FLAG.UNDER_ONHAND_PCT) {
-      entry.underCount++;
-    }
-
-
-
-
-    // Over-ordered: on hand ≥ 75% of par (raised from 50%, 2026-07-08). Counts
-    // are post-lunch, so ~half a daily par is legitimately reserved for dinner +
-    // PM prep; only 75%+ still on the shelf reads as a genuinely high par.
-    if (onHand >= par * PAR_FLAG.OVER_ONHAND_PCT) {
-      entry.overCount++;
-    }
-  });
-
-
-
-
-  // Convert to flag results
-  const result = {};
-  agg.forEach((entry, itemId) => {
-    if (entry.timesOrdered < PAR_FLAG.MIN_ORDERS) {
-      // Not enough data yet — return stats but no flag
-      result[itemId] = {
-        flag:         null,
-        timesOrdered: entry.timesOrdered,
-        emptyCount:   entry.underCount,  // legacy field name preserved for HTML compatibility
-        overCount:    entry.overCount,
-        avgOnHand:    Math.round((entry.totalOnHand / entry.timesOrdered) * 10) / 10,
-        par:          entry.par
-      };
-      return;
-    }
-
-
-
-
-    const underRate = entry.underCount / entry.timesOrdered;
-    const overRate  = entry.overCount  / entry.timesOrdered;
-
-
-
-
-    const isUnder = underRate >= PAR_FLAG.UNDER_FREQ_PCT;
-
-    // Over-ordering is only actionable when there's a whole unit to trim, so
-    // skip the flag when:
-    //   • base par is sub-unit (< OVER_MIN_BASE_PAR, pre-calc), or
-    //   • the typical multiplied order (qty + on hand) averages below
-    //     OVER_MIN_EFF_PAR units (post-calc), or
-    //   • the average On Hand actually left on the shelf is below
-    //     OVER_MIN_AVG_ONHAND units — the detection compares On Hand to the
-    //     BASE par, so a small-base-par / high-multiplier item (e.g. a case of
-    //     Pellegrino) can trip "over" on a fraction of a unit even though
-    //     there's nothing to trim. This absolute floor catches that.
-    // You can't order a fraction, so a low-volume item reading "over" isn't a
-    // par problem.
-    const basePar        = Number(entry.par) || 0;
-    const avgOnHand      = entry.totalOnHand / entry.timesOrdered;
-    const avgEffPar      = entry.totalEffPar / entry.timesOrdered;
-    const overActionable = basePar    >= PAR_FLAG.OVER_MIN_BASE_PAR
-                        && avgEffPar   >= PAR_FLAG.OVER_MIN_EFF_PAR
-                        && avgOnHand   >= PAR_FLAG.OVER_MIN_AVG_ONHAND;
-    const isOver = (overRate >= PAR_FLAG.OVER_FREQ_PCT) && overActionable;
-
-
-
-
-    result[itemId] = {
-      flag:         isUnder && isOver ? "both" : isUnder ? "empty" : isOver ? "over" : null,
-      timesOrdered: entry.timesOrdered,
-      emptyCount:   entry.underCount,  // legacy field name preserved for HTML compatibility
-      overCount:    entry.overCount,
-      avgOnHand:    Math.round((entry.totalOnHand / entry.timesOrdered) * 10) / 10,
-      par:          entry.par
+  cutoff.setDate(cutoff.getDate() - parFlagRules_().WINDOW_DAYS);
+  const fmt = makeLogDateFormatter_(tz, "yyyy-MM-dd");
+  const rows = data.map(r => {
+    const raw = r[LOG_COL.ORDER_DATE - 1];
+    const d   = (raw instanceof Date) ? raw : new Date(raw);
+    return {
+      itemId:     String(r[LOG_COL.ITEM_ID - 1] || "").trim(),
+      orderDate:  isNaN(d.getTime()) ? "" : fmt(d),
+      onHandPrev: Number(r[LOG_COL.ON_HAND_PRV - 1]) || 0,
+      qtyOrdered: Number(r[LOG_COL.QTY_ORDERED - 1]) || 0
     };
   });
-
-
-
-
-  return result;
+  return parReviewFlags_(rows, parMap, fmt(cutoff));
 }

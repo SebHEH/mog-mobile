@@ -532,6 +532,12 @@ function nightlyMaintenance_() {
   MOG_SKIP_CATALOG_QUEUE_ = true;   // step 2 pushes anyway
   const cfg = supabaseConfig_();
   if (!cfg.connected) return;
+  // A store whose editor moved before recipients moved with it (tnyr) gets
+  // its one copy here, before the close sends the email; after that this
+  // changes nothing (docs/MOG_OneApp_Spec.md T2).
+  if (editorInApp_()) {
+    try { seedRecipientsToDb_(); } catch (e) { Logger.log('Nightly recipients copy failed: ' + e.message); }
+  }
   try {
     if (cfg.switched) closeCycleInDb_();
     else if (getResetStaleness_().isStale) api_commitReset_();
@@ -540,6 +546,65 @@ function nightlyMaintenance_() {
   }
   try { pushCatalogNow_(); } catch (e) { Logger.log('Nightly catalog push failed: ' + e.message); }
   try { pushPinsNow_(); } catch (e) { Logger.log('Nightly PIN push failed: ' + e.message); }
+}
+
+// ---- What moves with the editor (docs/MOG_OneApp_Spec.md T1, T2) -------------
+
+// The Sheet's LOG_ORDERS into Supabase's order log, for the dates the log
+// doesn't have yet (its own closes since the store moved, D10, are there
+// already). Rows go in the Sheet's order, a whole date per call, with the
+// pack the Sheet shows today (LOG_ORDERS never stored one) and the time each
+// row was logged. Returns { inserted, dates, skippedDates, calls }.
+function backfillOrderLogToDb_() {
+  const logSheet = ensureLogSheet_();
+  const lastRow = logSheet.getLastRow();
+  const out = { inserted: 0, dates: 0, skippedDates: 0, calls: 0 };
+  if (lastRow < 2) return out;
+  const data = logSheet.getRange(2, 1, lastRow - 1, LOG_COL.QTY_ORDERED).getValues();
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const fmtDate = makeLogDateFormatter_(tz, 'yyyy-MM-dd');
+  const packMap = buildPackByIdMap_();
+  const byDate = new Map();
+  for (const r of data) {
+    const date = fmtDate(r[LOG_COL.ORDER_DATE - 1]);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const at = r[LOG_COL.TIMESTAMP - 1];
+    const id = String(r[LOG_COL.ITEM_ID - 1] || '').trim();
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date).push({
+      date: date,
+      at: (at instanceof Date && !isNaN(at.getTime())) ? at.toISOString() : null,
+      vendor: String(r[LOG_COL.VENDOR - 1] || '').trim(),
+      id: id,
+      name: String(r[LOG_COL.ITEM_NAME - 1] || '').trim(),
+      pack: packMap.get(id) || '',
+      onHandPrev: r[LOG_COL.ON_HAND_PRV - 1],
+      qty: r[LOG_COL.QTY_ORDERED - 1]
+    });
+  }
+  let batch = [];
+  const send = function () {
+    if (!batch.length) return;
+    const res = supabaseSync_('mog_sync_backfill_log', { p_rows: batch });
+    out.inserted += res.inserted;
+    out.dates += res.dates;
+    out.skippedDates += res.skippedDates;
+    out.calls++;
+    batch = [];
+  };
+  for (const rows of byDate.values()) {
+    if (batch.length && batch.length + rows.length > 5000) send();
+    batch = batch.concat(rows);
+  }
+  send();
+  return out;
+}
+
+// The Sheet's recipients (SETUP AB:AE) into Supabase, once: refused once the
+// store has a list there, so it is safe every night. { seeded, count }.
+function seedRecipientsToDb_() {
+  const res = supabaseSync_('mog_sync_seed_recipients', { p_recipients: readRecipientsSheet_() });
+  return { seeded: !!res.seeded, count: res.count || 0 };
 }
 
 function ensureNightlyTrigger_() {
@@ -784,7 +849,11 @@ function moveEditorToApp_() {
     }
   }
 
-  let res;
+  // What moves with the editor (T1, T2), before the switch, so a failure
+  // leaves the editor in the Sheet; both are safe to run again. The order
+  // history comes only with the Sheet's catalog: a store starting empty is an
+  // unused copy, and its Sheet's log is the other store's.
+  let res, history = null, recipients;
   try {
     if (!startEmpty) {
       const parity = catalogTablesParity_();
@@ -797,11 +866,13 @@ function moveEditorToApp_() {
           'The whole report: run test_catalogTablesParity in Sync.gs.', ui.ButtonSet.OK);
         return;
       }
+      history = backfillOrderLogToDb_();
     }
+    recipients = seedRecipientsToDb_();
     res = supabaseSync_('mog_sync_switch_editor', { p_start_empty: startEmpty });
   } catch (e) {
     ui.alert('Not moved', 'Moving the editor stopped: ' + e.message + '\n\nThe editor is still in the Sheet. ' +
-      (/HTTP 404/.test(e.message) ? 'Run supabase/schema_v8.sql in the SQL Editor first.' : 'Try again in a minute.'),
+      (/HTTP 404/.test(e.message) ? 'Run supabase/schema_v9.sql in the SQL Editor first.' : 'Try again in a minute.'),
       ui.ButtonSet.OK);
     return;
   }
@@ -809,7 +880,11 @@ function moveEditorToApp_() {
   dropTriggersFor_('catalogPushTrigger_');
   ui.alert('The editor is in the app',
     (res.alreadySwitched ? 'It already was in Supabase; this Sheet now knows it.'
-      : startEmpty ? 'The app starts from an empty catalog.' : 'The app has this Sheet\'s catalog.') + '\n\n' +
+      : startEmpty ? 'The app starts from an empty catalog.' : 'The app has this Sheet\'s catalog.') + '\n' +
+    (history ? 'Order history: ' + history.dates + ' day' + (history.dates === 1 ? '' : 's') + ' copied (' +
+               history.inserted + ' rows)' + (history.skippedDates ? '; ' + history.skippedDates + ' already there' : '') + '.\n' : '') +
+    (recipients.seeded ? 'Daily summary recipients: ' + recipients.count + ' copied.\n'
+                       : 'Daily summary recipients: already in the app.\n') + '\n' +
     'Editor: ' + appEditorUrl_() + '\n' +
     'It opens once the store\'s editor is published (stores.json "editor": "supabase", then build.py).',
     ui.ButtonSet.OK);

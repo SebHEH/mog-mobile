@@ -196,17 +196,34 @@ class FakeSupabase {
     return latest.size;
   }
 
-  // mog.touch_presence + mog.live_json (schema_v5.sql).
+  // mog.person_now (schema_v9.sql): what a name stands for now.
+  personNow(s, name) {
+    const v = String(name == null ? '' : name).trim().slice(0, 40);
+    if (!v) return { name: null, status: 'new' };
+    const sp = s.people.get(v.toLowerCase());
+    if (!sp) return { name: v, status: 'new' };
+    if (sp.renamedTo) return { name: sp.renamedTo, status: 'renamed' };
+    if (sp.removedAt) return { name: null, status: 'removed' };
+    return { name: sp.name, status: 'ok' };
+  }
+  // mog.touch_presence + mog.live_json (schema_v5.sql; People's names, v9).
   touch(s, device, name, vendor) {
     if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(device || ''))) return;
-    const nm = String(name == null ? '' : name).trim().slice(0, 40) || null;
+    const nm = this.personNow(s, name).name;
     const vd = String(vendor == null ? '' : vendor).trim().slice(0, 100) || null;
     s.presence.set(device, { name: nm, vendor: vd, seenAt: this.nowMs });
     if (nm) {
       const k = nm.toLowerCase();
       const had = s.people.get(k);
-      s.people.set(k, { name: had ? had.name : nm, lastUsed: this.nowMs });
+      if (!had) s.people.set(k, { name: nm, lastUsed: this.nowMs, removedAt: null, renamedTo: null });
+      else if (!had.removedAt && !had.renamedTo) had.lastUsed = this.nowMs;
     }
+  }
+  peopleList(s) {
+    const lower = x => x.toLowerCase();
+    return Array.from(s.people.values()).filter(p => !p.removedAt && !p.renamedTo)
+      .sort((a, b) => (lower(a.name) < lower(b.name) ? -1 : lower(a.name) > lower(b.name) ? 1 : 0))
+      .map(p => ({ name: p.name, lastUsed: new Date(p.lastUsed).toISOString(), inPicker: p.lastUsed > this.nowMs - 30 * 86400000 }));
   }
   live(s, device) {
     const presence = Array.from(s.presence.entries())
@@ -214,7 +231,7 @@ class FakeSupabase {
       .sort((a, b) => b[1].seenAt - a[1].seenAt)
       .map(([, p]) => ({ name: p.name, vendor: p.vendor, secondsAgo: Math.floor((this.nowMs - p.seenAt) / 1000) }));
     const lower = x => x.toLowerCase();
-    const people = Array.from(s.people.values()).filter(p => p.lastUsed > this.nowMs - 30 * 86400000)
+    const people = Array.from(s.people.values()).filter(p => !p.removedAt && !p.renamedTo && p.lastUsed > this.nowMs - 30 * 86400000)
       .map(p => p.name).sort((a, b) => (lower(a) < lower(b) ? -1 : lower(a) > lower(b) ? 1 : 0));
     const latest = new Map();
     for (const c of this.countsIn(s, s.state ? s.state.cycleDate : null).values()) {
@@ -355,6 +372,48 @@ class FakeSupabase {
                     catalog: this.catalogDefect ? this.catalogDefect(built) : built });   // catalogDefect: a test's planted builder bug
       }
 
+      // schema_v9.sql: the Sheet's LOG_ORDERS copied in, dates the log lacks only.
+      case 'mog_sync_backfill_log': {
+        if (!Array.isArray(p.p_rows)) return err('a rows array is required');
+        if (p.p_rows.length > 20000) return err('Too many rows in one call');
+        const rows = p.p_rows.filter(e => e && /^\d{4}-\d{2}-\d{2}$/.test(String(e.date || '')) &&
+          (String(e.vendor || '').trim() || String(e.name || '').trim()));
+        const have = new Set(s.log.map(r => r.cycleDate));
+        const dates = Array.from(new Set(rows.map(r => r.date)));
+        const fresh = rows.filter(r => !have.has(r.date));
+        const seq = new Map();
+        for (const e of fresh) {
+          seq.set(e.date, (seq.get(e.date) || 0) + 1);
+          const qty = toOnHand(e.qty);
+          s.log.push({ cycleDate: e.date, seq: seq.get(e.date), vendor: String(e.vendor || '').trim(), id: String(e.id || '').trim(),
+                       name: String(e.name || '').trim(), pack: String(e.pack || '').trim(), area: '',
+                       onHandPrev: toOnHand(e.onHandPrev), qty: qty === null ? 0 : qty,
+                       loggedAt: e.at || (e.date + 'T00:00:00Z') });
+        }
+        return ok({ inserted: fresh.length, dates: dates.filter(d => !have.has(d)).length,
+                    skippedDates: dates.filter(d => have.has(d)).length });
+      }
+
+      // schema_v9.sql: recipients (T2).
+      case 'mog_sync_get_recipients':
+        return ok({ recipients: clone(s.recipients || []), seeded: !!s.recipientsSeeded });
+      case 'mog_sync_seed_recipients': {
+        if (!Array.isArray(p.p_recipients)) return err('recipients must be an array');
+        if (s.recipientsSeeded) return ok({ seeded: false, already: true });
+        const jt = x => (x === null || x === undefined ? '' : String(x)).replace(/^\s+|\s+$/g, '');
+        const list = [], seen = new Set();
+        for (const e of p.p_recipients) {
+          const name = jt(e && e.name).slice(0, 200), email = jt(e && e.email).slice(0, 320);
+          if (!name && !email) continue;
+          if (email && seen.has(email.toLowerCase())) continue;
+          if (email) seen.add(email.toLowerCase());
+          list.push({ name, email, active: e.active === true, gm: e.gm === true });
+        }
+        s.recipients = list;
+        s.recipientsSeeded = true;
+        return ok({ seeded: true, count: list.length });
+      }
+
       // schema_v8.sql: the store's editor moves to Supabase. Starting empty
       // clears the catalog tables and takes back phones' one-day edits; a copy
       // needs seeded tables. A second call changes nothing.
@@ -431,8 +490,61 @@ class FakeSupabase {
       case 'mog_snapshot2': {
         const snap = this.snapshot(slug, s, p.p_have_version, sess.authType);
         if (!snap.ok) return snap;
+        const now = this.personNow(s, p.p_name);
         if (p.p_device != null) this.touch(s, p.p_device, p.p_name, p.p_vendor);
-        return ok(Object.assign(snap.data, this.live(s, p.p_device)));
+        return ok(Object.assign(snap.data, this.live(s, p.p_device),
+          { nameNow: now.status === 'renamed' ? now.name : null, nameGone: now.status === 'removed' }));
+      }
+      // schema_v9.sql: People (T3).
+      case 'mog_people_list':
+        return ok({ people: this.peopleList(s) });
+      case 'mog_people_rename': {
+        const to = String(p.p_to == null ? '' : p.p_to).trim();
+        if (!to || to.length > 40) return err('A name is 1 to 40 characters.');
+        const from = String(p.p_from == null ? '' : p.p_from).trim().toLowerCase();
+        const f = s.people.get(from);
+        if (!f || f.removedAt || f.renamedTo) return err('NOT_FOUND');
+        let name = to;
+        if (to.toLowerCase() === f.name.toLowerCase()) {
+          f.name = to;
+        } else {
+          const t = s.people.get(to.toLowerCase());
+          if (t) {
+            if (t.removedAt || t.renamedTo) t.name = to;
+            t.removedAt = null; t.renamedTo = null; t.lastUsed = Math.max(t.lastUsed, f.lastUsed);
+            name = t.name;
+          } else {
+            s.people.set(to.toLowerCase(), { name: to, lastUsed: f.lastUsed, removedAt: null, renamedTo: null });
+          }
+          for (const x of s.people.values()) {
+            if (x === f || (x.renamedTo && x.renamedTo.toLowerCase() === f.name.toLowerCase())) x.renamedTo = name;
+          }
+        }
+        for (const pr of s.presence.values()) if (pr.name && pr.name.toLowerCase() === f.name.toLowerCase() && pr.name !== name) pr.name = name;
+        return ok({ name, people: this.peopleList(s) });
+      }
+      case 'mog_people_remove': {
+        const nm = String(p.p_name == null ? '' : p.p_name).trim().toLowerCase();
+        const f = s.people.get(nm);
+        if (!f || f.removedAt || f.renamedTo) return err('NOT_FOUND');
+        for (const x of s.people.values()) {
+          if (x === f || (x.renamedTo && x.renamedTo.toLowerCase() === nm)) { x.removedAt = this.nowMs; x.renamedTo = null; }
+        }
+        for (const pr of s.presence.values()) if (pr.name && pr.name.toLowerCase() === nm) pr.name = null;
+        return ok({ people: this.peopleList(s) });
+      }
+      case 'mog_people_join': {
+        const nm = String(p.p_name == null ? '' : p.p_name).trim();
+        if (!nm || nm.length > 40) return err('A name is 1 to 40 characters.');
+        const sp = s.people.get(nm.toLowerCase());
+        if (sp && sp.renamedTo) {
+          const t = s.people.get(sp.renamedTo.toLowerCase());
+          if (t) t.lastUsed = this.nowMs;
+          return ok({ name: sp.renamedTo });
+        }
+        if (sp) { sp.removedAt = null; sp.lastUsed = this.nowMs; return ok({ name: sp.name }); }
+        s.people.set(nm.toLowerCase(), { name: nm, lastUsed: this.nowMs, removedAt: null, renamedTo: null });
+        return ok({ name: nm });
       }
       case 'mog_save_counts':
       case 'mog_save_counts2': {
@@ -525,12 +637,50 @@ class FakeSupabase {
 }
 
 const PHONE_FNS = { mog_login: 1, mog_snapshot: 1, mog_save_counts: 1, mog_set_override: 1, mog_set_vendor_pick: 1,
-                    mog_snapshot2: 1, mog_save_counts2: 1, mog_quick_edit: 1, mog_set_par: 1 };
+                    mog_snapshot2: 1, mog_save_counts2: 1, mog_quick_edit: 1, mog_set_par: 1,
+                    mog_people_list: 1, mog_people_rename: 1, mog_people_remove: 1, mog_people_join: 1 };
 
 // ---- The editor's calls (schema_v6.sql) -------------------------------------
 // Written apart from template/editor/catalogEdit.js on purpose, so the host
 // test checks one against the other.
-const EDITOR_FNS = { mog_editor_login: 1, mog_editor_get: 1, mog_editor_apply: 1, mog_editor_undo: 1, mog_editor_review: 1 };
+const EDITOR_FNS = { mog_editor_login: 1, mog_editor_get: 1, mog_editor_apply: 1, mog_editor_undo: 1, mog_editor_review: 1,
+                     mog_history: 1, mog_recipients_get: 1, mog_recipients_save: 1, mog_editor_status: 1,
+                     mog_editor_clear_lockout: 1 };
+
+// mog.recipients_check (schema_v9.sql), written from the SQL (the recipients
+// gate checks it against Recap.gs api_saveRecipients_): { ok, list } or
+// { ok: false, error }.
+function recipientsCheck(stored, list, gmEdit) {
+  const bad = error => ({ ok: false, error });
+  if (!Array.isArray(list)) return bad('recipients must be an array');
+  if (list.length > 200) return bad('Too many recipients');
+  const text = x => (x === null || x === undefined ? '' : typeof x === 'string' ? x : JSON.stringify(x));
+  const jt = x => text(x).replace(/^\s+|\s+$/g, '');
+  if (!gmEdit) {
+    for (const g of stored.filter(r => r.gm)) {
+      let m = null;
+      for (const e of list) if (jt(e && e.email) !== '' && jt(e.email).toLowerCase() === g.email.toLowerCase()) m = e;
+      if (!m) return bad('Cannot remove GM recipient "' + g.name + '". The GM row is changed on a computer.');
+      if (jt(m.name) !== g.name || m.active !== g.active || m.gm !== true) {
+        return bad('Cannot modify GM recipient "' + g.name + '". The GM row is changed on a computer.');
+      }
+    }
+  }
+  const out = [], seen = new Set();
+  for (const e of list) {
+    const name = jt(e && e.name), email = jt(e && e.email);
+    if (!name && !email) continue;
+    if (!name) return bad('Recipient is missing a name.');
+    if (!email) return bad('Recipient "' + name + '" is missing an email.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad('Recipient "' + name + '" has an invalid email: ' + email);
+    if (seen.has(email.toLowerCase())) return bad('Duplicate email: ' + email);
+    if (name.length > 200 || email.length > 320) return bad('Recipient "' + name.slice(0, 40) + '" is too long.');
+    seen.add(email.toLowerCase());
+    const gm = gmEdit ? e.gm === true : stored.some(r => r.gm && r.email.toLowerCase() === email.toLowerCase());
+    out.push({ name, email, active: e.active === true, gm });
+  }
+  return { ok: true, list: out };
+}
 const EDITOR_FIELDS = {
   items: ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible'],
   pickRows: ['area', 'shelfOrder'], vendors: ['mults', 'cutoff'], areas: ['ord']
@@ -653,6 +803,42 @@ FakeSupabase.prototype.handleEditor = function (fn, p) {
   const s = this.stores.get(slug);
   if (!s.editorDirect) return err('EDITOR_NOT_DIRECT');
   if (fn === 'mog_editor_get') return ok(this.editorData(slug, s));
+  // schema_v9.sql: the order log (T1), recipients (T2), the Health status (T4).
+  if (fn === 'mog_history') {
+    const from = p.p_from || null, to = p.p_to || null;
+    const utc = ms => new Date(ms).toISOString().replace('T', ' ').slice(0, 16);
+    const inRange = s.log.map((r, i) => [r, i])
+      .filter(([r]) => (!from || r.cycleDate >= from) && (!to || r.cycleDate <= to))
+      .sort((a, b) => (a[0].cycleDate < b[0].cycleDate ? -1 : a[0].cycleDate > b[0].cycleDate ? 1 : 0) || (a[0].seq - b[0].seq) || (a[1] - b[1]))
+      .map(x => x[0]);
+    const kept = inRange.slice(-50000);
+    return ok({
+      today: this.today(), timeZone: 'America/New_York', abbr: s.profile.abbr || null,
+      vendors: Array.from(new Set(s.log.map(r => r.vendor).filter(Boolean))),
+      rows: kept.map(r => ({ date: r.cycleDate, at: utc(r.loggedAt ? Date.parse(r.loggedAt) : this.nowMs), vendor: r.vendor,
+                             id: r.id, name: r.name, pack: r.pack, area: r.area, onHandPrev: r.onHandPrev, qty: r.qty })),
+      truncated: inRange.length > 50000 });
+  }
+  if (fn === 'mog_recipients_get') return ok({ recipients: clone(s.recipients || []) });
+  if (fn === 'mog_recipients_save') {
+    const chk = recipientsCheck(s.recipients || [], p.p_recipients, !!p.p_gm_edit);
+    if (!chk.ok) return chk;
+    s.recipients = chk.list;
+    s.recipientsSeeded = true;
+    return ok({ recipients: clone(chk.list) });
+  }
+  if (fn === 'mog_editor_status') {
+    const last = s.log.reduce((m, r) => (m === null || r.cycleDate > m ? r.cycleDate : m), null);
+    return ok({ phoneDirect: !!s.phoneDirect, timeZone: 'America/New_York',
+                localNow: new Date(this.nowMs).toISOString().replace('T', ' ').slice(0, 16),
+                cycleDate: s.state ? s.state.cycleDate : null, cycleUpdatedAt: null,
+                lockedForMs: s.lockedUntil > this.nowMs ? s.lockedUntil - this.nowMs : 0,
+                failCount: s.failCount, lastOrderDate: last });
+  }
+  if (fn === 'mog_editor_clear_lockout') {
+    s.failCount = 0; s.lockedUntil = 0;
+    return ok({ cleared: true });
+  }
   if (fn === 'mog_editor_review') {
     if (p.p_status !== 'applied' && p.p_status !== 'dismissed') return err('Status must be applied or dismissed');
     const e = (s.quickEdits || []).find(x => x.qid === Number(p.p_id) && x.review === 'open');
@@ -765,4 +951,4 @@ function compileStep4(srcOf) {
 }
 
 module.exports = { FakeSupabase, fakeScriptApp, fakeContentService, toOnHand, compileStep4, FAKE_GRANT_URL,
-  checkCatalogTables, catalogFromTables };
+  checkCatalogTables, catalogFromTables, recipientsCheck };
