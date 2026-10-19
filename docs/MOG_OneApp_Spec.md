@@ -106,7 +106,7 @@ What starts ticked: products not in the store yet (by name or item code), in a c
 |---|---|---|
 | S1 | Tools ported before the first switch | **Manage Vendors, Storage Areas, Shelf to Sheet** (what a store set up from nothing needs). History, Health, Recipients and People come before rprfo's switch. |
 | S2 | The Sheet after a store switches | **No copy back** (Sebastian; this replaces D17's nightly copy). The Sheet keeps the catalog it had and is not updated; its catalog tools refuse and point to the app. |
-| S3 | How a store switches | **📱 Mobile API → Move the editor to the app** (Sync.gs): start from an empty catalog or copy the Sheet's, then `mog_sync_switch_editor` (schema v8) turns `editor_direct` on and the Sheet marks itself (`MOG_EDITOR`). The store's `stores.json` entry gets `"editor": "supabase"`, so `build.py` publishes its editor at `/<slug>/editor/`. |
+| S3 | How a store switches | **📱 Mobile API → Move the editor to the app** (Sync.gs): start from an empty catalog or copy the Sheet's (only when the parity check passes: the menu runs `catalogTablesParity_` and refuses otherwise, since 2026-10-19), then `mog_sync_switch_editor` (schema v8) turns `editor_direct` on and the Sheet marks itself (`MOG_EDITOR`). The store's `stores.json` entry gets `"editor": "supabase"`, so `build.py` publishes its editor at `/<slug>/editor/`. |
 | S4 | Pages that read their data at load | **A small refactor of Storage Areas and Shelf to Sheet**: they read it in their start-up function, so `host.js` can supply it after sign-in. Nothing changes in the Sheet or `/exec`. |
 | S5 | First store to switch | **TNY Rockville** (tnyr, tnyrf), starting empty, then Import from MarginEdge. rprfo next, the unused Tysons/Founders stores last. |
 
@@ -114,12 +114,23 @@ How it works:
 - `catalogEdit.js` ports Manage Vendors (`Vendors.gs`), Storage Areas and Shelf to Sheet (`PickPath.gs`), gated against that real code in `catalog_edit`. Removing a vendor follows D23 (items stay active); the Sheet deactivates them.
 - A renamed area is one `rename` step (schema v8), so its pick rows follow; a swap goes through a temporary name.
 - Saves go in an order the database's links allow (renames, then pick-row and area deletes, then inserts and updates, then item and vendor deletes); `editor_host` runs them against the fake Supabase's link rules and undoes each.
-- The app's Settings shows **Editor** on a computer once `editorDirect` is on, and hands its sign-in to the editor (no second PIN).
+- The app shows **Editor** on a computer once `editorDirect` is on (Settings until 2026-10-19, the rail since: L1), and hands its sign-in to the editor (no second PIN).
 - The store service worker caches only the app's own page, so the editor never replaces the offline app.
 
 **Rollout order:** run `supabase/schema_v8.sql`, then `smoke_v8.sql` and `check_api.sh`. Then Apps Script with `deploy.py --redeploy` (canary rprfo: the two page refactors, the menu item, the refusals). Then Rockville's switch in each of its Sheets (start empty). Then `"editor": "supabase"` for tnyr and tnyrf in `stores.json` and `build.py` (app v0.21.0, cache v61).
 
 **Later (Sebastian):** the recap email could go out from Supabase too, once everything lives there. Not needed soon.
+
+### Computer layout decisions (2026-10-19)
+
+Sebastian picked from mockups (top strip, a button in each header, a side rail; then two computer layouts for the order guide): https://claude.ai/artifact/KjiL9rkTALw6HDnxhJC6MX
+
+| # | Decision | Chosen |
+|---|---|---|
+| L1 | How a computer moves between the order guide and the editor | **A rail down the left** of both, replacing the bottom tabs on a computer: Today, History, Editor (only where the store's editor has moved), Settings. It replaces Settings → Editor and the editor's "← Ordering" button. Phones keep the bottom tabs and never see the editor. |
+| L2 | The order guide on a computer | **Count beside the list**: Today's vendor list stays on the left; a vendor's count, its review, or the full order list opens on the right ("Pick a vendor" until one is open). History and Settings sit in a centered column (a two-pane History comes later). |
+| L3 | Clicking another vendor while counting | **Save, then switch**: the open vendor's counts save quietly (the autosave's save); a failed save keeps it open. |
+| L4 | Which stores, and when | **Every store on a computer** (a mouse and a window at least 900px wide), built **before** the History, Health, Recipients and People ports (A4 and A7 had it last); rprfo's switch waits for it. |
 
 ## Phases
 
@@ -132,7 +143,7 @@ How it works:
 4. **Remaining tools, and switching each store.**
    - The tools: Vendors, Areas, Shelf to Sheet (built 2026-10-18, S1), then History (order log backfilled from LOG_ORDERS), Health, Recipients, People.
    - Each store's editor then switches: TNY Rockville (tnyr, tnyrf) first, since it's unused and starts from an empty catalog plus its MarginEdge import (M4; Sebastian, 2026-10-18), then rprfo, and the unused Tysons/Founders stores last.
-5. **Desktop layout** for the ordering screens.
+5. **Desktop layout** for the ordering screens. Moved ahead of Phase 4's remaining ports on 2026-10-19 (L1-L4): the rail and count-beside-the-list first; a two-pane History later.
 
 ## Out of scope (for now)
 

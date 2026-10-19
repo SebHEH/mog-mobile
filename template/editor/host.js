@@ -45,7 +45,14 @@
   const H = { token: null, tables: null, changes: [], version: null, store: null };
   const TIMEOUT_MS = 15000;
 
-  const lang = () => { try { return localStorage.getItem('mog_edit_lang') === 'es' ? 'es' : 'en'; } catch (e) { return 'en'; } };
+  // The tool pages' EN/ES switch sets a body class without storing it; Editor
+  // Home stores it (mog_edit_lang) instead.
+  const lang = () => {
+    const b = document.body;
+    if (b && b.classList.contains('lang-es')) return 'es';
+    if (b && b.classList.contains('lang-en')) return 'en';
+    try { return localStorage.getItem('mog_edit_lang') === 'es' ? 'es' : 'en'; } catch (e) { return 'en'; }
+  };
   const tr = (en, es) => (lang() === 'es' ? es : en);
 
   // The name this device counts under in the app ("Who's counting?").
@@ -238,18 +245,101 @@
     return d.toLocaleString(lang() === 'es' ? 'es-US' : 'en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
 
-  // The two panels, bottom left: ↶ Changes (the change log, with Undo) and
+  // ---- The rail ------------------------------------------------------------
+
+  // The app's rail down the left (docs/MOG_OneApp_Spec.md L1), here with
+  // Editor lit: Today, History and Settings go back to the app's own screens
+  // (../, ../#history, ../#settings), Editor goes to Editor Home. Leaving
+  // with unsaved edits asks first, through the page's leave guard.
+  const RAIL_BADGE = { 'roll-play': 'RP', 'teasnyou': 'TY', 'an': 'ĂN' };
+  const RAIL_ITEMS = [
+    { id: 'today', href: '../', en: 'Today', es: 'Hoy',
+      icon: '<path d="M5 12H3l9-9 9 9h-2"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>' },
+    { id: 'history', href: '../#history', en: 'History', es: 'Historial',
+      icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>' },
+    { sep: true },
+    { id: 'editor', href: 'index.html', en: 'Editor', es: 'Editor', active: true,
+      icon: '<path d="M4 20h4L18.5 9.5a2.83 2.83 0 0 0-4-4L4 16v4"/><path d="M13.5 6.5l4 4"/>' },
+    { spacer: true },
+    { id: 'settings', href: '../#settings', en: 'Settings', es: 'Ajustes',
+      icon: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>' }
+  ];
+
+  function mountRail() {
+    if (document.getElementById('mge-rail') || !document.body) return;
+    const css = document.createElement('style');
+    css.textContent =
+      'body.mge-has-rail{padding-left:88px}' +
+      '#mge-rail{position:fixed;top:0;bottom:0;left:0;width:88px;z-index:50;box-sizing:border-box;padding:14px 0;' +
+      'display:flex;flex-direction:column;align-items:center;gap:6px;background:#fff;border-right:1px solid #d0d4da;font-family:Inter,Arial,sans-serif}' +
+      '#mge-rail .mge-rail-badge{width:42px;height:42px;border-radius:12px;margin-bottom:12px;display:flex;align-items:center;justify-content:center;' +
+      'background:var(--web-accent,#2d8c6b);color:var(--web-accent-text,#fff);font:800 14px Inter,Arial,sans-serif}' +
+      '#mge-rail a{width:72px;padding:10px 0 8px;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:5px;' +
+      'color:#555;font-size:11px;font-weight:600;text-decoration:none}' +
+      '#mge-rail a:hover{background:#f4f5f7}' +
+      '#mge-rail a.on{background:var(--web-accent-soft,#e6f3ee);color:var(--web-accent-dark,#216b51);font-weight:700}' +
+      '#mge-rail svg{width:22px;height:22px}' +
+      '#mge-rail .mge-rail-sep{width:40px;height:1px;background:#d0d4da;margin:6px 0}#mge-rail .mge-rail-spacer{flex:1}';
+    document.head.appendChild(css);
+    const rail = document.createElement('nav');
+    rail.id = 'mge-rail';
+    rail.setAttribute('aria-label', 'Main');
+    const badge = document.createElement('div');
+    badge.className = 'mge-rail-badge';
+    badge.setAttribute('aria-hidden', 'true');
+    const concept = typeof window.CONCEPT === 'string' ? window.CONCEPT : '';
+    badge.textContent = RAIL_BADGE[concept] || String(window.MOG_STORE || 'Store').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
+    rail.appendChild(badge);
+    for (const it of RAIL_ITEMS) {
+      if (it.sep || it.spacer) {
+        const d = document.createElement('div');
+        d.className = it.sep ? 'mge-rail-sep' : 'mge-rail-spacer';
+        rail.appendChild(d);
+        continue;
+      }
+      const a = document.createElement('a');
+      a.href = it.href;
+      a.setAttribute('data-rail', it.id);
+      if (it.active) { a.className = 'on'; a.setAttribute('aria-current', 'page'); }
+      a.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        it.icon + '</svg><span></span>';
+      a.onclick = function (e) {
+        if (it.active && PAGE === 'home') { e.preventDefault(); return; }
+        if (typeof window.MGE_LEAVE_GUARD !== 'function') return;   // nothing unsaved to ask about
+        e.preventDefault();
+        window.MGE_LEAVE_GUARD(function () { window.location.href = it.href; });
+      };
+      rail.appendChild(a);
+    }
+    document.body.appendChild(rail);
+    document.body.classList.add('mge-has-rail');
+    // Relabel the rail and the bottom bar after the page's EN/ES switch.
+    document.addEventListener('click', function (e) {
+      if (e.target && e.target.closest && e.target.closest('.lang-btn')) setTimeout(renderChanges, 0);
+    });
+    renderRail();
+  }
+
+  function renderRail() {
+    for (const it of RAIL_ITEMS) {
+      const a = it.id && document.querySelector('#mge-rail a[data-rail="' + it.id + '"] span');
+      if (a) a.textContent = tr(it.en, it.es);
+    }
+  }
+
+  // The panels, bottom left: ↶ Changes (the change log, with Undo) and
   // ⚑ Needs review (phones' "just today" edits, with Apply and Dismiss).
   function mountChanges() {
+    mountRail();
     if (document.getElementById('mge-changes-btn') || !document.body) return;
     const css = document.createElement('style');
     css.textContent =
-      '#mge-host-bar{position:fixed;left:16px;bottom:16px;z-index:60;display:flex;gap:8px}' +
+      '#mge-host-bar{position:fixed;left:104px;bottom:16px;z-index:60;display:flex;gap:8px}' +
       '#mge-host-bar button{border:1px solid #d0d4da;background:#fff;color:#333;' +
       'border-radius:999px;padding:8px 14px;font:600 13px Inter,Arial,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:pointer}' +
       '#mge-host-bar button:hover{background:#f4f5f7}#mge-host-bar button[hidden]{display:none}' +
       '#mge-reviews-btn{border-color:#d9a441 !important;color:#7a5200 !important}' +
-      '.mge-panel{position:fixed;left:16px;bottom:62px;z-index:61;width:min(460px,calc(100vw - 32px));max-height:60vh;overflow:auto;' +
+      '.mge-panel{position:fixed;left:104px;bottom:62px;z-index:61;width:min(460px,calc(100vw - 32px));max-height:60vh;overflow:auto;' +
       'background:#fff;border:1px solid #d0d4da;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.18);font:13px Inter,Arial,sans-serif;color:#222}' +
       '.mge-panel[hidden]{display:none}' +
       '.mge-panel h3{margin:0;padding:12px 14px;font-size:14px;border-bottom:1px solid #eee;position:sticky;top:0;background:#fff}' +
@@ -273,14 +363,6 @@
     reviewsBtn.id = 'mge-reviews-btn';
     reviewsBtn.type = 'button';
     reviewsBtn.onclick = function () { togglePanel('mge-reviews'); };
-    const appLink = document.createElement('button');
-    appLink.id = 'mge-app-btn';
-    appLink.type = 'button';
-    appLink.onclick = function () {
-      const go = function () { window.location.href = '../'; };
-      if (typeof window.MGE_LEAVE_GUARD === 'function') window.MGE_LEAVE_GUARD(go); else go();
-    };
-    bar.appendChild(appLink);
     bar.appendChild(changesBtn);
     bar.appendChild(reviewsBtn);
     if (window.MeImport && PAGE === 'items') {
@@ -314,8 +396,7 @@
     const panel = document.getElementById('mge-changes');
     if (!btn || !panel) return;
     btn.textContent = '↶ ' + tr('Changes', 'Cambios');
-    const appBtn = document.getElementById('mge-app-btn');
-    if (appBtn) appBtn.textContent = '← ' + tr('Ordering', 'Pedidos');
+    renderRail();
     const importBtn = document.getElementById('mge-import-btn');
     if (importBtn) importBtn.textContent = '⬇ ' + tr('Import from MarginEdge', 'Importar de MarginEdge');
     renderReviews();

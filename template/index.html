@@ -1684,6 +1684,52 @@
     .toast.success { background: var(--teal-dark); }
     .toast.error   { background: var(--red-dark); }
 
+    /* Computer layout (docs/MOG_OneApp_Spec.md L1-L4). On a computer (a mouse
+       and a window at least 900px wide) the bottom tabs become a rail down the
+       left; Today keeps its vendor list on the left while a vendor's count,
+       its review or the full order list opens on the right; History and
+       Settings sit in a centered column. html.desk comes from one media query
+       (DESK_MQ_), so phones never get any of this. html.in-main is set while
+       the signed-in app shows, so the PIN screen keeps its phone column. */
+    .rail { display: none; }
+    html.desk.in-main .app { max-width: none; }
+    html.desk #screen-main { padding-left: 88px; }
+    html.desk .tabbar { display: none; }
+    html.desk .rail {
+      position: fixed; top: 0; bottom: 0; left: 0; width: 88px; z-index: 20;
+      box-sizing: border-box; padding: 14px 0;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      background: var(--bg); border-right: 0.5px solid var(--border-2);
+    }
+    .rail-badge {
+      width: 42px; height: 42px; border-radius: 12px; margin-bottom: 12px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--teal-dark); color: #fff; font-family: var(--font-display); font-size: 14px;
+    }
+    .rail .rail-item {
+      flex: 0 0 auto; width: 72px; padding: 10px 0 8px; border: none; border-radius: 12px;
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      background: transparent; color: var(--text-2); font-size: 11px; font-weight: 600; cursor: pointer;
+    }
+    .rail .rail-item i { font-size: 22px; }
+    .rail .rail-item:hover { background: var(--bg-soft); }
+    .rail .rail-item.active { background: var(--teal-light); color: var(--teal-dark); font-weight: 700; }
+    .rail .rail-item[hidden], .rail-sep[hidden] { display: none; }
+    .rail-sep { width: 40px; height: 1px; background: var(--border-2); margin: 6px 0; }
+    .rail-spacer { flex: 1; }
+    html.desk .scroll-area.split { display: flex; overflow: hidden; }
+    html.desk .scroll-area.split > .screen { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 20px 32px 32px; }
+    html.desk .scroll-area.split > #view-today {
+      flex: 0 0 380px; padding: 16px 14px 24px;
+      background: var(--bg-soft); border-right: 0.5px solid var(--border-2);
+    }
+    html.desk .scroll-area:not(.split) > .screen { max-width: 720px; margin: 0 auto; }
+    html.desk .vendor-card.selected { box-shadow: 0 0 0 2px var(--teal-dark); }
+    .desk-pick { flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; color: var(--text-2); }
+    .desk-pick i { font-size: 34px; color: var(--text-3); }
+    .desk-pick-title { margin: 4px 0 0; font-size: 16px; font-weight: 600; color: var(--text); }
+    .desk-pick-sub { margin: 0; font-size: 13px; }
+
     .es .lang-en { display: none; }
     .en .lang-es { display: none; }
 
@@ -1815,6 +1861,31 @@
   <!-- MAIN APP -->
   <div id="screen-main" style="display:none; flex: 1; flex-direction: column; min-height: 0;">
 
+    <!-- The rail: the bottom tabs on a computer (spec L1). Its tab buttons
+         are .tab[data-tab], so the tab wiring (and its unsaved-counts guard)
+         covers them. Editor shows only where the store's editor has moved. -->
+    <nav class="rail" id="rail" aria-label="Main">
+      <div class="rail-badge" id="rail-badge" aria-hidden="true"></div>
+      <button class="tab rail-item active" data-tab="today" type="button">
+        <i class="ti ti-home" aria-hidden="true"></i>
+        <span><span class="lang-en">Today</span><span class="lang-es">Hoy</span></span>
+      </button>
+      <button class="tab rail-item" data-tab="history" type="button">
+        <i class="ti ti-clock" aria-hidden="true"></i>
+        <span><span class="lang-en">History</span><span class="lang-es">Historial</span></span>
+      </button>
+      <div class="rail-sep" id="rail-sep" hidden></div>
+      <button class="rail-item" id="rail-editor" type="button" hidden>
+        <i class="ti ti-edit" aria-hidden="true"></i>
+        <span>Editor</span>
+      </button>
+      <div class="rail-spacer"></div>
+      <button class="tab rail-item" data-tab="settings" type="button">
+        <i class="ti ti-settings" aria-hidden="true"></i>
+        <span><span class="lang-en">Settings</span><span class="lang-es">Ajustes</span></span>
+      </button>
+    </nav>
+
     <div class="offline-banner" id="offline-banner">
       <i class="ti ti-wifi-off" aria-hidden="true"></i>
       <span class="lang-en" id="offline-banner-text-en">Offline &mdash; using last loaded data</span>
@@ -1864,6 +1935,12 @@
 
     <div class="scroll-area" id="scroll-area">
       <div class="screen" id="view-today" style="display:none"></div>
+      <!-- On a computer, beside the vendor list until a vendor is open. -->
+      <div class="screen desk-pick" id="view-pick" style="display:none">
+        <i class="ti ti-clipboard-list" aria-hidden="true"></i>
+        <p class="desk-pick-title"><span class="lang-en">Pick a vendor to start counting</span><span class="lang-es">Elige un proveedor para empezar a contar</span></p>
+        <p class="desk-pick-sub"><span class="lang-en">Its count opens here, next to the list.</span><span class="lang-es">El conteo se abre aquí, junto a la lista.</span></p>
+      </div>
       <div class="screen" id="view-count" style="display:none"></div>
       <div class="screen" id="view-review" style="display:none"></div>
       <div class="screen" id="view-recap" style="display:none"></div>
@@ -1952,6 +2029,14 @@
   // ============================================================
   // STATE
   // ============================================================
+  // A computer: a mouse and a window at least 900px wide (spec A1, L1). Sets
+  // html.desk, which the computer layout's CSS hangs from; the listener keeps
+  // it right when the window is resized (see showView / layoutViews_).
+  const DESK_MQ_ = (typeof window.matchMedia === 'function')
+    ? window.matchMedia('(pointer: fine) and (min-width: 900px)') : null;
+  function isDesk_() { return !!(DESK_MQ_ && DESK_MQ_.matches); }
+  document.documentElement.classList.toggle('desk', isDesk_());
+
   const state = {
     apiUrl:     window.MOG_API_URL,
     // The PIN is session-only — never restored from localStorage. KMs
@@ -2676,8 +2761,6 @@
       summaryEmpty:     { en: 'Nothing to send yet', es: 'No hay nada que enviar' },
       dailySummary:     { en: 'Daily summary', es: 'Resumen diario' },
       dailySummaryHelp: { en: 'Email all configured recipients', es: 'Enviar a los destinatarios configurados' },
-      openEditor:       { en: 'Editor', es: 'Editor' },
-      openEditorHelp:   { en: 'Items, vendors, storage areas and lists', es: 'Artículos, proveedores, áreas y listas' },
       sendingSummary:   { en: 'Sending…', es: 'Enviando…' },
       // Recipients management
       recipientsTitle:  { en: 'Recipients', es: 'Destinatarios' },
@@ -3429,6 +3512,7 @@
   }
 
   function showPinScreen() {
+    document.documentElement.classList.remove('in-main');
     $('screen-pin').style.display = 'flex';
     $('screen-stale').style.display = 'none';
     $('screen-main').style.display = 'none';
@@ -3441,10 +3525,20 @@
     $('screen-pin').style.display = 'none';
     $('screen-stale').style.display = 'none';
     $('screen-main').style.display = 'flex';
+    document.documentElement.classList.add('in-main');
+    updateRail_();
+    // The editor's rail links back here as #history or #settings: Today
+    // loads first as always (it runs the day checks), then that tab opens.
+    const want = (window.location.hash || '').replace('#', '');
+    if (want) {
+      try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (e) { /* the hash just stays */ }
+    }
     // Return the promise so callers (e.g. the PIN transition animation)
     // can await the initial dashboard fetch and keep their overlay up
     // until the home screen is fully populated.
-    const shown = switchTab('today');
+    const shown = switchTab('today').then(function () {
+      if (want === 'history' || want === 'settings') return switchTab(want);
+    });
     // Once the home screen is up: "Who's counting?" on a device that hasn't
     // answered yet for this store (live counting, P2).
     Promise.resolve(shown).then(function () { setTimeout(openNamePickerIfNeeded_, 600); }).catch(function () {});
@@ -3527,6 +3621,7 @@
   // re-running it — no double log, no double recap email.
   function showResetRefreshScreen_() {
     hideBusy();
+    document.documentElement.classList.remove('in-main');
     $('screen-pin').style.display = 'none';
     $('screen-main').style.display = 'none';
     $('screen-stale').style.display = 'flex';
@@ -3982,6 +4077,7 @@
   function renderToday(data) {
     const view = $('view-today');
     state.lastLiveSig = liveSignature_();   // what the live lines below are drawn from
+    updateRail_();   // the snapshot behind this data says whether the editor has moved
     if (!data || !data.vendors || !data.vendors.length) {
       view.innerHTML =
         '<p class="hero-day">' + escapeHtml(formatDateLong(data ? data.date : '', data ? data.dayOfWeek : '')) + '</p>' +
@@ -4134,6 +4230,7 @@
     }
 
     view.innerHTML = html;
+    markOpenVendor_();
 
     view.querySelectorAll('.vendor-card.tappable').forEach(card => {
       card.addEventListener('click', async (e) => {
@@ -4142,6 +4239,12 @@
         // vendor — the button's own handler will run instead.
         if (e.target.closest('.pill-mark')) return;
         const vendor = card.getAttribute('data-vendor');
+        // On a computer the list stays beside the open vendor: its own card
+        // brings its count back (from the review) and opens nothing new.
+        if (vendorOpen_(vendor)) {
+          if (state.currentView === 'review') reopenCountFromContext_();
+          return;
+        }
         // If this vendor is already reviewed, confirm before opening — gives
         // a soft safety net against re-opening one you thought was done.
         // Reviewed remains purely visual; this is just a "you sure?" gate.
@@ -4157,7 +4260,7 @@
           });
           if (!ok) return;
         }
-        openCount(vendor);
+        openVendorFromList_(vendor);
       });
     });
 
@@ -4559,7 +4662,7 @@
   // view. We don't want to re-render the list under them mid-scroll;
   // the next interaction will pick up fresh data.
   function userScrolledAway_() {
-    const scrollArea = document.getElementById('scroll-area');
+    const scrollArea = todayScroller_();
     if (!scrollArea) return false;
     return scrollArea.scrollTop > 100;
   }
@@ -4611,8 +4714,8 @@
       if (mutated) localStorage.setItem(reviewedKey(data.date), JSON.stringify(reviewed));
       // Only re-render if Today is still showing (gates above checked
       // this, but the renderToday call itself is no-op-safe if not).
-      if (state.currentView === 'today' || state.currentView === undefined) {
-        const scroller = $('scroll-area');
+      if (todayOnScreen_()) {
+        const scroller = todayScroller_();
         const top = scroller ? scroller.scrollTop : 0;
         renderToday(data);
         if (scroller) scroller.scrollTop = top;
@@ -4895,8 +4998,12 @@
   }
 
   async function openCount(vendor) {
+    // Straight from one vendor to another (the list beside it on a computer):
+    // showView sees the new vendor on both sides, so the heartbeat is sent here.
+    const switchingFrom = liveVendor_();
     state.countContext = { vendor: vendor, items: [], dirty: {} };
     showView('count');
+    if (switchingFrom && switchingFrom !== vendor) liveBeat_();
     // Drill-down breadcrumb set synchronously (vendor is known before the
     // items fetch) so it's present even while the loading bar shows.
     setCountBreadcrumb_(vendor);
@@ -5755,9 +5862,12 @@
     if (direct.mode !== 'direct' || !state.pin) return;
     if (document.visibilityState !== 'visible' || uiIsInteractive_()) return;
     directExpire_();
-    if (state.currentTab === 'today' && state.currentView === 'today') maybeBackgroundRefreshDashboard_('tick');
-    else if (state.currentView === 'count') liveRefreshCount_();
-    else directSnapshot_().catch(function () { /* offline: the next tick tries again */ });
+    // On a computer Today stays beside an open count, so both refresh; they
+    // share the one snapshot read (directSnapshot_).
+    const todayShown = state.currentTab === 'today' && todayOnScreen_();
+    if (state.currentView === 'count') liveRefreshCount_();
+    if (todayShown) maybeBackgroundRefreshDashboard_('tick');
+    else if (state.currentView !== 'count') directSnapshot_().catch(function () { /* offline: the next tick tries again */ });
   }
   setInterval(liveTick_, LIVE_TICK_MS);
 
@@ -7260,15 +7370,31 @@
 
   // The editor is part of the app once the store's catalog lives in Supabase
   // (editor_direct, schema v8's switch), and only on a computer (spec A1): a
-  // mouse and a wide screen.
+  // mouse and a wide screen. It's the rail's Editor item (spec L1).
   function editorAvailable_() {
-    if (!direct.editorDirect || !direct.token) return false;
-    const fine = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches;
-    return fine && window.innerWidth >= 900;
+    return !!(direct.editorDirect && direct.token) && isDesk_();
   }
   // One sign-in for the whole app: the editor accepts this session's token
-  // (mog_editor_get), so it opens without asking for the PIN again.
-  function openEditor_() {
+  // (mog_editor_get), so it opens without asking for the PIN again. Counts
+  // not yet saved save first, and unsaved recipient edits ask, as leaving
+  // either screen does.
+  async function openEditor_() {
+    if (countsAreDirty_()) {
+      const result = await flushDirtyToServer({ quiet: true });
+      if (!result || !result.ok) { showToast(t('saveError'), 'error'); return; }
+    }
+    if (state.currentView === 'recipients' && state.recipientsDirty) {
+      const ok = await showConfirm({
+        kind: 'danger',
+        icon: 'alert-triangle',
+        title: t('recipientsDiscardTitle'),
+        msg:   t('recipientsDiscardMsg'),
+        confirmLabel: t('recipientsDiscardConfirm'),
+        cancelLabel:  t('cancel')
+      });
+      if (!ok) return;
+      state.recipientsDirty = false;
+    }
     try { localStorage.setItem('mog_edit_token', direct.token); } catch (e) { /* it asks for the PIN instead */ }
     window.location.href = 'editor/';
   }
@@ -7276,7 +7402,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.21.0';
+    const versionStr = '0.22.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
@@ -7306,15 +7432,6 @@
           '</div>' +
           '<div class="settings-value"><i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
         '</div>' +
-        (editorAvailable_()
-          ? '<div class="settings-row tappable" id="settings-editor">' +
-              '<div>' +
-                '<div class="settings-label"><i class="ti ti-edit" aria-hidden="true"></i>' + escapeHtml(t('openEditor')) + '</div>' +
-                '<div style="font-size:12px;color:var(--text-3);margin-top:4px;margin-left:28px">' + escapeHtml(t('openEditorHelp')) + '</div>' +
-              '</div>' +
-              '<div class="settings-value"><i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
-            '</div>'
-          : '') +
       '</div>' +
 
       '<div class="settings-section-label"><span class="lang-en">Preferences</span><span class="lang-es">Preferencias</span></div>' +
@@ -7353,7 +7470,6 @@
       if (state.cache.historyDates) renderHistoryDates(state.cache.historyDates);
     });
     $('settings-recipients').addEventListener('click', openRecipients);
-    if ($('settings-editor')) $('settings-editor').addEventListener('click', openEditor_);
     $('settings-summary').addEventListener('click', onDailySummaryClick);
     if ($('settings-name')) $('settings-name').addEventListener('click', async () => {
       try { directExpire_(); await directSnapshot_(); } catch (e) { /* offline: the list we have */ }
@@ -7997,12 +8113,86 @@
     }, { passive: true });
   }
 
+  // ---- Computer layout (spec L1-L4) ------------------------------------
+  // Today's vendor list stays on the left while one of these is open on the
+  // right; with none open, the right side asks for a vendor (#view-pick).
+  const ALL_VIEWS_ = ['today','count','review','recap','history','history-vendors','history-detail','settings','recipients'];
+  const SPLIT_VIEWS_ = ['today', 'count', 'review', 'recap'];
+
+  function layoutViews_() {
+    const v = state.currentView;
+    const split = isDesk_() && SPLIT_VIEWS_.includes(v);
+    ALL_VIEWS_.forEach(name => {
+      $('view-' + name).style.display = (name === v || (split && name === 'today')) ? 'block' : 'none';
+    });
+    $('view-pick').style.display = (split && v === 'today') ? 'flex' : 'none';
+    $('scroll-area').classList.toggle('split', split);
+    markOpenVendor_();
+  }
+
+  // Today is showing: on its own, or beside an open vendor on a computer.
+  function todayOnScreen_() {
+    const v = state.currentView;
+    return v === 'today' || v === undefined || (isDesk_() && SPLIT_VIEWS_.includes(v));
+  }
+  // What scrolls the vendor list: the whole screen, or its own pane.
+  function todayScroller_() {
+    const area = $('scroll-area');
+    return (area && area.classList.contains('split')) ? $('view-today') : area;
+  }
+
+  function vendorOpen_(vendor) {
+    const ctx = state.countContext;
+    return (state.currentView === 'count' || state.currentView === 'review') && !!ctx && ctx.vendor === vendor;
+  }
+  // The open vendor's card is outlined in the list beside it.
+  function markOpenVendor_() {
+    const ctx = state.countContext;
+    const open = (isDesk_() && ctx && (state.currentView === 'count' || state.currentView === 'review')) ? ctx.vendor : null;
+    document.querySelectorAll('#view-today .vendor-card').forEach(c => {
+      c.classList.toggle('selected', open !== null && c.getAttribute('data-vendor') === open);
+    });
+  }
+
+  // A vendor picked from the list. On a computer the list is still there
+  // while another vendor is being counted: that vendor's counts save first,
+  // the same quiet save the 4-second autosave makes (spec L3), and a failed
+  // save keeps it open. On a phone the list is only on screen when nothing
+  // is open, so this is just openCount.
+  async function openVendorFromList_(vendor) {
+    if (state.currentView === 'count' && countsAreDirty_()) {
+      const result = await flushDirtyToServer({ quiet: true });
+      if (!result || !result.ok) { showToast(t('saveError'), 'error'); return; }
+    }
+    openCount(vendor);
+  }
+
+  const RAIL_BADGE_ = { 'roll-play': 'RP', 'teasnyou': 'TY', 'an': 'ĂN' };
+  function updateRail_() {
+    const ed = editorAvailable_();
+    if ($('rail-editor')) $('rail-editor').hidden = !ed;
+    if ($('rail-sep')) $('rail-sep').hidden = !ed;
+    const badge = $('rail-badge');
+    if (badge) {
+      badge.textContent = RAIL_BADGE_[document.documentElement.getAttribute('data-theme')] ||
+        (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
+    }
+  }
+
+  if (DESK_MQ_) {
+    const onDeskChange = function () {
+      document.documentElement.classList.toggle('desk', isDesk_());
+      if (state.currentView) layoutViews_();
+      updateRail_();
+    };
+    if (DESK_MQ_.addEventListener) DESK_MQ_.addEventListener('change', onDeskChange);
+    else if (DESK_MQ_.addListener) DESK_MQ_.addListener(onDeskChange);
+  }
+
   function showView(viewName) {
     const liveVendorBefore = liveVendor_();
-    ['today','count','review','recap','history','history-vendors','history-detail','settings','recipients'].forEach(v => {
-      $('view-' + v).style.display = v === viewName ? 'block' : 'none';
-    });
     state.currentView = viewName;
+    layoutViews_();
     // Opening or leaving a vendor shows on other devices at their next tick,
     // not after this device's next one too.
     if (liveVendor_() !== liveVendorBefore) liveBeat_();
@@ -8018,6 +8208,9 @@
     const isTabRoot = (viewName === tabRoots[state.currentTab]);
     $('back-btn').style.display = isTabRoot ? 'none' : 'inline-flex';
     $('scroll-area').scrollTop = 0;
+    // On a computer the right-hand pane scrolls by itself; the vendor list
+    // keeps its place.
+    if (viewName !== 'today') $('view-' + viewName).scrollTop = 0;
   }
 
   // While a tab's initial load is in flight, ignore further tab taps so a
@@ -8046,8 +8239,11 @@
     cutoffTickInterval = setInterval(() => {
       // Only re-render if we're still on today AND the dashboard cache
       // exists. Otherwise no-op until conditions are right again.
-      if (state.currentView === 'today' && state.cache.dashboard) {
+      if (state.currentTab === 'today' && todayOnScreen_() && state.cache.dashboard) {
+        const scroller = todayScroller_();
+        const top = scroller ? scroller.scrollTop : 0;
         renderToday(state.cache.dashboard);
+        if (scroller) scroller.scrollTop = top;
       }
     }, 60000);
   }
@@ -8267,6 +8463,7 @@
     });
   });
   $('back-btn').addEventListener('click', goBack);
+  $('rail-editor').addEventListener('click', openEditor_);
   $('lang-btn').addEventListener('click', () => {
     setLang(state.lang === 'en' ? 'es' : 'en');
     if (state.cache.dashboard) renderToday(state.cache.dashboard);
