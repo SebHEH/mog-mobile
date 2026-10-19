@@ -727,7 +727,7 @@ function editorInApp_() {
 function appEditorUrl_() { return APP_BASE_URL + supabaseConfig_().slug + '/editor/'; }
 function editorMovedMessage_() {
   return 'This store\'s items, vendors, storage areas and lists are edited in the app now, on a computer: ' +
-         appEditorUrl_() + ' (or the app\'s Settings → Editor).';
+         appEditorUrl_() + ' (or Editor in the app\'s menu on the left).';
 }
 // The Sheet menu's catalog tools call this first; true = refused (and said so).
 function refuseCatalogToolInSheet_() {
@@ -742,6 +742,9 @@ function refuseCatalogToolInSheet_() {
 // stops accepting), or starts the app from an empty catalog: for a Sheet that
 // is an unused copy of another store's (TNY Rockville, Sebastian 2026-10-18),
 // whose catalog then comes from MarginEdge. Running it again changes nothing.
+// The copy goes ahead only when the parity check passes (D20): the seed is
+// catalogTablesParity_'s own, so every phone screen is compared from exactly
+// the tables the switch then hands to the editor.
 function moveEditorToApp_() {
   MOG_SKIP_CATALOG_QUEUE_ = true;
   const ui = SpreadsheetApp.getUi();
@@ -783,7 +786,18 @@ function moveEditorToApp_() {
 
   let res;
   try {
-    if (!startEmpty) supabaseSync_('mog_sync_seed_catalog', { p_tables: buildCatalogTables_().tables });
+    if (!startEmpty) {
+      const parity = catalogTablesParity_();
+      if (!parity.ok) {
+        const report = formatCatalogParity_(parity).split('\n');
+        ui.alert('Not moved',
+          'The app would not show this store exactly as this Sheet does, so the editor stays in the Sheet.\n\n' +
+          report.slice(0, 20).join('\n') + (report.length > 20 ? '\n...' : '') + '\n\n' +
+          'Fix those rows in the Sheet (📱 Mobile API → Store Health Check repairs most), then try again. ' +
+          'The whole report: run test_catalogTablesParity in Sync.gs.', ui.ButtonSet.OK);
+        return;
+      }
+    }
     res = supabaseSync_('mog_sync_switch_editor', { p_start_empty: startEmpty });
   } catch (e) {
     ui.alert('Not moved', 'Moving the editor stopped: ' + e.message + '\n\nThe editor is still in the Sheet. ' +

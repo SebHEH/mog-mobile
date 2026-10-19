@@ -21,6 +21,9 @@
 //     check pass with nothing left to clean, without changing a phone's count
 //     screen. The ID fix asks for confirmation and gives a different item its
 //     own ID instead of deleting it.
+//   - 📱 Mobile API → Move the editor to the app refuses to copy a Sheet whose
+//     parity check fails (and says why), copies it once repaired, and starts
+//     empty whatever the check says (Sync.gs moveEditorToApp_, D20).
 // Each has a planted-defect control: in Sync.gs, and in the tables' builder.
 //
 // Run bare: node tests/catalog_parity.test.js [stores]   (default 120)
@@ -166,10 +169,29 @@ function makeSide(spec, script, sb, props) {
 const NEW_EXECUTION = new vm.Script('_SB_CONFIG_ = null; _SB_SNAPSHOT_ = null; _SHEET_CACHE_.clear();');
 const run = (side, fn) => { NEW_EXECUTION.runInContext(side.ctx); return fn(side.ctx); };
 
+// 📱 Mobile API → Move the editor to the app, answered by a fake Sheet UI:
+// copy (No) or start empty (Yes, then the store code). Returns the dialogs'
+// titles and texts, and whether the store moved.
+function moveEditor(side, sb, startEmpty) {
+  const said = [];
+  const B = { YES: 'YES', NO: 'NO', CANCEL: 'CANCEL', OK: 'OK' };
+  side.ctx.SpreadsheetApp.getUi = () => ({
+    Button: B, ButtonSet: { OK: 'OK', YES_NO_CANCEL: 'YES_NO_CANCEL', OK_CANCEL: 'OK_CANCEL' },
+    alert: (title, msg, set) => { said.push(String(title) + '\n' + (msg == null ? '' : String(msg))); return set === 'YES_NO_CANCEL' ? (startEmpty ? B.YES : B.NO) : B.OK; },
+    prompt: () => ({ getSelectedButton: () => B.OK, getResponseText: () => SLUG }),
+    showModalDialog: () => { said.push('(a dialog)'); }
+  });
+  run(side, c => c.moveEditorToApp_());
+  const s = sb.stores.get(SLUG);
+  return { said: said.join('\n---\n'), moved: !!s.editorDirect && side.scriptProps.get('MOG_EDITOR') === 'supabase',
+           half: !!s.editorDirect !== (side.scriptProps.get('MOG_EDITOR') === 'supabase') };
+}
+
 function runSuite(srcOf, stores, catalogDefect) {
   const script = compileAll(srcOf || SRC);
   const failures = [];
-  const stats = { healthy: 0, screens: 0, counts: 0, repairs: 0, messy: 0, messyDiffer: 0, messyPassWithNotes: 0, notes: {} };
+  const stats = { healthy: 0, screens: 0, counts: 0, repairs: 0, messy: 0, messyDiffer: 0, messyPassWithNotes: 0, notes: {},
+                  moveRefused: 0, moved: 0, movedEmpty: 0 };
   const fail = (seed, scenario, what) => failures.push('seed ' + seed + ' [' + scenario + ']: ' + what);
 
   for (let seed = 1; seed <= stores; seed++) {
@@ -256,6 +278,12 @@ function runSuite(srcOf, stores, catalogDefect) {
       if (drift.lostRows || drift.same) {
         const pre = run(side, c => c.catalogTablesParity_());
         if (pre.ok) fail(seed, 'repair', 'parity passed before the repair');
+        // Copying this Sheet's catalog into the app is refused, and says why.
+        const m = moveEditor(side, sb, false);
+        if (m.moved || m.half) fail(seed, 'move', 'a Sheet that fails the parity check moved its editor');
+        else if (!/^Not moved\nThe app would not show this store exactly as this Sheet does/m.test(m.said) ||
+                 !/(screens DIFFER|RESULT: FAIL)/.test(m.said)) fail(seed, 'move', 'refusal text: ' + m.said.slice(-300));
+        stats.moveRefused++;
       }
 
       const before = screens(side.ctx, run(side, c => c.buildCatalogPayload_()), state);
@@ -287,6 +315,16 @@ function runSuite(srcOf, stores, catalogDefect) {
         if (!r.ok) fail(seed, 'repair', 'parity fails after the repair: ' + r.report.diffs[0]);
       }
       if (drift.lostRows || drift.same) stats.repairs++;
+
+      // Repaired, the copy goes through: the app's catalog is this Sheet's.
+      const m = moveEditor(side, sb, false);
+      const s = sb.stores.get(SLUG);
+      if (!m.moved) fail(seed, 'move', 'a Sheet that passes the parity check did not move: ' + m.said.slice(0, 200));
+      else if (!/^The editor is in the app\n/m.test(m.said) || !/this Sheet's catalog/.test(m.said)) fail(seed, 'move', 'move text: ' + m.said.slice(0, 200));
+      else if (JSON.stringify(s.catalog) !== JSON.stringify(catalogFromTables(s))) fail(seed, 'move', 'the app\'s catalog is not built from its tables');
+      else if (s.tables.items.length !== run(side, c => c.buildCatalogTables_()).tables.items.length) fail(seed, 'move', 'the app did not get the Sheet\'s items');
+      else stats.moved++;
+      if (!/Already in the app/.test(moveEditor(side, sb, false).said)) fail(seed, 'move', 'a second move did not say it already had');
     } catch (e) { fail(seed, 'repair', 'crashed: ' + e.stack); }
 
     // ---- A messy Sheet ----
@@ -311,6 +349,15 @@ function runSuite(srcOf, stores, catalogDefect) {
         const text = run(side, c => c.formatCatalogParity_(r));
         if (!/\nRESULT: FAIL$/.test(text) || !/screens DIFFER/.test(text)) fail(seed, 'messy', 'log does not say FAIL');
       } else if (r.notes.length) stats.messyPassWithNotes++;
+
+      // Starting empty doesn't depend on the parity check (S3: an unused copy).
+      if (switched && seed % 4 === 0) {
+        const m = moveEditor(side, sb, true);
+        const s = sb.stores.get(SLUG);
+        if (!m.moved) fail(seed, 'move', 'starting empty did not move: ' + m.said.slice(0, 200));
+        else if (s.tables.vendors.length || s.tables.items.length || s.tables.areas.length || s.tables.pickRows.length) fail(seed, 'move', 'starting empty left a catalog');
+        else stats.movedEmpty++;
+      }
     } catch (e) { fail(seed, 'messy', 'crashed: ' + e.stack); }
   }
   return { failures, stats };
@@ -335,6 +382,8 @@ if (!st.counts) { failed++; console.log('FAIL  fixtures never had counts'); }
 if (st.repairs < STORES / 2) { failed++; console.log('FAIL  only ' + st.repairs + ' stores had drift to repair'); }
 if (!st.messyDiffer) { failed++; console.log('FAIL  no messy store ever differed: the gate never saw drift'); }
 if (!st.messyPassWithNotes) { failed++; console.log('FAIL  no messy store passed after harmless cleanups'); }
+if (!st.moveRefused || !st.moved || !st.movedEmpty) { failed++; console.log('FAIL  the editor move never ran every way (refused ' + st.moveRefused + ', moved ' + st.moved + ', empty ' + st.movedEmpty + ')'); }
+else console.log('PASS  Move the editor to the app: ' + st.moveRefused + ' failing copies refused, ' + st.moved + ' repaired Sheets moved, ' + st.movedEmpty + ' started empty');
 for (const k of ['vendor', 'area', 'item', 'pick']) {
   if (!st.notes[k]) { failed++; console.log('FAIL  no "' + k + '" cleanup ever happened'); }
 }
@@ -353,6 +402,8 @@ const CONTROLS = [
   { name: 'a primary vendor kept as typed', scenario: 'messy',
     find: '    const primary = m.primaryVendor ? (canonVendor.get(m.primaryVendor.toLowerCase()) || null) : null;',
     replace: '    const primary = m.primaryVendor || null;' },
+  { name: 'a copy that fails the parity check moves anyway', scenario: 'move',
+    find: '      if (!parity.ok) {', replace: '      if (false) {' },
   { name: 'override-on screens not compared', scenario: 'healthy',
     find: '    for (const override of [false, true]) {', replace: '    for (const override of [false]) {' },
   { name: 'restored areas get no order on their rows', scenario: 'repair', file: 'apps-script/PickPath.gs',

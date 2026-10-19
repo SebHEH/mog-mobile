@@ -355,6 +355,21 @@ class FakeSupabase {
                     catalog: this.catalogDefect ? this.catalogDefect(built) : built });   // catalogDefect: a test's planted builder bug
       }
 
+      // schema_v8.sql: the store's editor moves to Supabase. Starting empty
+      // clears the catalog tables and takes back phones' one-day edits; a copy
+      // needs seeded tables. A second call changes nothing.
+      case 'mog_sync_switch_editor': {
+        if (s.editorDirect) return ok({ alreadySwitched: true, catalogVersion: s.version });
+        if (p.p_start_empty) {
+          s.tables = { vendors: [], areas: [], items: [], pickRows: [] };
+          for (const e of s.quickEdits || []) { e.active = false; if (e.review === 'open') e.review = 'dismissed'; }
+        } else if (!(s.tables && (s.tables.vendors.length || s.tables.items.length))) {
+          return err('NOT_SEEDED');
+        }
+        s.editorDirect = true;
+        return ok({ alreadySwitched: false, startedEmpty: !!p.p_start_empty, catalogVersion: this.editorPublish(s) });
+      }
+
       case 'mog_sync_get_status':
         return ok({ phoneDirect: s.phoneDirect, editorDirect: s.editorDirect, hasCycle: !!s.state,
                     tablesSeeded: !!(s.tables && s.tables.vendors.length), catalogVersion: s.version,
