@@ -2,8 +2,9 @@
 // GATE: the editor's static host (template/editor/host.js), which lets the
 // unchanged ManageItems.html run on Supabase. host.js + catalogEdit.js run in
 // a fake browser against a fake Supabase whose editor calls mirror
-// supabase/schema_v6.sql, written apart from catalogEdit.js
-// (fake_supabase.js; the SQL itself is pinned by supabase/tests/smoke_v6.sql):
+// supabase/schema_v6.sql and v8, written apart from catalogEdit.js
+// (fake_supabase.js; the SQL itself is pinned by supabase/tests/smoke_v6.sql
+// and smoke_v8.sql):
 //   - sign-in: the PIN gate's editorAuth / editorPing, a store whose editor is
 //     still in the Sheet, a token from ANOTHER store refused (every store's
 //     editor shares one site's storage), the page's item cache marked stale
@@ -15,8 +16,15 @@
 //     Supabase's, and the phones' catalog follows; Undo through Supabase
 //   - Import from MarginEdge: one bulk save (a new vendor, items with no par
 //     and no storage area) lands in Supabase, logged, the copy in step
+//   - Manage Vendors, Storage Areas (a swap, a deleted area's name reused) and
+//     Shelf to Sheet through the fake's link rules (a vendor's items let go
+//     before it goes, a renamed area carries its rows), each undone and redone
+//   - the other pages: each gets the data its Apps Script page had baked in,
+//     Editor Home sends ?page= on to the page's file, and tools not in the
+//     app show as coming soon
 //   - a token in the URL goes to the gate's validate-first path
-// Planted-defect controls in host.js must each be caught.
+// Planted-defect controls in host.js (and catalogEdit.js's save order) must
+// each be caught.
 //
 // Run bare: node tests/editor_host.test.js   A pass ends "editor_host: ALL PASS".
 
@@ -75,11 +83,13 @@ function makeTab(sb, slug, srcOf, opts) {
     console, setTimeout, clearTimeout, AbortController, URLSearchParams,
     fetch: sb.fetchFn(),
     localStorage: { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) },
-    location: { search: (opts && opts.search) || '', hash: '', href: '', reload() {} },
+    location: { search: (opts && opts.search) || '', hash: '', href: '', reload() {}, replace(u) { ctx.__replaced = u; } },
     document: { body: null, head: null, getElementById: () => null }
   };
   ctx.window = ctx;
   ctx.MOG_SUPABASE = { url: SB_URL, key: 'pub', slug };
+  if (opts && opts.page) ctx.MOG_EDITOR_PAGE = opts.page;
+  if (opts && opts.globals) Object.assign(ctx, opts.globals);   // what the page itself declares
   vm.createContext(ctx);
   vm.runInContext(srcOf(CE_FILE), ctx, { filename: CE_FILE });
   vm.runInContext(srcOf(HOST_FILE), ctx, { filename: HOST_FILE });
@@ -105,7 +115,7 @@ function sameTables(sbTables, hostTables) {
 
 async function runSuite(srcOf) {
   const failures = [];
-  const stats = { writes: 0, logged: 0, conflicts: 0, undos: 0, reviews: 0 };
+  const stats = { writes: 0, logged: 0, conflicts: 0, undos: 0, reviews: 0, tools: 0, pages: 0 };
   const fail = (scenario, what) => failures.push('[' + scenario + '] ' + what);
   const sb = makeServer();
   const s = sb.stores.get('zzedit');
@@ -220,6 +230,61 @@ async function runSuite(srcOf) {
   if (!sameTables(s.tables, tab.H().tables)) fail('import', 'the editor\'s copy differs from Supabase after the import');
   if (JSON.stringify(s.catalog) !== JSON.stringify(require('./fake_supabase.js').catalogFromTables(s))) fail('import', 'the phones\' catalog is behind');
 
+  // ---- Phase 4 tools through Supabase: Manage Vendors, Storage Areas, Shelf
+  // to Sheet. Each save lands in the right order for the database's links (a
+  // vendor's items let go before it goes, an area's rows before it does, a
+  // renamed area carries its rows), then undoes and redoes through Supabase.
+  // Item and pick-row order is compared by rank (an undone insert leaves a
+  // gap in seq), vendors and areas in Supabase's own order.
+  const ranked = t => {
+    const c = checkCatalogTables(clone(t));
+    c.vendors.sort((a, b) => a.name.localeCompare(b.name));
+    c.areas.sort((a, b) => (a.ord - b.ord) || (a.name < b.name ? -1 : 1));
+    c.items.sort((a, b) => a.seq - b.seq).forEach((it, i) => { it.seq = i + 1; });
+    c.pickRows.sort((a, b) => a.seq - b.seq).forEach((r, i) => { r.seq = i + 1; });
+    return c;
+  };
+  const toolSteps = [
+    ['commitAddVendor', 'Costco', [1, 0, 0, 1, 0, 0, 0], '9:30 am'],
+    ['commitUpdateVendorMultsAndCutoff', 'Costco', [0, 1, 0, 1, 0, 1, 0], '2:15 PM'],
+    ['commitImportVendor', { name: 'Jetro', mults: [1, 0, 0, 0, 0, 0, 0], cutoff: '', csvText: 'Item Name,Pack Size\nSalt,CS\n"Pepper, black",EA\n' }],
+    ['commitStorageAreasDraft', [{ name: 'Freezer', origName: 'Walk-in' }, { name: 'Walk-in', origName: 'Freezer' },
+                                 { name: 'Dry Storage', origName: 'Dry Storage' }, { name: 'Back Room', origName: null }]],
+    ['commitStorageAreasDraft', [{ name: 'Dry Storage', origName: 'Back Room' }, { name: 'Freezer', origName: 'Freezer' },
+                                 { name: 'Walk-in', origName: 'Walk-in' }]],
+    ['commitReorderPickPath', 'Sysco', null],
+    ['commitRemoveVendor', 'Chef Center']
+  ];
+  for (const [fn, ...args] of toolSteps) {
+    if (fn === 'commitReorderPickPath') {
+      const data = await tab.tool(token, 'getPickPathForSidebar', 'Sysco');
+      const rows = [];
+      for (const g of data.groups.slice().reverse()) for (const it of g.items.slice().reverse()) rows.push({ id: it.id, name: it.name, area: g.area });
+      for (const it of data.unassigned) rows.push({ id: it.id, name: it.name, area: data.groups[0].area });
+      args[1] = rows;
+    }
+    const before = clone(s.tables);
+    const logged = (s.changeLog || []).length;
+    try { await tab.tool(token, fn, ...args); } catch (e) { fail('tools', fn + ' failed: ' + e.message); continue; }
+    if ((s.changeLog || []).length !== logged + 1) { fail('tools', fn + ' was not saved'); continue; }
+    if (!sameTables(s.tables, tab.H().tables)) { fail('tools', fn + ': the editor\'s copy differs from Supabase'); continue; }
+    if (JSON.stringify(s.catalog) !== JSON.stringify(require('./fake_supabase.js').catalogFromTables(s))) fail('tools', fn + ': the phones\' catalog is behind');
+    const after = clone(s.tables);
+    const change = s.changeLog[s.changeLog.length - 1];
+    const u = sb.handle('mog_editor_undo', { p_token: token, p_change_id: change.id, p_by: 'Maria' });
+    if (!u.ok) { fail('tools', fn + ': undo refused ' + JSON.stringify(u)); continue; }
+    if (norm(ranked(s.tables)) !== norm(ranked(before))) fail('tools', fn + ': undo does not give back the catalog before (' + F.deepDiff(JSON.parse(norm(ranked(s.tables))), JSON.parse(norm(ranked(before)))) + ')');
+    const redo = sb.handle('mog_editor_undo', { p_token: token, p_change_id: u.data.changeId, p_by: 'Maria' });
+    if (!redo.ok || norm(ranked(s.tables)) !== norm(ranked(after))) fail('tools', fn + ': undoing the undo does not give the change back');
+    await tab.run('editorPing', token);   // what the page's reload after an undo does
+    stats.tools++;
+  }
+  const areasNow = s.tables.areas.map(a => a.name).sort().join(',');
+  if (areasNow !== 'Dry Storage,Freezer,Walk-in') fail('tools', 'areas after the saves: ' + areasNow);
+  if (s.tables.vendors.some(v => v.name === 'Chef Center') || s.tables.items.some(i => i.primaryVendor === 'Chef Center' || i.eligible.indexOf('Chef Center') >= 0)) {
+    fail('tools', 'Chef Center is still on items after its removal');
+  }
+
   // ---- Random saves: the copy never drifts from Supabase ----
   const rnd = mulberry32(4242);
   const pick = list => list[Math.floor(rnd() * list.length)];
@@ -237,6 +302,8 @@ async function runSuite(srcOf) {
     else if (k < 0.6) call = ['commitSwitchActiveVendor', item.id, pick(item.eligible.length ? item.eligible : vendors)];
     else if (k < 0.75) call = ['commitSetVendorItems', pick(vendors), t.items.filter(() => rnd() < 0.3).map(x => x.id)];
     else if (k < 0.85 && t.items.length > 3) call = ['commitDeleteItem', item.id];
+    else if (k < 0.88) call = ['commitUpdateVendorMultsAndCutoff', pick(vendors), [1, 0, 1, 0, 1, 0, 0].map(() => pick([0, 1, 2])), pick(['', '10:00'])];
+    else if (k < 0.91 && t.areas.length > 1) call = ['commitStorageAreasDraft', t.areas.slice().reverse().map(a => ({ name: rnd() < 0.3 ? a.name + ' ' + i : a.name, origName: a.name }))];
     else call = ['getItemForEdit', item.id];
     try { await tab.tool(token, ...call); } catch (e) { /* the same refusals as Items.gs; catalog_edit checks those */ }
     stats.writes++;
@@ -255,6 +322,37 @@ async function runSuite(srcOf) {
     stats.undos++;
     const redo = sb.handle('mog_editor_undo', { p_token: token, p_change_id: u.data.changeId, p_by: 'Maria' });
     if (!redo.ok || !sameTables(s.tables, tablesBefore)) fail('undo', 'undoing the undo does not give the change back');
+  }
+
+  // ---- The other pages: the data each would have had baked in, Editor
+  // Home sending ?page= on, and tools not in the app shown as coming soon ----
+  {
+    const t = s.tables;
+    const vtab = makeTab(sb, 'zzedit', srcOf, { page: 'vendors', globals: { VENDOR_TABLE: [] } });
+    await vtab.run('editorAuth', '4321');
+    if (JSON.stringify(vtab.ctx.VENDOR_TABLE) !== JSON.stringify(t.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => ({ name: v.name, mults: v.mults, cutoffTime: v.cutoff || null })))) {
+      fail('pages', 'Manage Vendors got ' + JSON.stringify(vtab.ctx.VENDOR_TABLE));
+    }
+    const atab = makeTab(sb, 'zzedit', srcOf, { page: 'areas', globals: { AREA_LIST: [] } });
+    await atab.run('editorAuth', '4321');
+    if (JSON.stringify(atab.ctx.AREA_LIST.map(a => a.name)) !== JSON.stringify(t.areas.slice().sort((a, b) => a.ord - b.ord).map(a => a.name))) {
+      fail('pages', 'Storage Areas got ' + JSON.stringify(atab.ctx.AREA_LIST));
+    }
+    const ptab = makeTab(sb, 'zzedit', srcOf, { page: 'pickpath', globals: { PICK_DATA: {} } });
+    await ptab.run('editorAuth', '4321');
+    const firstVendor = t.vendors.map(v => v.name).sort((a, b) => a.localeCompare(b))[0];
+    if (!ptab.ctx.PICK_DATA || ptab.ctx.PICK_DATA.vendor !== firstVendor || !Array.isArray(ptab.ctx.PICK_DATA.groups)) {
+      fail('pages', 'Shelf to Sheet got ' + JSON.stringify(ptab.ctx.PICK_DATA).slice(0, 120));
+    }
+    const sections = [{ cards: [{ page: 'items', live: true }, { page: 'pickpath', live: true }, { page: 'history', live: true }, { page: 'healthcheck', live: true }] }];
+    const htab = makeTab(sb, 'zzedit', srcOf, { page: 'home', globals: { HOME_SECTIONS: sections } });
+    await htab.run('editorAuth', '4321');
+    if (JSON.stringify(sections[0].cards.map(c => c.live)) !== '[true,true,false,false]') fail('pages', 'Editor Home tiles: ' + JSON.stringify(sections[0].cards));
+    const jump = makeTab(sb, 'zzedit', srcOf, { page: 'home', search: '?page=vendors&t=abc' });
+    if (jump.ctx.__replaced !== 'vendors.html?t=abc') fail('pages', '?page=vendors went to ' + jump.ctx.__replaced);
+    const stay = makeTab(sb, 'zzedit', srcOf, { page: 'home', search: '?page=history' });
+    if (stay.ctx.__replaced) fail('pages', 'a page not in the app left Editor Home for ' + stay.ctx.__replaced);
+    stats.pages = 1;
   }
 
   // ---- A token in the URL goes to the validate-first path ----
@@ -282,19 +380,27 @@ const CONTROLS = [
     find: "    const out = CE.call(H.tables, 'commitSetVendorItems', [r.vendor, onList.concat([r.itemId])]);",
     replace: "    const out = CE.call(H.tables, 'commitSetVendorItems', [r.vendor, onList]);" },
   { name: 'a URL token goes to the optimistic path', scenario: 'url',
-    find: '            delete parameter.t;', replace: '' }
+    find: '            delete parameter.t;', replace: '' },
+  { name: 'a vendor goes before its items let go of it', scenario: 'tools', file: CE_FILE,
+    find: '.concat(renames, early, puts, late);', replace: '.concat(renames, early, late, puts);' },
+  { name: 'Shelf to Sheet opens with nothing', scenario: 'pages',
+    find: "    else if (PAGE === 'pickpath') {", replace: "    else if (false) {" },
+  { name: 'Editor Home offers tools not in the app', scenario: 'pages',
+    find: '      for (const sec of window.HOME_SECTIONS) for (const c of sec.cards || []) if (!PAGES[c.page]) c.live = false;', replace: '' },
+  { name: 'a renamed area is sent as a delete and an add', scenario: 'tools', file: CE_FILE,
+    find: '    for (const r of renames) renameArea(b, r.from, r.to);', replace: '' }
 ];
 
 (async () => {
   let failed = 0;
   const live = await runSuite(SRC);
   const st = live.stats;
-  console.log(`editor_host: ${st.writes} random calls, ${st.logged} saves logged, ${st.conflicts} conflict retried, ${st.undos} undone, ${st.reviews} reviews closed`);
+  console.log(`editor_host: ${st.tools} tool saves undone and redone, ${st.writes} random calls, ${st.logged} saves logged, ${st.conflicts} conflict retried, ${st.undos} undone, ${st.reviews} reviews closed`);
   if (live.failures.length) {
     failed++;
     console.log(`FAIL  ${live.failures.length} problem(s):`);
     for (const f of live.failures.slice(0, 10)) console.log('      ' + f);
-  } else if (!st.conflicts || !st.undos || st.logged < 40 || st.reviews !== 3) {
+  } else if (!st.conflicts || !st.undos || st.logged < 40 || st.reviews !== 3 || st.tools !== 7 || !st.pages) {
     failed++;
     console.log('FAIL  a case was never exercised');
   } else {
@@ -303,8 +409,9 @@ const CONTROLS = [
   for (const c of CONTROLS) {
     let r;
     try {
-      const planted = F.plant(SRC(HOST_FILE), c.find, c.replace);
-      r = await runSuite(file => (file === HOST_FILE ? planted : SRC(file)));
+      const target = c.file || HOST_FILE;
+      const planted = F.plant(SRC(target), c.find, c.replace);
+      r = await runSuite(file => (file === target ? planted : SRC(file)));
     } catch (e) { failed++; console.log(`FAIL  control "${c.name}" crashed: ${e.message}`); continue; }
     const hits = r.failures.filter(f => f.indexOf('[' + c.scenario + ']') === 0).length;
     if (hits) console.log(`PASS  control "${c.name}" bites (${hits} in "${c.scenario}")`);

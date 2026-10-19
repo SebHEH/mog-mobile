@@ -17,6 +17,7 @@
  * 4) VENDORS
  ***********************/
 function showManageVendorsSidebar_() {
+  if (refuseCatalogToolInSheet_()) return;   // Sync.gs: the store edits its catalog in the app
   const tmpl = HtmlService.createTemplateFromFile("ManageVendors");
   // Pre-load the full vendor table data so the modal renders without a second
   // server roundtrip. Was previously also calling getVendorTableData_() on init.
@@ -497,6 +498,7 @@ function commitUpdateVendorMultsAndCutoff_(vendorName, mults, cutoffTime) {
 // a store's vendors will give wrong quantities when an item is switched
 // to a vendor whose mults still expect the legacy par.
 function showRecalibrateVendorSidebar_() {
+  if (refuseCatalogToolInSheet_()) return;
   const tmpl = HtmlService.createTemplateFromFile("RecalibrateVendor");
   tmpl.vendorListJson = JSON.stringify(getVendorList());
   tmpl.sheetTokenJson = JSON.stringify(mintSheetToken_());   // its calls go through webedit_call

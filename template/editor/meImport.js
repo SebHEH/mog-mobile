@@ -1,13 +1,14 @@
 // MOG editor: Import from MarginEdge (the Supabase editor only).
 //
 // A KM exports the Vendor Items list from MarginEdge (vendorItems.csv) and
-// ticks which products the store orders. One MarginEdge product (the
-// company's own name for it, e.g. "Butter, Unsalted") becomes one item. Every
-// MarginEdge vendor that sells it becomes one of the item's vendors, the one
-// bought from most recently its primary (R6: one par, several vendors). Each
-// MarginEdge vendor maps to a vendor the store already has, becomes a new
-// one, or is skipped. The same file serves a BOH and a FOH store: each ticks
-// its own items.
+// goes through two steps. Step 1, vendors: each MarginEdge vendor maps to a
+// vendor the store already has, becomes a new one, or is skipped; every new
+// vendor ticked here is added, even with no items. Step 2, items: the
+// products those vendors sell. One MarginEdge product (the company's own name
+// for it, e.g. "Butter, Unsalted") becomes one item; every ticked vendor that
+// sells it becomes one of its vendors, the one bought from most recently its
+// primary (R6: one par, several vendors). The same file serves a BOH and a
+// FOH store: each ticks its own.
 //
 // The write is catalogEdit.js commitImportItems, sent by host.js like any
 // other save (logged, and undone from Changes). Imported items have no
@@ -31,32 +32,9 @@
     return e;
   }
 
-  // RFC 4180: quoted fields, "" inside quotes, commas and line breaks in
-  // quotes, a byte-order mark. Blank lines are dropped.
-  function parseCsv(text) {
-    const s = String(text == null ? '' : text).replace(/^\uFEFF/, '');
-    const rows = [];
-    let row = [], field = '', quoted = false;
-    for (let i = 0; i < s.length; i++) {
-      const c = s[i];
-      if (quoted) {
-        if (c !== '"') field += c;
-        else if (s[i + 1] === '"') { field += '"'; i++; }
-        else quoted = false;
-      } else if (c === '"') {
-        quoted = true;
-      } else if (c === ',') {
-        row.push(field); field = '';
-      } else if (c === '\n' || c === '\r') {
-        if (c === '\r' && s[i + 1] === '\n') i++;
-        row.push(field); rows.push(row); row = []; field = '';
-      } else {
-        field += c;
-      }
-    }
-    if (field !== '' || row.length) { row.push(field); rows.push(row); }
-    return rows.filter(r => r.some(f => trim(f) !== ''));
-  }
+  // The CSV reader is shared with Import Vendor (catalogEdit.js), loaded first.
+  const CE = root.CatalogEdit || (typeof require === 'function' ? require('./catalogEdit.js') : null);
+  const parseCsv = text => CE.parseCsv(text);
 
   // The Vendor Items export, as products: [{ name, category, sources }] in
   // name order, each source one vendor's item ({ vendor, itemName, code,
@@ -121,6 +99,7 @@
   //   products  [{ name (editable), meName, category, sources, last, inStore ('name' | 'sku' | ''), pick }]
   // A product is ticked when it isn't in the store yet, its category is one
   // that's restocked, and it was bought in the file's last RECENT_DAYS days.
+  // A vendor is ticked when the store has it already or it sells a ticked product.
   function plan(file, tables) {
     const known = storeVendors(tables);
     const names = new Set(), skus = new Set();
@@ -129,16 +108,22 @@
       if (trim(it.sku)) skus.add(trim(it.sku).toLowerCase());
     }
     const since = minusDays(file.newest, RECENT_DAYS);
+    const products = file.products.map(p => {
+      const last = p.sources.reduce((m, s) => (s.last > m ? s.last : m), '');
+      const inStore = names.has(p.name.toLowerCase()) ? 'name'
+        : p.sources.some(s => s.code && skus.has(s.code.toLowerCase())) ? 'sku' : '';
+      return { name: p.name, meName: p.name, category: p.category, sources: p.sources, last: last, inStore: inStore,
+               pick: !inStore && !!p.category && !NOT_STOCK.test(p.category) && !!last && last >= since };
+    });
+    const selling = new Set();
+    for (const p of products) if (p.pick) for (const s of p.sources) selling.add(s.vendor);
     return {
       since: since,
-      vendors: file.vendors.map(me => ({ me: me, use: true, target: known.get(me.toLowerCase()) || '', newName: me })),
-      products: file.products.map(p => {
-        const last = p.sources.reduce((m, s) => (s.last > m ? s.last : m), '');
-        const inStore = names.has(p.name.toLowerCase()) ? 'name'
-          : p.sources.some(s => s.code && skus.has(s.code.toLowerCase())) ? 'sku' : '';
-        return { name: p.name, meName: p.name, category: p.category, sources: p.sources, last: last, inStore: inStore,
-                 pick: !inStore && !!p.category && !NOT_STOCK.test(p.category) && !!last && last >= since };
-      })
+      vendors: file.vendors.map(me => {
+        const target = known.get(me.toLowerCase()) || '';
+        return { me: me, use: !!target || selling.has(me), target: target, newName: me };
+      }),
+      products: products
     };
   }
 
@@ -167,32 +152,31 @@
   }
 
   // What the Import button would send, and why it can't yet.
-  // { payload: { newVendors, items }, errors: [{ en, es }] }
+  // { payload: { newVendors, items }, errors: [{ kind: 'vendor' | 'item', en, es }] }
+  // Every new vendor ticked in step 1 is added, with items or not.
   function payloadOf(state, tables) {
     const known = storeVendors(tables);
-    const errors = [];
+    const errors = [], newVendors = [];
     for (const v of state.vendors) {
       if (!v.use || v.target) continue;
       const n = trim(v.newName);
-      if (!n) errors.push({ en: 'The vendor "' + v.me + '" needs a name.', es: 'El proveedor "' + v.me + '" necesita un nombre.' });
-      else if (n.length > 100) errors.push({ en: 'The vendor name "' + n + '" is longer than 100 characters.', es: 'El nombre de proveedor "' + n + '" tiene más de 100 caracteres.' });
+      if (!n) errors.push({ kind: 'vendor', en: 'The vendor "' + v.me + '" needs a name.', es: 'El proveedor "' + v.me + '" necesita un nombre.' });
+      else if (n.length > 100) errors.push({ kind: 'vendor', en: 'The vendor name "' + n + '" is longer than 100 characters.', es: 'El nombre de proveedor "' + n + '" tiene más de 100 caracteres.' });
+      else if (!known.has(n.toLowerCase()) && !newVendors.some(x => x.toLowerCase() === n.toLowerCase())) newVendors.push(n);
     }
     const inStore = new Set(tables.items.map(it => trim(it.name).toLowerCase()).filter(Boolean));
-    const seen = new Set(), items = [], newVendors = [];
+    const seen = new Set(), items = [];
     for (const p of state.products) {
       if (!p.pick) continue;
       const r = resolve(state, known, p);
       if (!r.primary) continue;
       const name = trim(p.name);
       const low = name.toLowerCase();
-      if (!name) errors.push({ en: 'An item has no name (MarginEdge: "' + p.meName + '").', es: 'Un artículo no tiene nombre (MarginEdge: "' + p.meName + '").' });
-      else if (name.length > 300) errors.push({ en: 'The name "' + name.substring(0, 50) + '…" is longer than 300 characters.', es: 'El nombre "' + name.substring(0, 50) + '…" tiene más de 300 caracteres.' });
-      else if (inStore.has(low)) errors.push({ en: '"' + name + '" is already in the catalog. Rename it or untick it.', es: '"' + name + '" ya está en el catálogo. Cámbiale el nombre o desmárcalo.' });
-      else if (seen.has(low)) errors.push({ en: 'Two items are called "' + name + '". Rename one or untick it.', es: 'Dos artículos se llaman "' + name + '". Cambia uno o desmárcalo.' });
+      if (!name) errors.push({ kind: 'item', en: 'An item has no name (MarginEdge: "' + p.meName + '").', es: 'Un artículo no tiene nombre (MarginEdge: "' + p.meName + '").' });
+      else if (name.length > 300) errors.push({ kind: 'item', en: 'The name "' + name.substring(0, 50) + '…" is longer than 300 characters.', es: 'El nombre "' + name.substring(0, 50) + '…" tiene más de 300 caracteres.' });
+      else if (inStore.has(low)) errors.push({ kind: 'item', en: '"' + name + '" is already in the catalog. Rename it or untick it.', es: '"' + name + '" ya está en el catálogo. Cámbiale el nombre o desmárcalo.' });
+      else if (seen.has(low)) errors.push({ kind: 'item', en: 'Two items are called "' + name + '". Rename one or untick it.', es: 'Dos artículos se llaman "' + name + '". Cambia uno o desmárcalo.' });
       seen.add(low);
-      for (const v of r.eligible) {
-        if (!known.has(v.toLowerCase()) && !newVendors.some(n => n.toLowerCase() === v.toLowerCase())) newVendors.push(v);
-      }
       items.push({ name: name, primaryVendor: r.primary, eligible: r.eligible, sku: r.sku, category: p.category });
     }
     return { payload: { newVendors: newVendors, items: items }, errors: errors };
@@ -207,7 +191,7 @@
     '#mei-ov *{box-sizing:border-box}' +
     '.mei-card{background:#fff;border-radius:12px;width:min(1100px,100%);height:min(900px,100%);display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.28)}' +
     '.mei-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid #e8eaed}' +
-    '.mei-head h2{margin:0;font-size:18px;flex:1}.mei-x{border:0;background:none;font-size:18px;cursor:pointer;color:#555}' +
+    '.mei-head h2{margin:0;font-size:18px;flex:1}.mei-step{font-weight:500;color:#666;font-size:15px}.mei-x{border:0;background:none;font-size:18px;cursor:pointer;color:#555}' +
     '.mei-body{flex:1;overflow:auto;padding:16px 20px}' +
     '.mei-body p{margin:0 0 10px;line-height:1.45}.mei-hint{color:#666;font-size:13px}' +
     '.mei-file{display:inline-block;margin:6px 0 4px}.mei-err{color:#c0392b;margin-top:8px;font-weight:600}' +
@@ -229,6 +213,8 @@
     '.mei-go[disabled]{opacity:.45;cursor:default}';
 
   // host = { tables(), call(fn, args) -> Promise, tr(en, es), done(result) }
+  // Three screens: choose the file, step 1 vendors, step 2 items. Nothing is
+  // saved until Import, at the end of step 2.
   function open(host) {
     const tr = host.tr;
     if (document.getElementById('mei-ov')) return;
@@ -238,32 +224,37 @@
       css.textContent = CSS;
       document.head.appendChild(css);
     }
-    let state = null, busy = false;
+    let state = null, busy = false, step = 0;   // 0 the file, 1 vendors, 2 items
     const collapsed = new Set();
+    const filter = { q: '', show: 'all' };
+    const catOf = p => p.category || tr('(no category)', '(sin categoría)');
     const ov = document.createElement('div');
     ov.id = 'mei-ov';
     ov.innerHTML =
       '<div class="mei-card" role="dialog" aria-modal="true">' +
-        '<div class="mei-head"><h2>' + esc(tr('Import items from MarginEdge', 'Importar artículos de MarginEdge')) + '</h2>' +
+        '<div class="mei-head"><h2>' + esc(tr('Import from MarginEdge', 'Importar de MarginEdge')) +
+          ' <span class="mei-step" id="mei-stepname"></span></h2>' +
           '<button type="button" class="mei-x" data-act="close" aria-label="Close">✕</button></div>' +
         '<div class="mei-body">' +
-          '<div id="mei-step1">' +
+          '<div id="mei-file-step">' +
             '<p>' + esc(tr('In MarginEdge, export the Vendor Items list for this restaurant (a CSV file named vendorItems.csv), then choose it here.',
                            'En MarginEdge, exporta la lista de Vendor Items de este restaurante (un archivo CSV llamado vendorItems.csv) y elígelo aquí.')) + '</p>' +
-            '<p class="mei-hint">' + esc(tr('You pick what to add before anything is saved. Items come in without a storage area or par; you give them those here afterwards.',
-                                             'Eliges qué agregar antes de guardar. Los artículos llegan sin área ni par; se los das aquí después.')) + '</p>' +
+            '<p class="mei-hint">' + esc(tr('Two steps: first the vendors, then their items. Nothing is saved until you press Import.',
+                                             'Dos pasos: primero los proveedores, luego sus artículos. No se guarda nada hasta que presiones Importar.')) + '</p>' +
             '<input class="mei-file" type="file" accept=".csv,text/csv" data-act="file">' +
             '<div class="mei-err" id="mei-err"></div>' +
           '</div>' +
-          '<div id="mei-step2" hidden>' +
-            '<div class="mei-sum" id="mei-sum"></div>' +
-            '<div class="mei-h3">' + esc(tr('1. Vendors', '1. Proveedores')) + '</div>' +
-            '<p class="mei-hint">' + esc(tr('Untick a vendor to leave its items out. A new vendor has no delivery days until someone sets them, so it orders nothing until then.',
-                                             'Desmarca un proveedor para dejar fuera sus artículos. Un proveedor nuevo no tiene días de entrega hasta que alguien los ponga, así que no pide nada hasta entonces.')) + '</p>' +
+          '<div id="mei-vendor-step" hidden>' +
+            '<div class="mei-sum" id="mei-vsum"></div>' +
+            '<p class="mei-hint">' + esc(tr('Tick the vendors this store orders from. Each new vendor ticked here is added, even with no items. It has no delivery days until someone sets them, so it orders nothing until then.',
+                                             'Marca los proveedores a los que esta tienda les pide. Cada proveedor nuevo marcado aquí se agrega, aunque no tenga artículos. No tiene días de entrega hasta que alguien los ponga, así que no pide nada hasta entonces.')) + '</p>' +
             '<table class="mei-tbl"><thead><tr><th></th><th>MarginEdge</th><th>' + esc(tr('Items ticked', 'Marcados')) + '</th><th>' +
               esc(tr('In this store', 'En esta tienda')) + '</th><th></th></tr></thead><tbody id="mei-vendors"></tbody></table>' +
-            '<div class="mei-h3">' + esc(tr('2. Items', '2. Artículos')) + '</div>' +
-            '<p class="mei-hint">' + esc(tr('Ticked: bought since ', 'Marcados: comprados desde ')) + '<span id="mei-since"></span>' +
+          '</div>' +
+          '<div id="mei-item-step" hidden>' +
+            '<div class="mei-sum" id="mei-isum"></div>' +
+            '<p class="mei-hint">' + esc(tr('Items sold by the vendors you ticked. Ticked to start: bought since ', 'Artículos de los proveedores que marcaste. Marcados al inicio: comprados desde ')) +
+              '<span id="mei-since"></span>' +
               esc(tr(', and not equipment, furniture, repairs, linen, office or services. Edit a name to shorten it.',
                      ', y que no son equipo, muebles, reparaciones, lencería, oficina ni servicios. Edita un nombre para acortarlo.')) + '</p>' +
             '<div class="mei-tools">' +
@@ -280,12 +271,11 @@
         '</div>' +
         '<div class="mei-foot"><div class="mei-msg" id="mei-msg"></div>' +
           '<button type="button" class="mei-btn" data-act="close">' + esc(tr('Cancel', 'Cancelar')) + '</button>' +
-          '<button type="button" class="mei-btn mei-go" data-act="go" disabled>' + esc(tr('Import', 'Importar')) + '</button></div>' +
+          '<button type="button" class="mei-btn" data-act="back" hidden>' + esc(tr('← Vendors', '← Proveedores')) + '</button>' +
+          '<button type="button" class="mei-btn mei-go" data-act="go" disabled>' + esc(tr('Next: items →', 'Siguiente: artículos →')) + '</button></div>' +
       '</div>';
     document.body.appendChild(ov);
     const $ = id => document.getElementById(id);
-    const filter = { q: '', show: 'all' };
-    const catOf = p => p.category || tr('(no category)', '(sin categoría)');
 
     function close() {
       if (busy) return;
@@ -306,14 +296,24 @@
           $('mei-err').textContent = tr(e.message, e.es || e.message);
           return;
         }
-        $('mei-step1').hidden = true;
-        $('mei-step2').hidden = false;
         $('mei-since').textContent = state.since || '—';
-        renderVendors();
-        renderItems();
+        show(1);
       };
       reader.onerror = function () { $('mei-err').textContent = tr('Could not read the file.', 'No se pudo leer el archivo.'); };
       reader.readAsText(fileObj);
+    }
+
+    function show(n) {
+      step = n;
+      $('mei-file-step').hidden = n !== 0;
+      $('mei-vendor-step').hidden = n !== 1;
+      $('mei-item-step').hidden = n !== 2;
+      ov.querySelector('[data-act="back"]').hidden = n !== 2;
+      $('mei-stepname').textContent = n === 1 ? tr('· Step 1 of 2: vendors', '· Paso 1 de 2: proveedores')
+                                    : n === 2 ? tr('· Step 2 of 2: items', '· Paso 2 de 2: artículos') : '';
+      ov.querySelector('.mei-body').scrollTop = 0;
+      if (n === 1) renderVendors();
+      if (n === 2) renderItems();
     }
 
     function known() { return storeVendors(host.tables()); }
@@ -332,6 +332,7 @@
             ' aria-label="' + esc(tr('New vendor name', 'Nombre del proveedor nuevo')) + '">') + '</td></tr>';
       });
       $('mei-vendors').innerHTML = html;
+      update();
     }
 
     function visible(p) {
@@ -343,87 +344,95 @@
              p.sources.some(s => s.vendor.toLowerCase().indexOf(q) >= 0 || s.itemName.toLowerCase().indexOf(q) >= 0);
     }
 
+    // Step 2 lists only products a ticked vendor sells.
     function renderItems() {
       const kn = known();
       const groups = new Map();
       state.products.forEach(function (p, i) {
-        if (!visible(p)) return;
+        if (!visible(p) || !resolve(state, kn, p).primary) return;
         const cat = catOf(p);
         if (!groups.has(cat)) groups.set(cat, []);
         groups.get(cat).push(i);
       });
       let html = '';
       for (const cat of [...groups.keys()].sort((a, b) => a.localeCompare(b))) {
-        const idx = groups.get(cat);
         const open_ = !collapsed.has(cat);
         html += '<tr class="mei-cat"><td><input type="checkbox" data-act="cat" data-cat="' + esc(cat) + '"></td>' +
           '<td colspan="3"><button type="button" data-act="fold" data-cat="' + esc(cat) + '">' + (open_ ? '▾ ' : '▸ ') + esc(cat) +
           ' <span class="mei-n" data-catcount="' + esc(cat) + '"></span></button></td></tr>';
         if (!open_) continue;
-        for (const i of idx) {
+        for (const i of groups.get(cat)) {
           const p = state.products[i];
           const r = resolve(state, kn, p);
           const others = r.eligible.slice(1);
-          const vend = r.primary
-            ? '<b>' + esc(r.primary) + '</b>' + (others.length ? ' · ' + esc(tr('also', 'también')) + ' ' + esc(others.join(', ')) : '')
-            : esc(tr('Its vendors are unticked', 'Sus proveedores están desmarcados'));
           const tag = p.inStore === 'name' ? tr('Already in this store', 'Ya está en esta tienda')
                     : p.inStore === 'sku' ? tr('Same item code in this store', 'Mismo código en esta tienda') : '';
-          html += '<tr class="' + (r.primary ? '' : 'mei-off') + '"><td><input type="checkbox" data-act="pick" data-i="' + i + '"' +
-              (p.pick ? ' checked' : '') + (r.primary ? '' : ' disabled') + '></td>' +
+          html += '<tr><td><input type="checkbox" data-act="pick" data-i="' + i + '"' + (p.pick ? ' checked' : '') + '></td>' +
             '<td><input type="text" data-act="name" data-i="' + i + '" value="' + esc(p.name) + '" maxlength="300"' +
               ' aria-label="' + esc(tr('Item name', 'Nombre del artículo')) + '">' + (tag ? '<span class="mei-tag">' + esc(tag) + '</span>' : '') + '</td>' +
-            '<td class="mei-vend">' + vend + '</td><td class="mei-n">' + esc(p.last || '—') + '</td></tr>';
+            '<td class="mei-vend"><b>' + esc(r.primary) + '</b>' + (others.length ? ' · ' + esc(tr('also', 'también')) + ' ' + esc(others.join(', ')) : '') + '</td>' +
+            '<td class="mei-n">' + esc(p.last || '—') + '</td></tr>';
         }
       }
       $('mei-items').innerHTML = html || '<tr><td colspan="4" class="mei-hint">' + esc(tr('No items match.', 'Ningún artículo coincide.')) + '</td></tr>';
       update();
     }
 
-    // Everything that only counts: the summary, each vendor's and category's
-    // ticks, the category checkboxes, and the Import button.
+    // Everything that only counts: the summaries, each vendor's and category's
+    // ticks, the category checkboxes, the message line and the main button.
     function update() {
       const kn = known();
       const res = state.products.map(p => resolve(state, kn, p));
       const out = payloadOf(state, host.tables());
       const n = out.payload.items.length, nv = out.payload.newVendors.length;
-      const inStore = state.products.filter(p => p.inStore).length;
-      $('mei-sum').textContent =
-        tr(state.products.length + ' products from ' + state.vendors.length + ' vendors in the file. ' + n + ' ticked to import' +
-           (nv ? ', with ' + nv + ' new vendor' + (nv === 1 ? '' : 's') : '') + '. ' + inStore + ' already in this store.',
-           state.products.length + ' productos de ' + state.vendors.length + ' proveedores en el archivo. ' + n + ' marcados para importar' +
-           (nv ? ', con ' + nv + ' proveedor' + (nv === 1 ? '' : 'es') + ' nuevo' + (nv === 1 ? '' : 's') : '') + '. ' + inStore + ' ya están en esta tienda.');
-      state.vendors.forEach(function (v, i) {
-        const el = ov.querySelector('[data-vcount="' + i + '"]');
-        if (el) el.textContent = String(state.products.filter((p, k) => p.pick && res[k].primary && p.sources.some(s => s.vendor === v.me)).length);
-      });
-      ov.querySelectorAll('input[data-act="cat"]').forEach(function (box) {
-        const cat = box.getAttribute('data-cat');
-        const rows = state.products.filter((p, k) => catOf(p) === cat && visible(p) && res[k].primary);
-        const on = rows.filter(p => p.pick).length;
-        box.checked = rows.length > 0 && on === rows.length;
-        box.indeterminate = on > 0 && on < rows.length;
-        box.disabled = !rows.length;
-        const c = ov.querySelector('[data-catcount="' + attrSel(cat) + '"]');
-        if (c) c.textContent = '(' + on + ' / ' + rows.length + ')';
-      });
-      const msg = $('mei-msg'), go = ov.querySelector('[data-act="go"]');
-      if (out.errors.length) {
-        msg.className = 'mei-msg';
-        msg.textContent = tr(out.errors[0].en, out.errors[0].es) +
-          (out.errors.length > 1 ? tr(' (and ' + (out.errors.length - 1) + ' more)', ' (y ' + (out.errors.length - 1) + ' más)') : '');
-      } else {
-        msg.className = 'mei-msg ok';
-        msg.textContent = '';
+      const used = state.vendors.filter(v => v.use).length;
+      const errs = out.errors.filter(e => step === 2 || e.kind === 'vendor');
+      if (step === 1) {
+        $('mei-vsum').textContent = tr(
+          state.vendors.length + ' vendors and ' + state.products.length + ' products in the file. ' + used + ' vendors ticked' +
+            (nv ? ', ' + nv + ' of them new' : '') + '.',
+          state.vendors.length + ' proveedores y ' + state.products.length + ' productos en el archivo. ' + used + ' proveedores marcados' +
+            (nv ? ', ' + nv + ' nuevos' : '') + '.');
+        state.vendors.forEach(function (v, i) {
+          const el = ov.querySelector('[data-vcount="' + i + '"]');
+          if (el) el.textContent = String(state.products.filter((p, k) => p.pick && res[k].primary && p.sources.some(s => s.vendor === v.me)).length);
+        });
       }
-      go.disabled = busy || !!out.errors.length || !n;
-      go.textContent = tr('Import ' + n + ' item' + (n === 1 ? '' : 's'), 'Importar ' + n + ' artículo' + (n === 1 ? '' : 's'));
+      if (step === 2) {
+        const inStore = state.products.filter((p, k) => p.inStore && res[k].primary).length;
+        $('mei-isum').textContent = tr(
+          n + ' item' + (n === 1 ? '' : 's') + ' ticked' + (nv ? ', and ' + nv + ' new vendor' + (nv === 1 ? '' : 's') + ' from step 1' : '') +
+            '. ' + inStore + ' of these products are already in this store.',
+          n + ' artículo' + (n === 1 ? '' : 's') + ' marcado' + (n === 1 ? '' : 's') + (nv ? ', y ' + nv + ' proveedor' + (nv === 1 ? '' : 'es') + ' nuevo' + (nv === 1 ? '' : 's') + ' del paso 1' : '') +
+            '. ' + inStore + ' de estos productos ya están en esta tienda.');
+        ov.querySelectorAll('input[data-act="cat"]').forEach(function (box) {
+          const cat = box.getAttribute('data-cat');
+          const rows = state.products.filter((p, k) => catOf(p) === cat && visible(p) && res[k].primary);
+          const on = rows.filter(p => p.pick).length;
+          box.checked = rows.length > 0 && on === rows.length;
+          box.indeterminate = on > 0 && on < rows.length;
+          const c = ov.querySelector('[data-catcount="' + attrSel(cat) + '"]');
+          if (c) c.textContent = '(' + on + ' / ' + rows.length + ')';
+        });
+      }
+      const msg = $('mei-msg'), go = ov.querySelector('[data-act="go"]');
+      msg.className = errs.length ? 'mei-msg' : 'mei-msg ok';
+      msg.textContent = errs.length ? tr(errs[0].en, errs[0].es) +
+        (errs.length > 1 ? tr(' (and ' + (errs.length - 1) + ' more)', ' (y ' + (errs.length - 1) + ' más)') : '') : '';
+      if (step === 1) {
+        go.disabled = busy || !!errs.length;
+        go.textContent = tr('Next: items →', 'Siguiente: artículos →');
+      } else {
+        go.disabled = busy || !!errs.length || (!n && !nv);
+        go.textContent = n ? tr('Import ' + n + ' item' + (n === 1 ? '' : 's'), 'Importar ' + n + ' artículo' + (n === 1 ? '' : 's'))
+                           : tr('Add ' + nv + ' vendor' + (nv === 1 ? '' : 's'), 'Agregar ' + nv + ' proveedor' + (nv === 1 ? '' : 'es'));
+      }
     }
 
     function doImport() {
       const out = payloadOf(state, host.tables());
-      if (out.errors.length || !out.payload.items.length) return;
       const n = out.payload.items.length, nv = out.payload.newVendors.length;
+      if (out.errors.length || (!n && !nv)) return;
       const go = function () {
         busy = true;
         update();
@@ -440,8 +449,10 @@
           $('mei-msg').textContent = (e && e.message) || String(e);
         });
       };
-      const what = { en: n + ' item' + (n === 1 ? '' : 's') + (nv ? ' and ' + nv + ' new vendor' + (nv === 1 ? '' : 's') : '') + '. You can undo it from Changes.',
-                     es: n + ' artículo' + (n === 1 ? '' : 's') + (nv ? ' y ' + nv + ' proveedor' + (nv === 1 ? '' : 'es') + ' nuevo' + (nv === 1 ? '' : 's') : '') + '. Puedes deshacerlo desde Cambios.' };
+      const what = {
+        en: (n ? n + ' item' + (n === 1 ? '' : 's') : '') + (n && nv ? ' and ' : '') + (nv ? nv + ' new vendor' + (nv === 1 ? '' : 's') : '') + '. You can undo it from Changes.',
+        es: (n ? n + ' artículo' + (n === 1 ? '' : 's') : '') + (n && nv ? ' y ' : '') + (nv ? nv + ' proveedor' + (nv === 1 ? '' : 'es') + ' nuevo' + (nv === 1 ? '' : 's') : '') + '. Puedes deshacerlo desde Cambios.'
+      };
       if (typeof window.mgeConfirm_ === 'function') {
         window.mgeConfirm_({ title: { en: 'Import from MarginEdge?', es: '¿Importar de MarginEdge?' }, msg: what,
                              confirmLabel: { en: 'Import', es: 'Importar' }, onConfirm: go });
@@ -455,7 +466,8 @@
       if (!t) { if (ev.target === ov) close(); return; }
       const act = t.getAttribute('data-act');
       if (act === 'close') close();
-      else if (act === 'go') doImport();
+      else if (act === 'back') show(1);
+      else if (act === 'go') { if (step === 1) show(2); else doImport(); }
       else if (act === 'fold') {
         const cat = t.getAttribute('data-cat');
         if (collapsed.has(cat)) collapsed.delete(cat); else collapsed.add(cat);
@@ -466,9 +478,8 @@
       const t = ev.target, act = t.getAttribute('data-act'), i = Number(t.getAttribute('data-i'));
       if (act === 'file') { if (t.files && t.files[0]) load(t.files[0]); return; }
       if (!state) return;
-      if (act === 'vuse') { state.vendors[i].use = t.checked; renderVendors(); renderItems(); }
-      else if (act === 'vsel') { state.vendors[i].target = t.value; renderVendors(); renderItems(); }
-      else if (act === 'vname') renderItems();
+      if (act === 'vuse') { state.vendors[i].use = t.checked; renderVendors(); }
+      else if (act === 'vsel') { state.vendors[i].target = t.value; renderVendors(); }
       else if (act === 'pick') { state.products[i].pick = t.checked; update(); }
       else if (act === 'cat') {
         const cat = t.getAttribute('data-cat'), kn = known();

@@ -535,6 +535,7 @@ function onOpen(e) {
       // a store; the rollback is for emergencies only.
       .addItem("    Move this store to Supabase",   "moveToSupabase_")
       .addItem("    Switch back to the Sheet",      "switchBackToSheet_")
+      .addItem("    Move the editor to the app",    "moveEditorToApp_")
       .addSeparator()
       .addItem("    Clear Config (reset for setup)", "clearMobileApiConfig_"))
     .addToUi();

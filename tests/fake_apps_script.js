@@ -90,6 +90,10 @@ class FakeRange {
   clearDataValidations() { return this; }
   setNumberFormat() { return this; }
   setDataValidation() { return this; }
+  getLastRow() { return this.row + this.numRows - 1; }   // the range's own end row, as Range.getLastRow is
+  isPartOfMerge() { return false; }                       // merges, protections: layout only, never data
+  breakApart() { return this; }
+  merge() { return this; }
 }
 
 class FakeSheet {
@@ -113,13 +117,45 @@ class FakeSheet {
     this.rows.splice(r, 0, []);
     this.book.writes.push({ sheet: this.name, insertRowAfter: r });
   }
+  insertRowsAfter(r, n) {
+    while (this.rows.length < r) this.rows.push([]);
+    this.rows.splice(r, 0, ...Array.from({ length: n }, () => []));
+    this.book.writes.push({ sheet: this.name, insertRowAfter: r, count: n });
+  }
   getRange(a, b, c, d) {
     if (typeof a === 'string') {
-      const m = /^([A-Z]+)(\d+)$/.exec(a);
-      if (!m) throw new Error('fake getRange: unsupported A1 ' + a);
-      return new FakeRange(this, Number(m[2]), colNum(m[1]), 1, 1);
+      let m = /^([A-Z]+)(\d+)$/.exec(a);
+      if (m) return new FakeRange(this, Number(m[2]), colNum(m[1]), 1, 1);
+      m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(a);
+      if (m) return new FakeRange(this, Number(m[2]), colNum(m[1]), Number(m[4]) - Number(m[2]) + 1, colNum(m[3]) - colNum(m[1]) + 1);
+      m = /^([A-Z]+):([A-Z]+)$/.exec(a);   // whole columns: down to the grid's end, as a sheet's max rows
+      if (m) return new FakeRange(this, 1, colNum(m[1]), Math.max(this.rows.length, 1), colNum(m[2]) - colNum(m[1]) + 1);
+      throw new Error('fake getRange: unsupported A1 ' + a);
     }
     return new FakeRange(this, a, b, c === undefined ? 1 : c, d === undefined ? 1 : d);
+  }
+  // A tab copy (Vendors.gs commitAddVendor_ clones VENDOR_TEMPLATE). Visibility
+  // and protections are layout, never data, so they're accepted and forgotten.
+  copyTo() {
+    let name = 'Copy of ' + this.name;
+    while (this.book.sheets.has(name)) name += ' 1';
+    const copy = new FakeSheet(this.book, name, this.rows.map(r => (Array.isArray(r) ? r.slice() : r)));
+    this.book.sheets.set(name, copy);
+    return copy;
+  }
+  setName(name) {
+    this.book.sheets.delete(this.name);
+    this.name = name;
+    this.book.sheets.set(name, this);
+    return this;
+  }
+  showSheet() { return this; }
+  hideSheet() { return this; }
+  isSheetHidden() { return false; }
+  getProtections() { return []; }
+  protect() {
+    const p = { setDescription: () => p, setUnprotectedRanges: () => p, removeEditors: () => p, getEditors: () => [] };
+    return p;
   }
 }
 
@@ -153,6 +189,32 @@ function formatDate(d, tz, pattern) {
   return pattern.replace(/yyyy|MM|dd|HH|mm|ss|EEE/g, t => parts[t]);
 }
 
+// Apps Script's Utilities.parseCsv: RFC 4180 rows of strings, blank lines kept
+// as one empty field (written here apart from the editor's own reader).
+function parseCsv(text) {
+  const out = [];
+  let row = [], cell = '', inQ = false, i = 0;
+  const s = String(text);
+  while (i < s.length) {
+    const ch = s[i];
+    if (inQ) {
+      if (ch === '"' && s[i + 1] === '"') { cell += '"'; i += 2; continue; }
+      if (ch === '"') { inQ = false; i++; continue; }
+      cell += ch; i++; continue;
+    }
+    if (ch === '"') { inQ = true; i++; continue; }
+    if (ch === ',') { row.push(cell); cell = ''; i++; continue; }
+    if (ch === '\r' || ch === '\n') {
+      row.push(cell); out.push(row); row = []; cell = '';
+      i += (ch === '\r' && s[i + 1] === '\n') ? 2 : 1;
+      continue;
+    }
+    cell += ch; i++;
+  }
+  if (cell !== '' || row.length) { row.push(cell); out.push(row); }
+  return out;
+}
+
 // A fresh context over a store spec: { now, sheets: {name: rows}, scriptProps }.
 // Each context gets its OWN copy of every grid, so writes in one never leak
 // into another built from the same spec. `extra` adds or replaces globals
@@ -172,7 +234,9 @@ function makeContext(spec, extra, opts) {
   const ss = {
     getSheetByName: n => book.sheets.get(n) || null,
     getSpreadsheetTimeZone: () => 'America/New_York',
-    getSheets: () => Array.from(book.sheets.values())
+    getSheets: () => Array.from(book.sheets.values()),
+    moveActiveSheet: () => {},   // tab order: layout only
+    setActiveSheet: () => {}
   };
 
   const store = m => ({
@@ -191,10 +255,11 @@ function makeContext(spec, extra, opts) {
   };
 
   Object.assign(ctx, {
-    SpreadsheetApp: { getActiveSpreadsheet: () => ss, Dimension: { ROWS: 'ROWS', COLUMNS: 'COLUMNS' } },
+    SpreadsheetApp: { getActiveSpreadsheet: () => ss, Dimension: { ROWS: 'ROWS', COLUMNS: 'COLUMNS' },
+                      ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' }, flush: () => {} },
     PropertiesService: { getScriptProperties: () => store(scriptProps), getDocumentProperties: () => store(docProps) },
     CacheService: { getDocumentCache: () => cache, getScriptCache: () => cache },
-    Utilities: { formatDate },
+    Utilities: { formatDate, parseCsv },
     Logger: { log: () => {} }
   }, extra || {});
   return { ctx, book, scriptProps, docProps };

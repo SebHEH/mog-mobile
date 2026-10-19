@@ -17,6 +17,7 @@
  * 5) MASTER ITEMS
  ***********************/
 function showManageItemsSidebar_() {
+  if (refuseCatalogToolInSheet_()) return;   // Sync.gs: the store edits its catalog in the app
   const tmpl = HtmlService.createTemplateFromFile("ManageItems");
   tmpl.vendorListJson = JSON.stringify(getVendorList());
   tmpl.webBootJson    = sheetBootJson_();   // in-Sheet dialog: web bits off, plus its token for webedit_call
@@ -866,6 +867,7 @@ function syncEligibleVendorsToPickPath_run_(dryRun) {
 // Menu wrapper for syncEligibleVendorsToPickPath_core_ (Ordering Guide →
 // 📱 Mobile API → Place Backup Vendors on Tabs). Run per store.
 function syncEligibleVendorsToPickPath_() {
+  if (refuseCatalogToolInSheet_()) return;
   const r  = syncEligibleVendorsToPickPath_core_();
   const ui = SpreadsheetApp.getUi();
   if (!r.added) {

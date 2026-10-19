@@ -630,8 +630,10 @@
 
       // ── State ─────────────────────────────────────────────────────────────────
       const UNASSIGNED  = '__UNASSIGNED__';
-      let currentVendor = PICK_DATA.vendor;
-      let groups        = buildGroups(PICK_DATA);
+      // Filled from PICK_DATA at init, not here: the app's editor (template/
+      // editor/host.js) supplies PICK_DATA and VENDOR_LIST only after sign-in.
+      let currentVendor = null;
+      let groups        = [];
       let isDirty       = false;
 
       function byId(id) { return document.getElementById(id); }
@@ -719,7 +721,7 @@
       }
 
       // ── Vendor dropdown ────────────────────────────────────────────────────────
-      (function populateVendors() {
+      function populateVendors() {
         const sel = byId('vendorSelect');
         // Vendors have no user-defined order — show the picker A–Z (sorted copy).
         VENDOR_LIST.slice().sort(function(a, b) { return String(a).localeCompare(String(b)); }).forEach(function(v) {
@@ -729,7 +731,7 @@
           if (v === currentVendor) opt.selected = true;
           sel.appendChild(opt);
         });
-      })();
+      }
 
       // ── Vendor switching ───────────────────────────────────────────────────────
       function onVendorChange() {
@@ -1251,6 +1253,9 @@
       }
 
       function initReorderPickPath_() {
+        currentVendor = PICK_DATA.vendor;
+        groups        = PICK_DATA.groups ? buildGroups(PICK_DATA) : [];
+        populateVendors();
         if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
           mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
           setBreadcrumb_(

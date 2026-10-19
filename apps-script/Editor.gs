@@ -173,6 +173,22 @@ function renderStoreHealthWeb_() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+// A catalog tool's page on a store whose catalog is edited in the app
+// (Sync.gs editorInApp_): a link there instead of the tool. No data, so no PIN.
+function renderEditorMovedWeb_() {
+  const url = appEditorUrl_();
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const html = '<div style="font:16px/1.5 Inter,Arial,sans-serif;max-width:520px;margin:12vh auto;padding:0 20px;color:#222">' +
+    '<h2 style="margin:0 0 10px">The editor is in the app now</h2>' +
+    '<p>This store\'s items, vendors, storage areas and lists are edited in the ordering app, on a computer.</p>' +
+    '<p><a href="' + esc(url) + '" target="_top" style="font-weight:700">Open the editor</a></p>' +
+    '<p style="color:#666;font-size:14px">El editor ahora está en la app. <a href="' + esc(url) + '" target="_top">Abrir el editor</a></p></div>';
+  return HtmlService.createHtmlOutput(html)
+    .setTitle(editorTabTitle_())
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
 
 /***********************
  * EDITOR AUTH (token-backed PIN gate)
@@ -379,10 +395,19 @@ function webeditDispatch_(name, tier) {
   return null;
 }
 
+// The dispatcher's catalog writes: refused once the store edits its catalog in
+// the app (Sync.gs editorInApp_), since an edit here would never reach it.
+const CATALOG_WRITE_ACTIONS_ = {
+  commitUpsertItem: 1, commitSwitchActiveVendor: 1, commitSetVendorItems: 1, commitDeleteItem: 1,
+  commitUpdateVendorMultsAndCutoff: 1, commitAddVendor: 1, commitImportVendor: 1, commitRemoveVendor: 1,
+  commitStorageAreasDraft: 1, commitReorderPickPath: 1, commitVendorRecalibration: 1
+};
+
 function webedit_call(token, fnName, args, opts) {
   const tier = requireEditorToken_(token);
   const fn = webeditDispatch_(String(fnName || ''), tier);
   if (!fn) throw new Error('Editor action not allowed: ' + fnName);
+  if (CATALOG_WRITE_ACTIONS_[fnName] && editorInApp_()) throw new Error(editorMovedMessage_());
   // Supabase catalog sync (Sync.gs): a call that changed something says so in
   // an envelope, and the page fires the push as its OWN background request,
   // so the save never waits on Supabase. bumpServerMutationTs_ sets

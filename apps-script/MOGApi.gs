@@ -132,6 +132,9 @@ function doGet(e) {
   // is unaffected: it only POSTs (doPost), which never reaches doGet. ?page=setup
   // stays viewable (one-shot-guarded server-side, so harmless once configured).
   if (page === 'setup')    return renderStoreSetupWeb_();     // Editor.gs — first-run wizard
+  // A store whose catalog is edited in the app (Sync.gs editorInApp_): its
+  // catalog tools here only point there. History and Health stay here.
+  if (['items', 'vendors', 'areas', 'pickpath'].indexOf(page) >= 0 && editorInApp_()) return renderEditorMovedWeb_();
   if (page === 'items')    return renderManageItemsWeb_();    // Editor.gs — Manage Items as a web page
   if (page === 'vendors')  return renderManageVendorsWeb_();  // Editor.gs — Manage Vendors as a web page
   if (page === 'history')  return renderOrderHistoryWeb_();   // Editor.gs — Order History as a web page

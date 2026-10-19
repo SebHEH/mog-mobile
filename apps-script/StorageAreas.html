@@ -450,9 +450,9 @@
       // as a stable identity handle so the bulk save can tell a rename apart
       // from a delete+add. Areas added in this draft get origName:null; on a
       // successful save, every origName is reset to the current name.
-      var areas = AREA_LIST.map(function(a) {
-        return { name: a.name, order: a.order, origName: a.name };
-      });
+      // Filled from AREA_LIST at init, not here: the app's editor (template/
+      // editor/host.js) supplies AREA_LIST only after sign-in.
+      var areas = [];
       var renamingIdx = null;
       var isDirty     = false;
 
@@ -847,6 +847,9 @@
       }
 
       function initStorageAreas_() {
+        areas = AREA_LIST.map(function(a) {
+          return { name: a.name, order: a.order, origName: a.name };
+        });
         if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
           mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
           document.documentElement.classList.add('mge-web');  // unlock page scroll (html.mge-web)

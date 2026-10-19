@@ -45,10 +45,21 @@ DASHBOARD_GS   = os.path.join(APPS_SCRIPT, 'Dashboard.gs')
 EDITOR_SRC     = os.path.join(TEMPLATE_DIR, 'editor')
 PREVIEW_DIR    = os.path.join(ROOT, '_preview')   # git-ignored: test stores, never published
 
-# The editor on Supabase (docs/MOG_OneApp_Spec.md Phase 2): each published
-# page is an Apps Script page rendered as-is, its scriptlets filled in here,
-# plus the files that answer its server calls from Supabase.
-EDITOR_PAGES  = {'items.html': ('ManageItems', 'Manage Items')}
+# The editor on Supabase (docs/MOG_OneApp_Spec.md Phases 2 and 4): each
+# published page is an Apps Script page rendered as-is, its scriptlets filled
+# in here, plus the files that answer its server calls from Supabase. A page
+# is file: (Apps Script page, title, the name host.js knows it by). Published
+# under <slug>/editor/ for a store whose stores.json entry says
+# "editor": "supabase" (its catalog moved with schema v8's switch), and for a
+# test store by --preview.
+EDITOR_PAGES  = {'index.html':    ('EditorHome', 'Editor', 'home'),
+                 'items.html':    ('ManageItems', 'Manage Items', 'items'),
+                 'vendors.html':  ('ManageVendors', 'Manage Vendors', 'vendors'),
+                 'areas.html':    ('StorageAreas', 'Storage Areas', 'areas'),
+                 'pickpath.html': ('ReorderPickPath', 'Shelf to Sheet', 'pickpath')}
+# Scriptlets the static pages start empty; host.js fills them from Supabase
+# after sign-in, before each page's start-up function reads them.
+EDITOR_EMPTY  = {'vendorListJson': '[]', 'vendorTableJson': '[]', 'areaListJson': '[]', 'pickDataJson': '{}'}
 EDITOR_ASSETS = ('catalogEdit.js', 'meImport.js', 'host.js')
 SCRIPTLET_RE  = re.compile(r'<\?!=\s*(.*?)\s*\?>', re.S)
 
@@ -134,6 +145,10 @@ def validate_stores(stores):
         # Optional: the street address vendors deliver to (the Copy order email).
         if 'address' in entry and (not isinstance(entry['address'], str) or not entry['address'].strip()):
             fail(f"{prefix}: field 'address' must be a non-empty string when present")
+        # Optional: "supabase" once the store's editor moved to the app (schema
+        # v8's switch). Its editor is then published under <slug>/editor/.
+        if 'editor' in entry and entry['editor'] != 'supabase':
+            fail(f"{prefix}: field 'editor' must be 'supabase' when present")
 
         if not DEPLOY_URL_RE.match(entry['deployment']):
             fail(f"{prefix}: deployment URL does not match Apps Script pattern\n"
@@ -213,11 +228,11 @@ def js_json(obj):
     return json.dumps(obj, ensure_ascii=False).replace('</', '<\\/')
 
 
-def render_editor_page(page, title, boot, sb_cfg):
+def render_editor_page(page, title, name, boot, sb_cfg):
     """apps-script/<page>.html as a static page. Its scriptlets are filled in
-    the way the /exec editor fills them (include() inserts a file as-is);
-    vendorListJson starts empty because host.js fills it from Supabase before
-    the page starts. Any other scriptlet fails the build."""
+    the way the /exec editor fills them (include() inserts a file as-is); the
+    data ones (EDITOR_EMPTY) start empty because host.js fills them from
+    Supabase before the page starts. Any other scriptlet fails the build."""
     path = os.path.join(APPS_SCRIPT, page + '.html')
     with open(path, 'r', encoding='utf-8') as f:
         text = f.read()
@@ -231,8 +246,8 @@ def render_editor_page(page, title, boot, sb_cfg):
                 fail(f"apps-script/{page}.html includes {inc.group(1)}, which doesn't exist")
             with open(inc_path, 'r', encoding='utf-8') as f:
                 return f.read()
-        if expr == 'vendorListJson':
-            return '[]'
+        if expr in EDITOR_EMPTY:
+            return EDITOR_EMPTY[expr]
         if expr == 'webBootJson':
             return js_json(boot)
         fail(f"apps-script/{page}.html: no static value for the scriptlet <?!= {expr} ?>")
@@ -249,7 +264,7 @@ def render_editor_page(page, title, boot, sb_cfg):
     head = ('<head>\n    <meta charset="utf-8">'
             '\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">'
             '\n    <title>' + title + ' · ' + boot['store'] + '</title>'
-            '\n    <script>window.MOG_SUPABASE = ' + js_json(sb_cfg) + ';</script>'
+            '\n    <script>window.MOG_SUPABASE = ' + js_json(sb_cfg) + '; window.MOG_EDITOR_PAGE = ' + js_json(name) + ';</script>'
             '\n    <script src="catalogEdit.js"></script>'
             '\n    <script src="meImport.js"></script>'
             '\n    <script src="host.js"></script>')
@@ -260,13 +275,13 @@ def render_editor_page(page, title, boot, sb_cfg):
 def generate_editor(target_dir, entry, slug, location, supabase, themes, dry_run):
     """<target_dir>/editor/: every editor page plus the files it loads."""
     concept = CONCEPT_TO_THEME.get(entry['concept'], '')
-    boot = {'web': True, 'store': location, 'abbr': slug.upper(), 'base': '../',
+    boot = {'web': True, 'store': location, 'abbr': slug.upper(), 'base': 'index.html',
             'theme': themes.get(concept, themes['default']), 'concept': concept}
     sb_cfg = {'url': supabase[0], 'key': supabase[1], 'slug': slug}
     out_dir = os.path.join(target_dir, 'editor')
     files = {}
-    for name, (page, title) in EDITOR_PAGES.items():
-        files[name] = render_editor_page(page, title, boot, sb_cfg)
+    for name, (page, title, key) in EDITOR_PAGES.items():
+        files[name] = render_editor_page(page, title, key, boot, sb_cfg)
     for name in EDITOR_ASSETS:
         with open(os.path.join(EDITOR_SRC, name), 'r', encoding='utf-8') as f:
             files[name] = f.read()
@@ -466,7 +481,7 @@ def build_preview(stores, slug, like, dry_run):
     app_entry = dict(entry, slug=slug, location=entry['location'] + ' (TEST)', deployment=PREVIEW_EXEC)
     generate_store(app_entry, template_html, template_sw, dry_run, read_order_math(), supabase, target_dir=target)
     generate_editor(target, entry, slug, entry['location'] + ' (TEST)', supabase, themes, dry_run)
-    print(f"[done] serve the repo root and open /_preview/{slug}/ (the app) or /_preview/{slug}/editor/items.html")
+    print(f"[done] serve the repo root and open /_preview/{slug}/ (the app) or /_preview/{slug}/editor/ (the editor)")
 
 
 def main():
@@ -502,12 +517,15 @@ def main():
 
     order_math = read_order_math()
     supabase   = read_supabase_project()
+    themes     = read_concept_themes()
 
     print(f"[stores] generating {len(stores)} store directory(ies)"
           + (" — DRY RUN, no writes" if dry_run else ""))
     for entry in stores:
         print(f"  {entry['concept']} — {entry['location']}  ({entry['slug']})")
         generate_store(entry, template_html, template_sw, dry_run, order_math, supabase)
+        if entry.get('editor') == 'supabase':
+            generate_editor(os.path.join(ROOT, entry['slug']), entry, entry['slug'], entry['location'], supabase, themes, dry_run)
 
     print("[hub] registry injection")
     inject_hub_registry(stores, dry_run)

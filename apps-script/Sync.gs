@@ -268,6 +268,8 @@ const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_Rk1wXHSydLtczfnc98LJBg_yzQ0sl93
 const PROP_SB_SLUG     = 'MOG_SUPABASE_SLUG';      // e.g. "rprfo"
 const PROP_SB_SYNC_KEY = 'MOG_SUPABASE_SYNC_KEY';  // from mog.provision_store; never logged
 const PROP_BACKEND     = 'MOG_BACKEND';            // "supabase" once counting has switched
+const PROP_EDITOR      = 'MOG_EDITOR';             // "supabase" once the catalog is edited in the app (schema v8)
+const APP_BASE_URL     = 'https://sebheh.github.io/mog-mobile/';   // the store apps (GitHub Pages)
 const PROP_CATALOG_PUSH_QUEUED = 'MOG_CATALOG_PUSH_QUEUED';  // doc prop: ms a background push was queued
 
 // The one permission the sync needs beyond what each store already granted.
@@ -338,6 +340,7 @@ function supabaseSnapshot_(fresh) {
 // Push this store's catalog. Returns timings so the cost can be measured;
 // throws on failure (each caller decides whether that matters).
 function pushCatalogNow_() {
+  if (editorInApp_()) return { applied: false, skipped: 'edited in the app', buildMs: 0, sendMs: 0, bytes: 0 };
   const t0 = Date.now();
   const payload = buildCatalogPayload_();
   const bytes = JSON.stringify(payload).length;
@@ -384,6 +387,7 @@ function pushPinsQuietly_() {
 // Reset, cell edits that bump the mutation ts. Called from
 // bumpServerMutationTs_ on connected stores; at most one is queued at a time.
 function scheduleCatalogPush_() {
+  if (editorInApp_()) return false;   // the app owns the catalog; nothing to push
   const doc = PropertiesService.getDocumentProperties();
   const queued = Number(doc.getProperty(PROP_CATALOG_PUSH_QUEUED) || 0);
   if (queued && Date.now() - queued < 10 * 60 * 1000) return false;   // one is already on its way
@@ -709,6 +713,105 @@ function switchBackToSheet_() {
   PropertiesService.getScriptProperties().deleteProperty(PROP_BACKEND);
   _SB_CONFIG_ = null;
   ui.alert('Counting is back on the Sheet', written + ' count(s) copied into the vendor tabs.', ui.ButtonSet.OK);
+}
+
+// ---- The editor in the app (one app per store, Phase 4; schema v8) ----------
+
+// Whether this store's catalog is edited in the app: Supabase owns it, the
+// Sheet's catalog tools refuse (an edit here would never reach the app), and
+// the Sheet stops pushing its catalog. The Sheet keeps the catalog it had and
+// is not updated again (no copy back, Sebastian 2026-10-18).
+function editorInApp_() {
+  return PropertiesService.getScriptProperties().getProperty(PROP_EDITOR) === 'supabase';
+}
+function appEditorUrl_() { return APP_BASE_URL + supabaseConfig_().slug + '/editor/'; }
+function editorMovedMessage_() {
+  return 'This store\'s items, vendors, storage areas and lists are edited in the app now, on a computer: ' +
+         appEditorUrl_() + ' (or the app\'s Settings → Editor).';
+}
+// The Sheet menu's catalog tools call this first; true = refused (and said so).
+function refuseCatalogToolInSheet_() {
+  if (!editorInApp_()) return false;
+  const ui = SpreadsheetApp.getUi();
+  ui.alert('Edited in the app', editorMovedMessage_(), ui.ButtonSet.OK);
+  return true;
+}
+
+// 📱 Mobile API → Move the editor to the app. Either copies this Sheet's
+// catalog into the app (seeded right before the switch, which Supabase then
+// stops accepting), or starts the app from an empty catalog: for a Sheet that
+// is an unused copy of another store's (TNY Rockville, Sebastian 2026-10-18),
+// whose catalog then comes from MarginEdge. Running it again changes nothing.
+function moveEditorToApp_() {
+  MOG_SKIP_CATALOG_QUEUE_ = true;
+  const ui = SpreadsheetApp.getUi();
+  const cfg = supabaseConfig_();
+  if (!cfg.connected) { ui.alert('Move this store to Supabase first (📱 Mobile API → Move this store to Supabase).'); return; }
+  if (editorInApp_()) { ui.alert('Already in the app', editorMovedMessage_(), ui.ButtonSet.OK); return; }
+  const grantUrl = supabaseFetchGrantUrl_();
+  if (grantUrl) { showFetchGrant_(ui, grantUrl); return; }
+  let status;
+  try { status = supabaseSync_('mog_sync_get_status', {}); }
+  catch (e) { ui.alert('Could not reach Supabase: ' + e.message); return; }
+  if (status.editorDirect) {   // moved already (in the SQL Editor, say): only this Sheet needs to know
+    PropertiesService.getScriptProperties().setProperty(PROP_EDITOR, 'supabase');
+    dropTriggersFor_('catalogPushTrigger_');
+    ui.alert('Already in the app', 'Supabase already owns this store\'s catalog; this Sheet now knows it.\n\n' +
+      editorMovedMessage_(), ui.ButtonSet.OK);
+    return;
+  }
+
+  const choice = ui.alert('Move the editor to the app',
+    'From now on this store\'s items, vendors, storage areas and lists are edited in the app, on a computer, ' +
+    'and this Sheet\'s catalog tools refuse. The Sheet keeps the catalog it has now but is not updated again.\n\n' +
+    'Start the app from an EMPTY catalog?\n\n' +
+    'Yes: start empty (for a Sheet that is an unused copy of another store\'s). Then import from MarginEdge.\n' +
+    'No: copy this Sheet\'s catalog into the app.\n' +
+    'Cancel: change nothing.', ui.ButtonSet.YES_NO_CANCEL);
+  if (choice !== ui.Button.YES && choice !== ui.Button.NO) return;
+  const startEmpty = choice === ui.Button.YES;
+  if (startEmpty) {
+    const sure = ui.prompt('Start empty',
+      'This deletes the app\'s catalog for store "' + cfg.slug + '": every vendor, item, storage area and list. ' +
+      'Its phones show nothing until it is set up again. Type the store code (' + cfg.slug + ') to continue.',
+      ui.ButtonSet.OK_CANCEL);
+    if (sure.getSelectedButton() !== ui.Button.OK || sure.getResponseText().trim().toLowerCase() !== cfg.slug) {
+      ui.alert('Nothing was changed.');
+      return;
+    }
+  }
+
+  let res;
+  try {
+    if (!startEmpty) supabaseSync_('mog_sync_seed_catalog', { p_tables: buildCatalogTables_().tables });
+    res = supabaseSync_('mog_sync_switch_editor', { p_start_empty: startEmpty });
+  } catch (e) {
+    ui.alert('Not moved', 'Moving the editor stopped: ' + e.message + '\n\nThe editor is still in the Sheet. ' +
+      (/HTTP 404/.test(e.message) ? 'Run supabase/schema_v8.sql in the SQL Editor first.' : 'Try again in a minute.'),
+      ui.ButtonSet.OK);
+    return;
+  }
+  PropertiesService.getScriptProperties().setProperty(PROP_EDITOR, 'supabase');
+  dropTriggersFor_('catalogPushTrigger_');
+  ui.alert('The editor is in the app',
+    (res.alreadySwitched ? 'It already was in Supabase; this Sheet now knows it.'
+      : startEmpty ? 'The app starts from an empty catalog.' : 'The app has this Sheet\'s catalog.') + '\n\n' +
+    'Editor: ' + appEditorUrl_() + '\n' +
+    'It opens once the store\'s editor is published (stores.json "editor": "supabase", then build.py).',
+    ui.ButtonSet.OK);
+}
+
+// Emergency rollback, run from the Apps Script editor (Sync.gs): this Sheet's
+// catalog tools work and push again. First, in the Supabase SQL Editor:
+//   update mog.stores set editor_direct = false where slug = '<slug>';
+// (until then Supabase refuses the Sheet's pushes). Anything edited in the
+// app since the move is NOT in this Sheet.
+function editorBackToSheet() {
+  requireEditorRun_();
+  PropertiesService.getScriptProperties().deleteProperty(PROP_EDITOR);
+  Logger.log('This Sheet\'s catalog tools work again for ' + supabaseConfig_().slug + '. If not done yet, run ' +
+    'update mog.stores set editor_direct = false where slug = \'' + supabaseConfig_().slug + '\'; in the Supabase ' +
+    'SQL Editor, then push the catalog (Store Health Check). Edits made in the app since the move are not in this Sheet.');
 }
 
 // Give Supabase the Sheet's current cycle: date, Emergency Override, day picks,

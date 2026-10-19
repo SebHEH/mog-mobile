@@ -146,10 +146,11 @@ mog-mobile/
 ├── template/                    PER-STORE PWA SOURCE.
 │   ├── index.html               (311 KB — the store app UI).
 │   ├── sw.js                    (6.9 KB — store SW).
-│   └── editor/                  The editor on Supabase (one-app Phase 2): catalogEdit.js (Manage Items' logic over
-│                                the catalog tables, gated against Items.gs) + host.js (runs the UNCHANGED
-│                                ManageItems.html as a static page) + meImport.js (Import from MarginEdge: the
-│                                Vendor Items CSV → a pick list → one logged save). build.py --preview writes it for a test store.
+│   └── editor/                  The editor on Supabase (one-app Phases 2 and 4): catalogEdit.js (Manage Items, Manage Vendors,
+│                                Storage Areas and Shelf to Sheet over the catalog tables, gated against Items.gs / Vendors.gs /
+│                                PickPath.gs) + host.js (runs those Apps Script pages and Editor Home as static pages) + meImport.js
+│                                (Import from MarginEdge: vendors, then items, then one logged save). build.py publishes it at
+│                                <slug>/editor/ for a store marked "editor": "supabase", and --preview for a test store.
 ├── apps-script/                 APPS SCRIPT SOURCE.
 │   ├── README.md                Apps Script workflow docs (setup + day-to-day).
 │   ├── MOGApi.gs                Core API surface for PWA ↔ Sheet (doGet/doPost, api_* fns, page routing).
@@ -191,9 +192,10 @@ mog-mobile/
 │   ├── schema_v5.sql            Live counting (one-app Phase 1): presence, the store's name list, who saved each count, mog_snapshot2 / mog_save_counts2 (run after v4).
 │   ├── schema_v6.sql            The editor writes the catalog (one-app Phase 2): change log, mog_editor_login/_get/_apply/_undo, D23 (run after v5).
 │   ├── schema_v7.sql            Phone quick edits (one-app Phase 3): "just today" par/add in mog.quick_edits + the snapshot, mog_set_par, review list (run after v6).
+│   ├── schema_v8.sql            One-app Phase 4: the area rename step for the editor's saves and Undo, mog_sync_switch_editor (run after v7).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v7.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
+│   └── tests/                   smoke.sql … smoke_v8.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.

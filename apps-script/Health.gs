@@ -322,9 +322,15 @@ function getStoreHealthReport_() {
           add('sb_phones', 'Phones direct', 'pass', 'Phones use /exec, matching this store counting in the Sheet.');
         }
 
-        if (status.editorDirect) {
+        if (status.editorDirect && editorInApp_()) {
           add('sb_catalog', 'Catalog in sync', 'pass',
-            'Supabase owns this store\'s catalog (its editor writes there); the Sheet\'s copy is a backup.');
+            'Supabase owns this store\'s catalog: it is edited in the app. This Sheet keeps the catalog it had and ' +
+            'is not updated.');
+        } else if (status.editorDirect) {
+          add('sb_catalog', 'Catalog in sync', 'warn',
+            'Supabase owns this store\'s catalog (it is edited in the app), but this Sheet doesn\'t know: its ' +
+            'catalog tools still accept edits that never reach the app.',
+            'Marks this Sheet so its catalog tools point to the app.', 'mark_editor_in_app');
         } else if (!status.catalog) {
           add('sb_catalog', 'Catalog in sync', 'fail', 'Supabase holds no catalog for this store, so phones can\'t load it.',
             'Pushes this Sheet\'s catalog to Supabase now.', 'push_catalog');
@@ -365,7 +371,19 @@ function getStoreHealthReport_() {
 // per-check fixId.
 function runHealthFix_(fixId) {
   const id = String(fixId || '');
+  // A store that edits its catalog in the app (Sync.gs editorInApp_): the
+  // repairs that change or push the Sheet's catalog would never reach it.
+  const CATALOG_FIXES = ['purge_pickpath', 'migrate_vendors', 'place_backups', 'restore_areas', 'fix_repeated_ids', 'push_catalog'];
+  if (CATALOG_FIXES.indexOf(id) >= 0 && editorInApp_()) return { ok: false, message: editorMovedMessage_() };
   switch (id) {
+    case 'mark_editor_in_app': {
+      // Only once Supabase really owns the catalog (schema v8's switch).
+      if (!supabaseSync_('mog_sync_get_status', {}).editorDirect) {
+        return { ok: false, message: 'Supabase doesn\'t own this store\'s catalog yet. Use 📱 Mobile API → Move the editor to the app.' };
+      }
+      PropertiesService.getScriptProperties().setProperty(PROP_EDITOR, 'supabase');
+      return { ok: true, message: 'This Sheet now points its catalog tools to the app.' };
+    }
     case 'sync_h2': {
       const r = updateVendorTabHeader2Formulas_();
       const errs = (r.errors || []);

@@ -79,6 +79,9 @@ check "v7 editor_review: bad token refused"       200 'SESSION_EXPIRED' -X POST 
 check "v7 helper: prepare_test_store not exposed" 404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfotest"}' "$(rpc prepare_test_store)"
 check "v7 helper: today_edits_json not exposed"   404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_cycle":"2026-10-18"}' "$(rpc today_edits_json)"
 
+# schema v8
+check "v8 sync: bad key can't switch the editor"  200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_start_empty":true}' "$(rpc mog_sync_switch_editor)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

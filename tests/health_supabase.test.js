@@ -128,10 +128,19 @@ function runSuite(srcOf, stores) {
         stats.catalogEdits++;
       }
 
-      // Supabase owns the catalog.
+      // Supabase owns the catalog: the Sheet is told so by its fix, which then
+      // stops its catalog repairs.
       s.editorDirect = true;
-      expect(seed, 'editor direct', side.rows(), 'sb_catalog', 'pass', /owns this store's catalog/);
+      expect(seed, 'editor direct', side.rows(), 'sb_catalog', 'warn', /doesn't know.*mark_editor_in_app/);
+      msg = side.run(cx => cx.runHealthFix_('mark_editor_in_app')).message;
+      if (!/points its catalog tools to the app/.test(msg)) fail(seed, 'editor direct', 'fix said: ' + msg);
+      expect(seed, 'editor direct', side.rows(), 'sb_catalog', 'pass', /owns this store's catalog: it is edited in the app/);
+      msg = side.run(cx => cx.runHealthFix_('push_catalog')).message;
+      if (!/edited in the app now/.test(msg)) fail(seed, 'editor direct', 'a catalog repair ran: ' + msg);
+      side.scriptProps.delete('MOG_EDITOR');
       s.editorDirect = false;
+      msg = side.run(cx => cx.runHealthFix_('mark_editor_in_app')).message;
+      if (!/doesn't own this store's catalog yet/.test(msg)) fail(seed, 'editor direct', 'marked a Sheet that still owns its catalog: ' + msg);
 
       // No catalog at all.
       s.catalog = null;

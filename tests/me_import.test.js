@@ -13,6 +13,7 @@
 //     matches a store vendor is that vendor
 //   - what keeps the Import button off: blank, too long, repeated or
 //     already-there names; a new vendor with no name or a name too long
+//   - step 1 adds every ticked new vendor, with items or not, and only those
 //   - the write, on random stores and random files: every ticked product
 //     becomes one item at the end of the list with the next IDs, no par, no
 //     pack and no storage area, its vendors as worked out independently here;
@@ -109,6 +110,9 @@ function fixedChecks(L, fail) {
 
   const known = MI.storeVendors(tables);
   const vend = name => st.vendors.find(v => v.me === name);
+  expect('vendors ticked: in the store, or selling a ticked product', st.vendors.map(v => v.me + ':' + v.use),
+         ['Amazon.com:true', 'Chefs Warehouse:false', 'Cintas:false', 'Elpis Wholesale:true', 'Food Lion:false', 'Sysco:true', 'Webstaurant Store:true']);
+  vend('Chefs Warehouse').use = true;
   expect('latest purchase is primary', clone(MI.resolve(st, known, by('Butter, Unsalted'))),
          { primary: 'Chefs Warehouse', eligible: ['Chefs Warehouse', 'SYSCO'], sku: '222' });
   expect('same day: Order Guide first', clone(MI.resolve(st, known, by('Cup 16oz'))),
@@ -125,7 +129,6 @@ function fixedChecks(L, fail) {
   vend('Sysco').use = false;
   expect('every vendor skipped', MI.resolve(st, known, by('Butter, Unsalted')).primary, null);
   vend('Sysco').use = true;
-  vend('Chefs Warehouse').use = true;
 
   // What keeps the Import button off.
   const errs = mut => { const s = clone(st); mut(s); return MI.payloadOf(s, tables).errors.map(e => e.en).join(' | '); };
@@ -143,15 +146,21 @@ function fixedChecks(L, fail) {
   // The write.
   const out = MI.payloadOf(st, tables);
   expect('payload', clone(out.payload), {
-    newVendors: ['Webstaurant Store', 'Elpis Wholesale', 'Amazon.com'],
+    newVendors: ['Amazon.com', 'Elpis Wholesale', 'Webstaurant Store'],
     items: [
       { name: 'Cup 16oz', primaryVendor: 'Webstaurant Store', eligible: ['Webstaurant Store', 'Elpis Wholesale'], sku: 'W16', category: 'Paper and Packaging' },
       { name: 'Mop heads, 12 pack', primaryVendor: 'Amazon.com', eligible: ['Amazon.com'], sku: '', category: 'Cleaning Supplies' }
     ]
   });
   const r = CE.call(tables, 'commitImportItems', [out.payload]);
-  expect('result', clone(r.result), { ok: true, vendorsAdded: ['Webstaurant Store', 'Elpis Wholesale', 'Amazon.com'], itemsAdded: 2, skipped: [] });
-  expect('label', r.label, 'Imported 2 items from MarginEdge and added 3 vendors (Webstaurant Store, Elpis Wholesale, Amazon.com)');
+  expect('result', clone(r.result), { ok: true, vendorsAdded: ['Amazon.com', 'Elpis Wholesale', 'Webstaurant Store'], itemsAdded: 2, skipped: [] });
+  expect('label', r.label, 'Imported 2 items from MarginEdge and added 3 vendors (Amazon.com, Elpis Wholesale, Webstaurant Store)');
+  const noItems = clone(st);
+  noItems.products.forEach(p => { p.pick = false; });
+  expect('a ticked vendor is added with no items', clone(MI.payloadOf(noItems, tables).payload),
+         { newVendors: ['Amazon.com', 'Elpis Wholesale', 'Webstaurant Store'], items: [] });
+  expect('vendors only: the label', CE.call(tables, 'commitImportItems', [{ newVendors: ['Elpis'], items: [] }]).label,
+         'Added 1 vendor (Elpis) from MarginEdge');
   const after = CE.applyOps(tables, r.ops);
   expect('new items', clone(after.items.slice(2)), [
     { id: 'ITEM-0010', name: 'Cup 16oz', primaryVendor: 'Webstaurant Store', pack: '', par: null, active: true, useMult: true, notes: '',
@@ -277,7 +286,7 @@ function randomChecks(L, stores, fail, stats) {
     }
     const out = MI.payloadOf(st, tables);
     if (out.errors.length) { stats.blocked++; continue; }
-    if (!out.payload.items.length) { stats.empty++; continue; }
+    if (!out.payload.items.length && !out.payload.newVendors.length) { stats.empty++; continue; }
 
     const r = thrown(() => CE.call(tables, 'commitImportItems', [out.payload])) || CE.call(tables, 'commitImportItems', [out.payload]);
     if (r instanceof Error) { fail('seed ' + seed + ': the screen allowed what the write refuses: ' + r.message); continue; }
@@ -299,7 +308,15 @@ function randomChecks(L, stores, fail, stats) {
     }
     if (after.pickRows.length !== tables.pickRows.length) fail('seed ' + seed + ': the import put items on a list');
 
-    // The new vendors: exactly the payload's, with no delivery days.
+    // The new vendors: every ticked new one (named, not already in the store,
+    // once ignoring case), with no delivery days.
+    const expNew = [];
+    for (const v of st.vendors) {
+      if (!v.use || v.target) continue;
+      const n = v.newName.trim();
+      if (n && !storeNames.some(x => x.toLowerCase() === n.toLowerCase()) && !expNew.some(x => x.toLowerCase() === n.toLowerCase())) expNew.push(n);
+    }
+    if (!same(clone(r.result.vendorsAdded), expNew)) fail('seed ' + seed + ': vendors added ' + JSON.stringify(r.result.vendorsAdded) + ', want ' + JSON.stringify(expNew));
     const newV = after.vendors.slice(tables.vendors.length);
     if (!same(newV.map(v => v.name), clone(r.result.vendorsAdded)) || newV.some(v => !same(v.mults, [0, 0, 0, 0, 0, 0, 0]) || v.cutoff !== null)) {
       fail('seed ' + seed + ': new vendors ' + JSON.stringify(newV));
@@ -354,12 +371,13 @@ const CONTROLS = [
   { file: 'ce', name: 'new items go to the top of the list', find: '      seq++;\n', replace: '      seq = 1;\n' },
   { file: 'ce', name: 'an imported item gets a par', find: "pack: '', par: null,", replace: "pack: '', par: 0," },
   { file: 'ce', name: 'the primary drops out of the vendors', find: '      const eligible = [primary];', replace: '      const eligible = [];' },
-  { file: 'mi', name: 'a quoted comma splits the field', find: "        if (c !== '\"') field += c;",
+  { file: 'ce', name: 'a quoted comma splits the field', find: "        if (c !== '\"') field += c;",
     replace: "        if (c === ',') { row.push(field); field = ''; } else if (c !== '\"') field += c;" },
   { file: 'mi', name: 'the oldest purchase becomes the primary', find: 'a.s.last > b.s.last ? -1 : 1', replace: 'a.s.last > b.s.last ? 1 : -1' },
   { file: 'mi', name: 'equipment starts ticked', find: '!NOT_STOCK.test(p.category) && ', replace: '' },
   { file: 'mi', name: 'an item already in the store starts ticked', find: 'pick: !inStore && ', replace: 'pick: ' },
   { file: 'mi', name: 'a repeated name passes', find: '      else if (seen.has(low))', replace: '      else if (false)' },
+  { file: 'mi', name: 'an unticked vendor is still added', find: '      if (!v.use || v.target) continue;', replace: '      if (v.target) continue;' },
   { file: 'mi', name: 'a skipped vendor still sells', find: '    if (!v || !v.use) return null;', replace: '    if (!v) return null;' },
   { file: 'mi', name: 'a new name matching a store vendor adds a second one', find: '    return known.get(n.toLowerCase()) || n;', replace: '    return n;' }
 ];

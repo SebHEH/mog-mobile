@@ -536,6 +536,14 @@ function editorApplyOps(tables, ops) {
       for (const it of t.items) if (it.seq >= op.from) it.seq += 1;
       continue;
     }
+    if ('rename' in op) {   // schema v8: update mog.areas set name; pick_rows follow (on update cascade)
+      if (op.rename !== 'areas' || typeof op.from !== 'string' || typeof op.to !== 'string') throw new Error('BAD_OP');
+      if (!t.areas.some(a => a.name === op.from)) throw new Error('CONFLICT: areas ' + op.from + ' has changed');
+      if (t.areas.some(a => a.name !== op.from && a.name.toLowerCase() === op.to.toLowerCase())) throw new Error('CONFLICT: areas ' + op.to + ' is already there');
+      for (const a of t.areas) if (a.name === op.from) a.name = op.to;
+      for (const r of t.pickRows) if (r.area === op.from) r.area = op.to;
+      continue;
+    }
     const b = op.before || null, a = op.after || null, row = a || b;
     if (!row || !EDITOR_FIELDS[op.t]) throw new Error('BAD_OP: ' + JSON.stringify(op).slice(0, 100));
     if (a && b && editorIdent(op.t, a) !== editorIdent(op.t, b)) throw new Error('BAD_OP: before and after are different rows');
@@ -658,13 +666,15 @@ FakeSupabase.prototype.handleEditor = function (fn, p) {
   const c = (s.changeLog || []).find(l => l.id === Number(p.p_change_id));
   if (!c) return err('Unknown change');
   if (c.undoneBy) return err('ALREADY_UNDONE');
-  const inv = c.ops.filter(op => !('shift' in op)).reverse().map(op => ({ t: op.t, before: op.after, after: op.before }));
+  const inv = c.ops.filter(op => !('shift' in op)).reverse()
+    .map(op => ('rename' in op ? { rename: op.rename, from: op.to, to: op.from } : { t: op.t, before: op.after, after: op.before }));
   const bad = tryApply(inv);
   if (bad) {
     if (bad.error === 'CONFLICT') {
+      const rowOp = op => !('shift' in op) && !('rename' in op);
       const idOf = op => op.t + ' ' + editorIdent(op.t, op.after || op.before);
-      const mine = new Set(c.ops.filter(op => !('shift' in op)).map(idOf));
-      const later = s.changeLog.filter(l => l.id > c.id && !l.undoneBy && l.ops.some(op => !('shift' in op) && mine.has(idOf(op)))).pop();
+      const mine = new Set(c.ops.filter(rowOp).map(idOf));
+      const later = s.changeLog.filter(l => l.id > c.id && !l.undoneBy && l.ops.some(op => rowOp(op) && mine.has(idOf(op)))).pop();
       bad.laterChange = later ? { id: later.id, label: later.label, by: later.by, at: later.at } : null;
     }
     return bad;
@@ -732,7 +742,7 @@ const STEP4_PLAN = [
       'constantTimeEq_', 'getPinLockoutState_', 'recordPinFailure_', 'recordPinSuccess_', 'jsonResponse_']) },
   { file: 'apps-script/Recap.gs', fns: ['buildRecapSections_', 'api_getRecapData_', 'scheduleRecapSend_', 'dropRecapTriggers_', 'buildRecapFromLog_'] },
   { file: 'apps-script/ResetLog.gs', fns: ['buildOrderCycleSnapshot_', 'ensureLogSheet_', 'deleteLogEntriesForDate_', 'getLogOrderDate_'] },
-  { file: 'apps-script/Editor.gs', fns: ['webedit_call'] }
+  { file: 'apps-script/Editor.gs', consts: ['CATALOG_WRITE_ACTIONS_'], fns: ['webedit_call'] }
 ];
 function compileStep4(srcOf) {
   return F.compile(srcOf || (f => F.source(null, f)), STEP4_PLAN,

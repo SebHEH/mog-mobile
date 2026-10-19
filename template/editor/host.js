@@ -1,5 +1,6 @@
-// MOG editor host: an Apps Script editor page (ManageItems.html, unchanged)
-// running as a static page on Supabase (docs/MOG_OneApp_Spec.md Phase 2).
+// MOG editor host: the Apps Script editor pages (Editor Home, Manage Items,
+// Manage Vendors, Storage Areas, Shelf to Sheet) running as static pages on
+// Supabase (docs/MOG_OneApp_Spec.md Phases 2 and 4).
 //
 // The page talks to its server only through google.script.run: the PIN gate
 // calls editorAuth / editorPing, and every tool call goes through
@@ -10,7 +11,15 @@
 //   webedit_call(fn, ..) -> catalogEdit.js on the tables held here; a write
 //                           is sent with mog_editor_apply, then kept locally
 // It loads before the page's own scripts (build.py puts it first in <head>),
-// needs window.MOG_SUPABASE = { url, key, slug } and window.CatalogEdit.
+// needs window.MOG_SUPABASE = { url, key, slug }, window.MOG_EDITOR_PAGE
+// (which page this is) and window.CatalogEdit. On sign-in it fills the data
+// the Apps Script page would have had baked in (VENDOR_TABLE, AREA_LIST,
+// PICK_DATA), which each page reads in its start-up function.
+//
+// Links: every page links the others as BASE_URL + '?page=<name>', and
+// build.py sets BASE_URL to index.html (Editor Home), so Editor Home sends
+// ?page=<name> on to that page's file. Tools not in the app yet show as
+// coming soon there.
 //
 // It also adds the Changes panel (the store's change log, with Undo), the
 // Needs review panel, and the Import from MarginEdge button (meImport.js).
@@ -19,6 +28,20 @@
 
   const cfg = window.MOG_SUPABASE || {};
   const CE = window.CatalogEdit;
+  const PAGE = window.MOG_EDITOR_PAGE || 'items';
+  // The pages in the app, by the ?page= name the Apps Script editor uses.
+  const PAGES = { editor: 'index.html', items: 'items.html', vendors: 'vendors.html', areas: 'areas.html', pickpath: 'pickpath.html' };
+
+  // Editor Home reached as index.html?page=<name>: open that page instead.
+  if (PAGE === 'home' && typeof location !== 'undefined' && location.search) {
+    const params = new URLSearchParams(location.search);
+    const want = params.get('page');
+    if (want && want !== 'editor' && PAGES[want]) {
+      params.delete('page');
+      const rest = params.toString();
+      location.replace(PAGES[want] + (rest ? '?' + rest : ''));
+    }
+  }
   const H = { token: null, tables: null, changes: [], version: null, store: null };
   const TIMEOUT_MS = 15000;
 
@@ -75,11 +98,25 @@
     H.store = data.store;
     window.VENDOR_LIST = CE.vendorList(H.tables);
     if (data.store.abbr) window.MOG_ABBR = data.store.abbr;
+    fillPage();
     // Manage Items keeps its own item cache between opens; the tables here
     // are always fresh, so mark that cache stale (its own invalidation key).
     try { localStorage.setItem('mog_lastMutationTs', String(Date.now())); } catch (e) { /* no cache, no problem */ }
     mountChanges();
     return true;
+  }
+
+  // What the Apps Script page would have had baked in, from the tables. The
+  // first vendor A-Z opens Shelf to Sheet (the Sheet opens the one picked in
+  // its SETUP tab, which the app doesn't have).
+  function fillPage() {
+    if (PAGE === 'vendors') window.VENDOR_TABLE = CE.call(H.tables, 'getVendorTableData', []).result;
+    else if (PAGE === 'areas') window.AREA_LIST = CE.call(H.tables, 'getStorageAreaList', []).result;
+    else if (PAGE === 'pickpath') {
+      window.PICK_DATA = window.VENDOR_LIST.length ? CE.call(H.tables, 'getPickPathForSidebar', [window.VENDOR_LIST[0]]).result : {};
+    } else if (PAGE === 'home' && Array.isArray(window.HOME_SECTIONS)) {
+      for (const sec of window.HOME_SECTIONS) for (const c of sec.cards || []) if (!PAGES[c.page]) c.live = false;
+    }
   }
 
   async function refresh() {
@@ -221,8 +258,11 @@
       '.mge-ch.undone .mge-ch-label{color:#999;text-decoration:line-through}' +
       '.mge-ch-btns{display:flex;gap:6px;flex-shrink:0}' +
       '.mge-ch button{border:1px solid #c9ced6;background:#fff;border-radius:6px;padding:4px 10px;font:600 12px Inter,Arial,sans-serif;cursor:pointer}' +
-      '.mge-ch button:hover{background:#f4f5f7}.mge-ch-empty{padding:14px;color:#777}';
+      '.mge-ch button:hover{background:#f4f5f7}.mge-ch-empty{padding:14px;color:#777}' +
+      // Storage Areas and Shelf to Sheet have a Save footer along the bottom.
+      'body.mge-host-raised #mge-host-bar{bottom:84px}body.mge-host-raised .mge-panel{bottom:130px}';
     document.head.appendChild(css);
+    if (PAGE === 'areas' || PAGE === 'pickpath') document.body.classList.add('mge-host-raised');
     const bar = document.createElement('div');
     bar.id = 'mge-host-bar';
     const changesBtn = document.createElement('button');
@@ -233,9 +273,17 @@
     reviewsBtn.id = 'mge-reviews-btn';
     reviewsBtn.type = 'button';
     reviewsBtn.onclick = function () { togglePanel('mge-reviews'); };
+    const appLink = document.createElement('button');
+    appLink.id = 'mge-app-btn';
+    appLink.type = 'button';
+    appLink.onclick = function () {
+      const go = function () { window.location.href = '../'; };
+      if (typeof window.MGE_LEAVE_GUARD === 'function') window.MGE_LEAVE_GUARD(go); else go();
+    };
+    bar.appendChild(appLink);
     bar.appendChild(changesBtn);
     bar.appendChild(reviewsBtn);
-    if (window.MeImport) {
+    if (window.MeImport && PAGE === 'items') {
       const importBtn = document.createElement('button');
       importBtn.id = 'mge-import-btn';
       importBtn.type = 'button';
@@ -266,6 +314,8 @@
     const panel = document.getElementById('mge-changes');
     if (!btn || !panel) return;
     btn.textContent = '↶ ' + tr('Changes', 'Cambios');
+    const appBtn = document.getElementById('mge-app-btn');
+    if (appBtn) appBtn.textContent = '← ' + tr('Ordering', 'Pedidos');
     const importBtn = document.getElementById('mge-import-btn');
     if (importBtn) importBtn.textContent = '⬇ ' + tr('Import from MarginEdge', 'Importar de MarginEdge');
     renderReviews();
@@ -300,14 +350,12 @@
         tr: tr,
         done: function (res) {
           const n = res.itemsAdded, v = res.vendorsAdded.length, skip = res.skipped.length;
-          const en = 'Imported ' + n + ' item' + (n === 1 ? '' : 's') + (v ? ' and ' + v + ' new vendor' + (v === 1 ? '' : 's') : '') + '.' +
-            (skip ? ' ' + skip + ' were already in the catalog.' : '') +
-            ' They are under Unassigned: give each a storage area and a par.' +
-            (v ? ' The new vendors have no delivery days yet.' : '');
-          const es = 'Se importaron ' + n + ' artículo' + (n === 1 ? '' : 's') + (v ? ' y ' + v + ' proveedor' + (v === 1 ? '' : 'es') + ' nuevo' + (v === 1 ? '' : 's') : '') + '.' +
-            (skip ? ' ' + skip + ' ya estaban en el catálogo.' : '') +
-            ' Están en el filtro Sin Área: dale a cada uno un área y un par.' +
-            (v ? ' Los proveedores nuevos todavía no tienen días de entrega.' : '');
+          const en = [n ? 'Imported ' + n + ' item' + (n === 1 ? '' : 's') + '. They are under Unassigned: give each a storage area and a par.' : '',
+                      v ? 'Added ' + v + ' vendor' + (v === 1 ? '' : 's') + '. Set their delivery days in Manage Vendors; until then they order nothing.' : '',
+                      skip ? skip + ' item' + (skip === 1 ? ' was' : 's were') + ' already in the catalog.' : ''].filter(Boolean).join(' ');
+          const es = [n ? 'Se importaron ' + n + ' artículo' + (n === 1 ? '' : 's') + '. Están en el filtro Sin Área: dale a cada uno un área y un par.' : '',
+                      v ? 'Se agregaron ' + v + ' proveedor' + (v === 1 ? '' : 'es') + '. Ponles días de entrega en Proveedores; hasta entonces no piden nada.' : '',
+                      skip ? skip + ' ya estaba' + (skip === 1 ? '' : 'n') + ' en el catálogo.' : ''].filter(Boolean).join(' ');
           const reload = function () { window.location.reload(); };
           if (typeof window.mgeConfirm_ === 'function') {
             window.mgeConfirm_({ title: { en: 'Imported', es: 'Importado' }, msg: { en: en, es: es },

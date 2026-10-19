@@ -178,6 +178,7 @@ function getAreaOrderMap_() {
 
 
 function showStorageAreasSidebar_() {
+  if (refuseCatalogToolInSheet_()) return;   // Sync.gs: the store edits its catalog in the app
   const tmpl = HtmlService.createTemplateFromFile("StorageAreas");
   tmpl.areaListJson = JSON.stringify(getStorageAreaList_());
   tmpl.webBootJson  = sheetBootJson_();   // in-Sheet dialog: web bits off, plus its token for webedit_call
@@ -858,6 +859,7 @@ function commitPickPathAreaAssignment_(itemId, vendor, areaName, opts) {
  * 9) PICK PATH SIDEBAR
  ***********************/
 function showReorderPickPathSidebar_() {
+  if (refuseCatalogToolInSheet_()) return;
   const setup   = getSheet_(SHEET_SETUP);
   const vendors = getVendorList();
   if (!vendors.length) {

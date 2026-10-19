@@ -98,6 +98,29 @@ How it works: today edits live in `mog.quick_edits` and ride in the snapshot (`s
 
 What starts ticked: products not in the store yet (by name or item code), in a category that's restocked (not equipment, furniture, repairs, linen, office or services), bought in the file's last 60 days. Imported items arrive active, with no par, no pack and no storage area (the Import Vendor contract), so they wait under Unassigned. New vendors have no delivery days. Gate: `tests/me_import.test.js`, plus one import through the host in `editor_host`.
 
+**M5 (2026-10-18, later):** the import runs in two steps, **vendors first, then items** (Sebastian). Step 1 adds every new vendor ticked there, with items or not; step 2 lists only the products a ticked vendor sells.
+
+### Phase 4 decisions (2026-10-18)
+
+| # | Decision | Chosen |
+|---|---|---|
+| S1 | Tools ported before the first switch | **Manage Vendors, Storage Areas, Shelf to Sheet** (what a store set up from nothing needs). History, Health, Recipients and People come before rprfo's switch. |
+| S2 | The Sheet after a store switches | **No copy back** (Sebastian; this replaces D17's nightly copy). The Sheet keeps the catalog it had and is not updated; its catalog tools refuse and point to the app. |
+| S3 | How a store switches | **📱 Mobile API → Move the editor to the app** (Sync.gs): start from an empty catalog or copy the Sheet's, then `mog_sync_switch_editor` (schema v8) turns `editor_direct` on and the Sheet marks itself (`MOG_EDITOR`). The store's `stores.json` entry gets `"editor": "supabase"`, so `build.py` publishes its editor at `/<slug>/editor/`. |
+| S4 | Pages that read their data at load | **A small refactor of Storage Areas and Shelf to Sheet**: they read it in their start-up function, so `host.js` can supply it after sign-in. Nothing changes in the Sheet or `/exec`. |
+| S5 | First store to switch | **TNY Rockville** (tnyr, tnyrf), starting empty, then Import from MarginEdge. rprfo next, the unused Tysons/Founders stores last. |
+
+How it works:
+- `catalogEdit.js` ports Manage Vendors (`Vendors.gs`), Storage Areas and Shelf to Sheet (`PickPath.gs`), gated against that real code in `catalog_edit`. Removing a vendor follows D23 (items stay active); the Sheet deactivates them.
+- A renamed area is one `rename` step (schema v8), so its pick rows follow; a swap goes through a temporary name.
+- Saves go in an order the database's links allow (renames, then pick-row and area deletes, then inserts and updates, then item and vendor deletes); `editor_host` runs them against the fake Supabase's link rules and undoes each.
+- The app's Settings shows **Editor** on a computer once `editorDirect` is on, and hands its sign-in to the editor (no second PIN).
+- The store service worker caches only the app's own page, so the editor never replaces the offline app.
+
+**Rollout order:** run `supabase/schema_v8.sql`, then `smoke_v8.sql` and `check_api.sh`. Then Apps Script with `deploy.py --redeploy` (canary rprfo: the two page refactors, the menu item, the refusals). Then Rockville's switch in each of its Sheets (start empty). Then `"editor": "supabase"` for tnyr and tnyrf in `stores.json` and `build.py` (app v0.21.0, cache v61).
+
+**Later (Sebastian):** the recap email could go out from Supabase too, once everything lives there. Not needed soon.
+
 ## Phases
 
 1. **Live counting.** Today and the open vendor refresh every ~10s while the app is on screen (one Supabase read, ~0.3s; no Apps Script). Vendor cards show who is counting. The first-sign-in name picker and the self-building leaders list ship here too. An auto-refresh never overwrites a count you're typing.
@@ -107,7 +130,7 @@ What starts ticked: products not in the store yet (by name or item code), in a c
    - Tested on the Sheet-less `rprfotest`.
 3. **Phone quick edits.** "Just today" par and "today only" items. Both are data for the current cycle only, which the shared order math has to honour, so they go through `OrderMath.gs` with its gates. Manage Items gets a "Needs review" filter with Apply and Dismiss.
 4. **Remaining tools, and switching each store.**
-   - The tools: Vendors, Areas, Shelf to Sheet, History (order log backfilled from LOG_ORDERS), Health, Recipients, People.
+   - The tools: Vendors, Areas, Shelf to Sheet (built 2026-10-18, S1), then History (order log backfilled from LOG_ORDERS), Health, Recipients, People.
    - Each store's editor then switches: TNY Rockville (tnyr, tnyrf) first, since it's unused and starts from an empty catalog plus its MarginEdge import (M4; Sebastian, 2026-10-18), then rprfo, and the unused Tysons/Founders stores last.
 5. **Desktop layout** for the ordering screens.
 

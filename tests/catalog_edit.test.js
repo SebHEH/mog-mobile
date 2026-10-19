@@ -1,18 +1,26 @@
 'use strict';
-// GATE: the editor's Manage Items port (docs/MOG_OneApp_Spec.md Phase 2).
-// template/editor/catalogEdit.js runs Manage Items' 7 server calls over the
-// Supabase catalog tables. This drives it side by side with the REAL
-// apps-script/Items.gs on the fake Sheet, from the same randomized store:
+// GATE: the editor's port to Supabase (docs/MOG_OneApp_Spec.md Phases 2 and 4).
+// template/editor/catalogEdit.js runs the Sheet editor's server calls over the
+// Supabase catalog tables: Manage Items (Items.gs), Manage Vendors
+// (Vendors.gs), Storage Areas and Shelf to Sheet (PickPath.gs). This drives it
+// side by side with that REAL code on the fake Sheet, from the same
+// randomized store:
 //   - the tables start as Sync.gs buildCatalogTables_ makes them from that
 //     Sheet, and both sides build the same phone catalog (D22's builder)
-//   - every step is a random add / edit / promote / assign / delete (valid
-//     and not: unknown vendors and items, blank names, bad pars, unknown
-//     areas) or one of the 3 reads. Both sides must give the same answer or
+//   - every step is a random add / edit / promote / assign / delete of an
+//     item, a vendor added, imported from a file, updated or removed, the
+//     storage areas saved (deletes, renames and swaps, adds, moves) or a
+//     vendor's list reordered (valid and not: unknown vendors and items,
+//     blank and repeated names, bad pars and cutoffs, unknown areas), or one
+//     of the reads. Both sides must give the same answer or
 //     the same error, and afterwards the same phone catalog (the pick rows'
 //     stored item name aside: the tables look it up, D19) and the same
 //     Manage Items screen data
 //   - every write undoes exactly (inverseOps), and the same change applied
 //     twice is refused as a CONFLICT instead of applying again
+//   - removing a vendor is compared with the Sheet's removal plus D23's
+//     differences (its pick rows go, it leaves every item's vendors, and the
+//     items it supplied stay active with no primary vendor)
 // Planted-defect controls in catalogEdit.js must each be caught.
 //
 // Run bare: node tests/catalog_edit.test.js [stores]   (default 100)
@@ -26,7 +34,7 @@ const { makeStore, mulberry32 } = require('./mog_fixture.js');
 const { catalogFromTables } = require('./fake_supabase.js');
 
 const STORES = Number(process.argv[2]) || 100;
-const STEPS = 30;
+const STEPS = 40;
 const DIR = path.join(F.REPO, 'apps-script');
 const GS = fs.readdirSync(DIR).filter(f => f.endsWith('.gs')).sort();
 const CE_FILE = 'template/editor/catalogEdit.js';
@@ -55,6 +63,7 @@ function setCell(rows, r, c, v) {
 function heal(spec, rnd) {
   const vendors = spec.vendors;
   const areas = AREAS.slice(0, 2 + Math.floor(rnd() * 3));
+  spec.sheets.VENDOR_TEMPLATE = [['', 'VENDOR TEMPLATE']];   // Add Vendor clones it
   areas.forEach(([n, o], i) => { setCell(spec.sheets.SETUP, i + 2, 8, n); setCell(spec.sheets.SETUP, i + 2, 9, o); });
   const master = spec.sheets.MASTER_ITEMS;
   const seen = new Set();
@@ -103,6 +112,7 @@ function makeSide(spec) {
   const rule = { requireCheckbox() { return rule; }, setAllowInvalid() { return rule; }, build() { return {}; } };
   side.ctx.SpreadsheetApp.newDataValidation = () => rule;
   SHEET.runInContext(side.ctx);
+  vm.runInContext(D23_REMOVE, side.ctx);
   return side;
 }
 const run = (side, fn) => { NEW_EXECUTION.runInContext(side.ctx); return fn(side.ctx); };
@@ -116,10 +126,14 @@ function canon(v) {
   return JSON.stringify(v === undefined ? null : v);
 }
 // The phone catalog, with each pick row's stored item name dropped: the
-// Sheet keeps the name the row was written with, the tables look it up.
+// Sheet keeps the name the row was written with, the tables look it up. A
+// blank par (an imported item's) is 0 to the Sheet's readers and null in the
+// tables; phones order nothing either way, and Manage Items' data, compared
+// strictly below, shows both blank.
 function phoneCatalog(c) {
   const x = clone(c);
   x.pickRows = x.pickRows.map(r => [r[0], r[1], r[3], r[4], r[5]]);
+  for (const id of Object.keys(x.items)) if (x.items[id].par === null) x.items[id].par = 0;
   return canon(x);
 }
 const tablesCatalog = (tables, profile) => catalogFromTables({ tables, profile });
@@ -193,14 +207,131 @@ function randomCall(rnd, tables, areaNames) {
   return ['getManageItemsBootstrap', []];
 }
 
+// ---- Manage Vendors, Storage Areas, Shelf to Sheet (Phase 4) ----
+
+const q = s => '"' + String(s).replace(/"/g, '""') + '"';
+function shuffle(rnd, list) {
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+const someMults = rnd => (rnd() < 0.08 ? [1, 0, 1] : Array.from({ length: 7 }, () => pickOne(rnd, [0, 1, 2, 3, 0.5, '2', ''])));
+const someCutoff = rnd => pickOne(rnd, ['', null, '10:00', '9:30 am', '2:15 PM', '12:00 am', '7:05', 'soon', '25:00']);
+function someCsv(rnd) {
+  const lines = [];
+  if (rnd() < 0.6) lines.push('Item Name,Pack Size');
+  if (rnd() < 0.3) lines.push('# fill in one item per row');
+  const n = rnd() < 0.08 ? 0 : 1 + Math.floor(rnd() * 6);
+  for (let i = 0; i < n; i++) {
+    lines.push(q(pickOne(rnd, ['Lime', 'Cups, 16oz', 'Lid "flat"', 'Napkins', 'lime', '  Tofu ', 'Nori', 'name'])) + ',' +
+               q(pickOne(rnd, ['CS', 'EA', '', '6/1 GAL'])));
+    if (rnd() < 0.2) lines.push('');
+  }
+  return lines.join(rnd() < 0.5 ? '\n' : '\r\n');
+}
+// The Storage Areas page's save: every area as { name, origName }, after
+// random deletes, renames (swaps too), adds and moves, and now and then a list
+// the server refuses.
+function someDraft(rnd, tables) {
+  let list = tables.areas.slice().sort((a, b) => a.ord - b.ord).map(a => ({ name: a.name, origName: a.name }));
+  if (rnd() < 0.04) return [[{ name: '  ', origName: null }]];
+  list = list.filter(() => rnd() < 0.85);
+  for (const e of list) if (rnd() < 0.2) e.name = pickOne(rnd, ['Back Room', 'Cooler', 'Dry Shelf', 'Prep', 'Walk-in', 'Freezer']);
+  if (list.length >= 2 && rnd() < 0.2) { const a = list[0].name; list[0].name = list[1].name; list[1].name = a; }
+  if (rnd() < 0.4) list.push({ name: pickOne(rnd, ['Front Counter', 'Back Room', 'Basement', 'Walk-in', 'Dry Storage']), origName: null });
+  if (rnd() < 0.5) list = shuffle(rnd, list);
+  if (rnd() < 0.04 && list.length) list.push(clone(list[0]));
+  if (rnd() < 0.04) list.push({ name: 'Ghost', origName: 'Nowhere' });
+  return [list];
+}
+// Shelf to Sheet's save: the vendor's list as the page builds it from what it
+// read (groups in order, each { id, name, area }), after moves between areas,
+// reorders and items sent back to Unassigned or brought in from it.
+function someReorder(rnd, CE, tables) {
+  const vendors = tables.vendors.map(v => v.name);
+  if (!vendors.length) return ['commitReorderPickPath', ['', []]];
+  const vendor = pickOne(rnd, vendors);
+  const data = CE.call(tables, 'getPickPathForSidebar', [vendor]).result;
+  const areas = data.groups.map(g => g.area);
+  const groups = data.groups.map(g => ({ area: g.area, items: g.items.filter(() => rnd() < 0.9) }));
+  if (areas.length) {
+    for (const it of data.unassigned) if (rnd() < 0.4) pickOne(rnd, groups).items.push(it);
+    for (const g of groups) if (g.items.length > 1 && rnd() < 0.5) g.items = shuffle(rnd, g.items);
+    if (groups.length > 1 && rnd() < 0.4) { const from = pickOne(rnd, groups); if (from.items.length) pickOne(rnd, groups).items.push(from.items.pop()); }
+  }
+  const payload = [];
+  for (const g of groups) for (const it of g.items) payload.push({ id: it.id, name: it.name, area: g.area });
+  return ['commitReorderPickPath', [rnd() < 0.05 ? '' : vendor, payload]];
+}
+function randomToolCall(rnd, CE, tables) {
+  const vendors = tables.vendors.map(v => v.name);
+  const someVendor = () => (vendors.length && rnd() < 0.8 ? (rnd() < 0.85 ? pickOne(rnd, vendors) : pickOne(rnd, vendors).toLowerCase())
+                                                           : pickOne(rnd, ['No Such Vendor', '']));
+  const k = rnd();
+  if (k < 0.16) {
+    const name = rnd() < 0.15 && vendors.length ? pickOne(rnd, vendors).toUpperCase() : pickOne(rnd, ['Restaurant Depot', 'Costco', '  Jetro  ', 'H Mart', '']);
+    return ['commitAddVendor', [name, someMults(rnd), someCutoff(rnd)]];
+  }
+  if (k < 0.28) return ['commitImportVendor', [{ name: rnd() < 0.1 && vendors.length ? pickOne(rnd, vendors) : pickOne(rnd, ['Elpis', 'Webstaurant', 'Amazon Business', '']),
+                                                 mults: someMults(rnd), cutoff: someCutoff(rnd), csvText: someCsv(rnd) }]];
+  if (k < 0.42) return ['commitUpdateVendorMultsAndCutoff', [someVendor(), someMults(rnd), someCutoff(rnd)]];
+  if (k < 0.5) return ['commitRemoveVendor', [someVendor()]];
+  if (k < 0.7) return ['commitStorageAreasDraft', someDraft(rnd, tables)];
+  if (k < 0.88) return someReorder(rnd, CE, tables);
+  if (k < 0.92) return ['getVendorTableData', []];
+  if (k < 0.95) return ['getStorageAreaList', []];
+  return ['getPickPathForSidebar', [someVendor()]];
+}
+
+// The Sheet's vendor removal with D23's differences applied: the vendor's pick
+// rows go, it leaves every item's vendors, and items it supplied keep their
+// active flag with no primary vendor (the Sheet deactivates them).
+const D23_REMOVE = `
+function __removeVendorD23(vendorName) {
+  var m = getSheet_(SHEET_MASTER), n = m.getLastRow() - 1;
+  var actives = n > 0 ? m.getRange(2, COL.ACTIVE, n, 1).getValues() : [];
+  var out = commitRemoveVendor_(vendorName);
+  var low = String(vendorName || '').trim().toLowerCase();
+  var setup = getSheet_(SHEET_SETUP);
+  writePickDb_(setup, readPickDb_(setup).filter(function (r) { return String(r[0] || '').trim().toLowerCase() !== low; }));
+  if (n > 0) {
+    m.getRange(2, COL.ACTIVE, n, 1).setValues(actives);
+    m.getRange(2, COL.VENDOR, n, 1).setValues(m.getRange(2, COL.VENDOR, n, 1).getValues().map(function (r) {
+      return [String(r[0] || '').trim().toLowerCase() === low ? '' : r[0]];
+    }));
+    m.getRange(2, COL.ELIGIBLE_VENDORS, n, 1).setValues(m.getRange(2, COL.ELIGIBLE_VENDORS, n, 1).getValues().map(function (r) {
+      return [String(r[0] || '').split('|').filter(function (x) { return x.trim() && x.trim().toLowerCase() !== low; }).join('|')];
+    }));
+  }
+  return out;
+}`;
+
+// Answers compared without what is meant to differ: the vendor table in A-Z
+// order (the Sheet lists SETUP Z order), and a pick list's item names (the
+// Sheet shows the name its row was written with, the tables the item's own).
+function answer(fn, v) {
+  if (fn === 'getVendorTableData' && Array.isArray(v)) return plain(v.slice().sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)));
+  if (fn === 'getPickPathForSidebar' && v && v.groups) {
+    const x = clone(v);
+    x.groups.forEach(g => { g.items = g.items.map(it => it.id); });
+    return plain(x);
+  }
+  return plain(v);
+}
+
 const SHEET_FN = { commitUpsertItem: 'commitUpsertItem_', commitSwitchActiveVendor: 'commitSwitchActiveVendor_',
   commitSetVendorItems: 'commitSetVendorItems_', commitDeleteItem: 'commitDeleteItem_', getItemForEdit: 'getItemForEdit_',
-  getUnassignedActiveItems: 'getUnassignedActiveItems_', getManageItemsBootstrap: 'getManageItemsBootstrap_' };
+  getUnassignedActiveItems: 'getUnassignedActiveItems_', getManageItemsBootstrap: 'getManageItemsBootstrap_',
+  commitAddVendor: 'commitAddVendor_', commitImportVendor: 'commitImportVendor_',
+  commitUpdateVendorMultsAndCutoff: 'commitUpdateVendorMultsAndCutoff_', commitRemoveVendor: '__removeVendorD23',
+  commitStorageAreasDraft: 'commitStorageAreasDraft_', commitReorderPickPath: 'commitReorderPickPath_',
+  getVendorTableData: 'getVendorTableData_compute_', getStorageAreaList: 'getStorageAreaList_compute_',
+  getPickPathForSidebar: 'getPickPathForSidebar_compute_' };
 
 function runSuite(ceText, stores) {
   const CE = loadCatalogEdit(ceText);
   const failures = [];
-  const stats = { stores: 0, steps: 0, writes: 0, errors: 0, undos: 0, conflicts: 0, adds: 0, shifts: 0 };
+  const stats = { stores: 0, steps: 0, writes: 0, errors: 0, undos: 0, conflicts: 0, adds: 0, shifts: 0, renames: 0, tools: {} };
   const fail = (seed, what) => failures.push('seed ' + seed + ': ' + what);
 
   for (let seed = 1; seed <= stores && failures.length < 20; seed++) {
@@ -221,30 +352,33 @@ function runSuite(ceText, stores) {
       stats.stores++;
 
       for (let step = 0; step < STEPS; step++) {
-        const [fn, args] = randomCall(rnd, tables, areaNames);
+        const [fn, args] = rnd() < 0.45 ? randomToolCall(rnd, CE, tables) : randomCall(rnd, tables, areaNames);
         const tag = 'step ' + step + ' ' + fn + ' ' + JSON.stringify(args).slice(0, 140);
         stats.steps++;
         let want, wantErr = null, got, gotErr = null, out = null;
         try { want = run(side, c => c[SHEET_FN[fn]].apply(null, clone(args))); } catch (e) { wantErr = e.message; }
         try { out = CE.call(tables, fn, clone(args)); got = out.result; } catch (e) { gotErr = e.message; }
-        if (wantErr !== gotErr) { fail(seed, tag + ': error ' + JSON.stringify(gotErr) + ', Items.gs ' + JSON.stringify(wantErr)); break; }
+        if (wantErr !== gotErr) { fail(seed, tag + ': error ' + JSON.stringify(gotErr) + ', the Sheet ' + JSON.stringify(wantErr)); break; }
         if (wantErr) { stats.errors++; continue; }
         if (fn === 'getManageItemsBootstrap') {
           if (screen(got) !== screen(want)) { fail(seed, tag + ': Manage Items data differs'); break; }
           continue;
         }
-        if (plain(got) !== plain(want)) { fail(seed, tag + ': answer ' + plain(got) + ', Items.gs ' + plain(want)); break; }
+        if (answer(fn, got) !== answer(fn, want)) { fail(seed, tag + ': answer ' + answer(fn, got) + ', the Sheet ' + answer(fn, want)); break; }
         if (!out.ops) continue;
 
         // A write: apply it, then compare what phones and Manage Items see.
         stats.writes++;
         if (out.ops.some(op => op.shift)) stats.shifts++;
+        if (out.ops.some(op => op.rename)) stats.renames++;
+        if (out.ops.length) stats.tools[fn] = (stats.tools[fn] || 0) + 1;
         if (fn === 'commitUpsertItem' && args[0].mode === 'add') stats.adds++;
         const before = tables;
         tables = CE.applyOps(tables, out.ops);
         const sheetCat = phoneCatalog(run(side, c => c.buildCatalogPayload_()));
-        if (sheetCat !== phoneCatalog(tablesCatalog(tables, profile))) {
-          fail(seed, tag + ': phones would see a different catalog');
+        const tablesCat = phoneCatalog(tablesCatalog(tables, profile));
+        if (sheetCat !== tablesCat) {
+          fail(seed, tag + ': phones would see a different catalog (' + F.deepDiff(JSON.parse(tablesCat), JSON.parse(sheetCat)) + ', tables vs Sheet)');
           break;
         }
         const sheetScreen = screen(run(side, c => c.getManageItemsBootstrap_()));
@@ -290,8 +424,25 @@ const CONTROLS = [
   { name: 'the assign tab leaves the eligible list as it was',
     find: '      if (want && !hasElig) {', replace: '      if (false) {' },
   { name: 'undo leaves the deleted rows deleted',
-    find: '      .map(op => ({ t: op.t, key: op.key, before: op.after, after: op.before }));',
-    replace: '      .filter(op => op.after !== null).map(op => ({ t: op.t, key: op.key, before: op.after, after: op.before }));' },
+    find: '    return ops.filter(op => !op.shift).slice().reverse()',
+    replace: '    return ops.filter(op => !op.shift && op.after !== null).slice().reverse()' },
+  { name: 'a removed vendor stays on its items',
+    find: '      if (eligible.length !== (it.eligible || []).length) it.eligible = eligible;', replace: '' },
+  { name: 'a renamed area leaves its pick rows behind',
+    find: '    for (const r of t.pickRows) if (r.area === from) r.area = to;', replace: '' },
+  { name: 'a deleted area keeps its pick rows',
+    find: '    w.pickRows = w.pickRows.filter(r => !doomed.has(s_(r.area).toLowerCase()));', replace: '' },
+  { name: 'the areas keep their old order',
+    find: '      if (a) a.ord = (i + 1) * 10;', replace: '      if (a) a.ord = a.ord;' },
+  { name: 'shelf numbers run on across areas',
+    find: '      const count = (counters.get(x.area) || 0) + 1;', replace: '      const count = payload.indexOf(x) + 1;' },
+  { name: 'an updated cutoff is stored as typed',
+    find: '    v.cutoff = cutoffNorm;', replace: '    v.cutoff = cutoffTime || null;' },
+  { name: 'a swap renames without a temporary name',
+    find: '    const viaTemp = pairs.filter(p => p.from.toLowerCase() !== p.to.toLowerCase() && taken.has(p.to.toLowerCase()));',
+    replace: '    const viaTemp = [];' },
+  { name: 'Import Vendor keeps the CSV header row',
+    find: "      if (low === 'item name' || low === 'name') continue;", replace: '' },
   { name: 'a change applied twice is not refused',
     find: "        if (i >= 0) throw new Error('CONFLICT: ' + op.t + ' ' + op.key + ' already exists');", replace: '' }
 ];
@@ -299,18 +450,21 @@ const CONTROLS = [
 const NL = SRC(CE_FILE).indexOf('\r\n') >= 0 ? '\r\n' : '\n';
 const live = runSuite(SRC(CE_FILE), STORES);
 const s = live.stats;
-console.log(`catalog_edit: ${s.stores} stores, ${s.steps} steps, ${s.writes} writes (${s.adds} adds, ${s.shifts} with rows moved down), ` +
-            `${s.errors} refused alike, ${s.undos} undone, ${s.conflicts} repeats refused`);
+console.log(`catalog_edit: ${s.stores} stores, ${s.steps} steps, ${s.writes} writes (${s.adds} adds, ${s.shifts} with rows moved down, ` +
+            `${s.renames} with areas renamed), ${s.errors} refused alike, ${s.undos} undone, ${s.conflicts} repeats refused`);
+console.log('              writes by call: ' + Object.keys(s.tools).sort().map(k => k + ' ' + s.tools[k]).join(', '));
+const WRITE_CALLS = ['commitUpsertItem', 'commitSwitchActiveVendor', 'commitSetVendorItems', 'commitDeleteItem', 'commitAddVendor',
+  'commitImportVendor', 'commitUpdateVendorMultsAndCutoff', 'commitRemoveVendor', 'commitStorageAreasDraft', 'commitReorderPickPath'];
 let failed = 0;
 if (live.failures.length) {
   failed++;
-  console.log(`FAIL  ${live.failures.length} difference(s) from Items.gs:`);
+  console.log(`FAIL  ${live.failures.length} difference(s) from the Sheet:`);
   for (const f of live.failures.slice(0, 10)) console.log('      ' + f);
-} else if (!s.adds || !s.shifts || !s.undos || !s.conflicts || !s.errors) {
+} else if (!s.adds || !s.shifts || !s.undos || !s.conflicts || !s.errors || !s.renames || WRITE_CALLS.some(k => !s.tools[k])) {
   failed++;
   console.log('FAIL  a case was never exercised');
 } else {
-  console.log('PASS  catalogEdit.js answers, refuses and changes the catalog exactly as Items.gs does, and every change undoes');
+  console.log('PASS  catalogEdit.js answers, refuses and changes the catalog exactly as the Sheet does (D23 aside), and every change undoes');
 }
 for (const c of CONTROLS) {
   let r;

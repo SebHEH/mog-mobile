@@ -9,6 +9,8 @@
 //   - the dispatcher: Sheet-only actions need a 'sheet' token, every action
 //     maps to a private function, an unknown one is refused; editor-run
 //     functions refuse a web caller
+//   - a store whose catalog is edited in the app (schema v8): catalog writes,
+//     catalog repairs and pushes through the Sheet are refused with where to go
 // Each has a planted-defect control.
 //
 // Run bare: node tests/editor_fixes.test.js [stores]   (default 40)
@@ -143,6 +145,26 @@ function runSuite(srcOf, stores) {
     let expired = false;
     try { c.webedit_call('nope', 'getVendorTableData', []); } catch (e) { expired = /SESSION_EXPIRED/.test(e.message); }
     if (!expired) failures.push('[dispatch] an unknown token was accepted');
+
+    // A store whose catalog is edited in the app (schema v8): catalog writes
+    // through the Sheet are refused with where to go; reads and Admin Reset
+    // still work.
+    side.scriptProps.set('MOG_SUPABASE_SLUG', 'zzapp');
+    side.scriptProps.set('MOG_EDITOR', 'supabase');
+    vm.runInContext('_SB_CONFIG_ = null', c);
+    const writes = [['commitAddVendor', ['Costco', [1, 0, 0, 0, 0, 0, 0], '']], ['commitStorageAreasDraft', [[]]],
+                    ['commitUpsertItem', [{ mode: 'add', name: 'X', vendor: 'x', par: 1 }]], ['commitVendorRecalibration', [{}]]];
+    for (const [fn, args] of writes) {
+      let moved = '';
+      try { c.webedit_call('sheettok', fn, args); } catch (e) { moved = e.message; }
+      if (!/edited in the app now, on a computer: https:\/\/sebheh\.github\.io\/mog-mobile\/zzapp\/editor\//.test(moved)) {
+        failures.push('[moved] ' + fn + ' was not refused: ' + (moved || 'it ran'));
+      }
+    }
+    if (!Array.isArray(c.webedit_call('sheettok', 'getVendorTableData', []))) failures.push('[moved] reads stopped working');
+    if (!/edited in the app now/.test(c.runHealthFix_('restore_areas').message)) failures.push('[moved] a catalog repair ran');
+    if (!c.pushCatalogNow_().skipped) failures.push('[moved] the Sheet still pushes its catalog');
+    side.scriptProps.delete('MOG_EDITOR');
   } catch (e) { failures.push('[dispatch] crashed: ' + e.message); }
 
   for (const [label, active, effective, allowed] of [

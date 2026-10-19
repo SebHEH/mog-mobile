@@ -2676,6 +2676,8 @@
       summaryEmpty:     { en: 'Nothing to send yet', es: 'No hay nada que enviar' },
       dailySummary:     { en: 'Daily summary', es: 'Resumen diario' },
       dailySummaryHelp: { en: 'Email all configured recipients', es: 'Enviar a los destinatarios configurados' },
+      openEditor:       { en: 'Editor', es: 'Editor' },
+      openEditorHelp:   { en: 'Items, vendors, storage areas and lists', es: 'Artículos, proveedores, áreas y listas' },
       sendingSummary:   { en: 'Sending…', es: 'Enviando…' },
       // Recipients management
       recipientsTitle:  { en: 'Recipients', es: 'Destinatarios' },
@@ -7255,10 +7257,26 @@
   // ============================================================
   // SETTINGS
   // ============================================================
+
+  // The editor is part of the app once the store's catalog lives in Supabase
+  // (editor_direct, schema v8's switch), and only on a computer (spec A1): a
+  // mouse and a wide screen.
+  function editorAvailable_() {
+    if (!direct.editorDirect || !direct.token) return false;
+    const fine = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches;
+    return fine && window.innerWidth >= 900;
+  }
+  // One sign-in for the whole app: the editor accepts this session's token
+  // (mog_editor_get), so it opens without asking for the PIN again.
+  function openEditor_() {
+    try { localStorage.setItem('mog_edit_token', direct.token); } catch (e) { /* it asks for the PIN instead */ }
+    window.location.href = 'editor/';
+  }
+
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.20.0';
+    const versionStr = '0.21.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
@@ -7288,6 +7306,15 @@
           '</div>' +
           '<div class="settings-value"><i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
         '</div>' +
+        (editorAvailable_()
+          ? '<div class="settings-row tappable" id="settings-editor">' +
+              '<div>' +
+                '<div class="settings-label"><i class="ti ti-edit" aria-hidden="true"></i>' + escapeHtml(t('openEditor')) + '</div>' +
+                '<div style="font-size:12px;color:var(--text-3);margin-top:4px;margin-left:28px">' + escapeHtml(t('openEditorHelp')) + '</div>' +
+              '</div>' +
+              '<div class="settings-value"><i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
+            '</div>'
+          : '') +
       '</div>' +
 
       '<div class="settings-section-label"><span class="lang-en">Preferences</span><span class="lang-es">Preferencias</span></div>' +
@@ -7326,6 +7353,7 @@
       if (state.cache.historyDates) renderHistoryDates(state.cache.historyDates);
     });
     $('settings-recipients').addEventListener('click', openRecipients);
+    if ($('settings-editor')) $('settings-editor').addEventListener('click', openEditor_);
     $('settings-summary').addEventListener('click', onDailySummaryClick);
     if ($('settings-name')) $('settings-name').addEventListener('click', async () => {
       try { directExpire_(); await directSnapshot_(); } catch (e) { /* offline: the list we have */ }
