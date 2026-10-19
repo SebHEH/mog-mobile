@@ -280,9 +280,9 @@ def generate_editor(target_dir, entry, slug, location, supabase, themes, dry_run
         print(f"  [done]    write {rel}/{name} ({len(body):,} bytes)")
 
 
-def generate_store(entry, template_html, template_sw, dry_run, order_math, supabase):
+def generate_store(entry, template_html, template_sw, dry_run, order_math, supabase, target_dir=None):
     slug         = entry['slug']
-    target_dir   = os.path.join(ROOT, slug)
+    target_dir   = target_dir or os.path.join(ROOT, slug)
     target_index = os.path.join(target_dir, 'index.html')
     target_sw    = os.path.join(target_dir, 'sw.js')
 
@@ -435,11 +435,18 @@ def arg_after(flag):
     return sys.argv[i + 1]
 
 
+# The preview app's /exec address leads nowhere on purpose: a test store has
+# no Sheet, and the store it copies (--like) is a real one, so anything that
+# falls back to /exec (history, the reset) must fail, never reach its Sheet.
+PREVIEW_EXEC = 'https://script.google.com/macros/s/PREVIEW-HAS-NO-EXEC/exec'
+
+
 def build_preview(stores, slug, like, dry_run):
-    """A test store's editor (e.g. rprfotest, D21) under _preview/<slug>/,
-    which git ignores: nothing here is ever published. It borrows the look of
-    the real store it was copied from (--like); Supabase decides what the
-    test store holds and that its editor is on."""
+    """A test store's app and editor (e.g. rprfotest, D21) under
+    _preview/<slug>/, which git ignores: nothing here is ever published. It
+    borrows the look of the real store it was copied from (--like); Supabase
+    decides what the test store holds, that its editor is on, and (after
+    mog.prepare_test_store) that its phones are."""
     if not SLUG_RE.match(slug):
         fail(f"--preview: invalid slug {slug!r}")
     entry = next((e for e in stores if e['slug'] == like), None)
@@ -450,9 +457,15 @@ def build_preview(stores, slug, like, dry_run):
     supabase = read_supabase_project()
     themes = read_concept_themes()
     print(f"[preview] {slug}, looking like {like}" + (" (DRY RUN, no writes)" if dry_run else ""))
-    generate_editor(os.path.join(PREVIEW_DIR, slug), entry, slug, entry['location'] + ' (TEST)',
-                    supabase, themes, dry_run)
-    print(f"[done] serve the repo root and open /_preview/{slug}/editor/items.html")
+    target = os.path.join(PREVIEW_DIR, slug)
+    with open(TEMPLATE_INDEX, 'r', encoding='utf-8') as f:
+        template_html = f.read()
+    with open(TEMPLATE_SW, 'r', encoding='utf-8') as f:
+        template_sw = f.read()
+    app_entry = dict(entry, slug=slug, location=entry['location'] + ' (TEST)', deployment=PREVIEW_EXEC)
+    generate_store(app_entry, template_html, template_sw, dry_run, read_order_math(), supabase, target_dir=target)
+    generate_editor(target, entry, slug, entry['location'] + ' (TEST)', supabase, themes, dry_run)
+    print(f"[done] serve the repo root and open /_preview/{slug}/ (the app) or /_preview/{slug}/editor/items.html")
 
 
 def main():

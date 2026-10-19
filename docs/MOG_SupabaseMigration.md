@@ -189,6 +189,10 @@ Tables live in the private schema `mog`, which the Data API doesn't expose. **Th
 | `mog_editor_get(token)` (schema v6) | the editor page | any session token for the store (the phones' too); the catalog tables, the last 100 changes, the catalog version |
 | `mog_editor_apply(token, label, by, ops)` (schema v6) | the editor page | token; writes only if every row is still what the editor read (else `CONFLICT`, nothing written), logs the change, rebuilds `mog.catalog` |
 | `mog_editor_undo(token, changeId, by)` (schema v6) | the editor page | token; a change replayed backwards as a new change; `CONFLICT` names the later change to undo first |
+| `mog_quick_edit(token, cycleDate, kind, vendor, itemId, par, by, haveVersion)` (schema v7) | PWA | token + `phone_direct`; a "just today" par or add (and taking one back) on the current cycle only (`STALE_CYCLE` otherwise); answers the snapshot, whose `state.todayEdits` the order math applies |
+| `mog_set_par(token, itemId, parBefore, par, by, haveVersion)` (schema v7) | PWA | token + `phone_direct` + `editor_direct`; "from now on", logged in `mog.change_log`, `CONFLICT` when the par is no longer `parBefore` |
+| `mog_editor_review(token, id, status)` (schema v7) | the editor page | token; a phone's today edit marked applied or dismissed |
+| `mog.prepare_test_store(slug)` (schema v7) | SQL Editor only | gives a test store a cycle and turns its phones on (refuses a real store) |
 
 **Per-store sync keys instead of the service-role key:** a bound script's Script Properties can be read by anyone who can edit that store's Sheet. A leaked sync key reaches only that one store; the service-role key would expose every store. The service-role key is never used outside the Supabase dashboard.
 

@@ -74,6 +74,19 @@ Several people can work at once and see each other's progress within seconds. Th
 
 Intended differences from the Sheet: a pick row's item name and area order are looked up, not stored (D19); deleting an item removes its pick rows by ID.
 
+### Phase 3 decisions (2026-10-18)
+
+| # | Decision | Chosen |
+|---|---|---|
+| Q1 | "From now on" where the Sheet still owns the catalog | **"Just today" only, for now.** The phone offers "From now on" only where Supabase owns the catalog (`editor_direct`); elsewhere it says to use Manage Items on a computer. Each store gets it when its editor switches (Phase 4). The app never writes the Sheet (D9). |
+| Q2 | Where an item added for today shows | **In its usual storage area** (taken from its first pick row that has one), with a "Today only" badge. |
+| Q3 | Where a today par applies | **The item everywhere today** (one par per item, R6). |
+| Q4 | What gets a "Needs review" flag | **Only the today-only edits.** A "from now on" change is permanent already: it shows in ↶ Changes with Undo. |
+
+How it works: today edits live in `mog.quick_edits` and ride in the snapshot (`state.todayEdits`); `orderInputsFromSnapshot_` (`OrderMath.gs`) applies them, the one place the phone, `/exec`, the nightly order log and the recap all go through. The next cycle has none. Gates: `tests/quick_edits.test.js` (a today edit behaves exactly like the same catalog edit), `pwa_direct` (phone answers equal `/exec`'s with edits in; "from now on"), `editor_host` (Apply / Dismiss). Schema v7 + `smoke_v7.sql`. App v0.20.0.
+
+**Deploy order (the close must honour edits before any phone can make one):** `OrderMath.gs` to every store (`deploy.py --redeploy`, canary rprfo), then schema v7, then the PWA (canary rprfo).
+
 ## Phases
 
 1. **Live counting.** Today and the open vendor refresh every ~10s while the app is on screen (one Supabase read, ~0.3s; no Apps Script). Vendor cards show who is counting. The first-sign-in name picker and the self-building leaders list ship here too. An auto-refresh never overwrites a count you're typing.

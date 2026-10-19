@@ -27,7 +27,7 @@ const vm = require('vm');
 const F = require('./fake_apps_script.js');
 const { slices } = require('./slice_js.js');
 const { makeStore } = require('./mog_fixture.js');
-const { FakeSupabase, fakeScriptApp, fakeContentService, compileStep4 } = require('./fake_supabase.js');
+const { FakeSupabase, fakeScriptApp, fakeContentService, compileStep4, checkCatalogTables, catalogFromTables } = require('./fake_supabase.js');
 
 const STORES = Number(process.argv[2]) || 60;
 const SRC = file => F.source(null, file);
@@ -121,7 +121,7 @@ async function runSuite(srcOf, stores) {
   const server = compileStep4(srcOf);
   const phoneCode = phoneScript(srcOf);
   const failures = [];
-  const stats = { stores: 0, compared: 0, writes: 0, staleDrains: 0, invalidations: 0 };
+  const stats = { stores: 0, compared: 0, writes: 0, staleDrains: 0, invalidations: 0, quickEdits: 0 };
   const fail = (seed, scenario, what) => failures.push('seed ' + seed + ' [' + scenario + ']: ' + what);
   const clean = r => ({ ok: r.ok, data: r.ok ? r.data : undefined, error: r.ok ? undefined : r.error });
 
@@ -185,6 +185,34 @@ async function runSuite(srcOf, stores) {
         await step('count save', 'saveOnHand', { vendor: vendors[0], items: save });
         same('writes', 'save, no vendor', await phone.answer('saveOnHand', { vendor: '', items: save }),
                                           sideR.post('saveOnHand', { vendor: '', items: save }));
+
+        // Quick edits (schema v7), made on the phone. /exec has none of its
+        // own, so the same edits are copied to its Supabase: every answer,
+        // there and on the phone, must then agree with the edits in.
+        const sP = sbP.stores.get(SLUG);
+        const qeStep = async (label, payload, wantOk) => {
+          stats.writes++;
+          const r = await phone.answer('quickEdit', payload);
+          if (!!r.ok !== wantOk) { fail(seed, 'quick edits', label + ': ' + JSON.stringify(r).slice(0, 160)); return; }
+          sbR.stores.get(SLUG).quickEdits = JSON.parse(JSON.stringify(sP.quickEdits || []));
+          if (r.ok) {
+            stats.quickEdits++;
+            same('quick edits', label + ' answer', { ok: true, data: r.data.itemsPayload }, sideR.post('getVendorItems', { vendor: payload.vendor }));
+            if (r.data.cycleDate !== sP.state.cycleDate) fail(seed, 'quick edits', label + ': answered for cycle ' + r.data.cycleDate);
+          }
+          await reads('quick edits', 'after ' + label);
+        };
+        const catItems = Object.keys(sP.catalog.items || {});
+        const other = catItems.find(id => sP.catalog.items[id].active === true && sP.catalog.items[id].name && !ids.includes(id));
+        if (ids.length) await qeStep('par today', { kind: 'par_today', vendor: vendors[0], id: ids[0], par: 7.5 }, true);
+        if (other) await qeStep('add today', { kind: 'add_today', vendor: vendors[0], id: other }, true);
+        if (other) await qeStep('add today twice', { kind: 'add_today', vendor: vendors[0], id: other }, false);
+        await qeStep('unknown item', { kind: 'par_today', vendor: vendors[0], id: 'ITEM-NOPE', par: 1 }, false);
+        if (ids.length) await qeStep('a negative par', { kind: 'par_today', vendor: vendors[0], id: ids[0], par: -2 }, false);
+        if (ids.length) await qeStep('par back to normal', { kind: 'par_today_clear', vendor: vendors[0], id: ids[0] }, true);
+        if (other) await qeStep('take the add back', { kind: 'add_today_remove', vendor: vendors[0], id: other }, true);
+        const sp = await phone.answer('setPar', { vendor: vendors[0], id: ids[0] || 'x', parBefore: 1, par: 2 });
+        if (sp.ok || sp.error !== 'EDITOR_NOT_DIRECT') fail(seed, 'quick edits', 'from now on, Sheet catalog: ' + JSON.stringify(sp).slice(0, 120));
       }
       await step('override off', 'setEmergencyOverride', { on: false });
       const dbOf = sb => { const s = sb.stores.get(SLUG); return JSON.stringify({ state: s.state, counts: Array.from(s.counts.entries()).map(([c, m]) => [c, Array.from(m.values())]) }); };
@@ -290,6 +318,46 @@ async function runSuite(srcOf, stores) {
     }
   }
   return { failures, stats };
+}
+
+// ---- "From now on" (schema v7) ---------------------------------------------
+// A store whose catalog Supabase owns: the phone changes an item's par for
+// good (mog_set_par), which ends a today par for it, and a stale or bad par
+// is refused. Real code: the DIRECT CLIENT block plus OrderMath.gs.
+async function forGoodSuite(srcOf) {
+  srcOf = srcOf || SRC;
+  const phoneCode = phoneScript(srcOf);
+  const failures = [];
+  const fail = what => failures.push('[for good] ' + what);
+  const sb = new FakeSupabase(Date.UTC(2026, 9, 18, 15));
+  sb.provision(SLUG);
+  const s = sb.stores.get(SLUG);
+  Object.assign(s, { pins: { pin: PIN }, phoneDirect: true, editorDirect: true, version: 1,
+    profile: { timeZone: 'America/New_York', location: 'For good', abbr: 'FG', concept: 'roll-play' },
+    state: { cycleDate: '2026-10-18', dayOfWeek: 'Sun', emergencyOverride: false, vendorPicks: {}, todaysLog: [] } });
+  s.tables = checkCatalogTables({
+    vendors: [{ name: 'Sysco', mults: [1, 1, 1, 1, 1, 1, 1], cutoff: null }],
+    areas: [{ name: 'Walk-in', ord: 10 }],
+    items: [{ id: 'ITEM-0001', name: 'Lime', primaryVendor: 'Sysco', pack: 'CS', par: 3, active: true, useMult: true, eligible: ['Sysco'], seq: 2 }],
+    pickRows: [{ vendor: 'Sysco', id: 'ITEM-0001', area: 'Walk-in', shelfOrder: 10, seq: 2 }] });
+  s.catalog = catalogFromTables(s);
+  const noExec = { raw: () => { throw new Error('this test never uses /exec'); } };
+  const phone = makePhone(phoneCode, sb, noExec);
+  try {
+    if (!(await phone.answer('ping')).ok) { fail('sign-in failed'); return { failures }; }
+    const lime = r => r.ok && r.data.itemsPayload.items.find(i => i.id === 'ITEM-0001');
+    let r = await phone.answer('quickEdit', { kind: 'par_today', vendor: 'Sysco', id: 'ITEM-0001', par: 9 });
+    if (!lime(r) || lime(r).par !== 9 || lime(r).normalPar !== 3) fail('today par: ' + JSON.stringify(lime(r)));
+    r = await phone.answer('setPar', { vendor: 'Sysco', id: 'ITEM-0001', parBefore: 3, par: 4 });
+    if (!lime(r) || lime(r).par !== 4 || 'normalPar' in lime(r)) fail('for good: ' + JSON.stringify(r).slice(0, 160));
+    if (s.tables.items[0].par !== 4 || s.catalog.items['ITEM-0001'].par !== 4) fail('the catalog par did not change');
+    if (!(s.changeLog || []).some(l => l.label === 'Changed the par of "Lime" on a phone: 3 → 4')) fail('not logged: ' + JSON.stringify(s.changeLog));
+    r = await phone.answer('setPar', { vendor: 'Sysco', id: 'ITEM-0001', parBefore: 3, par: 5 });
+    if (r.ok || r.error !== 'CONFLICT' || s.tables.items[0].par !== 4) fail('a stale par was not refused: ' + JSON.stringify(r).slice(0, 120));
+    r = await phone.answer('setPar', { vendor: 'Sysco', id: 'ITEM-0001', parBefore: 4, par: -1 });
+    if (r.ok) fail('a negative par was taken');
+  } catch (e) { fail('crashed: ' + e.stack); }
+  return { failures };
 }
 
 // ---- Live counting (schema v5) ---------------------------------------------
@@ -419,7 +487,7 @@ function placeholderProblems(html) {
   const res = await runSuite(null, STORES);
   const s = res.stats;
   console.log(`pwa_direct: ${s.stores} stores, ${s.compared} answers compared, ${s.writes} writes, ` +
-    `${s.invalidations} resets that moved the cycle, ${s.staleDrains} stale drains`);
+    `${s.invalidations} resets that moved the cycle, ${s.staleDrains} stale drains, ${s.quickEdits} quick edits`);
   if (res.failures.length) {
     failed++;
     console.log(`FAIL  ${res.failures.length} problem(s):`);
@@ -427,7 +495,7 @@ function placeholderProblems(html) {
   } else {
     console.log('PASS  phone answers == /exec answers (fresh and reused snapshots), before and after every write');
   }
-  if (!s.staleDrains || !s.writes) { failed++; console.log('FAIL  fixtures never moved a cycle or never wrote'); }
+  if (!s.staleDrains || !s.writes || !s.quickEdits) { failed++; console.log('FAIL  fixtures never moved a cycle, wrote, or made a quick edit'); }
 
   const ph = placeholderProblems(SRC('template/index.html'));
   if (ph.length) { failed++; console.log('FAIL  template placeholders: ' + ph.join(', ')); }
@@ -435,6 +503,11 @@ function placeholderProblems(html) {
 
   const T = 'template/index.html';
   const CONTROLS = [
+    { name: 'a quick edit sent without its cycle', scenario: 'quick edits',
+      find: '          p_cycle_date: held.state.cycleDate, p_kind: payload.kind,', replace: '          p_cycle_date: null, p_kind: payload.kind,' },
+    { name: 'a quick edit answers the list from before it', scenario: 'quick edits',
+      find: "        data = { itemsPayload: vendorItemsFromSnapshot_(inputs, vendorNameFromInputs_(inputs, payload.vendor)), cycleDate: snap.state.cycleDate };" + NL + "        break;" + NL + "      }" + NL + "      case 'setPar': {",
+      replace: "        data = { itemsPayload: vendorItemsFromSnapshot_(orderInputsFromSnapshot_(held), vendorNameFromInputs_(inputs, payload.vendor)), cycleDate: snap.state.cycleDate };" + NL + "        break;" + NL + "      }" + NL + "      case 'setPar': {" },
     { name: 'a queued save sent to the current cycle', scenario: 'stale drain',
       find: 'const cycle = payload.cycleDate || (await directSnapshot_()).state.cycleDate;',
       replace: 'const cycle = (await directSnapshot_()).state.cycleDate;' },
@@ -472,6 +545,21 @@ function placeholderProblems(html) {
     if (hits) console.log(`PASS  control "${c.name}" bites (${hits} in "${c.scenario}")`);
     else { failed++; console.log(`FAIL  control "${c.name}" did NOT bite "${c.scenario}" (${r.failures.length} other: ${r.failures[0] || '-'})`); }
   }
+  const fg = await forGoodSuite(null);
+  if (fg.failures.length) {
+    failed++;
+    console.log(`FAIL  ${fg.failures.length} "from now on" problem(s):`);
+    for (const f of fg.failures.slice(0, 10)) console.log('      ' + f);
+  } else {
+    console.log('PASS  "from now on": the catalog par changes and the today par ends; a stale or bad par is refused');
+  }
+  for (const c of [{ name: 'from now on sends no par to check against', scenario: 'for good',
+                     find: 'p_par_before: (payload.parBefore === undefined ? null : payload.parBefore),', replace: 'p_par_before: null,' }]) {
+    const r = await forGoodSuite(file => (file === T ? F.plant(SRC(T), c.find, c.replace) : SRC(file)));
+    if (r.failures.length) console.log(`PASS  control "${c.name}" bites (${r.failures.length})`);
+    else { failed++; console.log(`FAIL  control "${c.name}" did NOT bite`); }
+  }
+
   const live = await liveSuite(null, Math.min(STORES, 30));
   const ls = live.stats;
   console.log(`pwa_direct live: ${ls.stores} stores, presence seen ${ls.presenceSeen}, saved-by ${ls.savedBy}, v4 fallbacks ${ls.fallbacks}`);

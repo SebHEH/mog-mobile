@@ -235,12 +235,25 @@ class FakeSupabase {
       .sort((a, b) => (a.vendor + '\u0001' + a.id < b.vendor + '\u0001' + b.id ? -1 : 1))
       .map(c => ({ vendor: c.vendor, id: c.id, onHand: c.onHand }));
     return { ok: true, data: {
-      slug, authType: auth || 'sync', isManagerMode: auth === 'master', catalogVersion: s.version,
+      slug, authType: auth || 'sync', isManagerMode: auth === 'master', editorDirect: !!s.editorDirect,
+      catalogVersion: s.version,
       catalog: (have != null && have === s.version) ? null : clone(s.catalog),
       state: { cycleDate: st.cycleDate, dayOfWeek: st.dayOfWeek, today, isStale: st.cycleDate < today,
                emergencyOverride: st.emergencyOverride, vendorPicks: clone(st.vendorPicks),
-               todaysLog: clone(st.todaysLog), updatedAt: 'fake' },
+               todaysLog: clone(st.todaysLog), todayEdits: this.todayEdits(s, st.cycleDate), updatedAt: 'fake' },
       counts, serverTime: 'fake' } };
+  }
+
+  // mog.today_edits_json (schema_v7.sql): this cycle's active today pars
+  // (the latest per item) and adds (in the order made).
+  todayEdits(s, cycle) {
+    const pars = {}, adds = [];
+    for (const e of (s.quickEdits || [])) {
+      if (e.cycle !== cycle || !e.active) continue;
+      if (e.kind === 'par_today') pars[e.id] = e.parAfter;
+      else adds.push([e.vendor, e.id]);
+    }
+    return { pars, adds };
   }
 
   handle(fn, p) {
@@ -434,18 +447,75 @@ class FakeSupabase {
         if (m === 0) delete s.state.vendorPicks[vendor]; else s.state.vendorPicks[vendor] = m;
         return this.snapshot(slug, s, p.p_have_version, sess.authType);
       }
+      // schema_v7.sql: "just today" edits, and "from now on" on a store whose
+      // catalog Supabase owns.
+      case 'mog_quick_edit': {
+        if (!s.state || !s.catalog) return err('STORE_NOT_SYNCED');
+        if (!p.p_cycle_date || p.p_cycle_date !== s.state.cycleDate) return err('STALE_CYCLE');
+        const id = String(p.p_item_id || '').trim();
+        const item = id && s.catalog.items ? s.catalog.items[id] : null;
+        if (!item) return err('Unknown item');
+        const qe = s.quickEdits = s.quickEdits || [];
+        const cyc = s.state.cycleDate;
+        const by = String(p.p_by == null ? '' : p.p_by).trim().slice(0, 40) || null;
+        const takeBack = e => { e.active = false; if (e.review === 'open') e.review = 'reverted'; };
+        const add = e => qe.push(Object.assign({ qid: (this.qeSeq = (this.qeSeq || 0) + 1), at: new Date(this.nowMs).toISOString(),
+                                                cycle: cyc, by, active: true, review: 'open', parBefore: null, parAfter: null }, e));
+        if (p.p_kind === 'par_today' || p.p_kind === 'par_today_clear') {
+          if (p.p_kind === 'par_today' && (p.p_par == null || p.p_par < 0 || p.p_par > 100000)) return err('Par must be a number from 0 up.');
+          qe.filter(e => e.cycle === cyc && e.kind === 'par_today' && e.id === id && e.active).forEach(takeBack);
+          const normal = typeof item.par === 'number' ? item.par : null;
+          if (p.p_kind === 'par_today' && p.p_par !== normal) {
+            add({ kind: 'par_today', vendor: String(p.p_vendor || '').trim() || null, id, parBefore: normal, parAfter: p.p_par });
+          }
+        } else if (p.p_kind === 'add_today' || p.p_kind === 'add_today_remove') {
+          const vendor = (s.catalog.vendorList || []).find(v => v === String(p.p_vendor || '').trim());
+          if (!vendor) return err('Vendor is not listed');
+          if (p.p_kind === 'add_today_remove') {
+            qe.filter(e => e.cycle === cyc && e.kind === 'add_today' && e.vendor === vendor && e.id === id && e.active).forEach(takeBack);
+          } else {
+            if (item.active !== true) return err('That item is inactive.');
+            const listed = (s.catalog.pickRows || []).some(r => String(r[0] == null ? '' : r[0]).toLowerCase() === vendor.toLowerCase() && String(r[1] || '').trim() === id) ||
+              qe.some(e => e.cycle === cyc && e.kind === 'add_today' && e.vendor === vendor && e.id === id && e.active);
+            if (listed) return err('Already on this list');
+            add({ kind: 'add_today', vendor, id });
+          }
+        } else {
+          return err('Unknown kind');
+        }
+        return this.snapshot(slug, s, p.p_have_version, sess.authType);
+      }
+      case 'mog_set_par': {
+        if (!s.editorDirect) return err('EDITOR_NOT_DIRECT');
+        if (p.p_par == null || p.p_par < 0 || p.p_par > 100000) return err('Par must be a number from 0 up.');
+        const id = String(p.p_item_id || '').trim();
+        const it = s.tables ? s.tables.items.find(i => i.id === id) : null;
+        if (!it) return err('Unknown item');
+        const before = it.par === undefined ? null : it.par;
+        if (before !== (p.p_par_before === undefined ? null : p.p_par_before)) return Object.assign(err('CONFLICT'), { detail: 'items ' + id + ' has changed' });
+        if (before !== p.p_par) {
+          const b = clone(it);
+          it.par = p.p_par;
+          this.editorLog(s, p.p_by, 'Changed the par of "' + it.name + '" on a phone: ' + (before === null ? '(blank)' : before) + ' → ' + p.p_par,
+                         [{ t: 'items', before: b, after: clone(it) }], null);
+        }
+        (s.quickEdits || []).filter(e => s.state && e.cycle === s.state.cycleDate && e.kind === 'par_today' && e.id === id && e.active)
+          .forEach(e => { e.active = false; if (e.review === 'open') e.review = 'reverted'; });
+        this.editorPublish(s);
+        return this.snapshot(slug, s, p.p_have_version, sess.authType);
+      }
     }
     return err('fake: unknown function ' + fn);
   }
 }
 
 const PHONE_FNS = { mog_login: 1, mog_snapshot: 1, mog_save_counts: 1, mog_set_override: 1, mog_set_vendor_pick: 1,
-                    mog_snapshot2: 1, mog_save_counts2: 1 };
+                    mog_snapshot2: 1, mog_save_counts2: 1, mog_quick_edit: 1, mog_set_par: 1 };
 
 // ---- The editor's calls (schema_v6.sql) -------------------------------------
 // Written apart from template/editor/catalogEdit.js on purpose, so the host
 // test checks one against the other.
-const EDITOR_FNS = { mog_editor_login: 1, mog_editor_get: 1, mog_editor_apply: 1, mog_editor_undo: 1 };
+const EDITOR_FNS = { mog_editor_login: 1, mog_editor_get: 1, mog_editor_apply: 1, mog_editor_undo: 1, mog_editor_review: 1 };
 const EDITOR_FIELDS = {
   items: ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible'],
   pickRows: ['area', 'shelfOrder'], vendors: ['mults', 'cutoff'], areas: ['ord']
@@ -509,6 +579,9 @@ FakeSupabase.prototype.editorData = function (slug, s) {
            tables: editorTablesJson(s.tables),
            changes: (s.changeLog || []).slice(-100).reverse().map(l => ({ id: l.id, at: l.at, by: l.by, label: l.label,
                                                                           undoes: l.undoes, undoneBy: l.undoneBy })),
+           reviews: (s.quickEdits || []).filter(e => e.review === 'open').slice(-200).reverse()
+             .map(e => ({ id: e.qid, at: e.at, by: e.by, cycleDate: e.cycle, kind: e.kind, vendor: e.vendor, itemId: e.id,
+                          parBefore: e.parBefore, parAfter: e.parAfter })),
            catalogVersion: s.version };
 };
 FakeSupabase.prototype.editorPublish = function (s) {
@@ -557,6 +630,13 @@ FakeSupabase.prototype.handleEditor = function (fn, p) {
   const s = this.stores.get(slug);
   if (!s.editorDirect) return err('EDITOR_NOT_DIRECT');
   if (fn === 'mog_editor_get') return ok(this.editorData(slug, s));
+  if (fn === 'mog_editor_review') {
+    if (p.p_status !== 'applied' && p.p_status !== 'dismissed') return err('Status must be applied or dismissed');
+    const e = (s.quickEdits || []).find(x => x.qid === Number(p.p_id) && x.review === 'open');
+    if (!e) return err('Not waiting for review');
+    e.review = p.p_status;
+    return ok({ id: e.qid, review: e.review });
+  }
 
   const tryApply = ops => {
     try { s.tables = editorApplyOps(s.tables, ops); return null; } catch (e) {

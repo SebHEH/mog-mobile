@@ -69,6 +69,7 @@
     if (!data || !data.store || data.store.slug !== cfg.slug) return false;
     H.tables = data.tables;
     H.changes = data.changes || [];
+    H.reviews = data.reviews || [];   // schema v7: phones' "just today" edits waiting for review
     H.version = data.catalogVersion;
     H.store = data.store;
     window.VENDOR_LIST = CE.vendorList(H.tables);
@@ -199,32 +200,56 @@
     return d.toLocaleString(lang() === 'es' ? 'es-US' : 'en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
 
+  // The two panels, bottom left: ↶ Changes (the change log, with Undo) and
+  // ⚑ Needs review (phones' "just today" edits, with Apply and Dismiss).
   function mountChanges() {
     if (document.getElementById('mge-changes-btn') || !document.body) return;
     const css = document.createElement('style');
     css.textContent =
-      '#mge-changes-btn{position:fixed;left:16px;bottom:16px;z-index:60;border:1px solid #d0d4da;background:#fff;color:#333;' +
+      '#mge-host-bar{position:fixed;left:16px;bottom:16px;z-index:60;display:flex;gap:8px}' +
+      '#mge-host-bar button{border:1px solid #d0d4da;background:#fff;color:#333;' +
       'border-radius:999px;padding:8px 14px;font:600 13px Inter,Arial,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:pointer}' +
-      '#mge-changes-btn:hover{background:#f4f5f7}' +
-      '#mge-changes{position:fixed;left:16px;bottom:62px;z-index:61;width:min(440px,calc(100vw - 32px));max-height:60vh;overflow:auto;' +
+      '#mge-host-bar button:hover{background:#f4f5f7}#mge-host-bar button[hidden]{display:none}' +
+      '#mge-reviews-btn{border-color:#d9a441 !important;color:#7a5200 !important}' +
+      '.mge-panel{position:fixed;left:16px;bottom:62px;z-index:61;width:min(460px,calc(100vw - 32px));max-height:60vh;overflow:auto;' +
       'background:#fff;border:1px solid #d0d4da;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.18);font:13px Inter,Arial,sans-serif;color:#222}' +
-      '#mge-changes[hidden]{display:none}' +
-      '#mge-changes h3{margin:0;padding:12px 14px;font-size:14px;border-bottom:1px solid #eee;position:sticky;top:0;background:#fff}' +
+      '.mge-panel[hidden]{display:none}' +
+      '.mge-panel h3{margin:0;padding:12px 14px;font-size:14px;border-bottom:1px solid #eee;position:sticky;top:0;background:#fff}' +
       '.mge-ch{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-bottom:1px solid #f0f0f0}' +
       '.mge-ch-main{flex:1;min-width:0}.mge-ch-label{word-wrap:break-word}.mge-ch-meta{color:#777;font-size:12px;margin-top:2px}' +
       '.mge-ch.undone .mge-ch-label{color:#999;text-decoration:line-through}' +
+      '.mge-ch-btns{display:flex;gap:6px;flex-shrink:0}' +
       '.mge-ch button{border:1px solid #c9ced6;background:#fff;border-radius:6px;padding:4px 10px;font:600 12px Inter,Arial,sans-serif;cursor:pointer}' +
       '.mge-ch button:hover{background:#f4f5f7}.mge-ch-empty{padding:14px;color:#777}';
     document.head.appendChild(css);
-    const btn = document.createElement('button');
-    btn.id = 'mge-changes-btn';
-    btn.type = 'button';
-    btn.onclick = function () { const p = document.getElementById('mge-changes'); p.hidden = !p.hidden; renderChanges(); };
-    const panel = document.createElement('div');
-    panel.id = 'mge-changes';
-    panel.hidden = true;
-    document.body.appendChild(btn);
-    document.body.appendChild(panel);
+    const bar = document.createElement('div');
+    bar.id = 'mge-host-bar';
+    const changesBtn = document.createElement('button');
+    changesBtn.id = 'mge-changes-btn';
+    changesBtn.type = 'button';
+    changesBtn.onclick = function () { togglePanel('mge-changes'); };
+    const reviewsBtn = document.createElement('button');
+    reviewsBtn.id = 'mge-reviews-btn';
+    reviewsBtn.type = 'button';
+    reviewsBtn.onclick = function () { togglePanel('mge-reviews'); };
+    bar.appendChild(changesBtn);
+    bar.appendChild(reviewsBtn);
+    document.body.appendChild(bar);
+    for (const id of ['mge-changes', 'mge-reviews']) {
+      const panel = document.createElement('div');
+      panel.id = id;
+      panel.className = 'mge-panel';
+      panel.hidden = true;
+      document.body.appendChild(panel);
+    }
+    renderChanges();
+  }
+
+  function togglePanel(id) {
+    const other = id === 'mge-changes' ? 'mge-reviews' : 'mge-changes';
+    const p = document.getElementById(id);
+    p.hidden = !p.hidden;
+    document.getElementById(other).hidden = true;
     renderChanges();
   }
 
@@ -233,6 +258,7 @@
     const panel = document.getElementById('mge-changes');
     if (!btn || !panel) return;
     btn.textContent = '↶ ' + tr('Changes', 'Cambios');
+    renderReviews();
     if (panel.hidden) return;
     let html = '<h3>' + esc(tr('Catalog changes', 'Cambios al catálogo')) + '</h3>';
     if (!H.changes.length) html += '<div class="mge-ch-empty">' + esc(tr('No changes yet.', 'Todavía no hay cambios.')) + '</div>';
@@ -249,6 +275,113 @@
     panel.querySelectorAll('button[data-undo]').forEach(function (b) {
       b.onclick = function () { askUndo(Number(b.getAttribute('data-undo'))); };
     });
+  }
+
+  // ---- Needs review: phones' "just today" edits (schema v7) ---------------------
+
+  const num = v => (v === null || v === undefined ? '—' : String(Math.round(Number(v) * 1000) / 1000));
+  const itemName = id => { const it = (H.tables ? H.tables.items : []).find(x => x.id === id); return it ? it.name : id; };
+  const dayOf = d => {
+    const x = new Date(String(d) + 'T12:00:00');
+    return isNaN(x) ? String(d) : x.toLocaleDateString(lang() === 'es' ? 'es-US' : 'en-US', { month: 'short', day: 'numeric' });
+  };
+  function reviewLabel(r) {
+    if (r.kind === 'par_today') {
+      return tr('Par for one day', 'Par por un día') + ' (' + dayOf(r.cycleDate) + '): "' + itemName(r.itemId) + '" ' +
+        num(r.parBefore) + ' → ' + num(r.parAfter);
+    }
+    return tr('Added to', 'Agregado a') + ' ' + r.vendor + ' ' + tr('for', 'para') + ' ' + dayOf(r.cycleDate) + ': "' +
+      itemName(r.itemId) + '". ' + tr('Add it for good?', '¿Agregarlo para siempre?');
+  }
+
+  function renderReviews() {
+    const btn = document.getElementById('mge-reviews-btn');
+    const panel = document.getElementById('mge-reviews');
+    if (!btn || !panel) return;
+    const n = (H.reviews || []).length;
+    btn.hidden = n === 0;
+    btn.textContent = '⚑ ' + tr('Needs review', 'Por revisar') + ' (' + n + ')';
+    if (!n) panel.hidden = true;
+    if (panel.hidden) return;
+    let html = '<h3>' + esc(tr("Phones' changes for one day", 'Cambios de un día desde teléfonos')) + '</h3>';
+    for (const r of H.reviews) {
+      html += '<div class="mge-ch"><div class="mge-ch-main">' +
+        '<div class="mge-ch-label">' + esc(reviewLabel(r)) + '</div>' +
+        '<div class="mge-ch-meta">' + esc(when(r.at)) + ' · ' + esc(r.by || tr('Someone', 'Alguien')) + '</div></div>' +
+        '<div class="mge-ch-btns">' +
+          '<button type="button" data-apply="' + esc(r.id) + '">' + esc(tr('Apply', 'Aplicar')) + '</button>' +
+          '<button type="button" data-dismiss="' + esc(r.id) + '">' + esc(tr('Dismiss', 'Descartar')) + '</button>' +
+        '</div></div>';
+    }
+    panel.innerHTML = html;
+    panel.querySelectorAll('button[data-apply]').forEach(function (b) {
+      b.onclick = function () { askReview(Number(b.getAttribute('data-apply')), 'applied'); };
+    });
+    panel.querySelectorAll('button[data-dismiss]').forEach(function (b) {
+      b.onclick = function () { askReview(Number(b.getAttribute('data-dismiss')), 'dismissed'); };
+    });
+  }
+
+  // Apply makes a one-day edit permanent, as a normal logged change (so it
+  // can be undone): the par becomes the item's par; an added item goes on
+  // that vendor's list for good (the Assign tab's own rule: eligible, and on
+  // the list in its storage area). Dismiss only clears the flag.
+  function reviewOps(r) {
+    if (r.kind === 'par_today') {
+      const row = H.tables.items.find(x => x.id === r.itemId);
+      if (!row) throw new Error(tr('That item no longer exists.', 'Ese artículo ya no existe.'));
+      if (JSON.stringify(row.par) === JSON.stringify(r.parAfter)) return { ops: [], label: '' };
+      const after = Object.assign({}, row, { par: r.parAfter });
+      return { ops: [{ t: 'items', key: row.id, before: row, after: after }],
+               label: 'Applied a phone change: par of "' + row.name + '" ' + num(row.par) + ' → ' + num(r.parAfter) };
+    }
+    const onList = H.tables.pickRows.filter(p => p.vendor === r.vendor).map(p => p.id);
+    if (onList.indexOf(r.itemId) >= 0) return { ops: [], label: '' };
+    const out = CE.call(H.tables, 'commitSetVendorItems', [r.vendor, onList.concat([r.itemId])]);
+    return { ops: out.ops, label: 'Applied a phone change: added "' + itemName(r.itemId) + '" to ' + r.vendor };
+  }
+
+  function askReview(id, status) {
+    const r = (H.reviews || []).find(x => x.id === id);
+    if (!r) return;
+    const go = function () { doReview(r, status); };
+    if (status === 'dismissed') { go(); return; }
+    const confirmIt = function () {
+      if (typeof window.mgeConfirm_ === 'function') {
+        window.mgeConfirm_({ title: { en: 'Make this permanent?', es: '¿Hacerlo permanente?' },
+                             msg: { en: reviewLabel(r), es: reviewLabel(r) },
+                             confirmLabel: { en: 'Apply', es: 'Aplicar' }, onConfirm: go });
+      } else if (window.confirm(tr('Make this permanent?', '¿Hacerlo permanente?') + '\n\n' + reviewLabel(r))) {
+        go();
+      }
+    };
+    if (typeof window.MGE_LEAVE_GUARD === 'function') window.MGE_LEAVE_GUARD(confirmIt);
+    else confirmIt();
+  }
+
+  async function doReview(r, status) {
+    try {
+      if (status === 'applied') {
+        const plan = reviewOps(r);
+        if (plan.ops.length) {
+          const a = await rpc('mog_editor_apply', { p_token: H.token, p_label: plan.label, p_by: whoName(), p_ops: plan.ops });
+          if (!a.ok) {
+            if (a.error === 'SESSION_EXPIRED' && typeof window.mgeReshowGate_ === 'function') { window.mgeReshowGate_(); return; }
+            throw new Error(a.error === 'CONFLICT'
+              ? tr('That item changed just now. Reload the page and try again.', 'Ese artículo cambió hace un momento. Recarga la página e inténtalo de nuevo.')
+              : (a.error || 'Save failed'));
+          }
+        }
+      }
+      const m = await rpc('mog_editor_review', { p_token: H.token, p_id: r.id, p_status: status });
+      if (!m.ok && m.error !== 'Not waiting for review') throw new Error(m.error || 'Save failed');
+    } catch (e) {
+      say(e.message, e.message);
+      return;
+    }
+    if (status === 'applied') { window.location.reload(); return; }
+    H.reviews = H.reviews.filter(x => x.id !== r.id);
+    renderReviews();
   }
 
   function say(en, es) {
@@ -298,5 +431,5 @@
   }
 
   // For tests.
-  window.__MOG_EDITOR_HOST__ = { state: H, server: SERVER, timings: timings };
+  window.__MOG_EDITOR_HOST__ = { state: H, server: SERVER, timings: timings, reviewOps: reviewOps, doReview: doReview };
 })();

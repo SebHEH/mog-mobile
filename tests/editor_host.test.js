@@ -103,7 +103,7 @@ function sameTables(sbTables, hostTables) {
 
 async function runSuite(srcOf) {
   const failures = [];
-  const stats = { writes: 0, logged: 0, conflicts: 0, undos: 0 };
+  const stats = { writes: 0, logged: 0, conflicts: 0, undos: 0, reviews: 0 };
   const fail = (scenario, what) => failures.push('[' + scenario + '] ' + what);
   const sb = makeServer();
   const s = sb.stores.get('zzedit');
@@ -167,6 +167,36 @@ async function runSuite(srcOf) {
   else if (conflictOk) stats.conflicts++;
   if (!sameTables(s.tables, tab.H().tables)) fail('conflict', 'the editor\'s copy differs from Supabase after the retry');
 
+  // ---- Needs review: phones' one-day edits, applied or dismissed (schema v7) ----
+  s.quickEdits = [
+    { qid: 901, at: 'fake', cycle: '2026-10-18', by: 'Maria', active: true, review: 'open', kind: 'par_today', vendor: 'Amazon', id: 'ITEM-0002', parBefore: 1, parAfter: 4 },
+    { qid: 902, at: 'fake', cycle: '2026-10-18', by: 'Luis', active: true, review: 'open', kind: 'add_today', vendor: 'Sysco', id: 'ITEM-0003', parBefore: null, parAfter: null },
+    { qid: 903, at: 'fake', cycle: '2026-10-18', by: 'Maria', active: true, review: 'open', kind: 'par_today', vendor: 'Sysco', id: 'ITEM-0001', parBefore: 5, parAfter: 8 }
+  ];
+  const rtab = makeTab(sb, 'zzedit', srcOf);
+  const rtok = (await rtab.run('editorAuth', '4321')).token;
+  const host = rtab.ctx.__MOG_EDITOR_HOST__;
+  if (rtab.H().reviews.length !== 3) fail('review', 'reviews listed: ' + JSON.stringify(rtab.H().reviews));
+  const logged = (s.changeLog || []).length;
+  await host.doReview(rtab.H().reviews.find(r => r.id === 901), 'applied');
+  if (s.tables.items.find(i => i.id === 'ITEM-0002').par !== 4) fail('review', 'apply did not set the par');
+  if (s.quickEdits[0].review !== 'applied') fail('review', 'the applied par still waits for review');
+  if (!((s.changeLog || []).length === logged + 1 && /^Applied a phone change: par of "Tape" 1 → 4/.test(s.changeLog[s.changeLog.length - 1].label))) {
+    fail('review', 'apply was not logged: ' + JSON.stringify((s.changeLog || []).slice(-1)));
+  }
+  await rtab.run('editorPing', rtok);   // what the reload after Apply does
+  await host.doReview(rtab.H().reviews.find(r => r.id === 902), 'applied');
+  const tofuRow = s.tables.pickRows.find(p => p.vendor === 'Sysco' && p.id === 'ITEM-0003');
+  if (!tofuRow || tofuRow.area !== 'Freezer') fail('review', 'apply did not put Tofu on the Sysco list in its area: ' + JSON.stringify(tofuRow));
+  if (s.tables.items.find(i => i.id === 'ITEM-0003').eligible.indexOf('Sysco') < 0) fail('review', 'Sysco is not an eligible vendor of Tofu');
+  await rtab.run('editorPing', rtok);
+  const before3 = s.tables.items.find(i => i.id === 'ITEM-0001').par;
+  await host.doReview(rtab.H().reviews.find(r => r.id === 903), 'dismissed');
+  if (s.quickEdits[2].review !== 'dismissed' || s.tables.items.find(i => i.id === 'ITEM-0001').par !== before3) fail('review', 'dismiss changed the catalog or kept the flag');
+  if (rtab.H().reviews.length !== 0) fail('review', 'the panel still lists ' + rtab.H().reviews.length);
+  stats.reviews = s.quickEdits.filter(e => e.review !== 'open').length;
+  await tab.run('editorPing', token);   // the main tab picks up the applied changes
+
   // ---- Random saves: the copy never drifts from Supabase ----
   const rnd = mulberry32(4242);
   const pick = list => list[Math.floor(rnd() * list.length)];
@@ -223,6 +253,11 @@ const CONTROLS = [
   { name: 'saves do not say who made them', scenario: 'tools',
     find: "      const r = await rpc('mog_editor_apply', { p_token: H.token, p_label: out.label, p_by: by, p_ops: out.ops });",
     replace: "      const r = await rpc('mog_editor_apply', { p_token: H.token, p_label: out.label, p_by: null, p_ops: out.ops });" },
+  { name: 'Apply clears the flag but changes nothing', scenario: 'review',
+    find: '        if (plan.ops.length) {', replace: '        if (false) {' },
+  { name: 'Apply adds the item to the list but not where it is stored', scenario: 'review',
+    find: "    const out = CE.call(H.tables, 'commitSetVendorItems', [r.vendor, onList.concat([r.itemId])]);",
+    replace: "    const out = CE.call(H.tables, 'commitSetVendorItems', [r.vendor, onList]);" },
   { name: 'a URL token goes to the optimistic path', scenario: 'url',
     find: '            delete parameter.t;', replace: '' }
 ];
@@ -231,12 +266,12 @@ const CONTROLS = [
   let failed = 0;
   const live = await runSuite(SRC);
   const st = live.stats;
-  console.log(`editor_host: ${st.writes} random calls, ${st.logged} saves logged, ${st.conflicts} conflict retried, ${st.undos} undone`);
+  console.log(`editor_host: ${st.writes} random calls, ${st.logged} saves logged, ${st.conflicts} conflict retried, ${st.undos} undone, ${st.reviews} reviews closed`);
   if (live.failures.length) {
     failed++;
     console.log(`FAIL  ${live.failures.length} problem(s):`);
     for (const f of live.failures.slice(0, 10)) console.log('      ' + f);
-  } else if (!st.conflicts || !st.undos || st.logged < 40) {
+  } else if (!st.conflicts || !st.undos || st.logged < 40 || st.reviews !== 3) {
     failed++;
     console.log('FAIL  a case was never exercised');
   } else {

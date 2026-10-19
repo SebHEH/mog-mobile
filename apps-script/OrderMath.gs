@@ -137,7 +137,9 @@ function buildPickInfo_(pickDb, vendor) {
 //           trimmed, On Hand col E as the raw cell value);
 //   phone:  rosterFromPickRows_ over the Supabase snapshot.
 // o: { vendor, pickDb, vendorMults, emergencyOverride, vendorOverrides,
-//      dayOfWeek, masterMeta, cutoff }; cutoff is already resolved by the caller.
+//      dayOfWeek, masterMeta, cutoff, todayAdds }; cutoff is already resolved by
+//      the caller; todayAdds (phone/Supabase only) is the Set of "vendor\u0001id"
+//      rows added for today.
 function buildVendorItemsPayload_(roster, o) {
   const vendor            = o.vendor;
   const masterMeta        = o.masterMeta;
@@ -203,7 +205,7 @@ function buildVendorItemsPayload_(roster, o) {
 
     const pi = pickInfo.get(itemId) || { area: '', areaOrder: 999, shelfOrder: 999999 };
 
-    items.push({
+    const item = {
       id:            itemId,
       name:          itemName,
       pack:          pack,
@@ -216,7 +218,13 @@ function buildVendorItemsPayload_(roster, o) {
       storageArea:   pi.area,
       _areaOrder:    pi.areaOrder,
       _shelfOrder:   pi.shelfOrder
-    });
+    };
+    // "Just today" edits (orderInputsFromSnapshot_): the catalog par behind a
+    // today par, and a row added to this list for today. Only ever present on
+    // those rows, so an answer with no edits is exactly what it always was.
+    if (meta.normalPar !== undefined) item.normalPar = !isNaN(meta.normalPar) ? meta.normalPar : null;
+    if (o.todayAdds && o.todayAdds.has(vendor + '\u0001' + itemId)) item.todayOnly = true;
+    items.push(item);
   }
 
   // Pick-path order, then name. (The vendor tab is already in pick-path order
@@ -393,6 +401,47 @@ function orderInputsFromSnapshot_(snap) {
   const counts = new Map();
   for (const c of (snap.counts || [])) counts.set(c.vendor + '\u0001' + c.id, c.onHand);
 
+  // This cycle's "just today" edits from phones (schema v7, docs/MOG_OneApp_Spec.md
+  // Phase 3). Applied here, the one place every reader goes through (phone,
+  // /exec on a moved store, the nightly order log, the recap), so all of them
+  // agree. The next cycle has none, so nothing has to undo them.
+  //   pars: { itemId: par }  replaces the item's par on every list that has it
+  //         (one par per item, R6); the catalog par rides along as normalPar.
+  //   adds: [[vendor, itemId]]  the item joins that vendor's list for today, in
+  //         its usual storage area (its first pick row that has one), and the
+  //         Today card's total counts it, the way catalog backupCounts would.
+  //         Unknown, inactive or already-listed items are ignored.
+  const edits = st.todayEdits || {};
+  const todayPars = edits.pars || {};
+  for (const id of Object.keys(todayPars)) {
+    const m = masterMeta.get(id);
+    const p = todayPars[id];
+    if (!m || p === null || p === undefined || p === '' || !isFinite(Number(p))) continue;
+    masterMeta.set(id, Object.assign({}, m, { par: Number(p), normalPar: m.par }));
+  }
+  let pickDb = cat.pickRows || [];
+  const backupCounts = toMap(cat.backupCounts);
+  const todayAdds = new Set();
+  const adds = Array.isArray(edits.adds) ? edits.adds : [];
+  if (adds.length) {
+    pickDb = pickDb.slice();
+    for (const a of adds) {
+      const vendor = String((a && a[0]) || '');
+      const id = String((a && a[1]) || '');
+      const m = masterMeta.get(id);
+      if (!vendor || !m || m.active !== true) continue;
+      const key = vendor.toLowerCase();
+      const listed = pickDb.some(function (r) {
+        return String(r[0] === null || r[0] === undefined ? '' : r[0]).toLowerCase() === key && String(r[1] || '').trim() === id;
+      });
+      if (listed) continue;
+      const home = pickDb.find(function (r) { return String(r[1] || '').trim() === id && String(r[3] || '').trim(); });
+      pickDb.push([vendor, id, m.name, home ? home[3] : '', home ? home[4] : null, home ? home[5] : null]);
+      todayAdds.add(vendor + '\u0001' + id);
+      if (m.primaryVendor !== vendor) backupCounts.set(vendor, (backupCounts.get(vendor) || 0) + 1);
+    }
+  }
+
   return {
     dateStr:           st.cycleDate,
     dayOfWeek:         st.dayOfWeek,
@@ -402,12 +451,13 @@ function orderInputsFromSnapshot_(snap) {
     vendorMults:       toMap(cat.vendorMults),
     cutoffs:           toMap(cat.cutoffs),
     masterMeta:        masterMeta,
-    pickDb:            cat.pickRows || [],
+    pickDb:            pickDb,
     itemCounts:        toMap(cat.itemCounts),
-    backupCounts:      toMap(cat.backupCounts),
+    backupCounts:      backupCounts,
     vendorOverrides:   vendorOverrides,
     todaysLog:         todaysLog,
-    counts:            counts
+    counts:            counts,
+    todayAdds:         todayAdds
   };
 }
 
@@ -450,7 +500,8 @@ function vendorItemsFromSnapshot_(inputs, vendor) {
       vendorOverrides:   inputs.vendorOverrides,
       dayOfWeek:         inputs.dayOfWeek,
       masterMeta:        inputs.masterMeta,
-      cutoff:            inputs.cutoffs.has(vendor) ? inputs.cutoffs.get(vendor) : null
+      cutoff:            inputs.cutoffs.has(vendor) ? inputs.cutoffs.get(vendor) : null,
+      todayAdds:         inputs.todayAdds
     });
 }
 

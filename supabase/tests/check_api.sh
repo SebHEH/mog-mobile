@@ -71,6 +71,14 @@ check "v6 editor_undo: bad token refused"         200 'SESSION_EXPIRED' -X POST 
 check "v6 helper: editor_apply_ops not exposed"   404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_ops":[]}' "$(rpc editor_apply_ops)"
 check "v6 helper: tables_json not exposed"        404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo"}' "$(rpc tables_json)"
 
+# schema v7
+check "v7 tables: quick edits not reachable"      404 ''   "$URL/rest/v1/quick_edits"
+check "v7 quick_edit: bad token refused"          200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_cycle_date":"2026-10-18","p_kind":"par_today","p_vendor":"V","p_item_id":"X","p_par":1}' "$(rpc mog_quick_edit)"
+check "v7 set_par: bad token refused"             200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_item_id":"X","p_par_before":1,"p_par":2}' "$(rpc mog_set_par)"
+check "v7 editor_review: bad token refused"       200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_id":1,"p_status":"dismissed"}' "$(rpc mog_editor_review)"
+check "v7 helper: prepare_test_store not exposed" 404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfotest"}' "$(rpc prepare_test_store)"
+check "v7 helper: today_edits_json not exposed"   404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_cycle":"2026-10-18"}' "$(rpc today_edits_json)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

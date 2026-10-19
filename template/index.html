@@ -1062,6 +1062,26 @@
       padding: 12px; font-size: 16px; margin-bottom: 4px;
     }
     .name-input[hidden] { display: none; }
+
+    /* Quick edits (one-app Phase 3): today-only badges, the item sheet, the
+       add-an-item picker. The sheets reuse .name-backdrop / .name-sheet. */
+    .vend-badge.vb-today { color: var(--teal-dark); background: var(--teal-light); border: 0.5px solid var(--teal-border); }
+    .item-info.qe-tap { cursor: pointer; }
+    .item-meta .qe-par-today { color: var(--teal-dark); font-weight: 600; }
+    .qe-add-btn { display: block; width: 100%; margin-top: 14px; padding: 11px; border-radius: var(--r-md);
+      border: 1px dashed var(--border-2); background: transparent; color: var(--text-2); font-size: 14px; }
+    .qe-row { display: flex; gap: 8px; margin: 10px 0 6px; }
+    .qe-row .cta, .qe-row .cta-secondary { margin: 0; flex: 1; }
+    .qe-hint { font-size: 12px; color: var(--text-2); margin: 4px 0 10px; }
+    .qe-err { font-size: 13px; color: var(--red); min-height: 16px; margin: 2px 0 6px; }
+    .qe-link { display: block; width: 100%; background: none; border: none; color: var(--teal-dark);
+      font-size: 14px; font-weight: 600; padding: 10px 0; text-align: left; }
+    .qe-list { max-height: 46vh; overflow-y: auto; margin: 6px 0 10px; border: 1px solid var(--border); border-radius: var(--r-md); }
+    .qe-pick { display: block; width: 100%; text-align: left; background: var(--bg); border: none;
+      border-bottom: 1px solid var(--border); padding: 10px 12px; font-size: 14px; color: var(--text); }
+    .qe-pick:last-child { border-bottom: none; }
+    .qe-pick small { display: block; color: var(--text-2); font-size: 12px; margin-top: 2px; }
+    .qe-empty { padding: 14px 12px; color: var(--text-2); font-size: 13px; }
     .cta-copy:active { background: var(--teal-light); }
     .cta-copy.copied { background: var(--teal-light); }
 
@@ -2532,6 +2552,32 @@
       countingAs:       { en: 'Counting as', es: 'Contando como' },
       notSet:           { en: 'Not set', es: 'Sin nombre' },
       lastCountBy:      { en: 'Last count by', es: 'Último conteo de' },
+      qePar:            { en: 'Par', es: 'Par' },
+      qeToday:          { en: 'today', es: 'hoy' },
+      qeNormally:       { en: 'normally', es: 'normalmente' },
+      qeNewPar:         { en: 'New par', es: 'Nuevo par' },
+      qeJustToday:      { en: 'Just today', es: 'Solo hoy' },
+      qeFromNowOn:      { en: 'From now on', es: 'De ahora en adelante' },
+      qeBackToNormal:   { en: 'Back to normal par', es: 'Volver al par normal' },
+      qeForGoodHint:    { en: 'To change it for good, use Manage Items on a computer.', es: 'Para cambiarlo para siempre, usa Administrar artículos en una computadora.' },
+      qeTodayOnly:      { en: 'Today only', es: 'Solo hoy' },
+      qeTakeOff:        { en: "Take off today's list", es: 'Quitar de la lista de hoy' },
+      qeAddItem:        { en: '+ Add an item to this list (today only)', es: '+ Agregar un artículo a esta lista (solo hoy)' },
+      qeAddTitle:       { en: 'Add an item for today', es: 'Agregar un artículo para hoy' },
+      qeAddHelp:        { en: "It's on this list for today's order only.", es: 'Queda en esta lista solo para el pedido de hoy.' },
+      qeSearch:         { en: 'Search items', es: 'Buscar artículos' },
+      qeNoMatches:      { en: 'No items to add.', es: 'No hay artículos para agregar.' },
+      qeConfirmToday:   { en: 'Use this par just for today?', es: '¿Usar este par solo por hoy?' },
+      qeConfirmTodayMsg:{ en: "Only today's order uses it, on every list this item is on. Manage Items flags it for review.", es: 'Solo el pedido de hoy lo usa, en todas las listas de este artículo. Administrar artículos lo marca para revisión.' },
+      qeConfirmGood:    { en: 'Change the par for good?', es: '¿Cambiar el par para siempre?' },
+      qeConfirmGoodMsg: { en: 'Every order from now on uses it. It is logged, and Manage Items can undo it.', es: 'Todos los pedidos desde ahora lo usan. Queda registrado y se puede deshacer en Administrar artículos.' },
+      qeConfirmAdd:     { en: 'Add it for today only?', es: '¿Agregarlo solo por hoy?' },
+      qeConfirmAddMsg:  { en: "It's on this list for today's order only. Manage Items flags it so it can be added for good.", es: 'Queda en esta lista solo para el pedido de hoy. Administrar artículos lo marca para agregarlo para siempre.' },
+      qeSaved:          { en: 'Saved', es: 'Guardado' },
+      qeBadPar:         { en: 'Enter a par of 0 or more.', es: 'Ingresa un par de 0 o más.' },
+      qeNeedsOnline:    { en: 'Quick edits need a connection. Try again.', es: 'Los cambios rápidos necesitan conexión. Intenta de nuevo.' },
+      qeChanged:        { en: 'This item changed just now. Try again.', es: 'Este artículo cambió hace un momento. Intenta de nuevo.' },
+      qeNewDay:         { en: 'A new day has started. Pull down to refresh.', es: 'Empezó un nuevo día. Desliza hacia abajo para actualizar.' },
       liveBannerOne:    { en: 'is counting this vendor too. Their counts show up here as they save.', es: 'también está contando este proveedor. Sus conteos aparecen aquí al guardarse.' },
       liveBannerMany:   { en: 'are counting this vendor too. Their counts show up here as they save.', es: 'también están contando este proveedor. Sus conteos aparecen aquí al guardarse.' },
       itemsReviewed:    { en: 'items reviewed', es: 'artículos revisados' },
@@ -2986,7 +3032,8 @@
   // history and recipients stay on /exec. Design record: D12-D14.
   const DIRECT_ACTIONS = {
     ping: 1, getResetStatus: 1, getDashboard: 1, getVendorItems: 1, getVendorItemsBulk: 1,
-    getRecapData: 1, saveOnHand: 1, setEmergencyOverride: 1, setVendorOverride: 1
+    getRecapData: 1, saveOnHand: 1, setEmergencyOverride: 1, setVendorOverride: 1,
+    quickEdit: 1, setPar: 1   // Supabase only (schema v7): /exec has no quick edits
   };
   // Answers that mean "this store's phones use /exec" (not switched, not yet
   // moved to Supabase, or a schema without the switch).
@@ -3153,6 +3200,9 @@
     };
     direct.snapAt = Date.now();
     direct.inputs = null;
+    // Schema v7: whether Supabase owns this store's catalog ("from now on" par
+    // changes need it). Older schemas leave it out: no.
+    direct.editorDirect = data.editorDirect === true;
     // mog_snapshot2 also carries who else is here (v1 answers leave it as is).
     if (Array.isArray(data.presence)) {
       direct.live.presence = data.presence;
@@ -3301,6 +3351,29 @@
         const snap = adoptSnapshot_(await directCall_('mog_set_vendor_pick',
           { p_vendor: pick.vendor, p_mult: pick.mult, p_have_version: direct.catalogVersion }));
         data = vendorPickAnswerFromSnapshot_(snap, pick.vendor, pick.mult);
+        break;
+      }
+      // Quick edits (schema v7, docs/MOG_OneApp_Spec.md Phase 3). Both answer
+      // the fresh snapshot; the reply is the vendor's recomputed list, like a
+      // day pick. A "just today" edit is tagged with the cycle this phone holds,
+      // so one made on a closed day is refused (STALE_CYCLE), not filed on the
+      // new one.
+      case 'quickEdit': {
+        const held = await directSnapshot_();
+        const snap = adoptSnapshot_(await directCall_('mog_quick_edit', {
+          p_cycle_date: held.state.cycleDate, p_kind: payload.kind, p_vendor: payload.vendor || null,
+          p_item_id: payload.id, p_par: (payload.par === undefined || payload.par === null) ? null : payload.par,
+          p_by: liveName_() || null, p_have_version: direct.catalogVersion }));
+        const inputs = await directInputs_();
+        data = { itemsPayload: vendorItemsFromSnapshot_(inputs, vendorNameFromInputs_(inputs, payload.vendor)), cycleDate: snap.state.cycleDate };
+        break;
+      }
+      case 'setPar': {
+        const snap = adoptSnapshot_(await directCall_('mog_set_par', {
+          p_item_id: payload.id, p_par_before: (payload.parBefore === undefined ? null : payload.parBefore),
+          p_par: payload.par, p_by: liveName_() || null, p_have_version: direct.catalogVersion }));
+        const inputs = await directInputs_();
+        data = { itemsPayload: vendorItemsFromSnapshot_(inputs, vendorNameFromInputs_(inputs, payload.vendor)), cycleDate: snap.state.cycleDate };
         break;
       }
       default:
@@ -4475,6 +4548,8 @@
     // Full-screen busy overlay — toggles .open in showBusy/hideBusy.
     const busy = document.getElementById('busy-overlay');
     if (busy && busy.classList.contains('open')) return true;
+    // A quick-edit sheet (item or add-an-item): the 10-second refresh waits.
+    if (document.getElementById('qe-backdrop')) return true;
     return false;
   }
 
@@ -5150,6 +5225,176 @@
     }
   }
 
+  // ============================================================
+  // QUICK EDITS (docs/MOG_OneApp_Spec.md Phase 3, schema v7)
+  // ============================================================
+  // On a Supabase store's count screen: an item's par just for today (on
+  // every list it's on), or from now on where Supabase owns the catalog; and
+  // an existing item added to this vendor's list for today. Each edit
+  // confirms, is logged with who made it, and needs a connection (not queued
+  // like counts). Taking one back is a single tap.
+
+  function fmtQty_(n) {
+    const x = Number(n);
+    return isFinite(x) ? String(Math.round(x * 1000) / 1000) : '—';
+  }
+
+  function closeQeSheet_() { const w = $('qe-backdrop'); if (w) w.remove(); }
+
+  function openQeSheet_(innerHtml) {
+    closeQeSheet_();
+    const wrap = document.createElement('div');
+    wrap.className = 'name-backdrop';
+    wrap.id = 'qe-backdrop';
+    wrap.innerHTML = '<div class="name-sheet" role="dialog" aria-modal="true">' + innerHtml + '</div>';
+    wrap.addEventListener('click', e => { if (e.target === wrap) closeQeSheet_(); });
+    document.body.appendChild(wrap);
+    return wrap;
+  }
+
+  // The catalog par (what "normal" means), straight from the catalog: the
+  // count row's par is 0 for a blank one, which mog_set_par would refuse.
+  function catalogPar_(id) {
+    const it = direct.catalog && direct.catalog.items && direct.catalog.items[id];
+    return it && typeof it.par === 'number' ? it.par : null;
+  }
+
+  function openItemSheet_(id) {
+    const ctx = state.countContext;
+    const it = ctx && ctx.items.find(i => i.id === id);
+    if (!it) return;
+    const today = it.normalPar !== undefined;
+    const normalTxt = today ? (it.normalPar === null ? '—' : fmtQty_(it.normalPar)) : '';
+    const canGood = direct.editorDirect === true;
+    const info = [it.pack, t('qePar') + ' ' + fmtQty_(it.par) + (today ? ' ' + t('qeToday') + ' · ' + t('qeNormally') + ' ' + normalTxt : '')]
+      .filter(Boolean).join(' · ');
+    openQeSheet_(
+      '<h3>' + escapeHtml(it.name) + '</h3>' +
+      '<p class="name-help">' + escapeHtml(info) + '</p>' +
+      '<label class="qe-hint" for="qe-par">' + escapeHtml(t('qeNewPar')) + '</label>' +
+      '<input class="name-input" id="qe-par" type="number" inputmode="decimal" step="any" min="0" value="' + escapeHtml(fmtQty_(it.par)) + '">' +
+      '<div class="qe-err" id="qe-err"></div>' +
+      '<div class="qe-row">' +
+        '<button class="cta" id="qe-today">' + escapeHtml(t('qeJustToday')) + '</button>' +
+        (canGood ? '<button class="cta-secondary" id="qe-good">' + escapeHtml(t('qeFromNowOn')) + '</button>' : '') +
+      '</div>' +
+      (canGood ? '' : '<p class="qe-hint">' + escapeHtml(t('qeForGoodHint')) + '</p>') +
+      (today ? '<button class="qe-link" id="qe-normal">' + escapeHtml(t('qeBackToNormal')) + ' (' + escapeHtml(normalTxt) + ')</button>' : '') +
+      (it.todayOnly ? '<button class="qe-link" id="qe-takeoff">' + escapeHtml(t('qeTakeOff')) + '</button>' : '') +
+      '<button class="cta-secondary" id="qe-cancel">' + escapeHtml(t('cancel')) + '</button>');
+    const readPar = () => {
+      const v = String($('qe-par').value).trim();
+      const n = Number(v);
+      if (v === '' || !isFinite(n) || n < 0) { $('qe-err').textContent = t('qeBadPar'); return null; }
+      return n;
+    };
+    $('qe-cancel').addEventListener('click', closeQeSheet_);
+    $('qe-today').addEventListener('click', async () => {
+      const par = readPar();
+      if (par === null) return;
+      closeQeSheet_();
+      if (!(await showConfirm({ title: t('qeConfirmToday'), msg: it.name + ': ' + t('qePar') + ' ' + fmtQty_(par) + '. ' + t('qeConfirmTodayMsg'),
+                                confirmLabel: t('qeJustToday'), kind: 'warn', icon: 'calendar' }))) return;
+      runQuickEdit_('quickEdit', { kind: 'par_today', vendor: ctx.vendor, id: it.id, par: par });
+    });
+    if ($('qe-good')) $('qe-good').addEventListener('click', async () => {
+      const par = readPar();
+      if (par === null) return;
+      closeQeSheet_();
+      if (!(await showConfirm({ title: t('qeConfirmGood'), msg: it.name + ': ' + t('qePar') + ' ' + fmtQty_(par) + '. ' + t('qeConfirmGoodMsg'),
+                                confirmLabel: t('qeFromNowOn'), kind: 'warn', icon: 'pencil' }))) return;
+      runQuickEdit_('setPar', { vendor: ctx.vendor, id: it.id, parBefore: catalogPar_(it.id), par: par });
+    });
+    if ($('qe-normal')) $('qe-normal').addEventListener('click', () => {
+      closeQeSheet_();
+      runQuickEdit_('quickEdit', { kind: 'par_today_clear', vendor: ctx.vendor, id: it.id });
+    });
+    if ($('qe-takeoff')) $('qe-takeoff').addEventListener('click', () => {
+      closeQeSheet_();
+      runQuickEdit_('quickEdit', { kind: 'add_today_remove', vendor: ctx.vendor, id: it.id });
+    });
+  }
+
+  // Active items not on this vendor's list (today's adds included), A to Z,
+  // with a search box.
+  function openAddItemSheet_() {
+    const ctx = state.countContext;
+    const cat = direct.catalog;
+    if (!ctx || !cat) return;
+    const vLow = String(ctx.vendor).toLowerCase();
+    const onList = new Set((cat.pickRows || [])
+      .filter(r => String(r[0] === null || r[0] === undefined ? '' : r[0]).toLowerCase() === vLow)
+      .map(r => String(r[1] || '').trim()));
+    ctx.items.forEach(i => onList.add(i.id));
+    const items = cat.items || {};
+    const cands = Object.keys(items)
+      .filter(id => items[id].active === true && items[id].name && !onList.has(id))
+      .map(id => ({ id: id, name: items[id].name, pack: items[id].pack, primary: items[id].primaryVendor }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    openQeSheet_(
+      '<h3>' + escapeHtml(t('qeAddTitle')) + '</h3>' +
+      '<p class="name-help">' + escapeHtml(t('qeAddHelp')) + '</p>' +
+      '<input class="name-input" id="qe-search" type="search" autocomplete="off" placeholder="' + escapeHtml(t('qeSearch')) + '">' +
+      '<div class="qe-list" id="qe-list"></div>' +
+      '<button class="cta-secondary" id="qe-cancel">' + escapeHtml(t('cancel')) + '</button>');
+    const paint = () => {
+      const q = $('qe-search').value.trim().toLowerCase();
+      const shown = cands.filter(c => !q || c.name.toLowerCase().indexOf(q) >= 0).slice(0, 200);
+      const list = $('qe-list');
+      list.innerHTML = shown.length
+        ? shown.map(c => '<button class="qe-pick" data-id="' + escapeHtml(c.id) + '">' + escapeHtml(c.name) +
+            '<small>' + escapeHtml([c.pack, c.primary].filter(Boolean).join(' · ')) + '</small></button>').join('')
+        : '<div class="qe-empty">' + escapeHtml(t('qeNoMatches')) + '</div>';
+      list.querySelectorAll('.qe-pick').forEach(b => b.addEventListener('click', async () => {
+        const id = b.getAttribute('data-id');
+        closeQeSheet_();
+        if (!(await showConfirm({ title: t('qeConfirmAdd'), msg: items[id].name + ' → ' + ctx.vendor + '. ' + t('qeConfirmAddMsg'),
+                                  confirmLabel: t('qeJustToday'), kind: 'warn', icon: 'plus' }))) return;
+        runQuickEdit_('quickEdit', { kind: 'add_today', vendor: ctx.vendor, id: id });
+      }));
+    };
+    $('qe-search').addEventListener('input', paint);
+    $('qe-cancel').addEventListener('click', closeQeSheet_);
+    paint();
+  }
+
+  // One quick edit, then the count screen from the answer. A today par
+  // reaches the item on every list it's on, so every vendor's cached list
+  // (and the Today cards) is dropped; this vendor's comes back with the
+  // answer. Typed counts stay, as after a day pick.
+  async function runQuickEdit_(action, payload) {
+    const ctx = state.countContext;
+    if (!ctx) return;
+    showBusy(t('saving'));
+    try {
+      const res = await api(action, payload);
+      if (state.countContext !== ctx) { hideBusy(); return; }
+      state.cache.dashboard = null;
+      setDashboardFetchedAt_(null);
+      state.cache.vendorItems = {};
+      const fresh = res.itemsPayload;
+      state.cache.vendorItems[ctx.vendor] = fresh;
+      ctx.items = fresh.items;
+      const draft = loadDraft(ctx.dateStr, ctx.vendor);
+      for (const it of ctx.items) {
+        if (Object.prototype.hasOwnProperty.call(ctx.dirty, it.id)) it.onHand = ctx.dirty[it.id];
+        else if (Object.prototype.hasOwnProperty.call(draft, it.id)) it.onHand = draft[it.id];
+      }
+      cacheTargetPars(ctx.items);
+      renderCount();
+      hideBusy();
+      showToast(t('qeSaved'), 'success');
+    } catch (e) {
+      hideBusy();
+      directExpire_();   // the next read fetches what Supabase has now
+      const m = String((e && e.message) || '');
+      if (isNetworkError_(e)) showToast(t('qeNeedsOnline'), 'error');
+      else if (m === 'STALE_CYCLE') showToast(t('qeNewDay'), 'error');
+      else if (m === 'CONFLICT') showToast(t('qeChanged'), 'error');
+      else showToast(m || t('saveError'), 'error');
+    }
+  }
+
   function renderCount() {
     const ctx = state.countContext;
     const view = $('view-count');
@@ -5208,14 +5453,26 @@
       const sug = computeSuggested(it);
       const pillCls = sug == null ? 'suggest empty' : (sug === 0 ? 'suggest zero' : 'suggest');
       const pillTxt = sug == null ? '—' : sug;
-      const badge = it.secondary
+      const badge = (it.secondary
         ? ' <span class="vend-badge vb-secondary">' + escapeHtml(t('secondary')) +
             (it.primaryVendor ? ' &middot; ' + escapeHtml(it.primaryVendor) : '') + '</span>'
-        : ' <span class="vend-badge vb-primary">' + escapeHtml(t('primary')) + '</span>';
+        : ' <span class="vend-badge vb-primary">' + escapeHtml(t('primary')) + '</span>') +
+        (it.todayOnly ? ' <span class="vend-badge vb-today">' + escapeHtml(t('qeTodayOnly')) + '</span>' : '');
+      // Quick edits (Supabase stores): the par shows in the meta line, and
+      // tapping the item opens its sheet. A today par says what it normally is.
+      const qe = direct.mode === 'direct';
+      let meta = escapeHtml(it.pack || '');
+      if (qe) {
+        const parTxt = it.normalPar !== undefined
+          ? '<span class="qe-par-today">' + escapeHtml(t('qePar')) + ' ' + escapeHtml(fmtQty_(it.par)) + ' ' + escapeHtml(t('qeToday')) + '</span> &middot; ' +
+            escapeHtml(t('qeNormally')) + ' ' + escapeHtml(it.normalPar === null ? '—' : fmtQty_(it.normalPar))
+          : escapeHtml(t('qePar')) + ' ' + escapeHtml(fmtQty_(it.par));
+        meta = (meta ? meta + ' &middot; ' : '') + parTxt;
+      }
       html += '<div class="item" data-id="' + escapeHtml(it.id) + '">' +
-        '<div class="item-info">' +
+        '<div class="item-info' + (qe ? ' qe-tap' : '') + '">' +
           '<p class="item-name">' + escapeHtml(it.name) + badge + '</p>' +
-          '<p class="item-meta">' + escapeHtml(it.pack || '') + '</p>' +
+          '<p class="item-meta">' + meta + '</p>' +
         '</div>' +
         '<div class="stepper">' +
           '<button class="step-btn" data-step="-1">&minus;</button>' +
@@ -5224,6 +5481,10 @@
         '</div>' +
         '<span class="' + pillCls + '">' + pillTxt + '</span>' +
       '</div>';
+    }
+
+    if (direct.mode === 'direct') {
+      html += '<button class="qe-add-btn" id="qe-add-btn">' + escapeHtml(t('qeAddItem')) + '</button>';
     }
 
     // Save and continue later goes ABOVE Review order so the primary
@@ -5248,6 +5509,10 @@
 
     if ($('review-btn'))         $('review-btn').addEventListener('click', onReviewClick);
     if ($('save-continue-btn'))  $('save-continue-btn').addEventListener('click', onSaveContinueClick);
+    view.querySelectorAll('.item-info.qe-tap').forEach(el => {
+      el.addEventListener('click', () => openItemSheet_(el.closest('.item').getAttribute('data-id')));
+    });
+    if ($('qe-add-btn')) $('qe-add-btn').addEventListener('click', openAddItemSheet_);
     renderLiveBanner_();
 
     // Override day-picker wiring (chips only exist while override is on).
@@ -6993,7 +7258,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.19.1';
+    const versionStr = '0.20.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =

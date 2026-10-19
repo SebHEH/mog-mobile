@@ -189,9 +189,10 @@ mog-mobile/
 │   ├── schema_v4.sql            Step 6 part 1: catalog tables (vendors/areas/items/pick_rows), the SQL catalog builder, the seed, editor_direct (run after v3).
 │   ├── schema_v5.sql            Live counting (one-app Phase 1): presence, the store's name list, who saved each count, mog_snapshot2 / mog_save_counts2 (run after v4).
 │   ├── schema_v6.sql            The editor writes the catalog (one-app Phase 2): change log, mog_editor_login/_get/_apply/_undo, D23 (run after v5).
+│   ├── schema_v7.sql            Phone quick edits (one-app Phase 3): "just today" par/add in mog.quick_edits + the snapshot, mog_set_par, review list (run after v6).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v6.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
+│   └── tests/                   smoke.sql … smoke_v7.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.
@@ -200,7 +201,7 @@ mog-mobile/
 │   └── MOG_SessionHandoff_*.md  Per-session handoffs (newest @-imported above).
 ├── .claude/
 │   └── skills/                  Repo-specific skills.
-├── _preview/                    GENERATED, git-ignored: build.py --preview output for Supabase test stores (rprfotest).
+├── _preview/                    GENERATED, git-ignored: build.py --preview output (app + editor) for Supabase test stores (rprfotest).
 └── rpr/ rprfo/ rpt/ rptfo/      GENERATED — do not edit.
     rpfr/ rpfrf/ tnyt/ tnytf/    (per-store dirs from build.py)
 ```
