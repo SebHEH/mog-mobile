@@ -87,6 +87,17 @@ How it works: today edits live in `mog.quick_edits` and ride in the snapshot (`s
 
 **Deploy order (the close must honour edits before any phone can make one):** `OrderMath.gs` to every store (`deploy.py --redeploy`, canary rprfo), then schema v7, then the PWA (canary rprfo).
 
+### Import from MarginEdge decisions (2026-10-18)
+
+| # | Decision | Chosen |
+|---|---|---|
+| M1 | Where the items come from | **MarginEdge's Vendor Items export (vendorItems.csv), uploaded.** Works today with no key or setup. MarginEdge's read-only API (an `x-api-key`; vendors, vendor items, packaging) could feed the same screen later and would bring pack sizes. The CSV has none, so packs come in blank. Not built: it needs a key from MarginEdge and a server to hold it. |
+| M2 | Where the import lives | **The Supabase editor only**: a button in the editor's bottom bar (`template/editor/meImport.js`), saving through `catalogEdit.js` `commitImportItems` like any edit (logged, undoable). No `Items.gs` twin, so a store uses it once its editor switches (Phase 4). |
+| M3 | What an imported item is called | **MarginEdge's product name** (the company's own name, e.g. "Butter, Unsalted"), editable on the screen. Each MarginEdge vendor selling it becomes one of its vendors; the one bought from most recently is the primary (R6). |
+| M4 | TNY Rockville's copied catalog | **Cleared at its switch.** tnyr/tnyrf's Sheets are copies of Tysons that nobody uses, so the switch starts them from an empty catalog instead of seeding it from the Sheet, then imports from MarginEdge. |
+
+What starts ticked: products not in the store yet (by name or item code), in a category that's restocked (not equipment, furniture, repairs, linen, office or services), bought in the file's last 60 days. Imported items arrive active, with no par, no pack and no storage area (the Import Vendor contract), so they wait under Unassigned. New vendors have no delivery days. Gate: `tests/me_import.test.js`, plus one import through the host in `editor_host`.
+
 ## Phases
 
 1. **Live counting.** Today and the open vendor refresh every ~10s while the app is on screen (one Supabase read, ~0.3s; no Apps Script). Vendor cards show who is counting. The first-sign-in name picker and the self-building leaders list ship here too. An auto-refresh never overwrites a count you're typing.
@@ -97,11 +108,11 @@ How it works: today edits live in `mog.quick_edits` and ride in the snapshot (`s
 3. **Phone quick edits.** "Just today" par and "today only" items. Both are data for the current cycle only, which the shared order math has to honour, so they go through `OrderMath.gs` with its gates. Manage Items gets a "Needs review" filter with Apply and Dismiss.
 4. **Remaining tools, and switching each store.**
    - The tools: Vendors, Areas, Shelf to Sheet, History (order log backfilled from LOG_ORDERS), Health, Recipients, People.
-   - Each store's editor then switches, rprfo first and the unused Tysons/Founders stores last.
+   - Each store's editor then switches: TNY Rockville (tnyr, tnyrf) first, since it's unused and starts from an empty catalog plus its MarginEdge import (M4; Sebastian, 2026-10-18), then rprfo, and the unused Tysons/Founders stores last.
 5. **Desktop layout** for the ordering screens.
 
 ## Out of scope (for now)
 
 - Roles beyond the shared PIN.
 - The one-click vendor email: the Copy order builder already returns the subject, table and text it needs. It needs vendor email addresses, which belong with the vendor data in Supabase.
-- MarginEdge catalog seeding and new-store onboarding.
+- New-store onboarding. (MarginEdge catalog seeding is in: see M1-M4.)

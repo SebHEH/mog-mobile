@@ -49,7 +49,7 @@ PREVIEW_DIR    = os.path.join(ROOT, '_preview')   # git-ignored: test stores, ne
 # page is an Apps Script page rendered as-is, its scriptlets filled in here,
 # plus the files that answer its server calls from Supabase.
 EDITOR_PAGES  = {'items.html': ('ManageItems', 'Manage Items')}
-EDITOR_ASSETS = ('catalogEdit.js', 'host.js')
+EDITOR_ASSETS = ('catalogEdit.js', 'meImport.js', 'host.js')
 SCRIPTLET_RE  = re.compile(r'<\?!=\s*(.*?)\s*\?>', re.S)
 
 # Slugs that would collide with our repo structure.
@@ -251,6 +251,7 @@ def render_editor_page(page, title, boot, sb_cfg):
             '\n    <title>' + title + ' · ' + boot['store'] + '</title>'
             '\n    <script>window.MOG_SUPABASE = ' + js_json(sb_cfg) + ';</script>'
             '\n    <script src="catalogEdit.js"></script>'
+            '\n    <script src="meImport.js"></script>'
             '\n    <script src="host.js"></script>')
     text = text.replace('<head>', head, 1)
     return SCRIPTLET_RE.sub(fill, text)   # included files are inserted as-is, never re-read

@@ -13,6 +13,8 @@
 //     keeping the other editor's change
 //   - many random saves: the editor's own copy of the tables always equals
 //     Supabase's, and the phones' catalog follows; Undo through Supabase
+//   - Import from MarginEdge: one bulk save (a new vendor, items with no par
+//     and no storage area) lands in Supabase, logged, the copy in step
 //   - a token in the URL goes to the gate's validate-first path
 // Planted-defect controls in host.js must each be caught.
 //
@@ -196,6 +198,27 @@ async function runSuite(srcOf) {
   if (rtab.H().reviews.length !== 0) fail('review', 'the panel still lists ' + rtab.H().reviews.length);
   stats.reviews = s.quickEdits.filter(e => e.review !== 'open').length;
   await tab.run('editorPing', token);   // the main tab picks up the applied changes
+
+  // ---- Import from MarginEdge: one bulk save, through the same path ----
+  const beforeImport = (s.changeLog || []).length;
+  let imp = null;
+  try {
+    imp = await tab.tool(token, 'commitImportItems', { newVendors: ['Elpis Wholesale'], items: [
+      { name: 'Cup 16oz', primaryVendor: 'Elpis Wholesale', eligible: ['Sysco'], sku: 'C16', category: 'Paper and Packaging' },
+      { name: 'lime', primaryVendor: 'Sysco', eligible: [], sku: '', category: 'Produce' }] });
+  } catch (e) { fail('import', 'the save failed: ' + e.message); }
+  const cup = s.tables.items.find(i => i.name === 'Cup 16oz');
+  const elpis = s.tables.vendors.find(v => v.name === 'Elpis Wholesale');
+  if (!imp || imp.itemsAdded !== 1 || imp.skipped.length !== 1) fail('import', 'answer: ' + JSON.stringify(imp));
+  if (!cup || cup.par !== null || cup.pack !== '' || cup.sku !== 'C16' || JSON.stringify(cup.eligible) !== '["Elpis Wholesale","Sysco"]' ||
+      s.tables.pickRows.some(p => p.id === cup.id)) fail('import', 'the item in Supabase: ' + JSON.stringify(cup));
+  if (!elpis || JSON.stringify(elpis.mults) !== '[0,0,0,0,0,0,0]') fail('import', 'the vendor in Supabase: ' + JSON.stringify(elpis));
+  if (!((s.changeLog || []).length === beforeImport + 1 &&
+        s.changeLog[s.changeLog.length - 1].label === 'Imported 1 item from MarginEdge and added 1 vendor (Elpis Wholesale)')) {
+    fail('import', 'not logged: ' + JSON.stringify((s.changeLog || []).slice(-1)));
+  }
+  if (!sameTables(s.tables, tab.H().tables)) fail('import', 'the editor\'s copy differs from Supabase after the import');
+  if (JSON.stringify(s.catalog) !== JSON.stringify(require('./fake_supabase.js').catalogFromTables(s))) fail('import', 'the phones\' catalog is behind');
 
   // ---- Random saves: the copy never drifts from Supabase ----
   const rnd = mulberry32(4242);

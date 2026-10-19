@@ -4,6 +4,8 @@
 // (and the PickPath.gs / Vendors.gs helpers it calls) from Sheet ranges to
 // the schema-v4 tables, checked against Items.gs on the fake Sheet by
 // tests/catalog_edit.test.js: same answers, same errors, same row order.
+// One call is the editor's own, with no Items.gs twin: commitImportItems
+// (Import from MarginEdge), checked by tests/me_import.test.js.
 // The store is never part of this file: the tables it gets are one store's,
 // and mog_editor_apply takes the store from the sign-in token.
 //
@@ -458,6 +460,61 @@
     return out;
   }
 
+  // Import from MarginEdge (meImport.js builds the payload). Supabase editor
+  // only, so unlike the calls above it has no Items.gs twin. New vendors start
+  // with no delivery days, so they order nothing until Manage Vendors sets
+  // them. Items come in the way Import Vendor's do (Vendors.gs
+  // commitImportVendor_): active, par blank, no storage area, at the end of
+  // the list, so they wait under Unassigned. A name already in the catalog is
+  // skipped, never doubled.
+  // payload = { newVendors: [name], items: [{ name, primaryVendor, eligible: [name], sku, category }] }
+  function importItems(w, payload) {
+    const newVendors = Array.isArray(payload.newVendors) ? payload.newVendors : [];
+    const rows = Array.isArray(payload.items) ? payload.items : [];
+    const known = vendorMap(w);
+    const vendorsAdded = [];
+    for (const raw of newVendors) {
+      const name = String(raw || '').trim();
+      if (!name) throw new Error('Vendor name is required.');
+      if (name.length > 100) throw new Error('Vendor name "' + name + '" is longer than 100 characters.');
+      if (known.has(name.toLowerCase())) throw new Error('Vendor "' + name + '" already exists.');
+      known.set(name.toLowerCase(), name);
+      w.vendors.push({ name: name, mults: [0, 0, 0, 0, 0, 0, 0], cutoff: null });
+      vendorsAdded.push(name);
+    }
+
+    let maxN = 0, seq = 0;
+    const taken = new Set();
+    for (const it of w.items) {
+      const m = /^ITEM-(\d+)$/i.exec(s_(it.id));
+      if (m) maxN = Math.max(maxN, Number(m[1]));
+      seq = Math.max(seq, Number(it.seq) || 0);
+      if (s_(it.name)) taken.add(s_(it.name).toLowerCase());
+    }
+    const skipped = [];
+    let itemsAdded = 0;
+    for (const row of rows) {
+      const name = String((row && row.name) || '').trim();
+      if (!name) throw new Error('Item Name is required.');
+      if (name.length > 300) throw new Error('Item name "' + name.substring(0, 60) + '…" is longer than 300 characters.');
+      if (taken.has(name.toLowerCase())) { skipped.push({ name: name, reason: 'already in the catalog' }); continue; }
+      const primary = normalizeVendorOrThrow(w, row.primaryVendor);
+      const eligible = [primary];
+      for (const v of (Array.isArray(row.eligible) ? row.eligible : [])) {
+        const canon = normalizeVendorOrThrow(w, v);
+        if (eligible.indexOf(canon) < 0) eligible.push(canon);
+      }
+      taken.add(name.toLowerCase());
+      maxN++;
+      seq++;
+      w.items.push({ id: 'ITEM-' + String(maxN).padStart(4, '0'), name: name, primaryVendor: primary, pack: '', par: null,
+                     active: true, useMult: true, notes: '', sku: s_(row.sku), category: s_(row.category),
+                     eligible: eligible, seq: seq });
+      itemsAdded++;
+    }
+    return { ok: true, vendorsAdded: vendorsAdded, itemsAdded: itemsAdded, skipped: skipped };
+  }
+
   // ---- Changes ---------------------------------------------------------------
 
   function sameRow(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -556,6 +613,12 @@
     if (fn === 'commitSwitchActiveVendor') return 'Made ' + result.vendor + ' the primary vendor of "' + nameOf(result.id) + '"';
     if (fn === 'commitSetVendorItems') return 'Assigned items to ' + result.vendor + ': ' + result.added + ' added, ' + result.removed + ' removed';
     if (fn === 'commitDeleteItem') return 'Deleted "' + result.name + '" (' + result.id + ')';
+    if (fn === 'commitImportItems') {
+      const v = result.vendorsAdded.length;
+      const names = v <= 6 ? ' (' + result.vendorsAdded.join(', ') + ')' : '';   // the log keeps 300 characters
+      return 'Imported ' + result.itemsAdded + ' item' + (result.itemsAdded === 1 ? '' : 's') + ' from MarginEdge' +
+        (v ? ' and added ' + v + ' vendor' + (v === 1 ? '' : 's') + names : '');
+    }
     return fn;
   }
 
@@ -574,7 +637,8 @@
     commitUpsertItem: (w, args, shifts) => upsertItem(w, args[0] || {}, shifts),
     commitSwitchActiveVendor: (w, args) => switchActiveVendor(w, args[0], args[1]),
     commitSetVendorItems: (w, args) => setVendorItems(w, args[0], args[1]),
-    commitDeleteItem: (w, args) => deleteItem(w, args[0])
+    commitDeleteItem: (w, args) => deleteItem(w, args[0]),
+    commitImportItems: (w, args) => importItems(w, args[0] || {})
   };
 
   // A read answers { result }; a write { result, ops, label }. A name this

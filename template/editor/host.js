@@ -12,7 +12,8 @@
 // It loads before the page's own scripts (build.py puts it first in <head>),
 // needs window.MOG_SUPABASE = { url, key, slug } and window.CatalogEdit.
 //
-// It also adds the Changes panel: the store's change log, with Undo.
+// It also adds the Changes panel (the store's change log, with Undo), the
+// Needs review panel, and the Import from MarginEdge button (meImport.js).
 (function () {
   'use strict';
 
@@ -234,6 +235,13 @@
     reviewsBtn.onclick = function () { togglePanel('mge-reviews'); };
     bar.appendChild(changesBtn);
     bar.appendChild(reviewsBtn);
+    if (window.MeImport) {
+      const importBtn = document.createElement('button');
+      importBtn.id = 'mge-import-btn';
+      importBtn.type = 'button';
+      importBtn.onclick = openImport;
+      bar.appendChild(importBtn);
+    }
     document.body.appendChild(bar);
     for (const id of ['mge-changes', 'mge-reviews']) {
       const panel = document.createElement('div');
@@ -258,6 +266,8 @@
     const panel = document.getElementById('mge-changes');
     if (!btn || !panel) return;
     btn.textContent = '↶ ' + tr('Changes', 'Cambios');
+    const importBtn = document.getElementById('mge-import-btn');
+    if (importBtn) importBtn.textContent = '⬇ ' + tr('Import from MarginEdge', 'Importar de MarginEdge');
     renderReviews();
     if (panel.hidden) return;
     let html = '<h3>' + esc(tr('Catalog changes', 'Cambios al catálogo')) + '</h3>';
@@ -275,6 +285,42 @@
     panel.querySelectorAll('button[data-undo]').forEach(function (b) {
       b.onclick = function () { askUndo(Number(b.getAttribute('data-undo'))); };
     });
+  }
+
+  // ---- Import from MarginEdge (meImport.js) -------------------------------------
+
+  // The import saves through callTool like any edit (logged, undoable), then
+  // the page reloads to show the new items, as after an Undo. Unsaved edits
+  // on the page come first.
+  function openImport() {
+    const go = function () {
+      window.MeImport.open({
+        tables: function () { return H.tables; },
+        call: callTool,
+        tr: tr,
+        done: function (res) {
+          const n = res.itemsAdded, v = res.vendorsAdded.length, skip = res.skipped.length;
+          const en = 'Imported ' + n + ' item' + (n === 1 ? '' : 's') + (v ? ' and ' + v + ' new vendor' + (v === 1 ? '' : 's') : '') + '.' +
+            (skip ? ' ' + skip + ' were already in the catalog.' : '') +
+            ' They are under Unassigned: give each a storage area and a par.' +
+            (v ? ' The new vendors have no delivery days yet.' : '');
+          const es = 'Se importaron ' + n + ' artículo' + (n === 1 ? '' : 's') + (v ? ' y ' + v + ' proveedor' + (v === 1 ? '' : 'es') + ' nuevo' + (v === 1 ? '' : 's') : '') + '.' +
+            (skip ? ' ' + skip + ' ya estaban en el catálogo.' : '') +
+            ' Están en el filtro Sin Área: dale a cada uno un área y un par.' +
+            (v ? ' Los proveedores nuevos todavía no tienen días de entrega.' : '');
+          const reload = function () { window.location.reload(); };
+          if (typeof window.mgeConfirm_ === 'function') {
+            window.mgeConfirm_({ title: { en: 'Imported', es: 'Importado' }, msg: { en: en, es: es },
+                                 confirmLabel: { en: 'OK', es: 'OK' }, onConfirm: reload });
+          } else {
+            window.alert(tr(en, es));
+            reload();
+          }
+        }
+      });
+    };
+    if (typeof window.MGE_LEAVE_GUARD === 'function') window.MGE_LEAVE_GUARD(go);
+    else go();
   }
 
   // ---- Needs review: phones' "just today" edits (schema v7) ---------------------

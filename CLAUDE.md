@@ -148,7 +148,8 @@ mog-mobile/
 │   ├── sw.js                    (6.9 KB — store SW).
 │   └── editor/                  The editor on Supabase (one-app Phase 2): catalogEdit.js (Manage Items' logic over
 │                                the catalog tables, gated against Items.gs) + host.js (runs the UNCHANGED
-│                                ManageItems.html as a static page). build.py --preview writes it for a test store.
+│                                ManageItems.html as a static page) + meImport.js (Import from MarginEdge: the
+│                                Vendor Items CSV → a pick list → one logged save). build.py --preview writes it for a test store.
 ├── apps-script/                 APPS SCRIPT SOURCE.
 │   ├── README.md                Apps Script workflow docs (setup + day-to-day).
 │   ├── MOGApi.gs                Core API surface for PWA ↔ Sheet (doGet/doPost, api_* fns, page routing).
