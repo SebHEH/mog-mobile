@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: f2ac2a5 (2026-10-18) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: 232d408 (2026-10-18) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -303,6 +303,7 @@ naive rebuild silently loses.*
 - **R23. One writer per kind of data; nothing syncs both ways.**
   - The database owns the counts, the current order day, the overrides and the order log.
   - The store's catalog (items, pars, vendors, the pick path) is still owned by the Sheet. It is copied one way into the database after every edit and nightly.
+  - Where a store's catalog has moved to the database (its editor switched; so far only the test store), the editor writes it there directly. Every catalog change is logged (what, before and after, who, when) and can be undone; a change is refused, and nothing written, if a row it touches changed since the editor read it. *(One-app Phase 2, `docs/MOG_OneApp_Spec.md` E1-E4.)*
   - Nothing is copied back into the Sheet except a nightly backup of the order log.
   - Why: two copies that both accept writes eventually disagree, and then nobody knows which is right. Moving the catalog's ownership to the database is the planned next step (the web editor on the database), done in one step per store so the catalog never has two owners. *(Confirmed: design record `docs/MOG_SupabaseMigration.md` §3, D9, D16; owner direction 2026-10-15.)*
 - **R24. A count belongs to its item, vendor and day, not to a row on a list.**
@@ -315,6 +316,12 @@ naive rebuild silently loses.*
   - Each vendor card shows who has it open ("Maria counting"), or who saved its latest count. Opening a vendor someone else has open shows a warning naming them. It does not lock: counts are kept per item, so a collision needs the exact same item, and then the last save wins.
   - Each device says once who is counting, picked from the store's own list of names (or typed, which adds it to the list; Skip shows "Someone"). It is a label, not a password: the shared store PIN stays the only gate (R15).
   - Why: KMs, GMs and shift leads often split the vendors between two people at the same time, and each needs to know what the other has done without asking. A lock would strand a vendor when someone walks away mid-count. *(Confirmed: `docs/MOG_OneApp_Spec.md` A5, A6, P1-P4, owner 2026-10-18.)*
+- **R26. A phone can change today's order without changing the catalog, and every such change gets reviewed.**
+  - "Just today" par: the item's par for this order day only, on every list the item is on (one par per item, R6). An existing, active item can be added to a vendor's list for today only; it shows in its usual storage area. The next order day has none of these.
+  - They count everywhere the day's numbers come from: the count screens, the Today cards, the nightly order log and the recap.
+  - Each one confirms, records who made it, can be taken back on the phone, and leaves a flag in Manage Items: Apply makes it permanent (a logged, undoable catalog change), Dismiss clears the flag.
+  - "From now on" changes the catalog par itself (logged, with Undo), and only where the database owns the catalog (R23); everywhere else a phone offers "just today" only. Nothing that deletes or deactivates happens on a phone.
+  - Why: the person at the shelf sees a busy day or a stock-out coming and needs today's order right without a computer, while managers keep control of the standing catalog. *(Confirmed: `docs/MOG_OneApp_Spec.md` A2, Q1-Q4, owner 2026-10-18.)*
 
 ---
 
@@ -446,6 +453,8 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | The manual "start the new day" button was removed; the day closes itself every night, and the first app open is the fallback. | It was pure friction, and the close took 14 to 31 seconds when it ran on a KM's first open; at night nobody waits for it. It is still what guarantees the recap sends and the day logs. |
 | A count saved after its day closed lands in its own day, not the new one. | A phone that queued counts offline overnight must not pollute the fresh day; the late count is kept as evidence for the day it was made. |
 | The same item twice on one vendor's route shares one count. | A count belongs to the item, not the row (R24). |
+| A "just today" par applies on every list the item is on. | One par per item (R6): a day-only par is the same number, for one day. |
+| A "just today" change lands in the nightly order log and the recap, not only on the phone. | They are applied in the one place every reader goes through, so the phone, the log and the email can never disagree about what was meant to be ordered. |
 | Two people on the same vendor get a warning, not a lock. | A lock strands a vendor when someone walks away mid-count; counts are per item, so only the exact same item can collide (R25). |
 | An incoming count never overwrites one this device typed. | The person holding the phone is looking at that shelf; their number is the fresher one (R25). |
 | Secondary/backup vendors are fully orderable, not reference-only. | A user needs to order from a backup when the primary is out of stock or not delivering that day, or when the backup is cheaper this week. |

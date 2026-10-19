@@ -141,3 +141,148 @@ Rules: node tests/run_all.js before any deploy (14 gates); canary first (a PWA c
 only that store's folder); schema files are run by Sebastian; editor_link.py for editor runs;
 every next step that involves a file links it in the final message.
 ```
+
+---
+
+## Later session — live counting everywhere, the editor on Supabase, phone quick edits
+
+**Session focus:** take Sebastian's rprfo live-counting results, roll Phase 1 out, then build Phase 2 (the editor foundation) and Phase 3 (phone quick edits) of `docs/MOG_OneApp_Spec.md`.
+**Outcome:** Phases 1 and 3 are live on all 10 stores (app v0.20.0, cache v60). Phase 2 is built and tested on the Sheet-less test store `rprfotest`: page open 353 ms, save 596 ms, Undo 296 ms. Schemas v6 and v7 are installed (smoke all PASS, check_api 42/42), and there are 17 gates.
+**Next session focus:** Phase 4: port the remaining editor tools onto Supabase the same way, then switch each store's catalog over (rprfo first).
+
+### Section E — Live counting on every store (v0.19.1, `f2ac2a5`)
+
+- **Sebastian's test:** fine overall, but the other device was slow and "Maria counting" was unreliable.
+- **Cause:** each phone said which vendor it had open only at its next 15s tick, and nothing at all while locked.
+- **Fix:**
+  - `liveBeat_` (in `showView`) sends the heartbeat the moment a vendor opens or closes, and again on return from the lock screen. A beat sent during a read already in flight waits for that read, then sends its own.
+  - The refresh now runs every 10s.
+  - `pwa_direct` gained two planted defects for this.
+- **Rollout:** to all 10 stores at once, without a canary (Sebastian's call).
+- **Blueprint:** new rule R25, counting at the same time (`f27a3ae`).
+
+### Section F — Phase 2: Manage Items on Supabase (`3c4d0b1`, schema v6)
+
+- **Decisions E1-E4** (spec):
+  - Manage Items' logic is shared JS (`template/editor/catalogEdit.js`), not 7 SQL actions.
+  - The unchanged `ManageItems.html` is rendered as a static page, with `template/editor/host.js` standing in for `google.script.run`. No `apps-script/` file changed.
+  - Testing is on a local preview (`python build.py --preview rprfotest --like rprfo`, git-ignored `_preview/`).
+  - Par Review flags wait for Phase 4 (History).
+- **Schema v6:**
+  - `mog.change_log`;
+  - `mog_editor_login` (needs `editor_direct`; same PIN and lockout);
+  - `mog_editor_get`;
+  - `mog_editor_apply` (writes rows only if they're still what the editor read, else CONFLICT and nothing written; logs; rebuilds the phones' catalog);
+  - `mog_editor_undo` (refuses, naming the later change);
+  - D23 (`on delete set null (primary_vendor)`, PG15+).
+  - The store always comes from the token.
+- **Gates:**
+  - `catalog_edit`: 3,000 random steps next to the real `Items.gs` give the same answers, errors, phone catalog and item order; every write undoes; 8 planted defects.
+  - `editor_host`: against a fake Supabase written apart from `catalogEdit.js`.
+- **Page safeguard:** `host.js` refuses a token from another store. Every store shares one site's storage, so a stored token could otherwise show store A's catalog under store B's name.
+- **Item order:** a new item goes after its vendor's last item via a `shift` op, so item order matches the Sheet exactly.
+- **Tested:** Sebastian clicked through all 7 actions and Undo. Manage Items has no "remove area" action, and Sebastian doesn't want one: an item loses its area only when the area or vendor is removed (D23).
+
+### Section G — Phase 3: phone quick edits (`1f20681`, schema v7, v0.20.0 on every store)
+
+- **Decisions Q1-Q4** (spec):
+  - "From now on" only where Supabase owns the catalog; elsewhere "just today" plus a note.
+  - An item added for today shows in its usual storage area.
+  - A today par applies on every list the item is on (R6).
+  - Only today-only edits get review flags.
+- **How it works:**
+  - `mog.quick_edits` rides in the snapshot (`state.todayEdits`, plus `editorDirect`).
+  - `orderInputsFromSnapshot_` (`OrderMath.gs`) applies the edits. It's the one place the phone, `/exec` (DbApi.gs), the 3:30 AM order log and the recap all read, so they agree. With no edits the answers are byte-identical.
+- **Phone:**
+  - Tap an item: a sheet with "Just today", "From now on" (where allowed), "Back to normal par" and "Take off today's list".
+  - "+ Add an item to this list (today only)" opens a search picker.
+  - New "Today only" badge, and every row's meta line shows its par.
+- **Editor:** a ⚑ Needs review panel. Apply is a logged, undoable catalog change; Dismiss only clears the flag (`mog_editor_review`).
+- **Schema v7 also adds:**
+  - `mog_set_par`: "from now on" (CONFLICT on a stale par, logged, ends the today par);
+  - `mog.prepare_test_store`: SQL Editor only; gives a test store a cycle and turns its phones on.
+- **`build.py --preview`** also builds the test store's app, with an `/exec` that leads nowhere.
+- **Gates:**
+  - new `quick_edits`: a today edit behaves exactly like the same catalog edit across count screens, Today cards, order log and recap; 7 planted defects;
+  - `pwa_direct`: 174 quick edits, phone == `/exec`; "from now on";
+  - `editor_host`: Apply / Dismiss.
+- **Deploy:**
+  - Apps Script (`OrderMath.gs`) went to all 10 stores + template with `--redeploy`; every `/exec` probe was healthy.
+  - The app went to rprfo (`2d1eeee`), then to every store (`232d408`) without waiting for rprfo's first close (Sebastian's call, since nothing changes until someone makes an edit).
+- **Blueprint:** R23 gained the editor-on-Supabase clause; new R26 covers quick edits; two edge-case rows.
+
+### Outstanding (carry forward)
+
+1. **The first real close with quick edits (tomorrow, 3:30 AM).** Once KMs use them, check that a store's recap email and order log carry the day's edits.
+   - Reviews from real stores wait in `mog.quick_edits` and show in Manage Items only after that store's editor switches (Phase 4).
+2. **Phase 4.** Walk it through first.
+   - Port Vendors, Storage Areas, Shelf to Sheet, History, Health, Recipients and People the Phase 2 way: logic in shared JS gated against the tool's `.gs`, the unchanged page plus `host.js`.
+   - History needs the order log backfilled from LOG_ORDERS, with the par-flag math in shared JS (E4).
+   - Then the switch procedure (D16, D17):
+     - the store's `editor_direct` on;
+     - a nightly copy back to the Sheet;
+     - the Sheet's editing menus refuse that store;
+     - the app's Editor entry on computers.
+   - Order: rprfo first, the unused Tysons/Founders stores last.
+   - "From now on" turns on by itself per store at the switch.
+3. **Live-counting latency:** 10s polling. If it still feels slow, Supabase Realtime (push) is the next step. Not urgent.
+4. **`rprfotest`:** no Sheet, so its cycle never closes. Run `select mog.prepare_test_store('rprfotest');` for a fresh day.
+5. **Still open from this morning:**
+   - the setup wizard rejects ĂN and Lei'd;
+   - `mog-add-store` lacks the Supabase steps and `stores.json`'s `address`;
+   - rpt, rptfo and rpfrf need Health Check → "Storage areas on pick rows" → Fix before parity.
+
+### Files touched (later session)
+
+- **Supabase:** `supabase/schema_v6.sql`, `schema_v7.sql`; `supabase/tests/smoke_v6.sql`, `smoke_v7.sql`, `check_api.sh` (v6 + v7 lines).
+- **Apps Script** (all 10 stores + template, `--redeploy`): `OrderMath.gs` (today edits in `orderInputsFromSnapshot_`, the two optional row flags).
+- **PWA:** `template/index.html` (heartbeat, 10s refresh, quick edits, v0.20.0), `template/sw.js` (v60); every store folder rebuilt.
+- **Editor:** `template/editor/catalogEdit.js`, `template/editor/host.js` (new).
+- **Build:** `build.py` (editor pages, `--preview` app + editor, theme read from `Dashboard.gs`), `.gitignore` (`_preview/`), `.claude/launch.json` (`mog-static` preview server).
+- **Tests:**
+  - new `catalog_edit`, `editor_host`, `quick_edits`;
+  - extended `pwa_direct`, `fake_supabase`, `fake_apps_script` (`insertRowAfter`), `tests/README.md`.
+- **Docs:** `docs/MOG_OneApp_Spec.md` (E1-E4, Q1-Q4, deploy order), `docs/MOG_SupabaseMigration.md` (API rows, step 6.3), `docs/MOG_LogicBlueprint.md` + `.html` (R23, R25, R26), `CLAUDE.md` (inventory), this handoff, `docs/MOG_CurrentState.md`.
+
+### Process lessons
+
+- Postgres binds `-` tighter than `->`: `r -> 'data' - 'tables'` reads as `r -> ('data' - 'tables')`. Parenthesize `(r -> 'data') - 'tables'`. [→ supabase/tests/smoke_v6.sql]
+- Python run from Git Bash prints CRLF lines, so a `while read` loop fed from it gets a trailing CR on every value (every `/exec` probe failed until `tr -d` stripped it). Writing a script or doc that contains quotes or backslashes as a heredoc failed three more times; the Write tool plus a scratch file worked. [→ memory reference_bash_heredoc_backslashes]
+- The app's file viewer reads a `/path` in chat as a file at the drive root ("Couldn't load this preview"). Give local preview pages as full `http://localhost:8765/...` addresses and open them in the browser pane. [→ memory feedback_preview_urls]
+- An Apps Script page rendered static needs its own `<meta charset>` (and viewport): HtmlService sends them as response headers, so a static server showed `Â·` until added. [→ build.py]
+- Every store's static page shares one site's storage, so a token one store's page saved reaches another store's page. The page must check the token's store, not just that it's valid. [→ template/editor/host.js]
+- To prove a new input to the order math, compare it with the same change made by hand in the catalog (a today par vs a catalog par of that number) instead of hand-computing expected quantities. That way every reader is covered at once. [→ tests/quick_edits.test.js]
+- Sebastian skips the overnight canary wait when the gates prove a change does nothing until someone uses it. Offer the canary, state what could break, and let him choose. [→ memory feedback_rollout_speed]
+
+### Commits landed (later session)
+
+```
+232d408 build: quick edits (v0.20.0, cache v60) on every store
+2d1eeee build: quick edits (v0.20.0, cache v60) on rprfo only (canary)
+1f20681 feat(phones): one app, Phase 3 - quick edits from the count screen (schema v7, app v0.20.0)
+3c4d0b1 feat(editor): one app, Phase 2 - Manage Items on Supabase (schema v6)
+f27a3ae docs(blueprint): rule R25, counting at the same time (live counting on every store)
+f2ac2a5 feat(pwa): live counting on every store, names show faster (v0.19.1, cache v59)
+```
+
+### Opening prompt for next session
+
+```
+Read docs/MOG_CurrentState.md, docs/MOG_OneApp_Spec.md and the LATER-SESSION block of
+docs/MOG_SessionHandoff_2026_10_18.md first. As of 2026-10-18: one-app Phases 1 (live counting)
+and 3 (phone quick edits: "just today" par and adds, v0.20.0) are live on all 10 stores; Phase 2
+(Manage Items on Supabase: catalogEdit.js + host.js + schema v6) is built and tested on the
+Sheet-less test store rprfotest only. Schemas v6 and v7 are installed.
+
+First: check that the first nightly closes with quick edits look right (recap email + order log).
+Then Phase 4: walk it through first - port the remaining editor tools the Phase 2 way (shared JS
+gated against each tool's .gs, the unchanged page + host.js), History with the order log
+backfilled from LOG_ORDERS and the par flags in shared JS, then the per-store switch
+(editor_direct on, nightly copy back to the Sheet, Sheet menus refuse, the app's Editor entry),
+rprfo first, the unused Tysons/Founders stores last.
+
+Rules: node tests/run_all.js before any deploy (17 gates); canary first, but Sebastian may skip
+the wait when the gates prove a change is inert; schema files are run by Sebastian; preview with
+python build.py --preview rprfotest --like rprfo and the mog-static server; every next step that
+involves a file links it in the final message.
+```
