@@ -33,7 +33,7 @@
 // or service-worker behavior that needs old caches evicted. Old
 // caches are deleted in the `activate` handler.
 
-const CACHE_VERSION = 'v60';
+const CACHE_VERSION = 'v61';
 const SHELL_CACHE   = 'mog-shell-' + CACHE_VERSION;
 const RUNTIME_CACHE = 'mog-runtime-' + CACHE_VERSION;
 
@@ -186,6 +186,14 @@ function isAppsScriptApi_(url) {
          url.pathname.indexOf('/macros/s/') >= 0;
 }
 
+// The app's own page: this folder or its index.html. Other pages under the
+// folder (the editor, at editor/) are not the app shell and must never be
+// cached as it.
+function isAppShell_(url) {
+  const root = new URL('./', self.registration.scope).pathname;
+  return url.pathname === root || url.pathname === root + 'index.html';
+}
+
 self.addEventListener('install', (event) => {
   // Pre-cache the HTML shell so a first-launch-then-offline still
   // has something to serve. If precaching fails (network down at
@@ -234,9 +242,9 @@ self.addEventListener('fetch', (event) => {
   // with cache fallback (see handleNavigation_). When online we always
   // fetch fresh HTML so deploys take effect on the next navigation; when
   // the network fails we serve the cached shell so the app still launches
-  // offline.
+  // offline. Only the app's own page: the editor (editor/) passes through.
   if (req.mode === 'navigate') {
-    event.respondWith(handleNavigation_(req));
+    if (isAppShell_(url)) event.respondWith(handleNavigation_(req));
     return;
   }
 
