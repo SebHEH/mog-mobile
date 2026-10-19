@@ -361,12 +361,15 @@ def generate_store(entry, template_html, template_sw, dry_run, order_math, supab
     rendered_html = rendered_html.replace(SUPABASE_PLACEHOLDER, sb_json)
 
     # Store profile for the page itself: the street address vendors deliver
-    # to (Copy order for email). Optional in stores.json.
+    # to (Copy order for email; optional in stores.json), and the store's
+    # place and concept, which the computer sign-in shows before anyone has
+    # signed in (docs/MOG_OneApp_Spec.md U5).
     st_count = rendered_html.count(STORE_PLACEHOLDER)
     if st_count != 1:
         fail(f"template/index.html: expected exactly 1 {STORE_PLACEHOLDER!r}, "
              f"found {st_count}. Template may be corrupted.")
-    st_json = json.dumps({'address': entry.get('address', '').strip()}, ensure_ascii=False)
+    st_json = json.dumps({'address': entry.get('address', '').strip(), 'location': entry['location'],
+                          'concept': entry['concept']}, ensure_ascii=False)
     rendered_html = rendered_html.replace(STORE_PLACEHOLDER, st_json)
 
     # The shared order math, verbatim.
