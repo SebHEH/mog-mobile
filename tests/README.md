@@ -34,6 +34,6 @@ A passing run ends with `run_all: ALL PASS (14 gates)`. Run it before any deploy
 
 **Testing any server function at runtime:** every `apps-script/*.gs` file holds only declarations, so the WHOLE codebase loads into one vm context with the fakes. `editor_fixes.test.js` does it in a few lines (`compileAll`); no slicing needed. Add any missing fake method to `fake_apps_script.js`. A fake's reads must never create data (`FakeSupabase.countsIn`).
 
-Every gate carries planted-defect controls: each one breaks the code on purpose, and the gate must catch it. A control that doesn't bite fails the run.
+Every gate carries planted-defect controls: each one breaks the code on purpose, and the gate must catch it. A control that doesn't bite fails the run. A control finds its spot by an exact line of code, which must appear once: new code that repeats an anchored line (a copied `const active = …`) crashes that control with "anchor not unique", so name new locals differently.
 
 **Never put `.js` files under `apps-script/`.** clasp pushes every `.js` there to all stores as script code. Gates live here.

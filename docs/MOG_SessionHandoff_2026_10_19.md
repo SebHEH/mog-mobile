@@ -173,3 +173,169 @@ by Sebastian; preview with python build.py --preview rprfotest --like rprfo and 
 server (mog-static-alt on 8767 if 8765 is busy); every next step that involves a file links it in
 the final message.
 ```
+
+---
+
+## Later session — one app on a computer, Phase 4's rest, and every store moved
+
+**Session focus:** the computer switch between the order guide and the editor, then the rest of Phase 4, then (Sebastian, after seeing the first version live) a unified computer look and every store's editor moved.
+**Outcome:** 6 commits (`30c08ce`→`7f23850`), all pushed.
+- Schema v9 is installed (smoke 39/39, check_api 58/58).
+- App v0.26.0 / cache v66 on every store; Apps Script on all 10 stores + template.
+- **All 10 stores' editors are in the app** (checked in Supabase).
+- 21 gates.
+
+**Next session focus:** watch the first night with every store on the app, set up the three empty stores, and bring new-store onboarding up to date.
+
+### Section A — The computer switch (decisions L1-L4)
+
+- **One rail for the order guide and the editor** (`30c08ce`, v0.22.0):
+  - Today keeps its vendor list on the left while a count opens beside it.
+  - Clicking another vendor saves the open one first.
+  - History and Settings sit in a centered column.
+  - Settings → Editor and the editor's "← Ordering" went.
+- **The move refuses a copy that fails parity** (`06ec8a8`): Move the editor to the app copies a Sheet's catalog only after `test_catalogTablesParity`'s check passes, and says why when it refuses.
+
+### Section B — Phase 4's rest, schema v9 (decisions T1-T4, `ca6df8f`, v0.23.0)
+
+- **T1, order history:** the switch copies LOG_ORDERS dates the database lacks (copy path only).
+  - The phone's History tab, the editor's Order History and the Par Review flags then read `mog.order_log`.
+  - History and par-flag math moved into `OrderMath.gs` (`historyRowsFiltered_` … `parReviewFlags_`), so the Sheet, the phone and the editor run the same code.
+  - Gate: `history_app`.
+- **T2, recipients:** `mog.recipients`, copied at the switch (and once by the nightly run for a store already moved).
+  - Settings → Recipients reads and saves Supabase. The GM row is locked on a phone and editable on a computer.
+  - The nightly email reads the list there, falling back to the Sheet's if Supabase is down.
+- **T3, People:** Settings → People on a computer, every store.
+  - Rename follows to devices using the old name.
+  - A removed name isn't re-added by devices (`removed_at`, `renamed_to`).
+- **T4, Health:** in the app.
+  - Store checks: phones, last night's close, lockout.
+  - Catalog checks, with Place backups (logged, undoable) and Clear lockout.
+  - Gate: `health_app`.
+- Gates `history_app`, `recipients_people`, `health_app` are new.
+
+### Section C — The computer redesign, three phases (decisions U1-U11)
+
+Mockup: https://claude.ai/artifact/5AzTC1GpAYepis3kPrxzHr. Sebastian picked the brand-panel sign-in, one Order history entry, one shell, three phases, Changes as a page, and "Shelf to Sheet done after its first save".
+
+- **Phase 1, one shell** (`86073cc`, v0.24.0):
+  - A 248px sidebar replaces the rail: the concept's circular logo and the store, then Order guide (Today, Order history) and Manage (Overview, Items, Vendors, Storage areas, Shelf to Sheet, Health check). Changes and Settings sit at the bottom.
+  - Each Manage page is the editor's own page in a frame (`editor/<page>.html?embed=1`), so switching never reloads the app.
+  - host.js embed mode:
+    - takes the app's session, and asks the app for a fresh one (`window.MOG_SHELL.token`) instead of a PIN;
+    - routes `?page=` links to the app;
+    - hides the floating bar.
+  - EditorShell embed branch: no band, breadcrumb or EN/ES; the title is the header.
+  - Unsaved edits ask first through the page's own `MGE_LEAVE_GUARD`.
+  - An editor page opened by itself on a computer forwards to `../#<page>`.
+  - Order history is the editor's where the editor moved.
+  - New `template/editor/Changes.html`: `build.py` builds pages from `template/editor/` as `editor:<name>`.
+- **Phase 2, the Overview** (`61cfc9b`, v0.25.0):
+  - `template/editor/Overview.html` shows:
+    - today's order, from the app's dashboard via `MOG_SHELL.today`;
+    - counts, using `catalogEdit.js getOverviewCounts` (the Health Check's rules);
+    - the setup checklist, hidden for good once done (a per-store localStorage flag);
+    - Needs attention: phone edits with Apply/Dismiss, Par Review, Health;
+    - Recent changes with Undo.
+  - The flash fix: inside the app a page stays hidden (`mge-embed-boot`) until its header mounts.
+  - **Every `stores.json` entry is now `"editor": "supabase"`**, so every store's editor pages are published, and Manage shows once Supabase says the store moved (U11).
+- **Phase 3, the look** (`7f23850`, v0.26.0):
+  - The computer sign-in has a brand panel: concept color, circular logo, and the place and concept, which `build.py` now puts in `MOG_STORE`.
+  - A script in `<head>` sets `desk` and `restoring` before the first paint, so a reload while signed in shows a "Signing in…" splash, not the PIN screen.
+  - On a computer the top bar and the breadcrumb move into `#desk-head` over the pane they title. The split view is a grid. Today, History and Settings keep their own titles; Recipients and People keep Back.
+  - EN/ES is in the sidebar.
+  - The circular logos are one hidden SVG sprite (`#mog-logo-rp/tny/an`) drawn with `<use>`.
+
+### Section D — Every store moved (U10)
+
+- **Order of events:**
+  - Sebastian ran 📱 Mobile API → Move the editor to the app in every Sheet.
+  - Supabase shows `editor_direct` on for all 10.
+  - Seven copied their catalog: rpr, rprfo, tnytf, rpt, rptfo, rpfr, rpfrf.
+  - Rockville BOH, Rockville FOH and **Tysons BOH** started empty. tnyt had never been counted in the app, and Sebastian confirmed empty was intended; I had misread his earlier answer.
+- **tnyt's `/exec` flaked** (~40% of POSTs, one GET) after the phase 3 push, which touched no Apps Script.
+  - A fresh deployment (`AKfycbzdV2Ba…OVMm9g` @81) flaked the same way, so it wasn't rot.
+  - ~15 minutes later both answered 12/12 beside two other stores. Nothing was repointed; the fresh deployment is unused.
+
+## Outstanding (carry forward)
+
+1. **Tomorrow morning:** every store's 3:30 AM close and recap email. Tonight is the first night every store reads recipients from Supabase; check rpr, rprfo and tnytf's emails arrived.
+2. **Recipients on the empty stores:**
+   - tnyr has none yet (tonight's run copies its Sheet's list once);
+   - tnyrf and tnyt copied theirs at the move.
+   - Rockville's Sheets are copies of Tysons, so the lists may be Tysons' people: check Settings → Recipients before they order.
+3. **Set up tnyr, tnyrf, tnyt** from each one's Overview checklist (MarginEdge import, delivery days, areas, item areas and pars, Shelf to Sheet).
+4. **Tell whoever edited in the Sheets** that those Sheets are frozen (S2).
+5. **New-store onboarding** (`mog-add-store`) lacks the two Sheet moves (Move this store to Supabase, Move the editor to the app). Do it before the next store opens.
+6. **Later:**
+   - keep visited Manage pages alive, for instant switching;
+   - a Health dot in the sidebar;
+   - a circular logo for Lei'd;
+   - the Daily summary button and the reset fallback are the last `/exec` uses;
+   - the recap email from Supabase;
+   - the setup wizard still rejects ĂN and Lei'd;
+   - tnyr's order log has bogus Oct 17-19 closes from the copied Tysons catalog.
+
+## Files touched this chat
+
+- **App:**
+  - `template/index.html`: sidebar, Manage frame and routing, `MOG_SHELL`, the head script, sign-in panel, splash, `#desk-head`, sprite, People, Recipients GM toggle, direct history;
+  - `template/sw.js`.
+- **Editor:**
+  - `template/editor/host.js` (embed mode, overview API);
+  - `catalogEdit.js` (`getOverviewCounts`, Health Check);
+  - new `Changes.html` and `Overview.html`;
+  - `apps-script/EditorShell.html` (embed branch).
+- **Apps Script:** `OrderMath.gs` (history + par flags), `History.gs`, `Items.gs`, `MOGApi.gs`, `Sync.gs` (backfill, recipients seed, parity refusal), `Recap.gs`, `Admin.gs`.
+- **Supabase:** `supabase/schema_v9.sql`, `supabase/tests/smoke_v9.sql`, `supabase/tests/check_api.sh`.
+- **Build:** `build.py` (`editor:` pages, the store profile), `stores.json` (every store's editor published).
+- **Tests:**
+  - new `history_app`, `recipients_people`, `health_app`, `phone_harness.js`;
+  - updated `editor_host` (embed), `catalog_parity`, `pwa_direct`, `ordermath_purity`, the fakes and `tests/README.md`.
+- **Docs:**
+  - `docs/MOG_OneApp_Spec.md` (T1-T4, L1-L4, U1-U11);
+  - `docs/MOG_SupabaseMigration.md`;
+  - `docs/MOG_LogicBlueprint.md` + `.html` (R23, R25, the diagram, recipients, boundaries);
+  - `CLAUDE.md`;
+  - this handoff;
+  - `docs/MOG_CurrentState.md`;
+  - `.claude/skills/mog-exec-repoint/SKILL.md`.
+- **Generated:** every store's dir and `<slug>/editor/`.
+
+### Process lessons
+
+- When a store's `/exec` flakes, test a freshly cut deployment before repointing. If it flakes too it isn't rot: re-probe beside other stores instead. [→ .claude/skills/mog-exec-repoint/SKILL.md]
+- An editor page's in-Sheet HTML paints before its chrome mounts, so inside the app it has to be hidden from `<head>` until `mgeMountWebChrome_` runs. [→ template/editor/host.js]
+- A gate control's anchor must stay unique. New code that repeats an anchored line (a copied `const active = …`) crashes that control: name new locals differently. [→ tests/README.md]
+- In the browser pane, navigating to the same page with only a new `#hash` doesn't reload it. After a rebuild, use `location.reload()`. [→ memory reference_fake_supabase_preview]
+- Check stores' real state with the Supabase connector (project `mnfwqmrstdeuczveyykv`, read-only `execute_sql`) instead of asking. It found tnyt had moved empty. [→ memory reference_supabase_connector]
+
+## Commits landed this session (later)
+
+```
+7f23850 feat(app): computer sign-in, pane headers and no PIN flash on a reload (v0.26.0, cache v66)
+61cfc9b feat(editor): the Overview, no flash inside the app, and every store's editor published (v0.25.0, cache v65)
+86073cc feat(app): one shell on a computer - the sidebar, and the Manage pages inside the app (v0.24.0, cache v64)
+ca6df8f feat: one app, Phase 4's rest - order history, recipients, People and the Health Check move with the editor (schema v9, app v0.23.0, cache v63)
+06ec8a8 fix(sync): Move the editor to the app copies a Sheet's catalog only after the parity check passes
+30c08ce feat(app): computer layout - one rail for the order guide and the editor (v0.22.0, cache v62)
+```
+
+## Opening prompt for next session (supersedes the one above)
+
+```
+Read docs/MOG_CurrentState.md, docs/MOG_OneApp_Spec.md and docs/MOG_SessionHandoff_2026_10_19.md
+(the Later session block) first. As of 2026-10-19 every store's editor is in the app (Supabase
+owns each catalog, order history and recipients list); on a computer the order guide and Manage
+share one sidebar, with Manage pages in a frame (?embed=1). App v0.26.0 / cache v66, schema v9.
+
+First: check that last night's 3:30 AM close ran and every store's recap email arrived
+(recipients now come from Supabase), and look at Settings -> Recipients on tnyr, tnyrf and tnyt.
+Then: help set up the three empty stores from their Overview checklists, and bring new-store
+onboarding (mog-add-store) up to date with the two Sheet moves.
+
+Rules: node tests/run_all.js before any deploy (21 gates); schema files are run by Sebastian;
+preview with python build.py --preview rprfotest --like rprfo plus the scratch fake server;
+read-only checks via the Supabase connector (project mnfwqmrstdeuczveyykv); every next step
+that involves a file links it in the final message.
+```

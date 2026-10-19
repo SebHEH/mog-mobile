@@ -8,6 +8,26 @@ If this doc and `CLAUDE.md` conflict on a specific fact, `CLAUDE.md` wins for st
 
 ## Pinned focus
 
+**Every store's editor is in the app, and a computer runs the order guide and Manage as one app (2026-10-19, later session). 6 commits (`30c08ce`→`7f23850`), all pushed. Read `docs/MOG_OneApp_Spec.md` (T1-T4, L1-L4, U1-U11) before touching the app or the editor.**
+
+- **All 10 stores moved** (Supabase `editor_direct` on everywhere):
+  - Seven copied their Sheet's catalog, order history and recipients.
+  - Rockville BOH, Rockville FOH and Tysons BOH started empty, to be set up from MarginEdge via the Overview's checklist.
+  - Every Sheet is frozen (S2): no copy back.
+- **Schema v9** (smoke 39/39, check_api 58/58):
+  - Order history: phones, editor and Par Review read `mog.order_log`.
+  - Recipients live in `mog.recipients`. The GM row is editable on a computer only, and the nightly email reads them there.
+  - Settings → People (rename/remove).
+  - The Health Check runs in the app.
+- **One shell on a computer** (app v0.26.0 / cache v66):
+  - A sidebar: Order guide (Today, Order history) plus Manage (Overview, Items, Vendors, Storage areas, Shelf to Sheet, Health check), with Changes and Settings at the bottom.
+  - Manage pages are the editor's own pages in a frame (`?embed=1`), so switching never reloads and never asks for a PIN.
+  - The Overview has the setup checklist, Needs attention (phone edits, Par Review, Health) and Recent changes.
+  - The computer sign-in has the brand panel, and a reload shows a splash instead of the PIN screen.
+  - Each pane has its own header; EN/ES is in the sidebar.
+- **Tests:** 21 gates (new: `history_app`, `recipients_people`, `health_app`; `editor_host` covers the embed mode).
+- **Detail:** `docs/MOG_SessionHandoff_2026_10_19.md` (Later session block).
+
 **TNY Rockville BOH edits its catalog in the app; Phase 4's catalog tools and Import from MarginEdge are live (2026-10-18 → 10-19). 3 commits (`62a356d`→`09b3279`), all pushed. Read `docs/MOG_OneApp_Spec.md` (M1-M5, S1-S5) before touching the editor.**
 
 - **Import from MarginEdge:**
@@ -179,6 +199,15 @@ _Earlier the same day (later session) — superseded context:_ Two shipped + #4 
 **2026-05-28:** Five wins (StorageAreas draft mode `ed49a62`, PWA transition-floor cut `6f9197f`, PWA fetch timeout `ba30b8e`, chunked Order History `47a1966`, Recalibrate Vendor Pars tool) — all live; `CACHE_VERSION` v8→v11. See the Recent-changes table below + handoffs for detail. *Recalibrate Vendor still to be run per-vendor at rpr at Sebastian's pace.*
 
 ### Next-session candidates (impact-ranked)
+
+0000000. **The first night with every store on the app, then setup and onboarding** (TOP).
+   - Check every store's 3:30 AM close and recap email (recipients come from Supabase now).
+   - Check Settings → Recipients on tnyr, tnyrf and tnyt: Rockville's Sheets are Tysons copies.
+   - Set up the three empty stores from their Overview checklists.
+   - Bring new-store onboarding (`mog-add-store`) up to date with the two Sheet moves.
+   - Later: keep visited Manage pages alive; the recap email from Supabase; the last `/exec` uses (Daily summary button, reset fallback).
+
+*(Done 2026-10-19 later session: the computer switch, the rest of Phase 4 (History, Recipients, People, Health; schema v9), the parity refusal, the one-shell redesign, and every store's move. That replaces item 000000 below.)*
 
 000000. **Order guide / editor switch on a computer, then the rest of Phase 4** (TOP).
    - Sebastian's next ask: on a computer, move between the order guide and the editor easily. **Start with a mockup artifact of the design options** (shared top strip vs a button in each header), then build the one he picks.
@@ -364,6 +393,7 @@ Most recent first. Trim entries older than ~5 sessions when this list gets unwie
 
 | Date | Session | Outcome |
 |---|---|---|
+| 2026-10-19 (later) | Phase 4's rest, one app on a computer, every store moved | **6 commits (`30c08ce`→`7f23850`), all pushed; schema v9 installed; Apps Script on all 10 + template; app v0.26.0 / cache v66.**<br>- **Computer switch (L1-L4):** a rail, count beside the list, save-then-switch.<br>- **Parity refusal:** the copy path refuses a Sheet whose parity check fails.<br>- **Phase 4's rest (T1-T4, schema v9):** order history from `mog.order_log` with shared `OrderMath.gs` history/flag code; recipients in Supabase; People rename/remove; the Health Check in the app.<br>- **Redesign (U1-U11, three phases):**<br>&nbsp;&nbsp;• one shell: sidebar, Manage pages in a frame (`?embed=1`), no PIN or "Checking" flash;<br>&nbsp;&nbsp;• the Overview;<br>&nbsp;&nbsp;• the computer sign-in brand panel, a reload splash, pane headers;<br>&nbsp;&nbsp;• every store's editor published.<br>- **All 10 stores moved:** seven copied; tnyr, tnyrf and tnyt started empty.<br>- **tnyt's `/exec`** flaked and recovered by itself; a fresh deployment flaked too, so nothing was repointed.<br>- **Blueprint:** R23, R25, the diagram and the boundaries bumped to `7f23850`.<br>Detail: `docs/MOG_SessionHandoff_2026_10_19.md` (Later session). |
 | 2026-10-18 → 10-19 | MarginEdge import, Phase 4 editor tools, Rockville BOH moves | **3 commits (`62a356d`→`09b3279`), all pushed; schema v8 installed; Apps Script on all 10 + template (`--redeploy`, canary rprfo); app v0.21.0 / cache v61.**<br>- **Import from MarginEdge** (M1-M5): the Vendor Items CSV in the Supabase editor, vendors then items, one undoable save; gate `me_import`.<br>- **Phase 4 tools** (S1, S4): Manage Vendors, Storage Areas, Shelf to Sheet ported to `catalogEdit.js`, gated against `Vendors.gs` / `PickPath.gs`; two pages read their data at start-up.<br>- **Schema v8:** the area `rename` step (Undo renames back) and `mog_sync_switch_editor`; saves ordered so the database's links hold (R27: removing a vendor keeps its items).<br>- **The switch** (S2, S3): Move the editor to the app; no copy back; a moved store's Sheet tools refuse and point to the app; `stores.json` `"editor": "supabase"` publishes `/<slug>/editor/`.<br>- **Rockville BOH (`tnyr`) moved, starting empty** (S5); FOH stays on the Sheet.<br>- **Blueprint:** R23 updated, new R27, MarginEdge integration row.<br>Detail: `docs/MOG_SessionHandoff_2026_10_19.md`. |
 | 2026-10-18 (later) | Live counting everywhere, Phase 2 editor, Phase 3 quick edits | **6 commits (`f2ac2a5`→`232d408`), all pushed; app v0.20.0 / cache v60 on all 10 stores; `OrderMath.gs` on all 10 + template (`--redeploy`, every `/exec` healthy).**<br>- **Phase 1 everywhere (v0.19.1):** instant heartbeat on opening/leaving a vendor and on return from the lock screen; 10s refresh. R25.<br>- **Phase 2 (schema v6):** `catalogEdit.js` (gated against `Items.gs`, 3,000 random steps identical) + `host.js` (the unchanged `ManageItems.html` as a static page) + change log / Undo / CONFLICT; tested by Sebastian on `rprfotest` (open 353 ms, save 596 ms, Undo 296 ms).<br>- **Phase 3 (schema v7):** "just today" par and adds in the snapshot, applied in `orderInputsFromSnapshot_`; "from now on" where Supabase owns the catalog; Needs review in the editor. R26.<br>- **Gates:** 17 (new: catalog_edit, editor_host, quick_edits). smoke_v6 + smoke_v7 all PASS, check_api 42/42.<br>Detail: `docs/MOG_SessionHandoff_2026_10_18.md` (Later-session block). |
 | 2026-10-17 → 10-18 | Catalog tables, Copy order, the one-app spec, live counting | **10 commits (`ffe9bf7`→`c13a8cb`), all pushed.**<br>- **Step 6 part 1:** schema v4 (catalog tables, SQL builder, seed, `editor_direct` off, the `rprfotest` copy); the parity gate (`test_catalogTablesParity`) passes on 7 of 10 stores; Health Check repairs `restore_areas` + `fix_repeated_ids`; Move turns `phone_direct` on; 4 Health Supabase rows; D19-D23.<br>- **Copy order for email** on every store (v0.18.3): delivery day, store address (`stores.json` + the sixth placeholder), subject ready for a future one-click send.<br>- **The one-app spec** (`docs/MOG_OneApp_Spec.md`, A1-A7, P1-P4).<br>- **Phase 1 live counting**, schema v5 (smoke 25/25, check_api 29/29): presence, the name list, who saved, a 15s refresh, autosave; **rprfo only** (v0.19.0).<br>- **Gates:** 14 (new: catalog_parity, health_supabase, order_copy, live_counting).<br>Detail: `docs/MOG_SessionHandoff_2026_10_18.md`. |

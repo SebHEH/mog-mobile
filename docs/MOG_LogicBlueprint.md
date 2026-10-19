@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: 09b3279 (2026-10-19) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: 7f23850 (2026-10-19) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -142,16 +142,15 @@ rebuild can replace. The stated goal for a rebuild is to capture the logic; the 
 ```mermaid
 flowchart LR
   USER([Store staff: KM, GM, AM/AGM, BOH Shift Lead]) -->|counts on-hand, submits| PWA[Phone app / intake<br/>currently a PWA]
-  ADMIN([GM / KM on desktop]) -->|manage catalog| ED[Web editor<br/>currently Apps Script doGet pages]
+  ADMIN([GM / KM on a computer]) -->|manage catalog| ED[Editor, inside the app on a computer<br/>currently static pages]
   HUB[Hub picker<br/>concept to site to store] --> PWA
 
-  PWA <-->|one snapshot down, count saves up<br/>order math runs on the phone| DB[(Counts, current day, overrides, order log<br/>currently Supabase / Postgres)]
-  PWA -.->|reset fallback, history, recipients| API[Rules engine + scheduler<br/>currently Apps Script /exec]
-  ED <-->|PIN-gated RPC| API
+  PWA <-->|one snapshot down, count saves up<br/>order math runs on the phone| DB[(Counts, current day, overrides, order log,<br/>catalog, recipients, change log<br/>currently Supabase / Postgres)]
+  PWA -.->|reset fallback, recap resend| API[Rules engine + scheduler<br/>currently Apps Script /exec]
+  ED <-->|catalog saves with Undo, order history, health| DB
 
-  API <--> STORE[(Catalog: items, pars, vendors, pick path<br/>currently one Google Sheet per store)]
-  API -->|catalog copied one way after each edit| DB
   API -->|nightly close| DB
+  DB -->|recipients, the day's order lines| API
   API -->|recap email once per cycle| MAIL[Notifier<br/>currently Gmail/MailApp]
   MAIL --> RCPT([Manager + KM])
   RCPT -.->|place the actual order, outside MOG| VENDOR([Vendor websites / phone])
@@ -303,7 +302,8 @@ naive rebuild silently loses.*
 - **R23. One writer per kind of data; nothing syncs both ways.**
   - The database owns the counts, the current order day, the overrides and the order log.
   - A store's catalog (items, pars, vendors, storage areas, the pick path) is owned by its Sheet until the store moves, and copied one way into the database after every edit and nightly.
-  - A store moves its catalog to the database in one step, from its Sheet's menu: either copying the Sheet's catalog (only when the parity check passes, so every phone screen stays the same; the menu runs the check and refuses otherwise) or starting empty, for a store whose Sheet is an unused copy. From then on the app's editor (Manage Items, Manage Vendors, Storage Areas, Shelf to Sheet) writes the catalog there directly, on a computer. So far: TNY Rockville BOH (2026-10-19) and the test store.
+  - A store moves its catalog to the database in one step, from its Sheet's menu: either copying the Sheet's catalog (only when the parity check passes, so every phone screen stays the same; the menu runs the check and refuses otherwise) or starting empty, for a store whose Sheet is an unused copy. From then on the app's editor (Manage Items, Manage Vendors, Storage Areas, Shelf to Sheet) writes the catalog there directly, on a computer. **Every store moved on 2026-10-19**: seven copied their Sheet's catalog; Rockville BOH, Rockville FOH and Tysons BOH started empty (set up from MarginEdge).
+  - The move also hands the database the store's order history (the Sheet's dates the database lacks, copied once) and the recap's recipients list (copied once). From then on the history screens, the Par Review flags and the recap email read them there; the recipients' GM row changes only on a computer. *(`docs/MOG_OneApp_Spec.md` T1, T2.)*
   - Every catalog change is logged (what, before and after, who, when) and can be undone; a change is refused, and nothing written, if a row it touches changed since the editor read it. *(One-app Phases 2 and 4, `docs/MOG_OneApp_Spec.md` E1-E4, S1-S5.)*
   - After a store moves, its Sheet keeps the catalog it had and is never updated again; its catalog tools refuse and point to the app. *(Owner decision 2026-10-18, S2: no copy back.)*
   - Nothing is copied back into the Sheet except a nightly backup of the order log.
@@ -322,6 +322,7 @@ naive rebuild silently loses.*
   - Someone else's count fills in only on items this device hasn't touched. What you typed stays yours.
   - Each vendor card shows who has it open ("Maria counting"), or who saved its latest count. Opening a vendor someone else has open shows a warning naming them. It does not lock: counts are kept per item, so a collision needs the exact same item, and then the last save wins.
   - Each device says once who is counting, picked from the store's own list of names (or typed, which adds it to the list; Skip shows "Someone"). It is a label, not a password: the shared store PIN stays the only gate (R15).
+  - On a computer the list can be cleaned up: a renamed name follows to every device still using the old one, and a removed name isn't added back by a device still holding it (that device asks again; picking the name brings it back). Counts already saved keep the name they were saved with. *(`docs/MOG_OneApp_Spec.md` T3.)*
   - Why: KMs, GMs and shift leads often split the vendors between two people at the same time, and each needs to know what the other has done without asking. A lock would strand a vendor when someone walks away mid-count. *(Confirmed: `docs/MOG_OneApp_Spec.md` A5, A6, P1-P4, owner 2026-10-18.)*
 - **R26. A phone can change today's order without changing the catalog, and every such change gets reviewed.**
   - "Just today" par: the item's par for this order day only, on every list the item is on (one par per item, R6). An existing, active item can be added to a vendor's list for today only; it shows in its usual storage area. The next order day has none of these.
@@ -349,7 +350,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | location name | text | Display name, for example "Rosslyn BOH". Encodes BOH vs. FOH. |
 | store PIN | secret | The store's street number. Gates app + editor. |
 | master PIN | secret | Gates destructive/admin actions. |
-| recipients | list of {name, email, locked?} | Who gets the recap email; one may be GM/locked-first. |
+| recipients | list of {name, email, active, GM?} | Who gets the recap email; the GM row comes first and changes only on a computer. Owned by the database once the store's editor moved (R23). |
 | configured? | boolean | False until first-run setup completes. |
 
 #### Entity: Item
@@ -476,14 +477,13 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | Integration | Direction | Payload | Frequency | If it's down |
 |---|---|---|---|---|
 | Phone app and database | Both | One snapshot (catalog, current day, overrides, this day's counts) down; count saves and override changes up; the order math runs on the phone | Sign-in, each screen (a snapshot is reused for ~3 s), each save | App shows "Offline"; counts queue locally with their day and flush on reconnect (R14). |
-| Phone app and count engine | Both | Reset fallback, recap resend, order history, recipients | When those screens or actions are used | Those actions fail with an error; counting carries on against the database. |
-| Count engine and database | Out (catalog, nightly close), In (snapshot for the close and the recap) | Catalog copy after every edit and nightly; the nightly close; the PINs (stored as hashes) | Per edit, nightly | Catalog edits reach phones on the next successful push (the nightly one at the latest); a failed night close is retried by the first app open. |
-| Web editor and count engine | Both | PIN-gated RPC calls | Per editor action | Editor unusable until back; no data loss (edits are explicit saves). |
+| Phone app and count engine | Both | Reset fallback, recap resend | When those actions are used | Those actions fail with an error; counting carries on against the database. |
+| Count engine and database | Out (nightly close), In (snapshot, recipients and order lines for the close and the recap) | The nightly close; the PINs (stored as hashes); the one-time copies when a store's editor moves (catalog, order history, recipients) | Nightly; once per store | Catalog edits reach phones on the next successful push (the nightly one at the latest); a failed night close is retried by the first app open. |
 | Count engine to recipients | Out | Recap email ("today's suggested order") | Once per order cycle | The session still records; recipients do not get the email. Desired: retry on failure, still capped at once per cycle (Q-INT-1). |
 | Recipients to vendors | Out (outside MOG) | The actual purchase order | Per order | Not a MOG boundary; MOG's job ends at the recap. Documented so a rebuilder does not try to place orders from MOG. |
-| Count engine and per-store Sheet | Both | Catalog reads and writes (the editor), the nightly order-log backup | Per editor action, nightly | Catalog edits wait; counting is unaffected (it runs on the database). |
+| Count engine and per-store Sheet | Out | The nightly order-log backup (the Sheet keeps the catalog it had at the move and is never updated again) | Nightly | The backup waits; nothing else depends on the Sheet. |
 | MarginEdge | In | Vendor Items export (CSV), uploaded in the editor: vendors first, then the items they sell. Each product becomes one item under its MarginEdge name; the vendor bought from most recently is its primary. Items arrive with no par, pack or storage area. | Once, when a store's catalog is set up (stores whose editor is on the database) | A bad or wrong file is refused before anything is saved; one import is one logged change, undoable. Not yet: pack sizes (MarginEdge's API has them, the CSV doesn't) and cost. |
-| Web editor and database | Both | The catalog tables, the change log, saves and Undo | Per editor action, on a store whose catalog moved (R23) | Editor unusable until back; each save is all-or-nothing. |
+| Web editor and database | Both | The catalog tables, the change log, saves and Undo, order history, the Health Check | Per editor action (every store since 2026-10-19, R23) | Editor unusable until back; each save is all-or-nothing. |
 | **Future:** Toast (POS) | In (planned) | Sales / usage to inform pars | TBD | Not built; see growth seams. |
 
 ### Configuration and constants
