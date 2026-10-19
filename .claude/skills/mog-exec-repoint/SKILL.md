@@ -103,6 +103,7 @@ Before repointing, prove the new `/exec` actually delivers:
 
 - **GET** the new `/exec` → returns the JSON health object.
 - **POST twice** to it (a real `api_*` call) → clean JSON both times, **not** an HTML error page. Two POSTs because the failure is intermittent — one success isn't enough.
+- **If the NEW deployment flakes too, stop: it isn't rot.** A fresh deployment can't inherit a rotted one's state, so failures on both point at the script project or Google for that moment. On 2026-10-19 tnyt failed ~40% of POSTs (and one GET) on its old AND a freshly cut deployment; ~15 minutes later both answered 12/12 next to two other stores, with nothing changed. Don't repoint; re-probe in a while (sample the store beside one or two others, e.g. 12 spaced rounds of the malformed-body POST), and leave the unused fresh deployment be.
 
 ## Step 4 — Repoint the store (two files) + bust the cache
 
