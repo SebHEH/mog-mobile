@@ -339,3 +339,117 @@ preview with python build.py --preview rprfotest --like rprfo plus the scratch f
 read-only checks via the Supabase connector (project mnfwqmrstdeuczveyykv); every next step
 that involves a file links it in the final message.
 ```
+
+---
+
+## Later session (3) — new-store onboarding, and all four concepts in setup
+
+**Session focus:** bring `mog-add-store` up to date now that every store's editor is in the app (a side session started from the one above), then fix the gaps it found.
+**Outcome:** 1 commit (`4720ff2`), pushed.
+- Apps Script is on all 10 stores + template. Canary rprfo was checked by Sebastian, and every `/exec` answers GET and POST.
+- GitHub Pages serves hub cache v11.
+- 22 gates.
+
+**Next session focus:** unchanged from the block above (the first night with every store on the app, setting up the three empty stores), plus the runbook's first real use.
+
+### Section A — The new-store runbook
+
+- **[.claude/skills/mog-add-store/SKILL.md](../.claude/skills/mog-add-store/SKILL.md) rewritten.** A new store follows 11 steps and ends in the same state as the other ten (phones direct, editor in the app, Sheet frozen):
+  1. copy the master template (never a live store's Sheet);
+  2. the Script ID, and a check that Script Properties hold no `MOG_SUPABASE_*`, `MOG_BACKEND` or `MOG_EDITOR`;
+  3. deploy the web app in the editor (its Authorize step is the OAuth grant);
+  4. a `.clasp-targets.json` entry with `deploymentId` and `sheet`, a `provision_stores.sql` row, then `deploy.py --redeploy --target <slug>`;
+  5. the `?page=setup` wizard, Set Master PIN, then Status (which copies the GM email into the recipients);
+  6. `provision_stores.sql` for the connect code;
+  7. Move this store to Supabase;
+  8. Move the editor to the app, start empty;
+  9. `stores.json` with `"editor": "supabase"`, the hub cache bump, `build.py`;
+  10. the Overview checklist (Import from MarginEdge first);
+  11. a smoke test, then the next morning's close.
+- **Publishing comes after both moves,** so no phone ever counts into the new Sheet.
+- **Why the old runbook fell short:**
+  - it predated Supabase (no connect code, no moves);
+  - it still taught `setupMobileApi_`'s prompts;
+  - it had no `provision_stores.sql` row or `sheet` block, which the `supabase_move` gate needs;
+  - it missed the hub cache bump.
+- **`scripts/validate.py`** gained five checks:
+  - `slug`: Supabase's rule, and unused in all three registries and as a repo path;
+  - `concept`: the exact `build.py` key, a hub entry, and the Dashboard.gs list;
+  - `sheetid`;
+  - `exec-url`, which prints the deploymentId;
+  - `wired <slug> [--published]`: the three registries agree, the pages are built, the hub registry has the store.
+
+  All 10 stores pass `wired`, and it caught 12 planted registry mistakes.
+- **Checked, fine for a brand-new store:** `provision_stores.sql` returns only unconnected stores, and both Sheet moves can be re-run after stopping partway.
+
+### Section B — All four concepts in setup, one Lei'd spelling
+
+Walked through first; Sebastian picked every recommended option.
+
+- **One concept list:** Dashboard.gs `CONCEPT_THEMES`, which now carries a `name` per concept (`knownConcepts_`, `isKnownConcept_`).
+  - Its order is the Sheet menus' numbering: 1 Roll Play, 2 Teas’n You, 3 ĂN, 4 Lei’d Poke. 1 and 2 are unchanged.
+  - `commitStoreSetup` (Editor.gs) and Setup / Re-run Setup and Set Store Concept (Admin.gs `conceptMenuText_`, `conceptFromMenu_`) accept exactly that list.
+  - Before, they took only Roll Play and Teas'n You, although the wizard offered all four.
+- **Lei'd is `Lei’d Poke`** (curly U+2019, like Teas’n You) in `build.py` and the hub.
+  - That matches the app's `CONCEPT_NAMES_`, the wizard and the brand kit.
+  - It was spelled `Lei'd`, `Lei'd Poke` and `Lei’d Poke`.
+- **`build.py` now fails loud** on a slug outside `[a-z0-9]{2,20}` (Supabase's rule) and on a concept it doesn't know. It used to build such a store unthemed without a word.
+- **EditorShell `mgeShortLoc_`** strips `ăn` and `lei'd poke`. It left "ĂN …" whole, and would have shown "Poke Ballston BOH".
+- **New gate `tests/concepts.test.js`** (the 22nd):
+  - seven places agree with the server list;
+  - the wizard's save and both menus save each concept and refuse anything else;
+  - 9 planted defects.
+- **Deploy:**
+  - `--redeploy` to canary rprfo (@110). Sebastian checked Set Store Concept.
+  - Then all 10 + template; every store answers GET and POST.
+  - Hub cache v10 → v11. The store apps came out byte-identical; the editor pages changed by one line each.
+
+### Outstanding (carry forward)
+
+1. **The runbook's first real onboarding:** record whether a copied Sheet keeps its Script Properties (step 2's VERIFY), and whether a `clasp deploy` deployment would need its own OAuth grant.
+2. **Clear Config doesn't clear the four Supabase keys** (Admin.gs `clearMobileApiConfig_`). It only matters if a live store's Sheet gets copied. It's an Apps Script change, so walk it through first.
+3. **`tests/supabase_move.test.js` `provisionProblems` counts a commented-out SQL row as a row.** `validate.py` strips comments; the gate doesn't.
+4. **Lei'd has no circular logo (U6) and no rail badge;** it shows initials.
+5. **The block above's Outstanding** still stands (the first night, the three empty stores, the rest).
+
+### Files touched this chat
+
+- **Runbook:** `.claude/skills/mog-add-store/SKILL.md` and `scripts/validate.py`; `CLAUDE.md` (its skills-table line).
+- **Apps Script (all 10 + template):** `Dashboard.gs`, `Editor.gs`, `Admin.gs`, `EditorShell.html`, `MOGApi.gs` (a comment).
+- **Build and hub:** `build.py`, `index.html` (`CONCEPT_VISUALS`), `sw.js` (v11).
+- **Tests:** new `tests/concepts.test.js`; `tests/README.md`.
+- **Generated:** every store's `<slug>/editor/` pages, one line each.
+- **Docs:** this block; `docs/MOG_CurrentState.md`.
+
+### Process lessons
+
+- A new store touches registries the gates read together: `.clasp-targets.json` needs `deploymentId` and `sheet`, and `provision_stores.sql` a row with the identical Sheet title. Run `validate.py wired` before the gates. [→ .claude/skills/mog-add-store/SKILL.md]
+- A concept's name is spelled in seven files, and a near miss (a straight apostrophe for a curly one) failed silently. The concepts gate and `build.py`'s refusal catch it now. [→ tests/concepts.test.js]
+- Heredoc patches lost backslashes twice more (a `\'` in a find string); an `assert count == 1` before replacing stopped both before anything was written. The Edit tool also turned a typed `ă` into the character `ă`. [→ memory reference_bash_heredoc_backslashes]
+- A regex over a SQL file counts commented-out rows: strip `--` comments first. [→ .claude/skills/mog-add-store/scripts/validate.py]
+
+## Commits landed this session (later, 3)
+
+```
+4720ff2 New-store onboarding for Supabase stores; the wizard and Sheet menus accept all four concepts
+```
+
+## Opening prompt for next session (supersedes the ones above)
+
+```
+Read docs/MOG_CurrentState.md, docs/MOG_OneApp_Spec.md and docs/MOG_SessionHandoff_2026_10_19.md
+(the two Later session blocks) first. As of 2026-10-19 every store's editor is in the app (Supabase
+owns each catalog, order history and recipients list); on a computer the order guide and Manage
+share one sidebar. App v0.26.0 / cache v66, hub cache v11, schema v9. New stores follow the
+mog-add-store runbook (11 steps, scripts/validate.py checks each value and the wiring), and the
+setup wizard and Sheet menus accept all four concepts.
+
+First: check that last night's 3:30 AM close ran and every store's recap email arrived
+(recipients now come from Supabase), and look at Settings -> Recipients on tnyr, tnyrf and tnyt.
+Then: help set up the three empty stores from their Overview checklists.
+
+Rules: node tests/run_all.js before any deploy (22 gates); schema files are run by Sebastian;
+preview with python build.py --preview rprfotest --like rprfo plus the scratch fake server;
+read-only checks via the Supabase connector (project mnfwqmrstdeuczveyykv); every next step
+that involves a file links it in the final message.
+```
