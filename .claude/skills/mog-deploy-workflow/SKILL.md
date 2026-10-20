@@ -1,6 +1,6 @@
 ---
 name: mog-deploy-workflow
-description: Route any MOG code change to the right layer and the right deploy mechanism. Use BEFORE writing any code edit in mog-mobile — it determines whether the change ships via clasp (apps-script/), build.py (template/ or stores.json), or just a git push (hub root, icons/, docs/). Trigger on phrases like "update the modal", "fix the picker", "deploy the change", "ship this to the stores", "run the build", "push to all stores", or any change request where the deploy path isn't yet stated. Also trigger when Sebastian asks for a "small fix" or "quick change" — that's exactly when routing gets skipped and the wrong layer gets touched. Skip only for pure docs edits (`docs/*.md`, `*.md` at root that aren't user-facing) where the deploy is literally just `git push`.
+description: Route any MOG code change to the right layer and the right deploy mechanism. Use BEFORE writing any code edit in mog-mobile — it determines whether the change ships via clasp (apps-script/), build.py (template/ or stores.json), Sebastian running SQL in the Supabase SQL Editor first (supabase/), or just a git push (hub root, icons/, docs/). Trigger on phrases like "update the modal", "fix the picker", "deploy the change", "ship this to the stores", "run the build", "push to all stores", or any change request where the deploy path isn't yet stated. Also trigger when Sebastian asks for a "small fix" or "quick change" — that's exactly when routing gets skipped and the wrong layer gets touched. Skip only for pure docs edits (`docs/*.md`, `*.md` at root that aren't user-facing) where the deploy is literally just `git push`.
 ---
 
 # mog-deploy-workflow
@@ -33,6 +33,8 @@ Read the change request and answer: **which layer?**
 | `apps-script/.clasp-targets.json` (add/remove deploy target, populate `deploymentId`) | Deploy infrastructure | `git commit; git push` (config-only). Next `python deploy.py` will pick it up. | `python deploy.py --dry-run` should list the new target without `FILL_ME_IN` errors. For a new store, run `python deploy.py --discover --target <slug>` to find the deploymentId. |
 | `build.py` or `deploy.py` itself | Deploy infrastructure | `git commit; git push`. Test by running the changed tool against a no-op input. | Run with `--dry-run` first, confirm output is what's expected, then run for real. |
 | `icons/*` or `docs/*` | Static assets / docs | `git commit; git push`. | For icons: verify the PWA install prompt shows the new icon on a fresh device or after clearing site data. |
+| `supabase/schema_vN.sql` (a new or changed `mog_*` function, table or column) | Supabase | **Runs FIRST, before any deploy below.** Sebastian runs it in the Supabase SQL Editor, then `smoke_vN.sql`, then `check_api.sh`. The database ships before the code that relies on it. Then the calling code's own row in this table. Files and order: **`mog-supabase-schema`**. | Every smoke row PASS, `check_api.sh` all PASS, then a read-only `execute_sql` check on project `mnfwqmrstdeuczveyykv`. |
+| `tests/*` | Gates | Nothing deploys. `node tests/run_all.js`, then commit with the code it gates. | All gates pass. |
 
 ## Canary-first discipline (carry-forward from Sebastian's stated preference)
 

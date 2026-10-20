@@ -62,9 +62,12 @@ check "v5 save_counts2: bad token refused"        200 'SESSION_EXPIRED' -X POST 
 check "v5 helper: touch_presence not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_device":"deviceXXXX0000","p_name":"x","p_vendor":"y"}' "$(rpc touch_presence)"
 check "v5 helper: live_json not exposed"          404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_device":"x"}' "$(rpc live_json)"
 
-# schema v6 (rprfo's editor is still in the Sheet: refused before the PIN, so no lockout risk)
+# schema v6. Never send a PIN to a real store: a wrong one counts against the
+# lockout its phones share. (This probe sent PIN 0 to rprfo while its editor was
+# in the Sheet; once every store moved, 2026-10-19, it became a real wrong PIN.
+# smoke_v6.sql covers the EDITOR_NOT_DIRECT refusal on a throwaway store.)
 check "v6 tables: change log not reachable"       404 ''   "$URL/rest/v1/change_log"
-check "v6 editor_login: Sheet store refused"      200 'EDITOR_NOT_DIRECT' -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_pin":"0"}' "$(rpc mog_editor_login)"
+check "v6 editor_login: unknown store refused"    200 'Unknown store'     -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_pin":"0"}' "$(rpc mog_editor_login)"
 check "v6 editor_get: bad token refused"          200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_editor_get)"
 check "v6 editor_apply: bad token refused"        200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_label":"x","p_by":"x","p_ops":[]}' "$(rpc mog_editor_apply)"
 check "v6 editor_undo: bad token refused"         200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_change_id":1,"p_by":"x"}' "$(rpc mog_editor_undo)"

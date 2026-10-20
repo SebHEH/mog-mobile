@@ -90,6 +90,24 @@ def classify(path):
     if p.startswith("icons/") or p.startswith("docs/"):
         return (GIT_ONLY, "Static assets / docs", "git push.", None)
 
+    # Supabase: nothing here deploys; Sebastian runs the SQL (skill mog-supabase-schema)
+    if p.startswith("supabase/"):
+        if base.startswith("schema") and base.endswith(".sql"):
+            return (GIT_ONLY, "Supabase (Sebastian runs it in the SQL Editor)",
+                    "The SQL runs before any deploy; the file itself is just committed.",
+                    "Sebastian runs it, then its smoke file (every row PASS), then "
+                    "check_api.sh - BEFORE the deploy below. Skill: mog-supabase-schema.")
+        if p.startswith("supabase/tests/"):
+            return (GIT_ONLY, "Supabase tests",
+                    "Run in the SQL Editor (smoke) or by bash (check_api.sh); commit.",
+                    "A probe must never send a PIN to a real store (lockout counter).")
+        return (GIT_ONLY, "Supabase (one-off SQL)",
+                "Run by Sebastian only when a runbook says so (mog-add-store).", None)
+
+    # Node gates
+    if p.startswith("tests/"):
+        return (GIT_ONLY, "Gates", "node tests/run_all.js; nothing deploys.", None)
+
     return (PUSH, "UNKNOWN",
             "Path didn't match a known rule.",
             "Route manually — confirm the layer before deploying.")
@@ -109,6 +127,13 @@ def main(argv):
         print("  - {}  ->  {} [{}]".format(path, ACTION_NAME[action].split("(")[0].strip(), layer))
         if verify:
             print("      VERIFY: " + verify)
+
+    schema = [path for path in paths
+              if path.replace("\\", "/").lstrip("./").startswith("supabase/schema")]
+    if schema:
+        print("\nFIRST: Sebastian runs " + ", ".join(schema) + " in the Supabase SQL Editor, "
+              "then its smoke file and check_api.sh. The database ships before the code "
+              "that relies on it.")
 
     print("\nDeploy: " + ACTION_NAME[winner])
     reasons = sorted({r[3] for r in results if r[1] == winner})
