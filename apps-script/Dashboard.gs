@@ -55,14 +55,25 @@ const DASH_COLORS = {
 // text, while tiles + email ink stay charcoal so everything stays legible. Same
 // palette mirrors the PWA + the KM web editor (which reads accent/bannerFont).
 // Static table — identical across all stores; the per-store choice comes from
-// the MOG_CONCEPT property.
+// the MOG_CONCEPT property. Its keys (minus 'default') are the concepts a store
+// can be set to (knownConcepts_), and `name` is how the Sheet menus show each
+// one: the same spelling as stores.json and the app (tests/concepts.test.js).
+// The order is the Sheet menus' numbering, so 1 and 2 stay Roll Play and Teas'n You.
 const CONCEPT_THEMES = {
-  'roll-play': { accent: "#2d8c6b", bannerFont: "#ffffff" },                  // RP teal-dark + white
-  'an':        { accent: "#3C1124", bannerFont: "#ffffff" },                  // ĂN Night Market burgundy (brand-kit primary/header color)
-  'teasnyou':  { accent: "#D4A574", bannerFont: "#1a1a1a", ink: "#1a1a1a" },  // TNY Kintsugi gold band + charcoal ink
-  'leid':      { accent: "#b51579", bannerFont: "#ffffff" },                  // Lei'd dark magenta (white reads on the dark shade)
+  'roll-play': { name: "Roll Play",  accent: "#2d8c6b", bannerFont: "#ffffff" },                  // RP teal-dark + white
+  'teasnyou':  { name: "Teas’n You", accent: "#D4A574", bannerFont: "#1a1a1a", ink: "#1a1a1a" },  // TNY Kintsugi gold band + charcoal ink
+  'an':        { name: "ĂN",         accent: "#3C1124", bannerFont: "#ffffff" },                  // ĂN Night Market burgundy (brand-kit primary/header color)
+  'leid':      { name: "Lei’d Poke", accent: "#b51579", bannerFont: "#ffffff" },                  // Lei'd dark magenta (white reads on the dark shade)
   'default':   { accent: DASH_COLORS.NAVY, bannerFont: DASH_COLORS.WHITE }
 };
+
+// The concepts a store can be set to, in the Sheet menus' order.
+function knownConcepts_() {
+  return Object.keys(CONCEPT_THEMES).filter(function (k) { return k !== 'default'; });
+}
+function isKnownConcept_(concept) {
+  return knownConcepts_().indexOf(String(concept || '')) >= 0;
+}
 
 // Resolves this store's dashboard theme from the MOG_CONCEPT script property
 // (set via setupMobileApi_ / Set Store Concept). Falls back to the default

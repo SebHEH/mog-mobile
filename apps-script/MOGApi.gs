@@ -43,7 +43,7 @@ const PROP_MASTER_PIN     = 'MOG_API_MASTER_PIN';  // multi-unit manager bypass
 const PROP_GM_EMAIL       = 'MOG_GM_EMAIL';        // legacy: seed for recipients list on first read
 const PROP_LOCATION       = 'MOG_LOCATION_NAME';
 const PROP_LOCATION_ABBR  = 'MOG_LOCATION_ABBR';
-const PROP_CONCEPT        = 'MOG_CONCEPT';        // dashboard branding: 'roll-play' | 'teasnyou' (unset → default navy)
+const PROP_CONCEPT        = 'MOG_CONCEPT';        // dashboard branding: a Dashboard.gs CONCEPT_THEMES key (unset → default navy)
 
 // Cycle-date of the most recent successful recap send. Gates auto-send
 // paths (PWA pre-reset, sheet-reset, bulk-mark) so the same cycle's

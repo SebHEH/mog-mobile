@@ -76,7 +76,10 @@ RESERVED_SLUGS = {
     'stores.json', 'build.py', 'readme', 'readme.md',
 }
 
-SLUG_RE       = re.compile(r'^[a-z0-9-]+$')
+# Supabase's rule (mog.stores, mog.provision_store, the Move this store to
+# Supabase prompt): a slug it refuses could be built and published but never
+# connect.
+SLUG_RE       = re.compile(r'^[a-z0-9]{2,20}$')
 DEPLOY_URL_RE = re.compile(r'^https://script\.google\.com/macros/s/[^/]+/exec$')
 
 API_URL_PLACEHOLDER = '__MOG_API_URL__'
@@ -89,14 +92,17 @@ REGISTRY_MARKER     = '// __STORE_REGISTRY__ build-injected'
 
 # Maps the human-readable concept name (from stores.json) to a CSS theme
 # slug. The template has a [data-theme="..."] selector block for each.
-# Unknown concepts fall back to 'default' which leaves the :root vars
-# in place (current HEH teal look).
+# A concept not listed here stops the build (validate_stores): a near miss,
+# like a straight apostrophe in Teas’n You, would otherwise build that store
+# unthemed without a word. The names are the app's own (template/index.html
+# CONCEPT_NAMES_), also used by the hub's CONCEPT_VISUALS, the setup wizard
+# and Dashboard.gs CONCEPT_THEMES; tests/concepts.test.js keeps them equal.
 CONCEPT_TO_THEME = {
     "Roll Play":  "roll-play",
-    "Lei'd":      "leid",
+    "Lei’d Poke": "leid",      # curly U+2019, like Teas’n You
     "Teas’n You": "teasnyou",  # curly U+2019 — must match stores.json + hub CONCEPT_VISUALS
-    "ĂN":    "an",   # ĂN (with combining breve) — escaped for clarity
-    "AN":         "an",   # alternate ASCII spelling
+    "ĂN":         "an",        # precomposed U+0102
+    "AN":         "an",        # alternate ASCII spelling
 }
 
 # Maps concept name to the apple-touch-icon <link> tag substituted into
@@ -142,12 +148,18 @@ def validate_stores(stores):
 
         slug = entry['slug']
         if not SLUG_RE.match(slug):
-            fail(f"{prefix}: invalid slug {slug!r} — must match [a-z0-9-]+")
+            fail(f"{prefix}: invalid slug {slug!r} — must be 2-20 lowercase letters or digits "
+                 f"(no hyphens: Supabase refuses them)")
         if slug.lower() in RESERVED_SLUGS:
             fail(f"{prefix}: slug {slug!r} is reserved (collides with repo file/dir)")
         if slug in slugs_seen:
             fail(f"{prefix}: duplicate slug {slug!r} — slugs must be unique")
         slugs_seen.add(slug)
+
+        if entry['concept'] not in CONCEPT_TO_THEME:
+            fail(f"{prefix}: unknown concept {entry['concept']!r} — use one of "
+                 f"{', '.join(repr(k) for k in CONCEPT_TO_THEME)} exactly (apostrophes included), "
+                 f"or add it to CONCEPT_TO_THEME first")
 
         # Optional: the street address vendors deliver to (the Copy order email).
         if 'address' in entry and (not isinstance(entry['address'], str) or not entry['address'].strip()):
@@ -330,8 +342,8 @@ def generate_store(entry, template_html, template_sw, dry_run, order_math, supab
              f"found {count}. Template may be corrupted.")
     rendered_html = template_html.replace(API_URL_PLACEHOLDER, entry['deployment'])
 
-    # Theme substitution. Concept-derived; unknown concepts fall back
-    # to 'default' which is a no-op in the template's theme CSS.
+    # Theme substitution. Concept-derived; validate_stores already refused an
+    # unknown concept ('default' is a no-op in the template's theme CSS).
     theme = CONCEPT_TO_THEME.get(entry['concept'], 'default')
     theme_count = rendered_html.count(THEME_PLACEHOLDER)
     if theme_count != 1:

@@ -68,7 +68,7 @@ Skills auto-load and trigger via the descriptions in their frontmatter.
 |---|---|
 | `mog-session-handoff` | End-of-session capture. Writes `docs/MOG_SessionHandoff_YYYY_MM_DD.md` and updates this file's @-import line. |
 | `mog-deploy-workflow` | Any code change — routes the change to the right layer (`deploy.py` for backend, `build.py` + git push for PWA/config) and enforces canary-first deploys. |
-| `mog-add-store` | New-store onboarding — the full end-to-end procedure (Drive copy → Script ID → `.clasp-targets.json` → Setup / Re-run Setup → web-app deploy → `stores.json` → `build.py` → push). |
+| `mog-add-store` | New-store onboarding, end to end (template copy → Script ID + web-app deploy → `.clasp-targets.json` + `provision_stores.sql` → push → `?page=setup` wizard → Move this store to Supabase → Move the editor to the app, start empty → `stores.json` + `build.py` → push → the app's Overview checklist). `scripts/validate.py` checks every pasted value and the wiring. |
 | `mog-cheatsheet` | On-demand command reference. Triggers on "cheat sheet" / "remind me the command" / "what was that flag" / "how do I deploy". Dumps the relevant `deploy.py` / `build.py` / git invocations verbatim. |
 | `mog-rpc-consolidation` | Pattern for collapsing multiple `google.script.run` calls or duplicate sheet reads in modals into a single bootstrap or commit server fn. Triggers when a modal fires >1 RPC on load/save, on audit-punch-list items, or "consolidate the RPCs" / "merge these calls". |
 | `mog-apps-script-caching` | `CacheService` + `getServerMutationTs_` recipe for `api_*` reads in `MOGApi.gs`. Triggers when adding caching to an existing `api_*` fn or introducing a new aggregation endpoint. Always pairs with `--redeploy`. |

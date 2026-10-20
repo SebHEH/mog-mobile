@@ -1525,7 +1525,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
   // a dash separator, else returns the whole string unchanged.
   function mgeShortLoc_(s) {
     s = String(s == null ? '' : s).trim();
-    var names = { 'roll-play': 'roll play', 'teasnyou': "teas'n you", 'an': 'an', 'leid': "lei'd" };
+    var names = { 'roll-play': 'roll play', 'teasnyou': "teas'n you", 'an': 'ăn', 'leid': "lei'd poke" };
     var cc = (typeof CONCEPT !== 'undefined' && CONCEPT) ? CONCEPT : '';
     var pref = names[cc];
     if (pref) {

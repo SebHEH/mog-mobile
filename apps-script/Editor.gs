@@ -61,7 +61,7 @@ function editorWebBoot_(extra) {
     abbr:    props.getProperty(PROP_LOCATION_ABBR) || '',
     base:    getWebAppUrl_(),
     theme:   dashTheme_(),
-    concept: String(props.getProperty(PROP_CONCEPT) || '').trim().toLowerCase()  // 'roll-play' | 'teasnyou' | …
+    concept: String(props.getProperty(PROP_CONCEPT) || '').trim().toLowerCase()  // a Dashboard.gs CONCEPT_THEMES key, or ''
   };
   if (extra) { for (const k in extra) boot[k] = extra[k]; }
   return JSON.stringify(boot);
@@ -303,9 +303,7 @@ function commitStoreSetup(payload) {
   const abbr      = String(p.abbr || '').trim().toUpperCase();
   const gmEmail   = String(p.gmEmail || '').trim();
   const conceptIn = String(p.concept || '').trim().toLowerCase();
-  const concept   = conceptIn === 'roll-play' ? 'roll-play'
-                  : conceptIn === 'teasnyou'  ? 'teasnyou'
-                  : '';
+  const concept   = isKnownConcept_(conceptIn) ? conceptIn : '';   // Dashboard.gs CONCEPT_THEMES
 
   // Server-side validation — mirrors setupMobileApi_'s rules. The `error` field
   // name lets the client focus the offending input.

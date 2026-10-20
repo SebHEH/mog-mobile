@@ -42,16 +42,12 @@ function setupMobileApi_() {
   const conceptResp = ui.prompt(
     'Mobile API Setup — 4 of 6',
     'Enter this store\'s concept for home-dashboard branding:\n\n' +
-    '  1 = Roll Play\n' +
-    '  2 = Teas\'n You\n\n' +
+    conceptMenuText_() + '\n\n' +
     'Leave blank to skip (dashboard stays the default navy).',
     ui.ButtonSet.OK_CANCEL);
   if (conceptResp.getSelectedButton() !== ui.Button.OK) return;
-  const conceptInput = conceptResp.getResponseText().trim();
-  const concept = conceptInput === '1' ? 'roll-play'
-                : conceptInput === '2' ? 'teasnyou'
-                : '';
-  if (conceptInput && !concept) { ui.alert('Enter 1, 2, or leave blank.'); return; }
+  const concept = conceptFromMenu_(conceptResp.getResponseText());
+  if (concept === null) { ui.alert(conceptMenuError_()); return; }
 
   const gmResp = ui.prompt(
     'Mobile API Setup — 5 of 6',
@@ -164,22 +160,37 @@ function setStoreConcept_() {
     'Set Store Concept',
     'Current: ' + current + '\n\n' +
     'Enter this store\'s concept for home-dashboard branding:\n\n' +
-    '  1 = Roll Play\n' +
-    '  2 = Teas\'n You\n\n' +
+    conceptMenuText_() + '\n\n' +
     'Leave blank to clear (dashboard reverts to the default navy).',
     ui.ButtonSet.OK_CANCEL);
   if (resp.getSelectedButton() !== ui.Button.OK) return;
-  const input = resp.getResponseText().trim();
-  const concept = input === '1' ? 'roll-play'
-                : input === '2' ? 'teasnyou'
-                : '';
-  if (input && !concept) { ui.alert('Enter 1, 2, or leave blank.'); return; }
+  const concept = conceptFromMenu_(resp.getResponseText());
+  if (concept === null) { ui.alert(conceptMenuError_()); return; }
 
   if (concept) props.setProperty(PROP_CONCEPT, concept);
   else         props.deleteProperty(PROP_CONCEPT);
   ui.alert(
     'Store concept ' + (concept ? 'set to "' + concept + '"' : 'cleared') + '.\n\n' +
     'Run Ordering Guide → 🏠 Rebuild Home Dashboard to apply the branding.');
+}
+
+// The concept prompt in Setup / Re-run Setup and Set Store Concept: one
+// numbered line per concept a store can be set to (Dashboard.gs CONCEPT_THEMES).
+function conceptMenuText_() {
+  return knownConcepts_().map((c, i) => '  ' + (i + 1) + ' = ' + CONCEPT_THEMES[c].name).join('\n');
+}
+
+// The concept a typed number picks: '' when blank, null when it picks none.
+function conceptFromMenu_(input) {
+  const s = String(input || '').trim();
+  if (!s) return '';
+  const list = knownConcepts_();
+  const n = /^\d+$/.test(s) ? Number(s) : 0;
+  return (n >= 1 && n <= list.length) ? list[n - 1] : null;
+}
+
+function conceptMenuError_() {
+  return 'Enter a number from 1 to ' + knownConcepts_().length + ', or leave blank.';
 }
 
 
