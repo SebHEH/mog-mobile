@@ -254,6 +254,9 @@ async function runSuite(srcOf) {
     ['commitStorageAreasDraft', [{ name: 'Dry Storage', origName: 'Back Room' }, { name: 'Freezer', origName: 'Freezer' },
                                  { name: 'Walk-in', origName: 'Walk-in' }]],
     ['commitReorderPickPath', 'Sysco', null],
+    ['commitSetItemsVendor', null, 'Sysco', true],
+    ['commitSetItemsArea', null, 'Dry Storage'],
+    ['commitSetItemsActive', null, false],
     ['commitRemoveVendor', 'Chef Center']
   ];
   for (const [fn, ...args] of toolSteps) {
@@ -263,6 +266,11 @@ async function runSuite(srcOf) {
       for (const g of data.groups.slice().reverse()) for (const it of g.items.slice().reverse()) rows.push({ id: it.id, name: it.name, area: g.area });
       for (const it of data.unassigned) rows.push({ id: it.id, name: it.name, area: data.groups[0].area });
       args[1] = rows;
+    }
+    // The Items page's bulk bar: a few active items with a vendor.
+    if (fn === 'commitSetItemsArea' || fn === 'commitSetItemsActive' || fn === 'commitSetItemsVendor') {
+      args[0] = tab.H().tables.items.filter(it => it.active && it.primaryVendor && it.primaryVendor !== 'Sysco')
+        .slice(0, fn === 'commitSetItemsActive' ? 3 : 4).map(it => it.id);
     }
     const before = clone(s.tables);
     const logged = (s.changeLog || []).length;
@@ -446,7 +454,7 @@ const CONTROLS = [
     failed++;
     console.log(`FAIL  ${live.failures.length} problem(s):`);
     for (const f of live.failures.slice(0, 10)) console.log('      ' + f);
-  } else if (!st.conflicts || !st.undos || st.logged < 40 || st.reviews !== 3 || st.tools !== 6 || !st.pages || !st.embed) {
+  } else if (!st.conflicts || !st.undos || st.logged < 40 || st.reviews !== 3 || st.tools !== 9 || !st.pages || !st.embed) {
     failed++;
     console.log('FAIL  a case was never exercised');
   } else {

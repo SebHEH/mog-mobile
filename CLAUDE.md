@@ -151,8 +151,9 @@ mog-mobile/
 │                                PickPath.gs) + host.js (runs those Apps Script pages and Editor Home as static pages) + meImport.js
 │                                (Import from MarginEdge: vendors, then items, then one logged save). host.js also answers Order
 │                                History, the Par Review flags (OrderMath.gs, copied in as orderMath.js) and the Health Check
-│                                (catalogEdit.js getStoreHealthReport) from Supabase. Overview.html + Changes.html are
-│                                pages only the app has (the Manage home and the change log). On a computer every page runs
+│                                (catalogEdit.js getStoreHealthReport) from Supabase. Items.html, Overview.html and Changes.html are
+│                                pages only the app has (Manage Items since the 2026-10-20 redesign, with its bulk bar; the
+│                                Manage home; the change log). ManageItems.html stays for the Sheet dialog and /exec only. On a computer every page runs
 │                                inside the app, in a frame beside its sidebar (?embed=1, spec U2). build.py publishes it at
 │                                <slug>/editor/ for a store marked "editor": "supabase" (every store), and --preview for a test store.
 ├── apps-script/                 APPS SCRIPT SOURCE.
@@ -173,7 +174,7 @@ mog-mobile/
 │   ├── Sync.gs                  Supabase sync: catalog/PIN push, the Move this store to Supabase menu item, nightly 3:30 AM run, cycle close in Supabase, parity + timing tests.
 │   ├── DbApi.gs                 /exec's count path for a store that counts in Supabase (same answers as the Sheet handlers, no Sheet I/O).
 │   ├── AdminReset.html          Admin reset modal.
-│   ├── ManageItems.html         Item editor modal (dual-host: Sheet dialog + web).
+│   ├── ManageItems.html         Item editor modal (Sheet dialog + /exec web; the app uses template/editor/Items.html).
 │   ├── ManageVendors.html       Vendor editor modal (dual-host).
 │   ├── OrderHistory.html        Past orders modal (dual-host, read-only).
 │   ├── ReorderPickPath.html     Shelf-to-Sheet / reorder pick-path modal (dual-host).

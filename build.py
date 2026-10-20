@@ -54,7 +54,10 @@ PREVIEW_DIR    = os.path.join(ROOT, '_preview')   # git-ignored: test stores, ne
 # U11: the app shows its Manage section only once Supabase says the store's
 # editor has moved, schema v8's switch), and for a test store by --preview.
 EDITOR_PAGES  = {'index.html':    ('EditorHome', 'Editor', 'home'),
-                 'items.html':    ('ManageItems', 'Manage Items', 'items'),
+                 # Manage Items is the app's own page since 2026-10-20 (the
+                 # redesign); apps-script/ManageItems.html stays for the Sheet
+                 # dialog and the /exec editor (onboarding, rollback).
+                 'items.html':    ('editor:Items', 'Items', 'items'),
                  'vendors.html':  ('ManageVendors', 'Manage Vendors', 'vendors'),
                  'areas.html':    ('StorageAreas', 'Storage Areas', 'areas'),
                  'pickpath.html': ('ReorderPickPath', 'Shelf to Sheet', 'pickpath'),

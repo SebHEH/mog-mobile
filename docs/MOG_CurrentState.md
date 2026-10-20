@@ -14,7 +14,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
 - **Each Sheet** is frozen for catalog edits. It still holds the Apps Script: the 3:30 AM close, the recap email, the onboarding moves. It also gets a nightly LOG_ORDERS backup.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions:** app v0.26.0 / cache v66, hub cache v11, schema v9.
+- **Versions:** app v0.26.1 / store cache v67, hub cache v11, schema v9.
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
 - **The three empty stores:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
@@ -35,17 +35,24 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - Import Vendor (CSV) removed: Import from MarginEdge replaces it.
   - Recalibrate Vendor Pars, Vendor Cadence Audit and How To Use deleted.
   - Dead code removed; "1 items" fixed.
-- **Not yet deployed.**
-- **Manage Items / Vendors redesign:** mockup approved ([artifact](https://claude.ai/artifact/BmVaV6v55MnHx39gJ7mH4K)), with the vendor dropdown next to the search. Not built.
+- **Shipped:** commit `ffc816b`. Apps Script is on all 11 targets (every store's `/exec` answers), and the app is v0.26.1 / store cache v67.
+- **Manage Items redesign: built from the approved mockup** ([artifact](https://claude.ai/artifact/BmVaV6v55MnHx39gJ7mH4K)); not pushed at last update.
+  - The page: the app-only [template/editor/Items.html](../template/editor/Items.html).
+    - A four-column list with search, a vendor dropdown ("On its list / Not on it"), an area filter, and Active / Needs setup / Par review / Inactive.
+    - An item panel beside the list (previous/next, one Save for everything), and Add item as a button.
+    - A bulk bar: add to / remove from a vendor, Move to area, Make active/inactive.
+  - Three new one-change bulk saves in `catalogEdit.js`, gated by `tests/items_bulk.test.js`.
+  - Each touches only the ticked items. The old Assign tab's save rewrote a vendor's whole list and dropped other items' drifted rows.
+  - Saving an item now needs a par.
+  - `ManageItems.html` stays for the Sheet dialog and `/exec`.
+- **The Vendors redesign** is next, from the same mockup.
 
 Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](MOG_OneApp_Spec.md), [docs/MOG_SupabaseMigration.md](MOG_SupabaseMigration.md), [docs/MOG_LogicBlueprint.md](MOG_LogicBlueprint.md).
 
 ### Next-session candidates
 
-1. **Ship the 2026-10-20 fixes and cleanup** if they haven't gone out:
-   - Apps Script with `python deploy.py --redeploy`: canary rprfo, then all 11 targets;
-   - the app with `python build.py`, a `template/sw.js` cache bump, then push.
-2. **Build the Manage Items redesign, then Vendors**, from the approved mockup. Walk through the code plan first: `ManageItems.html` runs in the app's editor and in the Sheet dialog.
+1. **Watch the first close with the 2026-10-20 fixes:** each store's recap goes out once, and nothing new shows up in the nightly run's log.
+2. **Check the new Items page live, then build the Vendors redesign** from the same mockup (an app-only `template/editor/Vendors.html` the same way; Import Vendor is already gone). Small follow-up: the Overview's "Give each item a storage area and a par" step could open Items on Needs setup.
 3. **Logic findings held back on 2026-10-20** (edge cases; decide before fixing):
    - A same-day manual close from the Sheet, followed by that night's close of the same day, replaces the day's order log with an empty one.
    - Turning Emergency Override off before 3:30 AM drops the vendors ordered under it from that night's log and email.
@@ -174,7 +181,7 @@ Most recent first. Keep about five; older rows move to the archive.
 
 | Date | Session | Outcome |
 |---|---|---|
-| 2026-10-20 | Night check, logic check, cleanup, redesign mockup | First all-Supabase night checked clean. Logic check: all gates pass, 4 fixes (recap duplicate check, late offline counts, phone rounding on the shared math, negative counts). Cleanup: Import Vendor and 3 Sheet-only tools removed, dead code removed. Manage Items / Vendors mockup approved. Not yet deployed at last update. |
+| 2026-10-20 | Night check, logic check, cleanup, redesign mockup | First all-Supabase night checked clean. Logic check: all gates pass, 4 fixes (recap duplicate check, late offline counts, phone rounding on the shared math, negative counts). Cleanup: Import Vendor and 3 Sheet-only tools removed, dead code removed. Manage Items / Vendors mockup approved. Commit `ffc816b`; Apps Script on all 11 targets, app v0.26.1 / cache v67. |
 | 2026-10-19 (later, 3) | New-store onboarding + all four concepts | `mog-add-store` rewritten for Supabase stores (11 steps, `validate.py wired`); wizard and Sheet menus accept all four concepts; `build.py` refuses bad slugs and concepts; gate `concepts`. Commit `4720ff2`. Detail: `docs/MOG_SessionHandoff_2026_10_19.md`. |
 | 2026-10-19 (later) | Phase 4's rest, one app on a computer, every store moved | Schema v9 (order history, recipients, People, Health in the app); the sidebar shell with Manage pages in a frame; the Overview; all 10 stores' editors moved (tnyr, tnyrf, tnyt started empty). Commits `30c08ce`→`7f23850`. Same handoff. |
 | 2026-10-18 → 10-19 | MarginEdge import, Phase 4 editor tools | Import from MarginEdge; Manage Vendors, Storage Areas and Shelf to Sheet on Supabase; schema v8; Move the editor to the app. Commits `62a356d`→`09b3279`. Same handoff. |

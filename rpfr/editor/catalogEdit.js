@@ -627,6 +627,105 @@
     return out;
   }
 
+  // ---- The Items page's bulk bar (no Items.gs twin) ----------------------------
+  // Many items at once, as ONE logged change with one Undo. Each item ends
+  // exactly where saving it alone in the item panel (upsertItem, fields
+  // unchanged) would leave it; tests/items_bulk.test.js holds that. Items that
+  // save would skip or refuse come back in `skipped`, with the reason.
+
+  const idList = raw => Array.from(new Set((Array.isArray(raw) ? raw : []).map(x => String(x == null ? '' : x).trim()).filter(Boolean)));
+
+  // The fields an item save writes back unchanged: the canonical primary
+  // vendor and the normalized eligible list. null when it has no vendor the
+  // store still has (D23 leaves those behind).
+  function settle(w, item, map) {
+    const vendor = map.get(s_(item.primaryVendor).toLowerCase());
+    if (!vendor) return null;
+    item.primaryVendor = vendor;
+    item.eligible = normalizeEligibleList(item.eligible, vendor, map);
+    return vendor;
+  }
+
+  // Move to area. A save with only the area changed: the primary vendor's row
+  // moves to the end of that area, and each eligible vendor without a row
+  // gets one there. Inactive items are skipped (they're on no list).
+  function setItemsArea(w, itemIdsRaw, areaRaw) {
+    const area = String(areaRaw || '').trim();
+    if (!area) throw new Error('Storage Area is required.');
+    if (!areaOrderMap(w).has(area)) throw new Error('"' + area + '" is not a recognised Storage Area.');
+    const ids = idList(itemIdsRaw);
+    if (!ids.length) throw new Error('Pick at least one item.');
+    const map = vendorMap(w);
+    let moved = 0;
+    const skipped = [];
+    for (const id of ids) {
+      const item = w.items.find(x => s_(x.id) === id);
+      if (!item) { skipped.push({ id: id, reason: 'not found' }); continue; }
+      if (item.active !== true) { skipped.push({ id: id, reason: 'inactive' }); continue; }
+      const vendor = settle(w, item, map);
+      if (!vendor) { skipped.push({ id: id, reason: 'no vendor' }); continue; }
+      assignArea(w, id, vendor, area, { itemName: s_(item.name) });
+      syncEligiblePickRows(w, id, { name: s_(item.name), primary: vendor, eligible: item.eligible });
+      moved++;
+    }
+    return { ok: true, area: area, moved: moved, skipped: skipped };
+  }
+
+  // Make active / inactive. Inactive leaves every vendor's list, as a save
+  // does; active again comes back with no storage area (it gets one the usual
+  // way). An item with no vendor can still be switched off and on.
+  function setItemsActive(w, itemIdsRaw, activeRaw) {
+    const active = (activeRaw === true || activeRaw === 'true');
+    const ids = idList(itemIdsRaw);
+    if (!ids.length) throw new Error('Pick at least one item.');
+    const map = vendorMap(w);
+    let changed = 0;
+    const skipped = [];
+    for (const id of ids) {
+      const item = w.items.find(x => s_(x.id) === id);
+      if (!item) { skipped.push({ id: id, reason: 'not found' }); continue; }
+      if ((item.active === true) === active) { skipped.push({ id: id, reason: active ? 'already active' : 'already inactive' }); continue; }
+      const vendor = settle(w, item, map);
+      item.active = active;
+      if (!active) w.pickRows = w.pickRows.filter(r => s_(r.id) !== id);
+      else if (vendor) syncEligiblePickRows(w, id, { name: s_(item.name), primary: vendor, eligible: item.eligible });
+      changed++;
+    }
+    return { ok: true, active: active, changed: changed, skipped: skipped };
+  }
+
+  // Add to / remove from a vendor: a save with only the backup vendors
+  // changed. Adding puts the vendor on the item's list of vendors (and on
+  // that vendor's count list in the item's area, once it has one); removing
+  // takes it off both. Only the ticked items change: unlike the Assign tab's
+  // save (setVendorItems), nothing else on the vendor's list is touched.
+  // An item's main vendor can't be removed, and an item needs a main vendor.
+  function setItemsVendor(w, itemIdsRaw, vendorRaw, addRaw) {
+    const vendor = normalizeVendorOrThrow(w, vendorRaw);
+    const add = (addRaw === true || addRaw === 'true');
+    const ids = idList(itemIdsRaw);
+    if (!ids.length) throw new Error('Pick at least one item.');
+    const map = vendorMap(w), vLow = vendor.toLowerCase();
+    const rowsOf = id => JSON.stringify(w.pickRows.filter(r => s_(r.id) === id));
+    let changed = 0;
+    const skipped = [];
+    for (const id of ids) {
+      const item = w.items.find(x => s_(x.id) === id);
+      if (!item) { skipped.push({ id: id, reason: 'not found' }); continue; }
+      if (!map.get(s_(item.primaryVendor).toLowerCase())) { skipped.push({ id: id, reason: 'no vendor' }); continue; }
+      if (s_(item.primaryVendor).toLowerCase() === vLow) { skipped.push({ id: id, reason: 'main vendor' }); continue; }
+      const before = JSON.stringify(item.eligible) + rowsOf(id);
+      const primary = settle(w, item, map);
+      const has = item.eligible.some(v => v.toLowerCase() === vLow);
+      if (add && !has) item.eligible = item.eligible.concat([vendor]);
+      if (!add) item.eligible = item.eligible.filter(v => v.toLowerCase() !== vLow);
+      if (item.active !== true) w.pickRows = w.pickRows.filter(r => s_(r.id) !== id);
+      else syncEligiblePickRows(w, id, { name: s_(item.name), primary: primary, eligible: item.eligible });
+      if (JSON.stringify(item.eligible) + rowsOf(id) !== before) changed++;
+    }
+    return { ok: true, vendor: vendor, add: add, changed: changed, skipped: skipped };
+  }
+
   // ---- Manage Vendors (Vendors.gs) -------------------------------------------
 
   const pad2 = n => (n < 10 ? '0' : '') + n;
@@ -1045,6 +1144,9 @@
     if (fn === 'commitSwitchActiveVendor') return 'Made ' + result.vendor + ' the primary vendor of "' + nameOf(result.id) + '"';
     if (fn === 'commitSetVendorItems') return 'Assigned items to ' + result.vendor + ': ' + result.added + ' added, ' + result.removed + ' removed';
     if (fn === 'commitDeleteItem') return 'Deleted "' + result.name + '" (' + result.id + ')';
+    if (fn === 'commitSetItemsArea') return 'Moved ' + plural(result.moved, 'item') + ' to ' + result.area;
+    if (fn === 'commitSetItemsActive') return 'Made ' + plural(result.changed, 'item') + (result.active ? ' active' : ' inactive');
+    if (fn === 'commitSetItemsVendor') return (result.add ? 'Added ' : 'Removed ') + plural(result.changed, 'item') + (result.add ? ' to ' : ' from ') + result.vendor;
     if (fn === 'commitImportItems') {
       const v = result.vendorsAdded.length;
       const names = v <= 6 ? ' (' + result.vendorsAdded.join(', ') + ')' : '';   // the log keeps 300 characters
@@ -1103,6 +1205,9 @@
     commitSwitchActiveVendor: (w, args) => switchActiveVendor(w, args[0], args[1]),
     commitSetVendorItems: (w, args) => setVendorItems(w, args[0], args[1]),
     commitDeleteItem: (w, args) => deleteItem(w, args[0]),
+    commitSetItemsArea: (w, args) => setItemsArea(w, args[0], args[1]),
+    commitSetItemsActive: (w, args) => setItemsActive(w, args[0], args[1]),
+    commitSetItemsVendor: (w, args) => setItemsVendor(w, args[0], args[1], args[2]),
     commitImportItems: (w, args) => importItems(w, args[0] || {}),
     commitAddVendor: (w, args) => addVendor(w, args[0], args[1], args[2]),
     commitUpdateVendorMultsAndCutoff: (w, args) => updateVendor(w, args[0], args[1], args[2]),

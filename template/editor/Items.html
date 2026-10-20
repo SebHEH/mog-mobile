@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Manage Items in the app (2026-10-20 redesign, mockup "Manage Items and
+       Vendors redesign"): one full-width list (Item, Vendor, Storage area,
+       Par) with search, a vendor and an area filter and four views; an item
+       panel beside the list for editing and adding; ticked items get a bulk
+       bar (add to / remove from a vendor, move to an area, active/inactive).
+       Only in the app's editor: the Sheet dialog and the /exec editor keep
+       apps-script/ManageItems.html. Every save goes through host.js to
+       catalogEdit.js, the same calls ManageItems.html makes, plus the two
+       bulk saves (commitSetItemsArea, commitSetItemsActive). -->
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', Arial, Helvetica, sans-serif; margin: 0; color: #1f1e1b; background: #fff; font-size: 14px; }
+    .lang-en .es, .lang-es .en { display: none; }
+    button, input, select { font: inherit; color: inherit; }
+    body.mge-web .web-titlebar { max-width: none; }
+    .web-title { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .it-head-btn { order: 3; height: 42px; padding: 0 18px; border: 0; border-radius: 10px; background: var(--web-accent, #2d8c6b);
+                   color: var(--web-accent-text, #fff); font: 700 14px Inter, Arial, sans-serif; letter-spacing: 0; cursor: pointer;
+                   display: inline-flex; align-items: center; gap: 6px; }
+    .it-head-btn:hover { filter: brightness(0.95); }
+    #mge-import-btn.mge-title-import { margin-left: auto; }
+    .web-title:not(:has(#mge-import-btn)) .it-head-btn { margin-left: auto; }
+
+    #it-wrap { display: flex; align-items: flex-start; min-height: calc(100vh - 110px); }
+    #it-main { flex: 1 1 auto; min-width: 0; padding: 6px 24px 32px; display: flex; flex-direction: column; gap: 14px; }
+
+    /* Toolbar */
+    #it-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .it-search { position: relative; flex: 0 1 280px; min-width: 180px; }
+    .it-search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: #6b6a65; }
+    .it-search input { width: 100%; height: 38px; padding: 0 12px 0 36px; border: 1px solid rgba(0,0,0,0.18); border-radius: 10px; background: #fff; }
+    .it-select { height: 38px; padding: 0 10px; border: 1px solid rgba(0,0,0,0.18); border-radius: 10px; background: #fff; max-width: 220px; }
+    .it-select.strong { font-weight: 600; }
+    .it-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .it-chip { height: 34px; padding: 0 12px; border: 1px solid rgba(0,0,0,0.16); border-radius: 999px; background: #fff; font-size: 13px;
+               font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .it-chip[aria-pressed="true"] { background: #1f1e1b; border-color: #1f1e1b; color: #fff; font-weight: 600; }
+    .it-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .it-dot.setup { background: #c98a1c; }
+    .it-dot.review { background: #2f6fc4; }
+    .it-onoff { display: inline-flex; border: 1px solid rgba(0,0,0,0.18); border-radius: 10px; overflow: hidden; }
+    .it-onoff button { height: 36px; padding: 0 12px; border: 0; background: #fff; font-size: 13px; cursor: pointer; }
+    .it-onoff button[aria-pressed="true"] { background: #1f1e1b; color: #fff; font-weight: 600; }
+
+    /* Table */
+    .it-card { border: 1px solid #e6e4dd; border-radius: 14px; overflow-x: auto; background: #fff; }
+    table.it-table { width: 100%; min-width: 560px; border-collapse: collapse; }
+    .it-table th { text-align: left; font-size: 12px; font-weight: 600; color: #5f5e5a; padding: 0 12px; height: 42px; white-space: nowrap;
+                   position: sticky; top: 0; background: #fff; z-index: 1; border-bottom: 1px solid #ecebe5; }
+    .it-table th button { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+    .it-table th button:hover { color: #1f1e1b; }
+    .it-table td { padding: 10px 12px; border-top: 1px solid #f0efea; vertical-align: middle; }
+    .it-table tr:first-child td { border-top: 0; }
+    .it-table td.c-chk, .it-table th.c-chk { width: 44px; padding-left: 16px; padding-right: 0; }
+    .it-table input[type="checkbox"] { width: 17px; height: 17px; cursor: pointer; accent-color: #1f1e1b; }
+    .it-table tbody tr { cursor: pointer; }
+    .it-table tbody tr:hover td { background: #faf9f5; }
+    .it-table tbody tr.sel td { background: var(--web-accent-soft, #e9f4ef); }
+    .it-table tbody tr.open td { background: var(--web-accent-soft, #e9f4ef); }
+    .it-table tbody tr.open td:first-child { box-shadow: inset 3px 0 0 var(--web-accent, #2d8c6b); }
+    .it-table tbody tr.inactive .it-name, .it-table tbody tr.inactive td { color: #8a8a85; }
+    .it-name { font-weight: 600; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+    .it-sub { font-size: 12.5px; color: #6b6a65; margin-top: 2px; }
+    .it-area { display: block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .it-par { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+    .it-par b { font-variant-numeric: tabular-nums; }
+    .it-unit { color: #6b6a65; font-weight: 400; }
+    .it-badge { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .b-warn { background: #fbefd6; color: #7a4d00; }
+    .b-short { background: #fde6d8; color: #8a3410; }
+    .b-over { background: #e1ebfa; color: #1d4a85; }
+    .b-new { background: var(--web-accent-soft, #e9f4ef); color: #1f1e1b; }
+    .b-muted { background: #ebe9e0; color: #4a4945; }
+    .it-foot { padding: 12px 16px; border-top: 1px solid #ecebe5; font-size: 12.5px; color: #6b6a65; }
+    .it-empty { padding: 28px 18px; color: #5f5e5a; text-align: center; }
+
+    /* Bulk bar */
+    #it-bulk { position: sticky; bottom: 16px; z-index: 5; align-self: center; width: min(820px, 100%); background: #1f1e1b; color: #fff;
+               border-radius: 16px; padding: 12px 14px 10px 18px; box-shadow: 0 12px 32px rgba(0,0,0,0.22); display: flex; flex-direction: column; gap: 6px; }
+    #it-bulk[hidden] { display: none; }
+    .bk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .bk-count { font-weight: 700; margin-right: auto; }
+    .bk-btn { height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.3); background: transparent; color: #fff;
+              font-weight: 600; cursor: pointer; }
+    .bk-btn.primary { border: 0; background: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff); }
+    .bk-btn:disabled { opacity: 0.5; cursor: default; }
+    .bk-select { height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.3); background: #2d2c29; color: #fff; padding: 0 8px; max-width: 200px; }
+    .bk-link { border: 0; background: none; color: #d9d7cf; font-weight: 600; text-decoration: underline; cursor: pointer; padding: 0 4px; }
+    .bk-note { font-size: 12.5px; color: #d9d7cf; }
+
+    /* Item panel */
+    #it-panel { flex: 0 0 440px; position: sticky; top: 0; align-self: flex-start; height: 100vh; display: flex; flex-direction: column;
+                border-left: 1px solid #e6e4dd; background: #fff; }
+    #it-panel[hidden] { display: none; }
+    .pn-head { padding: 18px 22px 14px; border-bottom: 1px solid #ecebe5; }
+    .pn-top { display: flex; align-items: center; gap: 6px; }
+    .pn-id { font-size: 12px; color: #6b6a65; font-variant-numeric: tabular-nums; margin-right: auto; }
+    .pn-icon { width: 32px; height: 32px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); background: #fff; display: inline-flex;
+               align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+    .pn-icon.plain { border: 0; }
+    .pn-icon:disabled { opacity: 0.35; cursor: default; }
+    .pn-icon svg { width: 16px; height: 16px; }
+    .pn-title { margin: 8px 0 0; font-size: 21px; font-weight: 700; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+    .pn-body { flex: 1 1 auto; overflow-y: auto; padding: 16px 22px 22px; display: flex; flex-direction: column; gap: 16px; }
+    .pn-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .pn-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; }
+    .pn-field.wide { grid-column: span 2; }
+    .pn-field input[type="text"], .pn-field input[type="number"], .pn-field select { height: 40px; padding: 0 12px; border: 1px solid rgba(0,0,0,0.18);
+               border-radius: 10px; background: #fff; font-weight: 400; width: 100%; }
+    .pn-help { font-size: 12.5px; color: #5f5e5a; font-weight: 400; line-height: 1.45; }
+    .pn-help b { color: #1f1e1b; }
+    .pn-parrow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .pn-parrow input { width: 100px !important; }
+    .pn-seg { display: inline-flex; border: 1px solid rgba(0,0,0,0.18); border-radius: 10px; overflow: hidden; }
+    .pn-seg label { display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px; font-size: 13px; font-weight: 500; cursor: pointer; }
+    .pn-seg label + label { border-left: 1px solid rgba(0,0,0,0.12); }
+    .pn-seg label.on { background: var(--web-accent-soft, #e9f4ef); font-weight: 600; }
+    .pn-seg input { margin: 0; accent-color: #1f1e1b; }
+    .pn-vendors { border: 1px solid #e6e4dd; border-radius: 12px; overflow: hidden; }
+    .pn-vrow { display: flex; align-items: center; gap: 8px; padding: 9px 12px; }
+    .pn-vrow + .pn-vrow { border-top: 1px solid #f0efea; }
+    .pn-vname { font-weight: 600; }
+    .pn-vnote { margin-left: auto; font-size: 12.5px; color: #6b6a65; }
+    .pn-link { border: 0; background: none; padding: 4px; font-weight: 600; font-size: 13px; text-decoration: underline; cursor: pointer; }
+    .pn-vrow .pn-link { margin-left: auto; }
+    .pn-vadd { padding: 8px 12px; background: #faf9f5; border-top: 1px solid #f0efea; }
+    .pn-vadd select { width: 100%; height: 34px; border: 1px solid rgba(0,0,0,0.16); border-radius: 8px; background: #fff; padding: 0 8px; }
+    .pn-switch { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 12px; background: #faf9f5; border: 1px solid #ecebe5; cursor: pointer; }
+    .pn-switch input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: #1f1e1b; }
+    .pn-callout { border-radius: 12px; padding: 12px 14px; }
+    .pn-callout.short { background: #fdf0e7; border: 1px solid #f3cfb8; color: #5c3a26; }
+    .pn-callout.over { background: #eef3fc; border: 1px solid #c9d8f2; color: #1d3a63; }
+    .pn-callout.muted { background: #f5f4ed; border: 1px solid #e6e4dd; color: #4a4945; }
+    .pn-callout b { display: block; margin-bottom: 3px; }
+    .pn-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 22px; border-top: 1px solid #ecebe5; background: #fff; }
+    .pn-status { flex-basis: 100%; font-size: 13px; min-height: 0; }
+    .pn-status.err { color: #a3261a; }
+    .pn-status.ok { color: #1a6b48; }
+    .pn-danger { border: 0; background: none; padding: 6px 4px; color: #a3261a; font-weight: 600; font-size: 13px; cursor: pointer; margin-right: auto; }
+    .pn-another { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-right: auto; cursor: pointer; }
+    .pn-btn { height: 40px; padding: 0 16px; border: 1px solid rgba(0,0,0,0.18); border-radius: 10px; background: #fff; font-weight: 600; cursor: pointer; }
+    .pn-btn.primary { border: 0; background: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff); font-weight: 700; }
+    .pn-btn:disabled { opacity: 0.5; cursor: default; }
+
+    #it-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); z-index: 50;
+                background: #1f1e1b; color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 14px; box-shadow: 0 10px 28px rgba(0,0,0,0.25); }
+    #it-toast[hidden] { display: none; }
+    #it-toast.err { background: #8a2020; }
+  </style>
+</head>
+<body class="lang-en">
+  <!-- Boot vars FIRST — EditorShell (included below) reads WEB_BOOT/MOG_WEB. -->
+  <script>
+    var WEB_BOOT  = <?!= webBootJson ?>;
+    var MOG_WEB   = !!(WEB_BOOT && WEB_BOOT.web);
+    var MOG_STORE = (WEB_BOOT && WEB_BOOT.store)   || '';
+    var MOG_ABBR  = (WEB_BOOT && WEB_BOOT.abbr)    || '';
+    var BASE_URL  = (WEB_BOOT && WEB_BOOT.base)    || '';
+    var THEME     = (WEB_BOOT && WEB_BOOT.theme)   || {};
+    var CONCEPT   = (WEB_BOOT && WEB_BOOT.concept) || '';
+    var MOG_TOKEN = null;   // set by the PIN gate (EditorShell)
+  </script>
+
+  <?!= include('EditorShell'); ?>
+
+  <div class="web-titlebar">
+    <h1 class="web-title"><span class="en">Items</span><span class="es">Artículos</span>
+      <button type="button" class="it-head-btn" id="it-add-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        <span class="en">Add item</span><span class="es">Agregar artículo</span>
+      </button>
+    </h1>
+    <p class="web-subtitle"><span class="en">Everything this store orders. Click an item to edit it, or tick several to change them together.</span><span class="es">Todo lo que pide esta tienda. Haz clic en un artículo para editarlo, o marca varios para cambiarlos juntos.</span></p>
+  </div>
+
+  <div id="it-wrap">
+    <div id="it-main">
+      <div id="it-toolbar"></div>
+      <div class="it-card">
+        <table class="it-table">
+          <thead id="it-thead"></thead>
+          <tbody id="it-tbody"><tr><td class="it-empty" colspan="5"><span class="en">Loading…</span><span class="es">Cargando…</span></td></tr></tbody>
+        </table>
+        <div class="it-foot" id="it-foot"></div>
+      </div>
+      <div id="it-bulk" role="region" aria-label="Selected items" hidden></div>
+    </div>
+    <aside id="it-panel" aria-label="Item" hidden></aside>
+  </div>
+  <div id="it-toast" role="status" hidden></div>
+
+  <script>
+    document.body.className = 'lang-' + mgeGetLang_();
+    var ES = (mgeGetLang_() === 'es');
+    function T(en, es) { return ES ? es : en; }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function plural(n, en, enMany, es, esMany) { return n + ' ' + (n === 1 ? T(en, es) : T(enMany, esMany)); }
+    var DAYS = ES ? ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    var ICON = {
+      search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+      up: '<path d="m18 15-6-6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>',
+      close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
+    };
+    function icon(name) {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>';
+    }
+
+    // ---- Talking to the server: host.js answers from the catalog tables ----
+    function call(fn) {
+      var args = [].slice.call(arguments, 1);
+      return new Promise(function (resolve, reject) {
+        var r = mgeRpc_().withSuccessHandler(resolve).withFailureHandler(reject);
+        r[fn].apply(r, args);
+      });
+    }
+
+    // ---- State ----
+    var S = {
+      items: [], areas: [], vendors: [], mults: {}, flags: {}, minOrders: 3, loaded: false,
+      view: 'active', vendor: '', onOff: 'on', area: '', q: '', sortKey: 'vendor', sortAsc: true,
+      selected: {}, panel: null, draft: null, base: '', dirty: false, busy: false,
+      addAnother: true, newIds: {}, adjusted: {}
+    };
+    var VIEWS = ['active', 'setup', 'review', 'inactive'];
+
+    function lc(s) { return String(s == null ? '' : s).toLowerCase(); }
+    function byId(id) { for (var i = 0; i < S.items.length; i++) if (S.items[i].id === id) return S.items[i]; return null; }
+    function onVendor(it, v) {
+      var vl = lc(v);
+      if (lc(it.vendor) === vl) return true;
+      return (it.eligibleVendors || []).some(function (x) { return lc(x) === vl; });
+    }
+    function backupsOf(it) {
+      var p = lc(it.vendor);
+      return (it.eligibleVendors || []).filter(function (x) { return lc(x) !== p; });
+    }
+    function needsSetup(it) { return it.active && (!it.vendor || !it.hasArea || it.par === ''); }
+    // The Par Review verdict a row shows: the same rules as ManageItems.html
+    // buildFlagPill (a par changed here this week first, then a flag with
+    // enough orders behind it).
+    function review(it) {
+      if (!it.active) return null;
+      if (S.adjusted[it.id]) return { kind: 'adjusted' };
+      var f = S.flags[it.id];
+      if (!f || f.timesOrdered < S.minOrders || !f.flag) return null;
+      var par = Number(f.par), pct = (!par || par <= 0 || f.avgOnHand == null) ? null : Math.round(Number(f.avgOnHand) / par * 100);
+      return { kind: f.flag, pct: pct, f: f };
+    }
+    function hasReview(it) { var r = review(it); return !!(r && r.kind !== 'adjusted'); }
+
+    // "New" and "Par changed" badges: per store and device, kept in the
+    // browser as ManageItems.html keeps them (same keys), seven days each.
+    var WEEK = 7 * 24 * 3600 * 1000;
+    function computeBadges() {
+      var now = Date.now(), seenKey = 'mog_itemSeen_' + (MOG_ABBR || 'x'), adjKey = 'mog_parAdjusted_' + (MOG_ABBR || 'x');
+      var seen = {}, adj = {};
+      try { seen = JSON.parse(localStorage.getItem(seenKey) || '{}') || {}; } catch (e) { seen = {}; }
+      try { adj = JSON.parse(localStorage.getItem(adjKey) || '{}') || {}; } catch (e) { adj = {}; }
+      var firstRun = !Object.keys(seen).length;
+      S.newIds = {}; S.adjusted = {};
+      S.items.forEach(function (it) {
+        if (!(it.id in seen)) seen[it.id] = firstRun ? (now - WEEK - 1) : now;
+        if (now - seen[it.id] < WEEK) S.newIds[it.id] = true;
+      });
+      Object.keys(adj).forEach(function (id) { if (now - adj[id] < WEEK) S.adjusted[id] = true; else delete adj[id]; });
+      try { localStorage.setItem(seenKey, JSON.stringify(seen)); localStorage.setItem(adjKey, JSON.stringify(adj)); } catch (e) { /* badges only */ }
+    }
+    function markAdjusted(id) {
+      var key = 'mog_parAdjusted_' + (MOG_ABBR || 'x'), map = {};
+      try { map = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { map = {}; }
+      map[id] = Date.now();
+      try { localStorage.setItem(key, JSON.stringify(map)); } catch (e) { /* badge only */ }
+      S.adjusted[id] = true;
+    }
+
+    function setCatalog(items, areas, vendorTable) {
+      S.items = items || [];
+      S.areas = (areas || []).map(function (a) { return a.name; });
+      S.mults = {};
+      S.vendors = (vendorTable || []).map(function (v) { S.mults[v.name] = v.mults || []; return v.name; })
+        .sort(function (a, b) { return a.localeCompare(b); });
+      if (S.vendor && S.vendors.indexOf(S.vendor) < 0) S.vendor = '';
+      if (S.area && S.area !== '__none' && S.areas.indexOf(S.area) < 0) S.area = '';
+      Object.keys(S.selected).forEach(function (id) { if (!byId(id)) delete S.selected[id]; });
+      computeBadges();
+    }
+    // After a save: the item list from the tables the save just changed
+    // (local reads, no trip to Supabase). The Par Review flags stay as loaded.
+    function reload() {
+      return Promise.all([call('getAllItemsForView'), call('getStorageAreaList'), call('getVendorTableData')])
+        .then(function (r) { setCatalog(r[0], r[1], r[2]); render(); });
+    }
+
+    // ---- The list ----
+    function inView(it) {
+      if (S.view === 'active' && !it.active) return false;
+      if (S.view === 'setup' && !needsSetup(it)) return false;
+      if (S.view === 'review' && !hasReview(it)) return false;
+      if (S.view === 'inactive' && it.active) return false;
+      if (S.vendor) {
+        var on = onVendor(it, S.vendor);
+        if (S.onOff === 'on' ? !on : on) return false;
+      }
+      if (S.area === '__none' && it.storageArea) return false;
+      if (S.area && S.area !== '__none' && it.storageArea !== S.area) return false;
+      if (S.q) {
+        var q = lc(S.q);
+        if (lc(it.name).indexOf(q) < 0 && lc(it.id).indexOf(q) < 0 && lc(it.pack).indexOf(q) < 0) return false;
+      }
+      return true;
+    }
+    function sortKeyOf(it, k) {
+      if (k === 'name') return lc(it.name);
+      if (k === 'vendor') return lc(it.vendor || '~') + '\u0000' + lc(it.name);
+      if (k === 'area') return lc(it.storageArea || '~') + '\u0000' + lc(it.name);
+      if (k === 'par') return it.par === '' ? -1 : Number(it.par);
+      return '';
+    }
+    function visible() {
+      var rows = S.items.filter(inView);
+      var k = S.sortKey, dir = S.sortAsc ? 1 : -1;
+      rows.sort(function (a, b) {
+        var x = sortKeyOf(a, k), y = sortKeyOf(b, k);
+        if (typeof x === 'number') return (x - y) * dir || a.name.localeCompare(b.name);
+        return x < y ? -dir : x > y ? dir : 0;
+      });
+      return rows;
+    }
+    function countView(v) {
+      return S.items.filter(function (it) {
+        if (v === 'active') return it.active;
+        if (v === 'setup') return needsSetup(it);
+        if (v === 'review') return hasReview(it);
+        return !it.active;
+      }).length;
+    }
+
+    function renderToolbar() {
+      var labels = { active: T('Active', 'Activos'), setup: T('Needs setup', 'Por configurar'),
+                     review: T('Par review', 'Revisión de par'), inactive: T('Inactive', 'Inactivos') };
+      var h = '<label class="it-search">' + icon('search') +
+        '<input type="search" id="it-q" placeholder="' + esc(T('Search items', 'Buscar artículos')) + '" aria-label="' +
+        esc(T('Search items', 'Buscar artículos')) + '" value="' + esc(S.q) + '"></label>';
+      h += '<select class="it-select strong" id="it-vendor" aria-label="' + esc(T('Vendor', 'Proveedor')) + '">' +
+        '<option value="">' + esc(T('All vendors', 'Todos los proveedores')) + '</option>' +
+        S.vendors.map(function (v) { return '<option value="' + esc(v) + '"' + (v === S.vendor ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') +
+        '</select>';
+      if (S.vendor) {
+        var on = S.items.filter(function (it) { return onVendor(it, S.vendor); }).length;
+        h += '<div class="it-onoff" role="group" aria-label="' + esc(T('Which items', 'Qué artículos')) + '">' +
+          '<button type="button" data-onoff="on" aria-pressed="' + (S.onOff === 'on') + '">' + esc(T('On its list', 'En su lista')) + ' · ' + on + '</button>' +
+          '<button type="button" data-onoff="off" aria-pressed="' + (S.onOff === 'off') + '">' + esc(T('Not on it', 'Fuera')) + ' · ' + (S.items.length - on) + '</button></div>';
+      }
+      h += '<select class="it-select" id="it-area" aria-label="' + esc(T('Storage area', 'Área')) + '">' +
+        '<option value="">' + esc(T('All areas', 'Todas las áreas')) + '</option>' +
+        S.areas.map(function (a) { return '<option value="' + esc(a) + '"' + (a === S.area ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('') +
+        '<option value="__none"' + (S.area === '__none' ? ' selected' : '') + '>' + esc(T('No storage area', 'Sin área')) + '</option></select>';
+      h += '<div class="it-chips" role="group" aria-label="' + esc(T('Show', 'Mostrar')) + '">' + VIEWS.map(function (v) {
+        var dot = v === 'setup' ? '<span class="it-dot setup" aria-hidden="true"></span>' : v === 'review' ? '<span class="it-dot review" aria-hidden="true"></span>' : '';
+        return '<button type="button" class="it-chip" data-view="' + v + '" aria-pressed="' + (S.view === v) + '">' + dot + esc(labels[v]) + ' · ' + countView(v) + '</button>';
+      }).join('') + '</div>';
+      var bar = document.getElementById('it-toolbar');
+      var focused = document.activeElement && document.activeElement.id === 'it-q';
+      var caret = focused ? document.activeElement.selectionStart : null;
+      bar.innerHTML = h;
+      if (focused) { var q = document.getElementById('it-q'); q.focus(); try { q.setSelectionRange(caret, caret); } catch (e) { /* type=search */ } }
+    }
+
+    function renderHead(rows) {
+      var ticked = rows.filter(function (it) { return S.selected[it.id]; }).length;
+      var all = rows.length && ticked === rows.length;
+      var arrow = function (k) { return S.sortKey === k ? (S.sortAsc ? ' ▲' : ' ▼') : ''; };
+      document.getElementById('it-thead').innerHTML = '<tr>' +
+        '<th class="c-chk"><input type="checkbox" id="it-all" aria-label="' + esc(T('Select all shown', 'Marcar todos los mostrados')) + '"' + (all ? ' checked' : '') + '></th>' +
+        '<th><button type="button" data-sort="name">' + esc(T('Item', 'Artículo')) + arrow('name') + '</button></th>' +
+        '<th><button type="button" data-sort="vendor">' + esc(T('Vendor', 'Proveedor')) + arrow('vendor') + '</button></th>' +
+        '<th><button type="button" data-sort="area">' + esc(T('Storage area', 'Área')) + arrow('area') + '</button></th>' +
+        '<th><button type="button" data-sort="par">' + esc(T('Par', 'Par')) + arrow('par') + '</button></th></tr>';
+      var box = document.getElementById('it-all');
+      if (box) box.indeterminate = ticked > 0 && !all;
+    }
+
+    function parCell(it) {
+      var h = '';
+      if (it.par === '') h += '<span class="it-badge b-warn">' + esc(T('No par', 'Sin par')) + '</span>';
+      else h += '<b>' + esc(String(it.par)) + '</b>' + (it.useMult ? '<span class="it-unit"> / ' + esc(T('day', 'día')) + '</span>' : '');
+      var r = review(it);
+      if (r) {
+        var pct = r.pct == null ? '' : ' · ' + r.pct + '%';
+        if (r.kind === 'adjusted') h += '<span class="it-badge b-muted">' + esc(T('Par changed', 'Par cambiado')) + '</span>';
+        else if (r.kind === 'over') h += '<span class="it-badge b-over">' + esc(T('Over-ordered', 'Se pide de más')) + pct + '</span>';
+        else if (r.kind === 'both') h += '<span class="it-badge b-short">' + esc(T('Runs out + over', 'Se acaba + de más')) + pct + '</span>';
+        else h += '<span class="it-badge b-short">' + esc(T('Runs out', 'Se acaba')) + pct + '</span>';
+      }
+      return '<div class="it-par">' + h + '</div>';
+    }
+
+    function renderTable() {
+      var rows = visible();
+      renderHead(rows);
+      var openId = S.panel && S.panel.mode === 'edit' ? S.panel.id : null;
+      var tb = document.getElementById('it-tbody');
+      if (!rows.length) {
+        var msg = !S.items.length
+          ? T('No items yet. Import them from MarginEdge, or add one with Add item.', 'Todavía no hay artículos. Impórtalos de MarginEdge, o agrega uno con Agregar artículo.')
+          : T('No items match these filters.', 'Ningún artículo coincide con estos filtros.');
+        tb.innerHTML = '<tr><td class="it-empty" colspan="5">' + esc(msg) + '</td></tr>';
+      } else {
+        tb.innerHTML = rows.map(function (it) {
+          var cls = (S.selected[it.id] ? 'sel ' : '') + (openId === it.id ? 'open ' : '') + (it.active ? '' : 'inactive');
+          var name = '<span>' + esc(it.name) + '</span>' +
+            (S.newIds[it.id] ? '<span class="it-badge b-new">' + esc(T('New', 'Nuevo')) + '</span>' : '') +
+            (!it.active ? '<span class="it-badge b-muted">' + esc(T('Inactive', 'Inactivo')) + '</span>' : '');
+          var b = backupsOf(it).length;
+          var vendor = it.vendor ? esc(it.vendor) : '<span class="it-badge b-warn">' + esc(T('No vendor', 'Sin proveedor')) + '</span>';
+          if (b) vendor += ' <span class="it-badge b-muted">+' + b + ' ' + esc(b === 1 ? T('backup', 'respaldo') : T('backups', 'respaldos')) + '</span>';
+          var area = !it.active ? '<span class="it-unit">—</span>'
+            : it.storageArea ? '<span class="it-area" title="' + esc(it.storageArea) + '">' + esc(it.storageArea) + '</span>'
+            : '<span class="it-badge b-warn">' + esc(T('No storage area', 'Sin área')) + '</span>';
+          return '<tr class="' + cls + '" data-id="' + esc(it.id) + '">' +
+            '<td class="c-chk"><input type="checkbox" data-chk="' + esc(it.id) + '" aria-label="' + esc(T('Select ', 'Marcar ') + it.name) + '"' + (S.selected[it.id] ? ' checked' : '') + '></td>' +
+            '<td><div class="it-name">' + name + '</div><div class="it-sub">' + esc(it.pack || T('No pack yet', 'Sin empaque')) + '</div></td>' +
+            '<td>' + vendor + '</td><td>' + area + '</td><td>' + parCell(it) + '</td></tr>';
+        }).join('');
+      }
+      var active = S.items.filter(function (it) { return it.active; }).length;
+      document.getElementById('it-foot').textContent = S.loaded
+        ? T('Showing ' + rows.length + ' of ' + S.items.length + ' items (' + active + ' active). Par review compares counts with par over the last 28 days.',
+            'Mostrando ' + rows.length + ' de ' + S.items.length + ' artículos (' + active + ' activos). La revisión de par compara los conteos con el par en los últimos 28 días.')
+        : '';
+    }
+
+    // ---- The bulk bar ----
+    function selectedIds() { return Object.keys(S.selected).filter(function (id) { return byId(id); }); }
+    function renderBulk() {
+      var bar = document.getElementById('it-bulk');
+      var ids = selectedIds();
+      if (!ids.length) { bar.hidden = true; bar.innerHTML = ''; return; }
+      var items = ids.map(byId);
+      var anyActive = items.some(function (it) { return it.active; }), anyInactive = items.some(function (it) { return !it.active; });
+      var h = '<div class="bk-row"><span class="bk-count">' + esc(plural(ids.length, 'item selected', 'items selected', 'artículo marcado', 'artículos marcados')) + '</span>';
+      var note = '';
+      if (S.vendor && S.onOff === 'off') {
+        h += '<button type="button" class="bk-btn primary" data-bulk="addv">' + esc(T('Add ' + ids.length + ' to ' + S.vendor, 'Agregar ' + ids.length + ' a ' + S.vendor)) + '</button>';
+        note = T('They show on ' + S.vendor + '’s count list as a backup. Their main vendor doesn’t change.',
+                 'Aparecen en la lista de conteo de ' + S.vendor + ' como respaldo. Su proveedor principal no cambia.');
+      } else if (S.vendor) {
+        h += '<button type="button" class="bk-btn" data-bulk="rmv">' + esc(T('Remove from ' + S.vendor, 'Quitar de ' + S.vendor)) + '</button>';
+        note = T('Items whose main vendor is ' + S.vendor + ' stay on its list.', 'Los artículos cuyo proveedor principal es ' + S.vendor + ' se quedan en su lista.');
+      } else {
+        h += '<select class="bk-select" id="bk-addto" aria-label="' + esc(T('Add to a vendor', 'Agregar a un proveedor')) + '"><option value="">' +
+          esc(T('Add to a vendor…', 'Agregar a un proveedor…')) + '</option>' +
+          S.vendors.map(function (v) { return '<option value="' + esc(v) + '">' + esc(v) + '</option>'; }).join('') + '</select>';
+      }
+      if (S.areas.length && anyActive) {
+        h += '<select class="bk-select" id="bk-area" aria-label="' + esc(T('Move to area', 'Mover a un área')) + '"><option value="">' +
+          esc(T('Move to area…', 'Mover a un área…')) + '</option>' +
+          S.areas.map(function (a) { return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('') + '</select>';
+      }
+      if (anyActive) h += '<button type="button" class="bk-btn" data-bulk="off">' + esc(T('Make inactive', 'Desactivar')) + '</button>';
+      if (anyInactive) h += '<button type="button" class="bk-btn" data-bulk="on">' + esc(T('Make active', 'Activar')) + '</button>';
+      h += '<button type="button" class="bk-link" data-bulk="clear">' + esc(T('Clear', 'Limpiar')) + '</button></div>';
+      if (note) h += '<div class="bk-note">' + esc(note) + '</div>';
+      bar.innerHTML = h;
+      bar.hidden = false;
+      bar.querySelectorAll('.bk-btn, .bk-select').forEach(function (b) { b.disabled = S.busy; });
+    }
+
+    function afterBulk(promise, done) {
+      S.busy = true; renderBulk();
+      return promise.then(function (res) {
+        S.selected = {};
+        return reload().then(function () { toast(done(res)); });
+      }, function (err) { toast(errText(err), true); })
+        .then(function () { S.busy = false; renderBulk(); });
+    }
+    function skippedText(res) {
+      var n = (res.skipped || []).length;
+      return n ? T(' ' + n + ' skipped (' + uniqueReasons(res.skipped).join(', ') + ').', ' ' + n + ' omitidos.') : '';
+    }
+    function uniqueReasons(list) { var seen = {}; return list.map(function (s) { return s.reason; }).filter(function (r) { return !seen[r] && (seen[r] = 1); }); }
+
+    // Only the ticked items change (catalogEdit.js setItemsVendor), each as if
+    // the vendor were added or removed in its own panel.
+    function bulkVendor(vendor, add) {
+      var ids = selectedIds();
+      var noArea = ids.filter(function (id) { var it = byId(id); return add && it && it.active && !it.storageArea && lc(it.vendor) !== lc(vendor); }).length;
+      return afterBulk(call('commitSetItemsVendor', ids, vendor, add), function (res) {
+        var own = (res.skipped || []).filter(function (s) { return s.reason === 'main vendor'; }).length;
+        var other = (res.skipped || []).length - own;
+        var text = add ? T('Added ' + res.changed + ' to ' + vendor + '.', 'Se agregaron ' + res.changed + ' a ' + vendor + '.')
+                       : T('Removed ' + res.changed + ' from ' + vendor + '.', 'Se quitaron ' + res.changed + ' de ' + vendor + '.');
+        if (noArea) text += T(' ' + noArea + ' have no storage area yet; they join its count list once they get one.',
+                              ' ' + noArea + ' no tienen área; entran a su lista cuando tengan una.');
+        if (own) text += add ? T(' ' + own + ' already have it as their main vendor.', ' ' + own + ' ya lo tienen como principal.')
+                             : T(' ' + own + ' have it as their main vendor and stay.', ' ' + own + ' lo tienen como principal y se quedan.');
+        if (other) text += T(' ' + other + ' skipped (no main vendor).', ' ' + other + ' omitidos (sin proveedor principal).');
+        return text;
+      });
+    }
+
+    // ---- The item panel ----
+    function draftFrom(it) {
+      return { name: it.name, pack: it.pack, par: it.par === '' ? '' : String(it.par), useMult: !!it.useMult, active: !!it.active,
+               area: it.storageArea || '', vendor: it.vendor || '', backups: backupsOf(it), origVendor: it.vendor || '' };
+    }
+    function emptyDraft() {
+      return { name: '', pack: '', par: '', useMult: true, active: true, area: S.area && S.area !== '__none' ? S.area : '',
+               vendor: S.vendor || '', backups: [], origVendor: '' };
+    }
+    function markDirty() {
+      S.dirty = JSON.stringify(S.draft) !== S.base;
+      mgeSetLeaveGuard_(S.dirty ? function (proceed) { guard(proceed); } : null);
+      var save = document.getElementById('pn-save');
+      if (save) save.disabled = S.busy || (S.panel.mode === 'edit' && !S.dirty);
+    }
+    // Unsaved edits ask first: Save, Don't save, or Cancel.
+    function guard(proceed) {
+      if (!S.dirty) { proceed(); return; }
+      mgeGuard3_({
+        title: { en: 'Save your changes?', es: '¿Guardar los cambios?' },
+        msg: S.panel && S.panel.mode === 'add'
+          ? { en: 'You started a new item and haven’t added it.', es: 'Empezaste un artículo nuevo y no lo agregaste.' }
+          : { en: 'You changed this item and haven’t saved it.', es: 'Cambiaste este artículo y no lo guardaste.' },
+        saveLabel: S.panel && S.panel.mode === 'add' ? { en: 'Add item', es: 'Agregar artículo' } : undefined,
+        onSave: function () { save().then(function (ok) { if (ok) proceed(); }); },
+        onDiscard: function () { S.dirty = false; mgeSetLeaveGuard_(null); proceed(); }
+      });
+    }
+    function openItem(id) {
+      guard(function () {
+        var it = byId(id); if (!it) return;
+        S.panel = { mode: 'edit', id: id };
+        S.draft = draftFrom(it); S.base = JSON.stringify(S.draft); S.dirty = false;
+        mgeSetLeaveGuard_(null);
+        renderPanel(); renderTable();
+      });
+    }
+    function openAdd() {
+      guard(function () {
+        S.panel = { mode: 'add' };
+        S.draft = emptyDraft(); S.base = JSON.stringify(S.draft); S.dirty = false;
+        mgeSetLeaveGuard_(null);
+        renderPanel(); renderTable();
+        var n = document.getElementById('pn-name'); if (n) n.focus();
+      });
+    }
+    function closePanel() {
+      guard(function () {
+        S.panel = null; S.draft = null; S.dirty = false; mgeSetLeaveGuard_(null);
+        renderPanel(); renderTable();
+      });
+    }
+    function step(delta) {
+      var rows = visible(), i = -1;
+      for (var k = 0; k < rows.length; k++) if (rows[k].id === S.panel.id) i = k;
+      var next = rows[i + delta];
+      if (next) openItem(next.id);
+    }
+
+    function parPreview(d) {
+      if (!d.vendor) return T('Choose the vendor to see the amount on each order day.', 'Elige el proveedor para ver la cantidad de cada día de pedido.');
+      var par = parseFloat(d.par);
+      if (isNaN(par)) return T('Enter a par to see the amount on each order day.', 'Escribe un par para ver la cantidad de cada día de pedido.');
+      var mults = S.mults[d.vendor] || [], parts = [];
+      for (var i = 0; i < 7; i++) {
+        var m = Number(mults[i]) || 0;
+        if (m <= 0) continue;
+        // The shared order math's own rounding (OrderMath.gs, loaded as orderMath.js).
+        parts.push(DAYS[i] + ' ' + (computeSuggestedQty_(par, d.useMult, m, 0) || 0));
+      }
+      if (!parts.length) return T(d.vendor + ' has no delivery days yet, so it orders nothing.', d.vendor + ' todavía no tiene días de entrega, así que no pide nada.');
+      return (d.useMult ? T('Multiplied by the days each ' + d.vendor + ' delivery covers. ', 'Se multiplica por los días que cubre cada entrega de ' + d.vendor + '. ')
+                        : T('The same amount every order day. ', 'La misma cantidad cada día de pedido. ')) +
+        T('Full par on order days: ', 'Par completo en días de pedido: ') + '<b>' + esc(parts.join(' · ')) + '</b>';
+    }
+
+    function reviewCallout(it) {
+      var r = it ? review(it) : null;
+      if (!r) return '';
+      if (r.kind === 'adjusted') {
+        return '<div class="pn-callout muted"><b>' + esc(T('Par changed this week', 'Par cambiado esta semana')) + '</b>' +
+          esc(T('Par review starts again from the orders placed with the new par.', 'La revisión empieza de nuevo con los pedidos del nuevo par.')) + '</div>';
+      }
+      var f = r.f, pct = r.pct == null ? '' : r.pct + '%';
+      var over = r.kind === 'over';
+      var title = over ? T('Over-ordered: on hand averages ' + pct + ' of par', 'Se pide de más: lo disponible promedia ' + pct + ' del par')
+                       : T('Runs out: on hand averages ' + pct + ' of par', 'Se acaba: lo disponible promedia ' + pct + ' del par');
+      var body = over
+        ? T(f.timesOrdered + ' orders in the last 28 days; more than enough on the shelf at ' + f.overCount + ' of them. The par may be too high.',
+            f.timesOrdered + ' pedidos en los últimos 28 días; sobraba en ' + f.overCount + '. El par puede ser muy alto.')
+        : T(f.timesOrdered + ' orders in the last 28 days; the shelf was empty at ' + f.emptyCount + ' of them. The par may be too low.',
+            f.timesOrdered + ' pedidos en los últimos 28 días; estaba vacío en ' + f.emptyCount + '. El par puede ser muy bajo.');
+      return '<div class="pn-callout ' + (over ? 'over' : 'short') + '"><b>' + esc(title) + '</b>' + esc(body) + '</div>';
+    }
+
+    function vendorsBlock(d) {
+      var h = '<div class="pn-vendors">';
+      if (d.vendor) {
+        h += '<div class="pn-vrow"><span class="pn-vname">' + esc(d.vendor) + '</span><span class="it-badge b-new">' + esc(T('Main', 'Principal')) + '</span>' +
+          '<span class="pn-vnote">' + esc(T('Ordered from by default', 'Se pide aquí normalmente')) + '</span></div>';
+      } else {
+        h += '<div class="pn-vrow"><select id="pn-vendor" style="width:100%;height:34px;border:1px solid rgba(0,0,0,0.16);border-radius:8px;padding:0 8px" aria-label="' +
+          esc(T('Main vendor', 'Proveedor principal')) + '"><option value="">' + esc(T('Choose the main vendor…', 'Elige el proveedor principal…')) + '</option>' +
+          S.vendors.map(function (v) { return '<option value="' + esc(v) + '">' + esc(v) + '</option>'; }).join('') + '</select></div>';
+      }
+      d.backups.forEach(function (v) {
+        // The vendor that was the main one keeps a place as a backup when
+        // another becomes main (the save adds it back), so it can't go here.
+        var wasMain = S.panel.mode === 'edit' && d.origVendor && lc(v) === lc(d.origVendor) && lc(d.vendor) !== lc(d.origVendor);
+        h += '<div class="pn-vrow"><span class="pn-vname">' + esc(v) + '</span><span class="it-badge b-muted">' + esc(T('Backup', 'Respaldo')) + '</span>' +
+          '<button type="button" class="pn-link" data-main="' + esc(v) + '">' + esc(T('Make main', 'Hacer principal')) + '</button>' +
+          (wasMain ? '<span class="pn-vnote" style="margin-left:0">' + esc(T('stays as backup', 'queda de respaldo')) + '</span>'
+                   : '<button type="button" class="pn-icon plain" data-rmv="' + esc(v) + '" aria-label="' + esc(T('Remove ', 'Quitar ') + v) + '">' + icon('close') + '</button>') +
+          '</div>';
+      });
+      var taken = [lc(d.vendor)].concat(d.backups.map(lc));
+      var free = S.vendors.filter(function (v) { return taken.indexOf(lc(v)) < 0; });
+      if (d.vendor && free.length) {
+        h += '<div class="pn-vadd"><select id="pn-addb" aria-label="' + esc(T('Add a backup vendor', 'Agregar un proveedor de respaldo')) + '"><option value="">' +
+          esc(T('+ Add a backup vendor…', '+ Agregar un respaldo…')) + '</option>' +
+          free.map(function (v) { return '<option value="' + esc(v) + '">' + esc(v) + '</option>'; }).join('') + '</select></div>';
+      }
+      return h + '</div>';
+    }
+
+    function renderPanel() {
+      var pn = document.getElementById('it-panel');
+      if (!S.panel) { pn.hidden = true; pn.innerHTML = ''; return; }
+      var d = S.draft, edit = S.panel.mode === 'edit', it = edit ? byId(S.panel.id) : null;
+      if (edit && !it) { S.panel = null; pn.hidden = true; pn.innerHTML = ''; return; }
+      var rows = edit ? visible() : [], idx = -1;
+      for (var k = 0; k < rows.length; k++) if (rows[k].id === S.panel.id) idx = k;
+      var h = '<div class="pn-head"><div class="pn-top">' +
+        '<span class="pn-id">' + esc(edit ? it.id : T('New item', 'Artículo nuevo')) + '</span>' +
+        (edit ? '<button type="button" class="pn-icon" id="pn-prev" aria-label="' + esc(T('Previous item', 'Artículo anterior')) + '"' + (idx <= 0 ? ' disabled' : '') + '>' + icon('up') + '</button>' +
+                '<button type="button" class="pn-icon" id="pn-next" aria-label="' + esc(T('Next item', 'Artículo siguiente')) + '"' + (idx < 0 || idx >= rows.length - 1 ? ' disabled' : '') + '>' + icon('down') + '</button>' : '') +
+        '<button type="button" class="pn-icon plain" id="pn-close" aria-label="' + esc(T('Close', 'Cerrar')) + '">' + icon('close') + '</button></div>' +
+        '<h2 class="pn-title">' + esc(edit ? it.name : T('Add an item', 'Agregar un artículo')) + '</h2></div>';
+
+      h += '<div class="pn-body">' + (edit ? reviewCallout(it) : '');
+      h += '<div class="pn-grid">' +
+        '<label class="pn-field wide">' + esc(T('Name', 'Nombre')) + '<input type="text" id="pn-name" value="' + esc(d.name) + '" placeholder="' + esc(T('e.g. Mango Syrup', 'ej. Jarabe de mango')) + '"></label>' +
+        '<label class="pn-field">' + esc(T('Pack / unit', 'Empaque / unidad')) + '<input type="text" id="pn-pack" value="' + esc(d.pack) + '" placeholder="' + esc(T('e.g. Case (6 EA)', 'ej. Caja (6)')) + '"></label>' +
+        '<label class="pn-field">' + esc(T('Storage area', 'Área')) + '<select id="pn-area"' + (d.active ? '' : ' disabled') + '>' +
+          (d.area ? '' : '<option value="">' + esc(T('Choose an area', 'Elige un área')) + '</option>') +
+          S.areas.map(function (a) { return '<option value="' + esc(a) + '"' + (a === d.area ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('') +
+        '</select></label></div>';
+      h += '<div class="pn-help" style="margin-top:-6px">' + esc(d.active
+        ? T('An item shows on a count list once it has a storage area.', 'Un artículo aparece en una lista de conteo cuando tiene un área.')
+        : T('Inactive items are on no count list.', 'Los artículos inactivos no están en ninguna lista.')) + '</div>';
+
+      h += '<div class="pn-field" role="group" aria-labelledby="pn-par-l"><span id="pn-par-l">' + esc(T('Par', 'Par')) + '</span><div class="pn-parrow">' +
+        '<input type="number" id="pn-par" step="any" min="0" value="' + esc(d.par) + '" aria-label="' + esc(T('Par', 'Par')) + '">' +
+        '<div class="pn-seg" role="radiogroup" aria-label="' + esc(T('How the par works', 'Cómo funciona el par')) + '">' +
+        '<label class="' + (d.useMult ? 'on' : '') + '"><input type="radio" name="pn-mode" value="1"' + (d.useMult ? ' checked' : '') + '>' + esc(T('Per delivery day', 'Por día de entrega')) + '</label>' +
+        '<label class="' + (d.useMult ? '' : 'on') + '"><input type="radio" name="pn-mode" value="0"' + (d.useMult ? '' : ' checked') + '>' + esc(T('Fixed amount', 'Cantidad fija')) + '</label>' +
+        '</div></div><div class="pn-help" id="pn-preview">' + parPreview(d) + '</div></div>';
+
+      h += '<div class="pn-field"><span>' + esc(T('Vendors', 'Proveedores')) + '</span>' + vendorsBlock(d) + '</div>';
+
+      if (edit) {
+        h += '<label class="pn-switch"><input type="checkbox" role="switch" id="pn-active"' + (d.active ? ' checked' : '') + '>' +
+          '<span><b style="display:block">' + esc(T('Active', 'Activo')) + '</b><span class="pn-help">' +
+          esc(T('Turn off to take it off every count list. It stays here under Inactive.', 'Apágalo para quitarlo de todas las listas. Queda aquí en Inactivos.')) + '</span></span></label>';
+      }
+      h += '</div>';
+
+      h += '<div class="pn-foot"><div class="pn-status" id="pn-status"></div>' +
+        (edit ? '<button type="button" class="pn-danger" id="pn-delete">' + esc(T('Delete item…', 'Eliminar artículo…')) + '</button>'
+              : '<label class="pn-another"><input type="checkbox" id="pn-another"' + (S.addAnother ? ' checked' : '') + '>' + esc(T('Add another after this', 'Agregar otro después')) + '</label>') +
+        '<button type="button" class="pn-btn" id="pn-cancel">' + esc(T('Cancel', 'Cancelar')) + '</button>' +
+        '<button type="button" class="pn-btn primary" id="pn-save">' + esc(edit ? T('Save changes', 'Guardar cambios') : T('Add item', 'Agregar artículo')) + '</button></div>';
+
+      pn.innerHTML = h;
+      pn.hidden = false;
+      markDirty();
+    }
+    function setStatus(text, kind) {
+      var el = document.getElementById('pn-status');
+      if (el) { el.textContent = text || ''; el.className = 'pn-status' + (kind ? ' ' + kind : ''); }
+    }
+    function refreshPreview() { var p = document.getElementById('pn-preview'); if (p) p.innerHTML = parPreview(S.draft); }
+
+    // Save the panel: one save for the whole item (spec: vendor changes go
+    // with Save changes). Resolves true when it saved.
+    function save() {
+      var d = S.draft, edit = S.panel.mode === 'edit';
+      var name = d.name.trim(), par = d.par === '' ? NaN : Number(d.par);
+      if (!name) { setStatus(T('Give the item a name.', 'Ponle un nombre al artículo.'), 'err'); return Promise.resolve(false); }
+      if (!d.vendor) { setStatus(T('Choose the main vendor.', 'Elige el proveedor principal.'), 'err'); return Promise.resolve(false); }
+      if (isNaN(par) || par < 0) {
+        setStatus(T('Enter a par (0 or more). To set only storage areas on many items, tick them and use Move to area.',
+                    'Escribe un par (0 o más). Para poner solo el área a varios, márcalos y usa Mover a un área.'), 'err');
+        return Promise.resolve(false);
+      }
+      var it = edit ? byId(S.panel.id) : null;
+      var payload = { mode: edit ? 'edit' : 'add', name: name, vendor: d.vendor, pack: d.pack.trim(), par: par, useMult: d.useMult,
+                      active: edit ? d.active : true, eligibleVendors: [d.vendor].concat(d.backups),
+                      areaName: (d.active && d.area && (!it || d.area !== it.storageArea)) ? d.area : '' };
+      if (edit) payload.lookup = it.id;
+      var parChanged = edit && String(it.par) !== String(par);
+      S.busy = true; markDirty(); setStatus(T('Saving…', 'Guardando…'));
+      return call('commitUpsertItem', payload).then(function (res) {
+        if (parChanged) markAdjusted(it.id);
+        return reload().then(function () {
+          S.busy = false;
+          var warn = res.areaError ? T(' The storage area didn’t save: ', ' El área no se guardó: ') + res.areaError : '';
+          if (edit) {
+            S.draft = draftFrom(byId(res.id)); S.base = JSON.stringify(S.draft); S.dirty = false; mgeSetLeaveGuard_(null);
+            renderPanel(); setStatus(T('Saved.', 'Guardado.') + warn, warn ? 'err' : 'ok');
+          } else {
+            toast(T('Added ' + name + '.', 'Se agregó ' + name + '.') + warn, !!warn);
+            if (S.addAnother) {
+              var keep = { vendor: d.vendor, area: d.area, useMult: d.useMult };
+              S.draft = emptyDraft(); S.draft.vendor = keep.vendor; S.draft.area = keep.area; S.draft.useMult = keep.useMult;
+              S.base = JSON.stringify(S.draft); S.dirty = false; mgeSetLeaveGuard_(null);
+              renderPanel(); var n = document.getElementById('pn-name'); if (n) n.focus();
+            } else {
+              S.panel = null; S.draft = null; S.dirty = false; mgeSetLeaveGuard_(null); renderPanel(); renderTable();
+              flashRow(res.id);
+            }
+          }
+          return true;
+        });
+      }, function (err) {
+        S.busy = false; markDirty(); setStatus(errText(err), 'err');
+        return false;
+      });
+    }
+    function del() {
+      var it = byId(S.panel.id); if (!it) return;
+      mgeConfirm_({
+        title: { en: 'Delete this item?', es: '¿Eliminar este artículo?' },
+        msg: { en: '"' + it.name + '" comes off every list and out of the catalog. Undo is in Changes.',
+               es: '"' + it.name + '" sale de todas las listas y del catálogo. Puedes deshacerlo en Cambios.' },
+        confirmLabel: { en: 'Delete', es: 'Eliminar' }, danger: true,
+        onConfirm: function () {
+          S.busy = true; markDirty();
+          call('commitDeleteItem', it.id).then(function () {
+            S.panel = null; S.draft = null; S.dirty = false; S.busy = false; mgeSetLeaveGuard_(null);
+            delete S.selected[it.id];
+            return reload().then(function () { renderPanel(); toast(T('Deleted ' + it.name + '.', 'Se eliminó ' + it.name + '.')); });
+          }, function (err) { S.busy = false; markDirty(); setStatus(errText(err), 'err'); });
+        }
+      });
+    }
+
+    // ---- Small things ----
+    function errText(err) {
+      var m = err && err.message ? err.message : String(err || '');
+      return m || T('Something went wrong. Try again.', 'Algo salió mal. Inténtalo de nuevo.');
+    }
+    var toastTimer = null;
+    function toast(text, isErr) {
+      var el = document.getElementById('it-toast');
+      el.textContent = text; el.className = isErr ? 'err' : ''; el.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.hidden = true; }, isErr ? 9000 : 5000);
+    }
+    function flashRow(id) {
+      var tr = document.querySelector('#it-tbody tr[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+      if (tr && tr.scrollIntoView) tr.scrollIntoView({ block: 'center' });
+    }
+    function render() { renderToolbar(); renderTable(); renderBulk(); renderPanel(); }
+
+    // ---- Events (delegated, so re-renders keep them) ----
+    function wire() {
+      document.getElementById('it-add-btn').onclick = openAdd;
+      var tb = document.getElementById('it-toolbar');
+      tb.addEventListener('input', function (e) {
+        if (e.target.id === 'it-q') { S.q = e.target.value; renderTable(); renderBulk(); }
+      });
+      tb.addEventListener('change', function (e) {
+        if (e.target.id === 'it-vendor') { S.vendor = e.target.value; S.onOff = 'on'; render(); }
+        if (e.target.id === 'it-area') { S.area = e.target.value; render(); }
+      });
+      tb.addEventListener('click', function (e) {
+        var b = e.target.closest('button'); if (!b) return;
+        if (b.getAttribute('data-view')) { S.view = b.getAttribute('data-view'); render(); }
+        if (b.getAttribute('data-onoff')) { S.onOff = b.getAttribute('data-onoff'); S.selected = {}; render(); }
+      });
+      document.getElementById('it-thead').addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-sort]');
+        if (b) {
+          var k = b.getAttribute('data-sort');
+          if (S.sortKey === k) S.sortAsc = !S.sortAsc; else { S.sortKey = k; S.sortAsc = true; }
+          renderTable(); return;
+        }
+        if (e.target.id === 'it-all') {
+          var rows = visible(), on = e.target.checked;
+          rows.forEach(function (it) { if (on) S.selected[it.id] = 1; else delete S.selected[it.id]; });
+          renderTable(); renderBulk();
+        }
+      });
+      document.getElementById('it-tbody').addEventListener('click', function (e) {
+        var chk = e.target.closest('input[data-chk]');
+        if (chk) {
+          var id = chk.getAttribute('data-chk');
+          if (chk.checked) S.selected[id] = 1; else delete S.selected[id];
+          renderTable(); renderBulk(); return;
+        }
+        if (e.target.closest('td.c-chk')) return;
+        var tr = e.target.closest('tr[data-id]');
+        if (tr) openItem(tr.getAttribute('data-id'));
+      });
+      var bulk = document.getElementById('it-bulk');
+      bulk.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-bulk]'); if (!b || S.busy) return;
+        var a = b.getAttribute('data-bulk'), ids = selectedIds();
+        if (a === 'clear') { S.selected = {}; renderTable(); renderBulk(); return; }
+        if (a === 'addv') bulkVendor(S.vendor, true);
+        if (a === 'rmv') bulkVendor(S.vendor, false);
+        if (a === 'off' || a === 'on') {
+          afterBulk(call('commitSetItemsActive', ids, a === 'on'), function (res) {
+            return (a === 'on' ? T('Made ' + res.changed + ' active.', 'Se activaron ' + res.changed + '.') + T(' Give them a storage area to put them back on a list.', ' Dales un área para volver a ponerlos en una lista.')
+                               : T('Made ' + res.changed + ' inactive.', 'Se desactivaron ' + res.changed + '.')) + skippedText(res);
+          });
+        }
+      });
+      bulk.addEventListener('change', function (e) {
+        if (S.busy || !e.target.value) return;
+        var ids = selectedIds(), v = e.target.value;
+        if (e.target.id === 'bk-addto') bulkVendor(v, true);
+        if (e.target.id === 'bk-area') {
+          afterBulk(call('commitSetItemsArea', ids, v), function (res) {
+            return T('Moved ' + res.moved + ' to ' + v + '.', 'Se movieron ' + res.moved + ' a ' + v + '.') + skippedText(res);
+          });
+        }
+      });
+      var pn = document.getElementById('it-panel');
+      pn.addEventListener('input', function (e) {
+        var d = S.draft; if (!d) return;
+        var id = e.target.id;
+        if (id === 'pn-name') d.name = e.target.value;
+        else if (id === 'pn-pack') d.pack = e.target.value;
+        else if (id === 'pn-par') { d.par = e.target.value; refreshPreview(); }
+        else return;
+        markDirty();
+      });
+      pn.addEventListener('change', function (e) {
+        var d = S.draft; if (!d) return;
+        var t = e.target;
+        if (t.id === 'pn-area') d.area = t.value;
+        else if (t.name === 'pn-mode') { d.useMult = t.value === '1'; renderPanelKeep(); return; }
+        else if (t.id === 'pn-active') { d.active = t.checked; renderPanelKeep(); return; }
+        else if (t.id === 'pn-vendor') { d.vendor = t.value; d.backups = d.backups.filter(function (v) { return lc(v) !== lc(t.value); }); renderPanelKeep(); return; }
+        else if (t.id === 'pn-addb') { if (t.value) d.backups.push(t.value); renderPanelKeep(); return; }
+        else if (t.id === 'pn-another') { S.addAnother = t.checked; return; }
+        else return;
+        markDirty();
+      });
+      pn.addEventListener('click', function (e) {
+        var b = e.target.closest('button'); if (!b) return;
+        var d = S.draft;
+        if (b.id === 'pn-close') closePanel();
+        else if (b.id === 'pn-cancel') {
+          if (S.panel.mode === 'edit' && S.dirty) { S.draft = JSON.parse(S.base); S.dirty = false; mgeSetLeaveGuard_(null); renderPanel(); }
+          else closePanel();
+        }
+        else if (b.id === 'pn-save') { if (!S.busy) save(); }
+        else if (b.id === 'pn-delete') { if (!S.busy) del(); }
+        else if (b.id === 'pn-prev') step(-1);
+        else if (b.id === 'pn-next') step(1);
+        else if (b.getAttribute('data-main')) {
+          var v = b.getAttribute('data-main');
+          d.backups = d.backups.filter(function (x) { return lc(x) !== lc(v); });
+          if (d.vendor) d.backups.unshift(d.vendor);
+          d.vendor = v;
+          renderPanelKeep();
+        } else if (b.getAttribute('data-rmv')) {
+          var r = b.getAttribute('data-rmv');
+          d.backups = d.backups.filter(function (x) { return lc(x) !== lc(r); });
+          renderPanelKeep();
+        }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && S.panel && !document.querySelector('.mge-dlg-overlay.open, #mge-dlg-overlay.open')) closePanel();
+      });
+    }
+    // Re-render the panel after a change that reshapes it, keeping the panel's scroll.
+    function renderPanelKeep() {
+      var body = document.querySelector('#it-panel .pn-body'), top = body ? body.scrollTop : 0;
+      renderPanel();
+      var nb = document.querySelector('#it-panel .pn-body'); if (nb) nb.scrollTop = top;
+    }
+
+    function startItems_() {
+      mgeMountWebChrome_();
+      document.documentElement.classList.add('mge-web');
+      setBreadcrumb_(
+        [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+        { en: 'Items', es: 'Artículos' }
+      );
+      if (!startItems_.wired) { wire(); startItems_.wired = true; }
+      call('getManageItemsBootstrap').then(function (b) {
+        S.flags = b.flags || {}; S.minOrders = b.minOrders || 3;
+        setCatalog(b.items, b.areas, b.vendorTable);
+        S.loaded = true;
+        render();
+      }, function (err) {
+        document.getElementById('it-tbody').innerHTML = '<tr><td class="it-empty" colspan="5">' +
+          esc(T('Couldn’t load the items: ', 'No se pudieron cargar los artículos: ') + errText(err)) + '</td></tr>';
+      });
+    }
+    mgeStartGate_(startItems_);
+  </script>
+</body>
+</html>
