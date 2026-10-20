@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: 7f23850 (2026-10-19) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: a4e6e98 (2026-10-20) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -189,7 +189,9 @@ naive rebuild silently loses.*
   *(Confirmed: `computeSuggestedQty_` epsilon guard, verified against exact integer-scaled decimal
   arithmetic 2026-08-03; owner-confirmed the never-round-down intent.)*
 - **R5. On-hand may be a decimal; par and the order are quantities in the item's pack/unit.**
-  *(Confirmed: PWA decimal input, `Number()` on save.)*
+  A count can't be negative: a typed negative is stored as 0, since it would otherwise order extra.
+  *(Confirmed: PWA decimal input, `Number()` on save; the count box's minimum of 0 and
+  `countRowsFromSave_`'s clamp, 2026-10-20.)*
 - **R6. Par is one number per item, shared across every vendor that can supply it**, not a per-vendor
   par. The day multiplier, not a second par, handles vendor-specific coverage. This lets a user
   compare vendor prices and switch sources without duplicating the item or recomputing a new par, and
@@ -229,8 +231,9 @@ naive rebuild silently loses.*
 - **R12. The recap email is sent exactly once per order cycle**, as a guaranteed side effect of the
   session/reset, regardless of which path triggered it. It goes to the manager and the KM: one counts,
   the other (or the same person later) places the orders from the email, and it doubles as an
-  accountability record of what the par said to order. *(Confirmed: `sendRecapIfUnsent_` dedupe gate;
-  owner-confirmed purpose. Retry-on-failure is a desired change, see edge cases and Q-INT-1.)*
+  accountability record of what the par said to order. *(Confirmed: the last-sent date, checked against the store's own day (Supabase's once a store
+  moved, fixed 2026-10-20) under a lock, so two phones finishing at once can't both send; a failed
+  send is retried up to 3 times by `sendPendingRecap_`; owner-confirmed purpose.)*
 - **R13. A new order day starts automatically every night** (about 3:30 AM, store time), so the day is
   already closed when the first person opens the app. The first app open is the fallback when the night
   run failed. There is no manual mid-day reset in the app. The close is also what guarantees the recap
@@ -250,9 +253,12 @@ naive rebuild silently loses.*
 - **R14. Counts entered while offline are queued, and none is ever lost or filed under the wrong day.**
   This is a hard requirement: never lose a user's counts to a bad connection. Each queued count carries
   the day it was counted on. One that arrives after its day was closed lands in that day, and the
-  server says so; it never leaks into the new day. The app still flushes its queue before it closes a
-  day itself. *(Confirmed: the queue's `cycleDate` + `mog_save_counts`' `stale` answer;
-  `drainSaveQueue_` awaited by `runStaleReset_`; owner-confirmed hard requirement.)*
+  server says so; it never leaks into the new day. The app then tells the user those counts weren't
+  ordered, instead of reporting them synced, and the fallback path through Apps Script files them in
+  their own day the same way. The app still flushes its queue before it closes a day itself.
+  *(Confirmed: the queue's `cycleDate` + `mog_save_counts`' `stale` answer, the drain's late warning
+  and `dbSaveOnHand_` (2026-10-20); `drainSaveQueue_` awaited by `runStaleReset_`; owner-confirmed
+  hard requirement.)*
 - **R15. The store PIN gates the app and the editor; a separate master PIN gates destructive/admin
   actions.** After repeated wrong PINs the store locks out for a cooldown window. The store PIN is the
   store's street number: easy for anyone on shift, and paired with the hub picker it stops one store
@@ -470,7 +476,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | Offline counts must flush before reset. | A user on a flaky connection must never lose a count to an auto-reset that fires first. |
 | Storage areas and pick path stay in the user's manual order; everything else sorts A to Z. | The pick path is a physical walking route through the store; alphabetizing it would defeat the purpose. |
 | Same identical code ships to every store; all per-store difference is data. | Nine stores cannot each carry a code fork; isolation (R16) keeps a user out of other stores' data. |
-| The recap should retry on send failure, but still land at most once per cycle. | The recap is the handoff used to place real orders and an accountability record, so a silent miss is costly; today it is once-and-done with no retry, and adding a bounded retry is a desired change (Q-INT-1). |
+| The recap retries on a send failure, but still lands at most once per cycle. | The recap is the handoff used to place real orders and an accountability record, so a silent miss is costly; a failed send is retried up to 3 times, and the last-sent date keeps it to one email (Q-INT-1, built). |
 
 ### Integration contracts
 
@@ -479,7 +485,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | Phone app and database | Both | One snapshot (catalog, current day, overrides, this day's counts) down; count saves and override changes up; the order math runs on the phone | Sign-in, each screen (a snapshot is reused for ~3 s), each save | App shows "Offline"; counts queue locally with their day and flush on reconnect (R14). |
 | Phone app and count engine | Both | Reset fallback, recap resend | When those actions are used | Those actions fail with an error; counting carries on against the database. |
 | Count engine and database | Out (nightly close), In (snapshot, recipients and order lines for the close and the recap) | The nightly close; the PINs (stored as hashes); the one-time copies when a store's editor moves (catalog, order history, recipients) | Nightly; once per store | Catalog edits reach phones on the next successful push (the nightly one at the latest); a failed night close is retried by the first app open. |
-| Count engine to recipients | Out | Recap email ("today's suggested order") | Once per order cycle | The session still records; recipients do not get the email. Desired: retry on failure, still capped at once per cycle (Q-INT-1). |
+| Count engine to recipients | Out | Recap email ("today's suggested order") | Once per order cycle | The session still records; a failed send is retried up to 3 times, still capped at once per cycle (Q-INT-1). |
 | Recipients to vendors | Out (outside MOG) | The actual purchase order | Per order | Not a MOG boundary; MOG's job ends at the recap. Documented so a rebuilder does not try to place orders from MOG. |
 | Count engine and per-store Sheet | Out | The nightly order-log backup (the Sheet keeps the catalog it had at the move and is never updated again) | Nightly | The backup waits; nothing else depends on the Sheet. |
 | MarginEdge | In | Vendor Items export (CSV), uploaded in the editor: vendors first, then the items they sell. Each product becomes one item under its MarginEdge name; the vendor bought from most recently is its primary. Items arrive with no par, pack or storage area. | Once, when a store's catalog is set up (stores whose editor is on the database) | A bad or wrong file is refused before anything is saved; one import is one logged change, undoable. Not yet: pack sizes (MarginEdge's API has them, the CSV doesn't) and cost. |
@@ -508,9 +514,9 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
   is heavily manual: someone creates the store's Google Sheet, hooks it into the backend so the app
   works, then hand-enters every vendor and every item. That manual build is the single largest source
   of friction and the thing a rebuild should most reduce. The seam is a store-provisioning flow that
-  creates a store and seeds its catalog with little or no hand entry. The Import Vendor feature in
-  Manage Vendors is the existing partial step toward this, and it is meant to draw from MarginEdge
-  (below) rather than being typed in by hand.
+  creates a store and seeds its catalog with little or no hand entry. Import from MarginEdge
+  (below) is the partial step built so far; the older Import Vendor CSV panel was retired in its
+  favor on 2026-10-20.
 - **Seed the catalog from MarginEdge.** Beyond cost, MarginEdge should be able to populate a store's
   item list, so onboarding a store becomes "pull the items" instead of "type in the items." The first
   version is built (2026-10-18): the Vendor Items CSV imported in the editor. Next steps are the API
@@ -578,8 +584,8 @@ behavior.*
 
 ## Resolved owner questions
 
-All ASSUMED flags from the draft were resolved on 2026-07-17. The one open item:
+All ASSUMED flags from the draft were resolved on 2026-07-17. The one item left open then, since built:
 
-- **Q-INT-1 (recap retry):** The recap should retry on a send failure but still land at most once per
-  cycle. Current behavior is once-and-done with no retry. This is a desired behavior change, tracked
-  here so a rebuild builds it in and the current implementation can add a bounded retry.
+- **Q-INT-1 (recap retry):** The recap retries on a send failure but still lands at most once per
+  cycle: `sendPendingRecap_` tries a failed send up to 3 times, and the last-sent date keeps it to one
+  email. Kept here so a rebuild builds it in.

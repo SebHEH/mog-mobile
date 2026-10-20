@@ -36,7 +36,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - Recalibrate Vendor Pars, Vendor Cadence Audit and How To Use deleted.
   - Dead code removed; "1 items" fixed.
 - **Shipped:** commit `ffc816b`. Apps Script is on all 11 targets (every store's `/exec` answers), and the app is v0.26.1 / store cache v67.
-- **Manage Items redesign: built from the approved mockup** ([artifact](https://claude.ai/artifact/BmVaV6v55MnHx39gJ7mH4K)); not pushed at last update.
+- **Manage Items redesign: live on all 10 stores** (commit `a4e6e98`), built from the approved mockup ([artifact](https://claude.ai/artifact/BmVaV6v55MnHx39gJ7mH4K)). Its layout hasn't been seen on a screen yet: Sebastian checks it live.
   - The page: the app-only [template/editor/Items.html](../template/editor/Items.html).
     - A four-column list with search, a vendor dropdown ("On its list / Not on it"), an area filter, and Active / Needs setup / Par review / Inactive.
     - An item panel beside the list (previous/next, one Save for everything), and Add item as a button.
@@ -57,14 +57,12 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - A same-day manual close from the Sheet, followed by that night's close of the same day, replaces the day's order log with an empty one.
    - Turning Emergency Override off before 3:30 AM drops the vendors ordered under it from that night's log and email.
    - A per-vendor day pick can be saved while Override is off.
-   - The blueprint is out of date in places:
-     - R12 says no retry; the code retries 3 times;
+   - The blueprint is still out of date in places (R5, R12, R14 and the Import Vendor note were fixed 2026-10-20):
      - the count-flow steps;
      - R1 cites the wrong file;
      - the R10 pseudocode leaves out the per-vendor pick;
      - R27's wording;
-     - R16's evidence;
-     - the growth-seams note still calls Import Vendor "the existing partial step" (retired 2026-10-20).
+     - R16's evidence.
    - `audit_modals.py` (the `mog-modal-ux-sweep` skill) still looks for `google.script.host.close()`, so it flags Manage Items and Vendors, whose Close moved into EditorShell in July.
 4. **Redundancy items held back on 2026-10-20:**
    - `VENDOR_META` is empty, but the equivalence gate compiles an older revision against the same constant list.
@@ -181,7 +179,7 @@ Most recent first. Keep about five; older rows move to the archive.
 
 | Date | Session | Outcome |
 |---|---|---|
-| 2026-10-20 | Night check, logic check, cleanup, redesign mockup | First all-Supabase night checked clean. Logic check: all gates pass, 4 fixes (recap duplicate check, late offline counts, phone rounding on the shared math, negative counts). Cleanup: Import Vendor and 3 Sheet-only tools removed, dead code removed. Manage Items / Vendors mockup approved. Commit `ffc816b`; Apps Script on all 11 targets, app v0.26.1 / cache v67. |
+| 2026-10-20 | Night check, logic check, cleanup, Manage Items redesign | First all-Supabase night checked clean. Logic check: all gates pass, 4 fixes (recap duplicate check, late offline counts, phone rounding on the shared math, negative counts). Cleanup: Import Vendor and 3 Sheet-only tools removed, dead code removed, this doc trimmed (archive kept). Commit `ffc816b`: Apps Script on all 11 targets, app v0.26.1 / cache v67. Manage Items redesign (app-only `Items.html`, bulk bar with 3 new one-change saves, gate `items_bulk`), commit `a4e6e98`, live on all 10. Blueprint R5, R12, R14 bumped. Detail: `docs/MOG_SessionHandoff_2026_10_20.md`. |
 | 2026-10-19 (later, 3) | New-store onboarding + all four concepts | `mog-add-store` rewritten for Supabase stores (11 steps, `validate.py wired`); wizard and Sheet menus accept all four concepts; `build.py` refuses bad slugs and concepts; gate `concepts`. Commit `4720ff2`. Detail: `docs/MOG_SessionHandoff_2026_10_19.md`. |
 | 2026-10-19 (later) | Phase 4's rest, one app on a computer, every store moved | Schema v9 (order history, recipients, People, Health in the app); the sidebar shell with Manage pages in a frame; the Overview; all 10 stores' editors moved (tnyr, tnyrf, tnyt started empty). Commits `30c08ce`→`7f23850`. Same handoff. |
 | 2026-10-18 → 10-19 | MarginEdge import, Phase 4 editor tools | Import from MarginEdge; Manage Vendors, Storage Areas and Shelf to Sheet on Supabase; schema v8; Move the editor to the app. Commits `62a356d`→`09b3279`. Same handoff. |
