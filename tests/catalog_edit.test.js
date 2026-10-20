@@ -217,18 +217,6 @@ function shuffle(rnd, list) {
 }
 const someMults = rnd => (rnd() < 0.08 ? [1, 0, 1] : Array.from({ length: 7 }, () => pickOne(rnd, [0, 1, 2, 3, 0.5, '2', ''])));
 const someCutoff = rnd => pickOne(rnd, ['', null, '10:00', '9:30 am', '2:15 PM', '12:00 am', '7:05', 'soon', '25:00']);
-function someCsv(rnd) {
-  const lines = [];
-  if (rnd() < 0.6) lines.push('Item Name,Pack Size');
-  if (rnd() < 0.3) lines.push('# fill in one item per row');
-  const n = rnd() < 0.08 ? 0 : 1 + Math.floor(rnd() * 6);
-  for (let i = 0; i < n; i++) {
-    lines.push(q(pickOne(rnd, ['Lime', 'Cups, 16oz', 'Lid "flat"', 'Napkins', 'lime', '  Tofu ', 'Nori', 'name'])) + ',' +
-               q(pickOne(rnd, ['CS', 'EA', '', '6/1 GAL'])));
-    if (rnd() < 0.2) lines.push('');
-  }
-  return lines.join(rnd() < 0.5 ? '\n' : '\r\n');
-}
 // The Storage Areas page's save: every area as { name, origName }, after
 // random deletes, renames (swaps too), adds and moves, and now and then a list
 // the server refuses.
@@ -272,8 +260,6 @@ function randomToolCall(rnd, CE, tables) {
     const name = rnd() < 0.15 && vendors.length ? pickOne(rnd, vendors).toUpperCase() : pickOne(rnd, ['Restaurant Depot', 'Costco', '  Jetro  ', 'H Mart', '']);
     return ['commitAddVendor', [name, someMults(rnd), someCutoff(rnd)]];
   }
-  if (k < 0.28) return ['commitImportVendor', [{ name: rnd() < 0.1 && vendors.length ? pickOne(rnd, vendors) : pickOne(rnd, ['Elpis', 'Webstaurant', 'Amazon Business', '']),
-                                                 mults: someMults(rnd), cutoff: someCutoff(rnd), csvText: someCsv(rnd) }]];
   if (k < 0.42) return ['commitUpdateVendorMultsAndCutoff', [someVendor(), someMults(rnd), someCutoff(rnd)]];
   if (k < 0.5) return ['commitRemoveVendor', [someVendor()]];
   if (k < 0.7) return ['commitStorageAreasDraft', someDraft(rnd, tables)];
@@ -322,7 +308,7 @@ function answer(fn, v) {
 const SHEET_FN = { commitUpsertItem: 'commitUpsertItem_', commitSwitchActiveVendor: 'commitSwitchActiveVendor_',
   commitSetVendorItems: 'commitSetVendorItems_', commitDeleteItem: 'commitDeleteItem_', getItemForEdit: 'getItemForEdit_',
   getUnassignedActiveItems: 'getUnassignedActiveItems_', getManageItemsBootstrap: 'getManageItemsBootstrap_',
-  commitAddVendor: 'commitAddVendor_', commitImportVendor: 'commitImportVendor_',
+  commitAddVendor: 'commitAddVendor_',
   commitUpdateVendorMultsAndCutoff: 'commitUpdateVendorMultsAndCutoff_', commitRemoveVendor: '__removeVendorD23',
   commitStorageAreasDraft: 'commitStorageAreasDraft_', commitReorderPickPath: 'commitReorderPickPath_',
   getVendorTableData: 'getVendorTableData_compute_', getStorageAreaList: 'getStorageAreaList_compute_',
@@ -441,8 +427,6 @@ const CONTROLS = [
   { name: 'a swap renames without a temporary name',
     find: '    const viaTemp = pairs.filter(p => p.from.toLowerCase() !== p.to.toLowerCase() && taken.has(p.to.toLowerCase()));',
     replace: '    const viaTemp = [];' },
-  { name: 'Import Vendor keeps the CSV header row',
-    find: "      if (low === 'item name' || low === 'name') continue;", replace: '' },
   { name: 'a change applied twice is not refused',
     find: "        if (i >= 0) throw new Error('CONFLICT: ' + op.t + ' ' + op.key + ' already exists');", replace: '' }
 ];
@@ -454,7 +438,7 @@ console.log(`catalog_edit: ${s.stores} stores, ${s.steps} steps, ${s.writes} wri
             `${s.renames} with areas renamed), ${s.errors} refused alike, ${s.undos} undone, ${s.conflicts} repeats refused`);
 console.log('              writes by call: ' + Object.keys(s.tools).sort().map(k => k + ' ' + s.tools[k]).join(', '));
 const WRITE_CALLS = ['commitUpsertItem', 'commitSwitchActiveVendor', 'commitSetVendorItems', 'commitDeleteItem', 'commitAddVendor',
-  'commitImportVendor', 'commitUpdateVendorMultsAndCutoff', 'commitRemoveVendor', 'commitStorageAreasDraft', 'commitReorderPickPath'];
+  'commitUpdateVendorMultsAndCutoff', 'commitRemoveVendor', 'commitStorageAreasDraft', 'commitReorderPickPath'];
 let failed = 0;
 if (live.failures.length) {
   failed++;

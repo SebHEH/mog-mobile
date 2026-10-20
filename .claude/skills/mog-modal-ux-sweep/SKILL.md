@@ -19,11 +19,12 @@ The MOG modals weren't built in lockstep — they drift apart between sessions. 
 - `apps-script/ReorderPickPath.html`
 - `apps-script/StorageAreas.html`
 
-**Read-only / non-save modals (2)** — show data, no save flow:
+**Read-only / non-save modals (1)** — show data, no save flow:
 - `apps-script/OrderHistory.html`
-- `apps-script/HowToUse.html`
 
-When a sweep is about save feedback, apply to the 5. When it's about a Close button or layout chrome, apply to all 7. State which set you're sweeping before editing.
+(HowToUse, RecalibrateVendor and VendorCadenceAudit were retired on 2026-10-20.)
+
+When a sweep is about save feedback, apply to the 5. When it's about a Close button or layout chrome, apply to all 6. State which set you're sweeping before editing.
 
 ## The RPC shim is now centralized — do NOT re-fork it per modal (2026-07-14, #19)
 

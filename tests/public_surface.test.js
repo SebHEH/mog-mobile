@@ -44,8 +44,8 @@ const PUBLIC = {
   test_ping: EDITOR, test_getDashboard: EDITOR, test_getVendorItems: EDITOR, test_doPostFlow: EDITOR,
   test_getResetStatus: EDITOR, test_commitReset: EDITOR, test_emailRecap: EDITOR, test_getRecipients: EDITOR,
   test_recapFromLogToSelf: EDITOR, test_recapEmailToSelf: EDITOR, test_supabaseParity: EDITOR,
-  test_supabasePushTiming: EDITOR, purgeInactiveFromPickPath: EDITOR, migrateItemVendorsColumn: EDITOR,
-  auditVendorTabStructure: EDITOR, test_catalogTablesParity: EDITOR, editorBackToSheet: EDITOR,
+  purgeInactiveFromPickPath: EDITOR, migrateItemVendorsColumn: EDITOR,
+  test_catalogTablesParity: EDITOR, editorBackToSheet: EDITOR,
   authorizeSupabase: 'editor, unguarded: changes nothing, and it is how a missing permission gets fixed'
 };
 const PAGE_CALLS = new Set(['webedit_call', 'editorAuth', 'editorPing', 'commitStoreSetup']);

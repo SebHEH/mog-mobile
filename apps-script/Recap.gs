@@ -7,7 +7,19 @@
  * scope, so callers in MOGApi.gs / ResetLog.gs resolve unchanged.
  ***********************/
 
+// Two phones that finish their reviews at the same moment both ask for the
+// auto-send. The lock makes the second one wait, then see "already sent".
 function api_emailRecap_(payload) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return emailRecapLocked_(payload);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function emailRecapLocked_(payload) {
   // Builds and emails an end-of-day recap to every active recipient
   // configured in SETUP columns AB-AE. Recipients are server-side so a
   // single email goes to the same people regardless of which device or
@@ -37,8 +49,13 @@ function api_emailRecap_(payload) {
 
   const props = PropertiesService.getScriptProperties();
   const force = !!(payload && payload.force);
-  const active = getActiveOrderDate_();
-  const currentCycleDate = active.dateStr;
+  // The day being emailed. A store that counts in Supabase keeps its day
+  // there (the same date buildRecapSections_ stamps on the email); the
+  // Sheet's AE9 stopped moving when the store switched, so comparing with it
+  // never matched and every auto-send went out.
+  const currentCycleDate = supabaseConfig_().switched
+    ? supabaseSnapshot_().state.cycleDate
+    : getActiveOrderDate_().dateStr;
   const lastSent = props.getProperty(PROP_LAST_RECAP_SENT_DATE) || '';
 
   // Auto-send dedupe: if this cycle was already emailed, return a

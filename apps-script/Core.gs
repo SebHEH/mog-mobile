@@ -176,8 +176,7 @@ const DASH = {
     { col: "F", fn: "showManageVendorsSidebar_"   },
     { col: "K", fn: "showReorderPickPathSidebar_" },
     { col: "P", fn: "showStorageAreasSidebar_"    },
-    { col: "U", fn: "showOrderHistoryModal_"      },
-    { col: "Z", fn: "showHowToUseSidebar_"        }
+    { col: "U", fn: "showOrderHistoryModal_"      }
   ],
   MANAGE_ROW_PROP:     "DASH_MANAGE_ROW",   // DocumentProperties key
   MANAGE_ROW_DEFAULT:  15,                  // fallback if prop unset
@@ -271,8 +270,8 @@ function bumpServerMutationTs_() {
   }
   if (!MOG_SKIP_CATALOG_QUEUE_) {
     // A connected store queues ONE background catalog push for edits that
-    // don't come through the web editor (Sheet dialogs, Recalibrate Vendor
-    // Pars, Admin Reset). A sync hiccup must never fail the edit itself; the
+    // don't come through the web editor (Sheet dialogs, Admin
+    // Reset). A sync hiccup must never fail the edit itself; the
     // nightly push covers anything missed.
     try { if (supabaseConfig_().connected) scheduleCatalogPush_(); } catch (e) { /* nightly covers it */ }
   }
@@ -493,8 +492,6 @@ function onOpen(e) {
 
 
 
-    .addItem("    How To Use This Guide",              "showHowToUseSidebar_")
-    .addSeparator()
 
 
 
@@ -526,8 +523,6 @@ function onOpen(e) {
       // #4 vendor-template work). The functions remain in the bound-script
       // files (Items.gs / Vendors.gs) and are still runnable from the Apps
       // Script editor if ever needed.
-      .addItem("    Recalibrate Vendor Pars","showRecalibrateVendorSidebar_")
-      .addItem("    Audit Vendor Cadence",   "showVendorCadenceAuditSidebar_")
       .addItem("    Sync Vendor Multiplier Formulas","syncVendorMultiplierFormulasMenu_")
       .addItem("    Place Backup Vendors on Tabs","syncEligibleVendorsToPickPath_")
       .addSeparator()
@@ -703,8 +698,7 @@ function getQuickActionDispatch_() {
     showManageVendorsSidebar_:   showManageVendorsSidebar_,
     showReorderPickPathSidebar_: showReorderPickPathSidebar_,
     showStorageAreasSidebar_:    showStorageAreasSidebar_,
-    showOrderHistoryModal_:      showOrderHistoryModal_,
-    showHowToUseSidebar_:        showHowToUseSidebar_
+    showOrderHistoryModal_:      showOrderHistoryModal_
   };
 }
 
@@ -854,18 +848,10 @@ function include(name) {
 
 // ── Modal sizing tiers ── keep modals visually consistent at two sizes.
 // SMALL = forms / lists / audits;  LARGE = wide data tables (Items, Order
-// History) + the How-To guide. Resize a whole tier by editing one pair here.
+// History). Resize a whole tier by editing one pair here.
 const MODAL_SM_W = 720, MODAL_SM_H = 680;
 const MODAL_LG_W = 1400, MODAL_LG_H = 900;
 
-function showHowToUseSidebar_() {
-  SpreadsheetApp.getUi().showModalDialog(
-    HtmlService.createTemplateFromFile("HowToUse").evaluate()
-      .setWidth(MODAL_LG_W)
-      .setHeight(MODAL_LG_H),
-    "Ordering Guide — How To Use"
-  );
-}
 
 
 

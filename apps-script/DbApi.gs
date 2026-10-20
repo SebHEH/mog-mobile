@@ -62,9 +62,16 @@ function dbInputs_() {
 
 // One write, no snapshot read: the save is the hot path. The counts land in
 // Supabase's CURRENT cycle (the phone's direct mode sends its own cycle date).
+// A queued save carries the day it was counted in (R14), as on the phone's
+// direct path: one that arrives after that day's 3:30 AM close stays in its
+// own day instead of landing in the new one, and comes back late:true so
+// the phone can say it was never ordered. A live save sends no day: current.
 function dbSaveOnHand_(payload) {
   const save = countRowsFromSave_(payload);
   if (!save.rows.length) return { saved: 0, vendor: save.vendor };
-  const data = supabaseSync_('mog_sync_put_counts', { p_cycle_date: null, p_rows: save.rows });
-  return { saved: data.saved, vendor: save.vendor };
+  let day = /^\d{4}-\d{2}-\d{2}$/.test(String(payload.cycleDate || '')) ? String(payload.cycleDate) : null;
+  const current = day ? supabaseSnapshot_().state.cycleDate : null;
+  if (day && current && day > current) day = null;   // never ahead of the store's day
+  const data = supabaseSync_('mog_sync_put_counts', { p_cycle_date: day, p_rows: save.rows });
+  return { saved: data.saved, vendor: save.vendor, late: !!(day && current && day < current) };
 }

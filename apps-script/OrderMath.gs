@@ -674,9 +674,10 @@ function countRowsFromSave_(payload) {
   const vendor = String((payload && payload.vendor) || '').trim();
   if (!vendor) throw new Error('Vendor is required.');
   const items = Array.isArray(payload.items) ? payload.items : [];
+  // A negative count is stored as 0 (a typed -2 would order 2 extra).
   const rows = items.map(function (it) {
     const v = (it.onHand === null || it.onHand === '' || it.onHand === undefined) ? null : Number(it.onHand);
-    return { vendor: vendor, id: String(it.id || '').trim(), onHand: (v === null || isNaN(v)) ? null : v };
+    return { vendor: vendor, id: String(it.id || '').trim(), onHand: (v === null || isNaN(v)) ? null : Math.max(0, v) };
   });
   return { vendor: vendor, rows: rows };
 }

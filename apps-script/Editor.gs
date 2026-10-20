@@ -347,8 +347,8 @@ function commitStoreSetup(payload) {
  *
  * Token tiers: 'store' / 'master' come from the PIN (editorAuth); 'sheet' is
  * minted by a Sheet menu when it opens a dialog (mintSheetToken_), for a
- * person who already has the Sheet open. Sheet-only actions (Admin Reset,
- * Recalibrate Vendor Pars) need a 'sheet' token.
+ * person who already has the Sheet open. Sheet-only actions (Admin Reset)
+ * need a 'sheet' token.
  ***********************/
 
 // Maps an allowlisted action to its function, or null. No globalThis lookups,
@@ -371,7 +371,6 @@ function webeditDispatch_(name, tier) {
     case 'getVendorTableData':               return getVendorTableData_;
     case 'commitUpdateVendorMultsAndCutoff': return commitUpdateVendorMultsAndCutoff_;
     case 'commitAddVendor':                  return commitAddVendor_;
-    case 'commitImportVendor':               return commitImportVendor_;
     case 'commitRemoveVendor':               return commitRemoveVendor_;
     // Order History (read-only)
     case 'getOrderHistoryBootstrap':         return getOrderHistoryBootstrap_;
@@ -387,8 +386,6 @@ function webeditDispatch_(name, tier) {
   switch (name) {
     // Sheet-only dialogs (opened from the Sheet's menu, never on the web)
     case 'commitSelectiveReset':             return commitSelectiveReset_;
-    case 'getVendorRecalibrationBootstrap':  return getVendorRecalibrationBootstrap_;
-    case 'commitVendorRecalibration':        return commitVendorRecalibration_;
   }
   return null;
 }
@@ -397,8 +394,8 @@ function webeditDispatch_(name, tier) {
 // the app (Sync.gs editorInApp_), since an edit here would never reach it.
 const CATALOG_WRITE_ACTIONS_ = {
   commitUpsertItem: 1, commitSwitchActiveVendor: 1, commitSetVendorItems: 1, commitDeleteItem: 1,
-  commitUpdateVendorMultsAndCutoff: 1, commitAddVendor: 1, commitImportVendor: 1, commitRemoveVendor: 1,
-  commitStorageAreasDraft: 1, commitReorderPickPath: 1, commitVendorRecalibration: 1
+  commitUpdateVendorMultsAndCutoff: 1, commitAddVendor: 1, commitRemoveVendor: 1,
+  commitStorageAreasDraft: 1, commitReorderPickPath: 1
 };
 
 function webedit_call(token, fnName, args, opts) {

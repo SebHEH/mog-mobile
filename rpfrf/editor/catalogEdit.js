@@ -673,48 +673,6 @@
     return { ok: true, name: name, b1ok: true };
   }
 
-  // commitImportVendor_: the vendor, then every item in the CSV (col 0 name,
-  // col 1 pack; header, #-comment, blank and repeated rows skipped), after the
-  // last ITEM-#### row, with no par and no storage area.
-  function importVendor(w, payload, shifts) {
-    payload = payload || {};
-    const name = String(payload.name || '').trim();
-    if (!name) throw new Error('Vendor name is required.');
-    if (!Array.isArray(payload.mults) || payload.mults.length !== 7) throw new Error('7 multiplier values required.');
-    const rows = parseCsv(String(payload.csvText || ''));
-    const items = [], seen = {}, skipped = [];
-    for (const row of rows) {
-      const itemName = String(row[0] || '').trim();
-      const pack = String(row[1] || '').trim();
-      if (!itemName) continue;
-      if (itemName.charAt(0) === '#') continue;
-      const low = itemName.toLowerCase();
-      if (low === 'item name' || low === 'name') continue;
-      if (seen[low]) { skipped.push({ name: itemName, reason: 'duplicate in file' }); continue; }
-      seen[low] = true;
-      items.push({ name: itemName, pack: pack });
-    }
-    if (!items.length) throw new Error('No items found in the file. Each row needs an item name in the first column.');
-    const long = items.find(it => it.name.length > 300);
-    if (long) throw new Error('Item name "' + long.name.substring(0, 60) + '…" is longer than 300 characters.');
-    addVendor(w, name, payload.mults, payload.cutoff);
-
-    let maxN = 0, after = 1;
-    for (const it of w.items) {
-      const m = /^ITEM-(\d+)$/i.exec(s_(it.id));
-      if (m) { maxN = Math.max(maxN, Number(m[1])); after = it.seq; }
-    }
-    const start = after + 1, n = items.length;
-    for (const it of w.items) if (it.seq >= start) it.seq += n;
-    for (let k = 0; k < n; k++) shifts.push(start);
-    items.forEach(function (it, k) {
-      w.items.push({ id: 'ITEM-' + String(maxN + 1 + k).padStart(4, '0'), name: it.name, primaryVendor: name, pack: it.pack, par: null,
-                     active: true, useMult: true, notes: '', sku: '', category: '', eligible: [name], seq: start + k });
-    });
-    w.items.sort((a, b) => a.seq - b.seq);
-    return { ok: true, vendor: name, itemsAdded: n, skipped: skipped };
-  }
-
   // commitUpdateVendorMultsAndCutoff_
   function updateVendor(w, vendorName, mults, cutoffTime) {
     const name = String(vendorName || '').trim();
@@ -925,9 +883,8 @@
   // Import from MarginEdge (meImport.js builds the payload). Supabase editor
   // only, so unlike the calls above it has no Items.gs twin. New vendors start
   // with no delivery days, so they order nothing until Manage Vendors sets
-  // them. Items come in the way Import Vendor's do (Vendors.gs
-  // commitImportVendor_): active, par blank, no storage area, at the end of
-  // the list, so they wait under Unassigned. A name already in the catalog is
+  // them. Items come in active, with no par and no storage area, at the
+  // end of the list, so they wait under Unassigned. A name already in the catalog is
   // skipped, never doubled.
   // payload = { newVendors: [name], items: [{ name, primaryVendor, eligible: [name], sku, category }] }
   function importItems(w, payload) {
@@ -1096,7 +1053,6 @@
       return 'Imported ' + plural(result.itemsAdded, 'item') + ' from MarginEdge' + (v ? ' and added ' + vendors : '');
     }
     if (fn === 'commitAddVendor') return 'Added vendor "' + result.name + '"';
-    if (fn === 'commitImportVendor') return 'Added vendor "' + result.vendor + '" with ' + plural(result.itemsAdded, 'item') + ' from a file';
     if (fn === 'commitUpdateVendorMultsAndCutoff') {
       const before = findVendor(base, s_(args[0])), after = findVendor(work, s_(args[0]));
       const parts = [];
@@ -1149,7 +1105,6 @@
     commitDeleteItem: (w, args) => deleteItem(w, args[0]),
     commitImportItems: (w, args) => importItems(w, args[0] || {}),
     commitAddVendor: (w, args) => addVendor(w, args[0], args[1], args[2]),
-    commitImportVendor: (w, args, shifts) => importVendor(w, args[0], shifts),
     commitUpdateVendorMultsAndCutoff: (w, args) => updateVendor(w, args[0], args[1], args[2]),
     commitRemoveVendor: (w, args) => removeVendor(w, args[0]),
     commitStorageAreasDraft: (w, args, shifts, renames) => storageAreasDraft(w, args[0], renames),

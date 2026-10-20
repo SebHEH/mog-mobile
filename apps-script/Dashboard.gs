@@ -460,8 +460,9 @@ function applyHomeStripCell_(sh, range, valueOrFormula, style, isFormula) {
 
 // ── MANAGE SECTION (header + tiles + checkboxes, dynamic rows) ───────────
 // Position depends on how many vendor tile rows precede us. Header gets
-// the ③ step badge. Tile columns are static (A:E, F:J, K:O, P:T, U:Y,
-// Z:AD); checkbox cells are at column letters from QUICK_ACTION_COLUMNS.
+// the ③ step badge. Tile columns are static (A:E, F:J, K:O, P:T, U:Y; Z:AD
+// held How To Use, retired 2026-10-20); checkbox cells are at column letters
+// from QUICK_ACTION_COLUMNS.
 function buildHomeQuickActions_(sh, layout) {
   const headerRow   = layout.manageHeaderRow;
   const tilesRow    = layout.manageTilesRow;
@@ -472,18 +473,17 @@ function buildHomeQuickActions_(sh, layout) {
     "③  MANAGE  —  Tap a box to open a tool",
     "ADMINISTRAR  —  Marca para abrir una herramienta");
 
-  // Six tiles (5 cols each × 6 = 30 cols).
+  // Five tiles (5 cols each).
   const tileSpec = [
     { range: "A"+tilesRow+":E"+tilesRow,   en: "Manage Items",      es: "Artículos"        },
     { range: "F"+tilesRow+":J"+tilesRow,   en: "Manage Vendors",    es: "Proveedores"      },
     { range: "K"+tilesRow+":O"+tilesRow,   en: "Shelf to Sheet",    es: "Estante a Hoja"   },
     { range: "P"+tilesRow+":T"+tilesRow,   en: "Storage Areas",     es: "Áreas"            },
-    { range: "U"+tilesRow+":Y"+tilesRow,   en: "Order History",     es: "Historial"        },
-    { range: "Z"+tilesRow+":AD"+tilesRow,  en: "How To Use",        es: "Cómo Usar"        }
+    { range: "U"+tilesRow+":Y"+tilesRow,   en: "Order History",     es: "Historial"        }
   ];
   tileSpec.forEach(t => buildHomeTile_(sh, t.range, t.en, t.es, dashTheme_().ink));
 
-  // Six checkbox cells matching tile widths. Each merged range contains a
+  // Five checkbox cells matching tile widths. Each merged range contains a
   // single checkbox at its top-left cell. Top-left col letters match
   // DASH.QUICK_ACTION_COLUMNS, which is what the dispatch handler reads.
   const checkboxRanges = [
@@ -491,8 +491,7 @@ function buildHomeQuickActions_(sh, layout) {
     "F"+checkboxRow+":J"+checkboxRow,
     "K"+checkboxRow+":O"+checkboxRow,
     "P"+checkboxRow+":T"+checkboxRow,
-    "U"+checkboxRow+":Y"+checkboxRow,
-    "Z"+checkboxRow+":AD"+checkboxRow
+    "U"+checkboxRow+":Y"+checkboxRow
   ];
   checkboxRanges.forEach(r => {
     sh.getRange(r).merge()

@@ -383,8 +383,8 @@ function pushPinsQuietly_() {
 }
 
 // Queue ONE background catalog push about a minute out, for edits that don't
-// come through the web editor: Sheet dialogs, Recalibrate Vendor Pars, Admin
-// Reset, cell edits that bump the mutation ts. Called from
+// come through the web editor: Sheet dialogs, Admin Reset,
+// cell edits that bump the mutation ts. Called from
 // bumpServerMutationTs_ on connected stores; at most one is queued at a time.
 function scheduleCatalogPush_() {
   if (editorInApp_()) return false;   // the app owns the catalog; nothing to push
@@ -988,29 +988,6 @@ function writeDbCycleToSheet_(snap) {
   }
   bumpServerMutationTs_();
   return written;
-}
-
-
-// ---- Measuring ----------------------------------------------------------------
-
-// Editor-run on a connected store: what a catalog push and a snapshot read
-// cost from Apps Script. Read-only apart from re-pushing the same catalog.
-function test_supabasePushTiming() {
-  requireEditorRun_();   // public for the editor's Run menu; refuses web callers (D18)
-  MOG_SKIP_CATALOG_QUEUE_ = true;
-  if (!supabaseConfig_().connected) { Logger.log('Not connected: run 📱 Mobile API → Move this store to Supabase first.'); return; }
-  const lines = [];
-  for (let i = 1; i <= 3; i++) {
-    const r = pushCatalogNow_();
-    lines.push('catalog push ' + i + ': build ' + r.buildMs + ' ms + send ' + r.sendMs + ' ms, ' +
-               Math.round(r.bytes / 1024) + ' KB' + (r.applied ? '' : ' (NOT applied)'));
-  }
-  for (let i = 1; i <= 3; i++) {
-    const t0 = Date.now();
-    supabaseSnapshot_(true);
-    lines.push('snapshot read ' + i + ': ' + (Date.now() - t0) + ' ms');
-  }
-  Logger.log(lines.join('\n'));
 }
 
 

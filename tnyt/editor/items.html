@@ -3460,7 +3460,6 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
 
     function assignVLow_()          { return String(byId('assign-vendor').value || '').toLowerCase(); }
     function assignIsPrimary_(it, vLow) { return String(it.vendor || '').toLowerCase() === vLow; }
-    function assignBaseOn_(it, vLow)    { return assignIsPrimary_(it, vLow) || (it.eligibleVendors || []).some(v => String(v).toLowerCase() === vLow); }
     function assignEffOn_(it, vLow) {
       if (assignIsPrimary_(it, vLow)) return true;   // primary is always on
       if (Object.prototype.hasOwnProperty.call(assignPending_, it.id)) return assignPending_[it.id];

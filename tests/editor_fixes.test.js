@@ -153,7 +153,7 @@ function runSuite(srcOf, stores) {
     side.scriptProps.set('MOG_EDITOR', 'supabase');
     vm.runInContext('_SB_CONFIG_ = null', c);
     const writes = [['commitAddVendor', ['Costco', [1, 0, 0, 0, 0, 0, 0], '']], ['commitStorageAreasDraft', [[]]],
-                    ['commitUpsertItem', [{ mode: 'add', name: 'X', vendor: 'x', par: 1 }]], ['commitVendorRecalibration', [{}]]];
+                    ['commitUpsertItem', [{ mode: 'add', name: 'X', vendor: 'x', par: 1 }]]];
     for (const [fn, args] of writes) {
       let moved = '';
       try { c.webedit_call('sheettok', fn, args); } catch (e) { moved = e.message; }

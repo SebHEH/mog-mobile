@@ -111,8 +111,6 @@
        Each theme reassigns the global teal/red/amber variables to colors
        that match its brand. Because the rest of the CSS reads from these
        vars, themes propagate without touching individual components.
-       The PIN-screen clipboard icon also gets a tint via a CSS rule
-       targeting the themed-icon class.
        =================================================================== */
 
     /* Roll Play — basil green primary, lipstick accent for warnings. */
@@ -155,15 +153,6 @@
        values apply as-is. */
     [data-theme="an"] {
       /* intentionally empty for now */
-    }
-
-    /* The PIN-screen clipboard icon and other icons that should
-       reflect the concept primary color get this class. The icon
-       currently sits inside .pin-logo / .stale-icon containers which
-       have their own teal background; we keep the bg-fills working
-       since they read from --teal too. */
-    .themed-icon {
-      color: var(--teal);
     }
 
     /* Concept brand logos on the PIN / stale screens. These are
@@ -746,7 +735,6 @@
     }
     .vendor-card.tappable { cursor: pointer; }
     .vendor-card.tappable:active { filter: brightness(0.97); }
-    .vendor-card.muted { background: var(--bg-soft); }
 
     /* Status-tinted cards — soft tints, not saturated, so 9 stacked cards
        don't burn the user's eyes. The pill on the right keeps the explicit
@@ -859,11 +847,6 @@
     .empty-title { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
     .empty-sub { font-size: 13px; color: var(--text-2); margin: 0 0 18px; }
 
-    .history-group { margin-bottom: 18px; }
-    .history-group-header {
-      font-size: 11px; font-weight: 600; color: var(--text-3);
-      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
-    }
     .history-row {
       background: var(--bg); border: 0.5px solid var(--border);
       border-radius: var(--r-md); padding: 12px 14px; margin-bottom: 6px;
@@ -2288,8 +2271,7 @@
   //   mog_<ns>_reviewed_2026-05-09 -> {"Sysco":true,"Baldor":true}
   //
   // Namespaced by deployment so each store on a shared origin (hub
-  // router) keeps its own reviewed flags. Legacy unprefixed keys are
-  // migrated once at boot by migratePerCycleKeys_().
+  // router) keeps its own reviewed flags.
   function reviewedKey(dateStr) { return nsKey_('reviewed_' + dateStr); }
   function getReviewedSet(dateStr) {
     try {
@@ -2351,9 +2333,7 @@
   // This lets multiple stores' PWAs share a single GitHub Pages
   // origin without their caches or queues colliding. Per-cycle keys
   // (mog_<ns>_draft_, mog_<ns>_reviewed_, mog_<ns>_recap_sent_) are
-  // also namespaced under this scheme as of the hub router rollout;
-  // legacy unprefixed keys are migrated once at boot by
-  // migratePerCycleKeys_().
+  // also namespaced under this scheme as of the hub router rollout.
   // ============================================================
 
   function deploymentNs_() {
@@ -2375,47 +2355,6 @@
     return 'h' + Math.abs(h).toString(36);
   }
   function nsKey_(slot) { return 'mog_' + deploymentNs_() + '_' + slot; }
-
-  // One-time migration: legacy unprefixed per-cycle keys (mog_reviewed_*,
-  // mog_draft_*, mog_recap_sent_*) get renamed to the namespaced form
-  // (mog_<ns>_<rest>) so they survive the multi-store router rollout.
-  //
-  // Idempotent — guarded by the mog_migration_v1_done flag, which is
-  // intentionally NOT namespaced (the migration is a one-shot for this
-  // browser, not per-store). Legacy keys are claimed by whichever store
-  // the user PINs into first after this deploy lands; this is correct
-  // for the actual rollout state (one live store today → that store's
-  // PWA is the only thing that could have written legacy keys).
-  function migratePerCycleKeys_() {
-    try {
-      if (localStorage.getItem('mog_migration_v1_done') === '1') return;
-      const legacyPrefixes = ['mog_reviewed_', 'mog_draft_', 'mog_recap_sent_'];
-      const toMigrate = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (!k) continue;
-        for (const p of legacyPrefixes) {
-          if (k.startsWith(p) && k.length > p.length) {
-            // Drop the leading 'mog_' — nsKey_() prepends 'mog_<ns>_'.
-            toMigrate.push({ key: k, suffix: k.substring(4) });
-            break;
-          }
-        }
-      }
-      for (const item of toMigrate) {
-        const value = localStorage.getItem(item.key);
-        if (value !== null) {
-          localStorage.setItem(nsKey_(item.suffix), value);
-          localStorage.removeItem(item.key);
-        }
-      }
-      localStorage.setItem('mog_migration_v1_done', '1');
-    } catch (e) {
-      // Non-fatal — the app works without migration; users just see
-      // fresh state for the namespaced store.
-      console.warn('[migrate] failed', e);
-    }
-  }
 
   // Slot names used throughout. Listed here so the cleanup paths
   // (signOut, reset, etc.) can drop them in one pass.
@@ -2680,6 +2619,7 @@
     if (!queue.length) return;
     let drained = 0;
     let toastShown = false;
+    const late = [];   // "Sysco (10/19)": saved into a day whose order had already closed
     try {
       // Snapshot the queue length up front; entries we successfully
       // flush are removed from the on-disk queue one at a time so a
@@ -2693,7 +2633,11 @@
           toastShown = true;
         }
         try {
-          await api('saveOnHand', { vendor: entry.vendor, items: entry.items, cycleDate: entry.cycleDate || undefined });
+          const res = await api('saveOnHand', { vendor: entry.vendor, items: entry.items, cycleDate: entry.cycleDate || undefined });
+          if (res && res.late) {
+            const day = String(entry.cycleDate || '');
+            late.push(entry.vendor + (day.length === 10 ? ' (' + day.slice(5).replace('-', '/') + ')' : ''));
+          }
           // Success — remove this entry and continue
           const after = readSaveQueue_().filter(e => e.id !== entry.id);
           writeSaveQueue_(after);
@@ -2711,8 +2655,13 @@
       }
     } finally {
       refreshBanner_();
-      if (drained > 0) {
+      if (late.length) {
+        // Counts that missed their order: say so instead of "synced".
+        showToast(t('syncedLate') + late.join(', '), 'error', 9000);
+      } else if (drained > 0) {
         showToast(t('synced'), 'success');
+      }
+      if (drained > 0) {
         // Drained saves may have changed dashboard / vendor item /
         // recap state on the server. Drop those caches so the next
         // open reads fresh — same invalidation pattern as a normal
@@ -2732,8 +2681,7 @@
   //   mog_<ns>_draft_2026-05-09_Sysco -> {"ITEM-0001":3,"ITEM-0002":null,...}
   //
   // Namespaced by deployment so each store on a shared origin keeps
-  // its own drafts. Legacy unprefixed keys are migrated once at boot
-  // by migratePerCycleKeys_().
+  // its own drafts.
   function draftKey(dateStr, vendor) { return nsKey_('draft_' + dateStr + '_' + vendor); }
   function loadDraft(dateStr, vendor) {
     try {
@@ -2797,6 +2745,7 @@
       itemsToOrder:     { en: 'to order', es: 'por pedir' },
       entered:          { en: 'entered', es: 'ingresados' },
       items:            { en: 'items', es: 'artículos' },
+      item:             { en: 'item', es: 'artículo' },
       vendors:          { en: 'vendors', es: 'proveedores' },
       cutoff:           { en: 'cutoff', es: 'corte' },
       orderByLabel:     { en: 'Order by', es: 'Ordenar antes de' },
@@ -2927,10 +2876,6 @@
       ovrPickChange:   { en: 'Change', es: 'Cambiar' },
       ovrPickAuto:     { en: 'Auto', es: 'Auto' },
       ovrPickSaved:    { en: 'Quantities updated', es: 'Cantidades actualizadas' },
-      confirmEditMsg: {
-        en: "You'll be able to change counts. Mark as reviewed again when you're done.",
-        es: 'Podrás cambiar los conteos. Marca como revisado al terminar.'
-      },
       confirmEmpty:     { en: 'Send empty order?', es: '¿Pedido vacío?' },
       confirmEmptyMsg: {
         en: 'No items have a quantity to order. Mark as reviewed anyway?',
@@ -2941,8 +2886,6 @@
       pinConfigError:   { en: 'App not configured. Contact your GM.', es: 'App no configurada. Contacta tu gerente.' },
       pinLockedError:   { en: 'Too many attempts. Try again in {minutes} minute(s).', es: 'Demasiados intentos. Espera {minutes} minuto(s).' },
       pinServerHiccup:  { en: 'The server hiccupped. Tap Sign in again.', es: 'El servidor falló. Toca Iniciar sesión otra vez.' },
-      wrongStore:       { en: 'Wrong store?', es: '\u00bfTienda equivocada?' },
-      switchStore:      { en: 'Switch', es: 'Cambiar' },
       summarySent:      { en: 'Daily summary emailed', es: 'Resumen enviado' },
       summaryAlreadySent: { en: 'Daily summary already sent today', es: 'El resumen ya se envió hoy' },
       summarySentPartial: {
@@ -2994,10 +2937,8 @@
         es: '{name} ya no recibirá el correo diario.'
       },
       recipientsRemoveCta: { en: 'Remove', es: 'Quitar' },
-      recipientsSave:   { en: 'Save changes', es: 'Guardar cambios' },
       recipientsSaving: { en: 'Saving…', es: 'Guardando…' },
       recipientsSaved:  { en: 'Recipients saved', es: 'Destinatarios guardados' },
-      recipientsLoadFail: { en: "Couldn't load recipients", es: 'No se pudo cargar' },
       recipientsSaveFail: { en: "Couldn't save recipients", es: 'No se pudo guardar' },
       recipientsInvalidEmail: { en: 'Invalid email', es: 'Correo no válido' },
       recipientsNeedName: { en: 'Name is required', es: 'Falta el nombre' },
@@ -3033,7 +2974,6 @@
         es: 'Estos proveedores se marcarán como revisados y se enviará el resumen diario:'
       },
       bulkMarkConfirmBtn: { en: 'Mark all reviewed', es: 'Marcar todo revisado' },
-      send:             { en: 'Send', es: 'Enviar' },
       language:         { en: 'Language', es: 'Idioma' },
       version:          { en: 'Version', es: 'Versión' },
       signOut:          { en: 'Sign out', es: 'Cerrar sesión' },
@@ -3042,7 +2982,8 @@
       offlineRetry:     { en: 'Offline. Try again when connected.', es: 'Sin conexión. Intenta cuando vuelva.' },
       savedOffline:     { en: 'Saved offline — will sync when back online', es: 'Guardado sin conexión — se sincronizará al volver' },
       syncing:          { en: 'Syncing offline changes…', es: 'Sincronizando cambios…' },
-      synced:           { en: 'Offline changes synced', es: 'Cambios sincronizados' }
+      synced:           { en: 'Offline changes synced', es: 'Cambios sincronizados' },
+      syncedLate:       { en: 'These offline counts arrived after their day’s order closed, so they weren’t ordered: ', es: 'Estos conteos sin conexión llegaron después del cierre de su pedido, así que no se pidieron: ' }
     }
   };
   const t = (key) => (T.msg[key] && T.msg[key][state.lang]) || key;
@@ -3062,12 +3003,14 @@
     document.getElementById('app').classList.toggle('es', lang === 'es');
   }
 
-  function showToast(msg, kind) {
+  // ms: how long it stays up (default 2.4s; longer for something to read).
+  function showToast(msg, kind, ms) {
     const el = $('toast');
     el.textContent = msg;
     el.className = 'toast' + (kind ? ' ' + kind : '');
     requestAnimationFrame(() => el.classList.add('show'));
-    setTimeout(() => el.classList.remove('show'), 2400);
+    clearTimeout(showToast.timer_);
+    showToast.timer_ = setTimeout(() => el.classList.remove('show'), ms || 2400);
   }
 
   // Block the entire app behind a centered loading bar. Use sparingly —
@@ -3656,7 +3599,9 @@
           Object.assign({ p_by: liveName_() || null }, saveParams), 'mog_save_counts', saveParams);
         if (res.stale) directInvalidate_();   // the next read fetches the new cycle
         else applySavedCounts_(cycle, save.rows);
-        data = { saved: res.saved, vendor: save.vendor };
+        // late: the counts went into a day whose order already closed, so
+        // they were never ordered (the queue drain tells the KM).
+        data = { saved: res.saved, vendor: save.vendor, late: !!res.stale };
         break;
       }
       case 'setEmergencyOverride': {
@@ -4791,7 +4736,7 @@
           ? (v.backupCount === 1 ? 'backup' : 'backups')
           : (v.backupCount === 1 ? 'respaldo' : 'respaldos'))
       : '';
-    metaText = v.itemCount + ' ' + t('items') + backupSegment + cutoffSegment;
+    metaText = v.itemCount + ' ' + t(v.itemCount === 1 ? 'item' : 'items') + backupSegment + cutoffSegment;
 
     if (status === 'sent') {
       // Vendor already has a LOG_ORDERS row stamped with the current cycle
@@ -5411,7 +5356,7 @@
         let removed = 0; ctx.items.forEach(i => { if (!newIds.has(i.id)) removed++; });
 
         // Order math changed on an item we're already showing — a par edited in
-        // Manage Items / Recalibrate Vendor Pars, or the day multiplier rolling
+        // Manage Items, or the day multiplier rolling
         // over. targetPar and par are the INPUTS to computeSuggested, not
         // cosmetic metadata: leaving them stale means the KM counts, reviews and
         // approves quantities the server will never log, and the recap email
@@ -5480,29 +5425,21 @@
     const oh = Number(item.onHand);
     if (isNaN(oh)) return null;
 
-    if (item.targetPar != null) {
-      return Math.max(0, ceilQty_(Number(item.targetPar) - oh));
-    }
-    if (item._targetPar != null) {
-      return Math.max(0, ceilQty_(Number(item._targetPar) - oh));
-    }
-    if (item.suggestedQty != null) {
-      return ceilQty_(Number(item.suggestedQty));
-    }
+    if (item.targetPar != null) return orderForTarget_(item.targetPar, oh);
+    if (item._targetPar != null) return orderForTarget_(item._targetPar, oh);
+    if (item.suggestedQty != null) return orderForTarget_(item.suggestedQty, 0);
     return null;
   }
 
-  // Rounding half of the order math. MUST stay byte-identical in behavior to
-  // computeSuggestedQty_ (MOGApi.gs) — if these two disagree, the review screen
-  // the KM approves and the recap email / order history computed on the server
-  // differ by a unit, which is exactly the class of bug this pairing exists to
-  // prevent.
-  //
-  // Orders ALWAYS round up, never down. The epsilon only cancels binary-float
-  // noise so a shortfall that is exactly 1 in decimal (e.g. par 1.1 x 2 - 1.2,
-  // which floats to 1.0000000000000002) can't ceil to 2. Any genuine fraction
-  // still rounds up — see the full rationale on computeSuggestedQty_.
-  function ceilQty_(x) { return Math.ceil(x - 1e-9); }
+  // The rounding is the shared order math's own (computeSuggestedQty_ in
+  // OrderMath.gs, loaded above), not a copy: the screen the KM approves has to
+  // round exactly like the order log and the recap email, always up, never
+  // down. The target already carries the day's multiplier, hence useMult off
+  // and x1. 0 when nothing is needed. tests/phone_rounding.test.js holds it.
+  function orderForTarget_(target, onHand) {
+    const qty = computeSuggestedQty_(Number(target), false, 1, onHand);
+    return qty == null ? 0 : qty;
+  }
 
   function cacheTargetPars(items) {
     // The API now sends targetPar directly so live updates work for every
@@ -5879,7 +5816,7 @@
         '</div>' +
         '<div class="stepper">' +
           '<button class="step-btn" data-step="-1">&minus;</button>' +
-          '<input class="step-val" type="number" inputmode="decimal" step="any" placeholder="—" value="' + valStr + '">' +
+          '<input class="step-val" type="number" inputmode="decimal" step="any" min="0" placeholder="—" value="' + valStr + '">' +
           '<button class="step-btn" data-step="1">+</button>' +
         '</div>' +
         '<span class="' + pillCls + '">' + pillTxt + '</span>' +
@@ -5951,7 +5888,10 @@
     const itemRow = input.closest('.item');
     const id = itemRow.getAttribute('data-id');
     const raw = input.value;
-    const val = (raw === '' || raw === null) ? null : parseFloat(raw);
+    let val = (raw === '' || raw === null) ? null : parseFloat(raw);
+    // A count can't go below zero: a typed -2 would order 2 extra (the
+    // stepper already stops at 0; typing didn't).
+    if (val !== null && !isNaN(val) && val < 0) { val = 0; input.value = '0'; }
     updateItem(id, isNaN(val) ? null : val);
   }
 
@@ -6959,7 +6899,7 @@
       html += '<div class="history-row" data-vendor="' + escapeHtml(v.vendor) + '" data-date="' + escapeHtml(ctx.date) + '">' +
         '<div>' +
           '<div class="history-vendor">' + escapeHtml(v.vendor) + '</div>' +
-          '<div class="history-meta">' + v.itemCount + ' ' + t('items') +
+          '<div class="history-meta">' + v.itemCount + ' ' + t(v.itemCount === 1 ? 'item' : 'items') +
             (v.timestamp ? ' &middot; ' + escapeHtml(fmtTimestamp12h(v.timestamp)) : '') +
           '</div>' +
         '</div>' +
@@ -7229,7 +7169,7 @@
           : (data.vendorCount === 1 ? 'proveedor' : 'proveedores')) +
       '</span>' +
       '<span class="recap-summary-dot">&middot;</span>' +
-      '<span>' + data.itemCount + ' ' + escapeHtml(t('items')) + '</span>' +
+      '<span>' + data.itemCount + ' ' + escapeHtml(t(data.itemCount === 1 ? 'item' : 'items')) + '</span>' +
       // Refresh pill — visibility controlled by setRecapRefreshPill_().
       // The full element ships in every render so re-renders during a
       // background fetch don't lose the pill; the helper just re-applies
@@ -7269,7 +7209,7 @@
       html += '<div class="recap-section">' +
         '<div class="recap-vendor-head">' +
           '<span class="recap-vendor-name">' + escapeHtml(sec.vendor) + '</span>' +
-          '<span class="recap-vendor-count">' + sec.itemCount + ' ' + escapeHtml(t('items')) + '</span>' +
+          '<span class="recap-vendor-count">' + sec.itemCount + ' ' + escapeHtml(t(sec.itemCount === 1 ? 'item' : 'items')) + '</span>' +
         '</div>';
       for (const line of sec.lines) {
         const pack = line.pack || '';
@@ -7920,7 +7860,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.26.0';
+    const versionStr = '0.26.1';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
@@ -9228,21 +9168,6 @@
       });
     } catch (e) { /* non-fatal */ }
   })();
-
-  // Migrate any legacy unprefixed per-cycle keys to the namespaced
-  // form. Runs once per browser; no-op on subsequent boots. Must
-  // happen before hydrateOfflineCache_() so the cache layer sees a
-  // consistent key namespace.
-  migratePerCycleKeys_();
-
-  // One-time cleanup of legacy per-device email keys (v0.16.0 and
-  // earlier). Recipients are now server-side (SETUP AB-AE) and the
-  // PWA no longer stores a personal email locally. Idempotent — the
-  // removeItem calls are no-ops on browsers that never had these set.
-  try {
-    localStorage.removeItem('mog_user_email');
-    localStorage.removeItem('mog_first_run_email_prompted');
-  } catch (e) { /* non-fatal */ }
 
   // Hydrate offline caches BEFORE any auth/dashboard call so a cold
   // boot offline still paints last-known data. Safe to run before

@@ -14,11 +14,10 @@ Checks each save-capable modal for the canonical signatures:
 
 MOG fork note: modals live in apps-script/ (not repo root, unlike the generic
 global copy which scans cwd). With no args this AUTO-DISCOVERS every
-save-capable modal in apps-script/ — a new modal (e.g. RecalibrateVendor.html)
-is covered automatically, with no hardcoded list to go stale. A modal counts
+save-capable modal in apps-script/ — a new modal is covered automatically, with no hardcoded list to go stale. A modal counts
 as save-capable when it carries a `.status`/saveFlash marker AND a
-`google.script.run` call, so the read-only modals (OrderHistory,
-VendorCadenceAudit, HowToUse) don't false-flag for "missing" save feedback.
+`google.script.run` call, so a read-only modal (OrderHistory) doesn't
+false-flag for "missing" save feedback.
 Pass explicit *.html names (resolved under apps-script/) to check specific
 files as-is — including read-only ones.
 

@@ -249,7 +249,6 @@ async function runSuite(srcOf) {
   const toolSteps = [
     ['commitAddVendor', 'Costco', [1, 0, 0, 1, 0, 0, 0], '9:30 am'],
     ['commitUpdateVendorMultsAndCutoff', 'Costco', [0, 1, 0, 1, 0, 1, 0], '2:15 PM'],
-    ['commitImportVendor', { name: 'Jetro', mults: [1, 0, 0, 0, 0, 0, 0], cutoff: '', csvText: 'Item Name,Pack Size\nSalt,CS\n"Pepper, black",EA\n' }],
     ['commitStorageAreasDraft', [{ name: 'Freezer', origName: 'Walk-in' }, { name: 'Walk-in', origName: 'Freezer' },
                                  { name: 'Dry Storage', origName: 'Dry Storage' }, { name: 'Back Room', origName: null }]],
     ['commitStorageAreasDraft', [{ name: 'Dry Storage', origName: 'Back Room' }, { name: 'Freezer', origName: 'Freezer' },
@@ -447,7 +446,7 @@ const CONTROLS = [
     failed++;
     console.log(`FAIL  ${live.failures.length} problem(s):`);
     for (const f of live.failures.slice(0, 10)) console.log('      ' + f);
-  } else if (!st.conflicts || !st.undos || st.logged < 40 || st.reviews !== 3 || st.tools !== 7 || !st.pages || !st.embed) {
+  } else if (!st.conflicts || !st.undos || st.logged < 40 || st.reviews !== 3 || st.tools !== 6 || !st.pages || !st.embed) {
     failed++;
     console.log('FAIL  a case was never exercised');
   } else {

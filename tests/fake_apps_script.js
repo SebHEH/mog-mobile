@@ -191,32 +191,6 @@ function formatDate(d, tz, pattern) {
   return pattern.replace(/yyyy|MM|dd|HH|mm|ss|EEE/g, t => parts[t]);
 }
 
-// Apps Script's Utilities.parseCsv: RFC 4180 rows of strings, blank lines kept
-// as one empty field (written here apart from the editor's own reader).
-function parseCsv(text) {
-  const out = [];
-  let row = [], cell = '', inQ = false, i = 0;
-  const s = String(text);
-  while (i < s.length) {
-    const ch = s[i];
-    if (inQ) {
-      if (ch === '"' && s[i + 1] === '"') { cell += '"'; i += 2; continue; }
-      if (ch === '"') { inQ = false; i++; continue; }
-      cell += ch; i++; continue;
-    }
-    if (ch === '"') { inQ = true; i++; continue; }
-    if (ch === ',') { row.push(cell); cell = ''; i++; continue; }
-    if (ch === '\r' || ch === '\n') {
-      row.push(cell); out.push(row); row = []; cell = '';
-      i += (ch === '\r' && s[i + 1] === '\n') ? 2 : 1;
-      continue;
-    }
-    cell += ch; i++;
-  }
-  if (cell !== '' || row.length) { row.push(cell); out.push(row); }
-  return out;
-}
-
 // A fresh context over a store spec: { now, sheets: {name: rows}, scriptProps }.
 // Each context gets its OWN copy of every grid, so writes in one never leak
 // into another built from the same spec. `extra` adds or replaces globals
@@ -261,7 +235,7 @@ function makeContext(spec, extra, opts) {
                       ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' }, flush: () => {} },
     PropertiesService: { getScriptProperties: () => store(scriptProps), getDocumentProperties: () => store(docProps) },
     CacheService: { getDocumentCache: () => cache, getScriptCache: () => cache },
-    Utilities: { formatDate, parseCsv },
+    Utilities: { formatDate },
     Logger: { log: () => {} }
   }, extra || {});
   return { ctx, book, scriptProps, docProps };

@@ -24,11 +24,11 @@ Exit code 0 = parity everywhere (skips count as pass), 1 = at least one mismatch
 ## What it checks (two auto-detected modes)
 
 - **Mode B — JS glossary** (`var T = { en: {...}, es: {...} }`): the 6 interactive modals (AdminReset, ManageItems, ManageVendors, OrderHistory, ReorderPickPath, StorageAreas). Compares the two key sets and reports keys missing from either side, duplicate keys, and order drift (a key inserted in one block but appended in the other — passes the count test but warns here).
-- **Mode A — dual-span** (`class="en"` / `class="es"`): the static-help modal HowToUse. Compares span counts; each `.en` content span needs a sibling `.es`.
+- **Mode A — dual-span** (`class="en"` / `class="es"`): no page uses it since HowToUse was retired (2026-10-20); kept for any future static-help page. Compares span counts; each `.en` content span needs a sibling `.es`.
 - **Per-entry glossary** (`T = { titles: {...}, msg: { key: { en: '...', es: '...' } } }`): the PWA's `template/index.html`. Every entry must hold both `en` and `es`, and a key declared twice in one section is reported (the second silently wins). A problem names the key path: `MISSING from T.es (present in EN): msg.today   [line L]`. The 10 store folders are `build.py` copies of the template, so checking it covers them. The root hub page is not checked: its `<body class="en">` is a language-mode class, which the dual-span count would misread as an untranslated span.
 - **Neither → SKIP** (counts as pass): English-only or non-bilingual files.
 
-Known-good baseline (2026-05-27): AdminReset 10, ManageVendors 25, ReorderPickPath 24, StorageAreas 15, OrderHistory 41, ManageItems 102, HowToUse 227 spans. PWA (2026-10-01): template/index.html 154 entries. If a count drops below these after an edit, you removed a key — intended or not, the script tells you which one.
+Baseline (2026-10-20, `--all` passes 10, skips 2): StorageAreas 14 keys, template/index.html 208 entries; read the other counts off a clean `--all` run. Import Vendor's 6 keys left ManageVendors on 2026-10-20. If a count drops below these after an edit, you removed a key — intended or not, the script tells you which one.
 
 ## How to read a failure
 
