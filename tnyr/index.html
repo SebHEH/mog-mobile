@@ -27,7 +27,7 @@
     (function () {
       var h = document.documentElement;
       try {
-        if (window.matchMedia && window.matchMedia('(pointer: fine) and (min-width: 900px)').matches) h.classList.add('desk');
+        if (window.matchMedia && window.matchMedia('(any-pointer: fine) and (min-width: 900px)').matches) h.classList.add('desk');
       } catch (e) { /* the main script decides */ }
       var back = false;
       try { back = !!(sessionStorage.getItem('mog_pin_session') || sessionStorage.getItem('mog_master_pin')); } catch (e) { back = false; }
@@ -3109,11 +3109,13 @@ function parFlagCutoff_(today) {
   // ============================================================
   // STATE
   // ============================================================
-  // A computer: a mouse and a window at least 900px wide (spec A1, L1). Sets
+  // A computer: a mouse and a window at least 900px wide (spec A1, L1, L4). Sets
   // html.desk, which the computer layout's CSS hangs from; the listener keeps
   // it right when the window is resized (see showView / layoutViews_).
+  // any-pointer, not pointer: a touchscreen laptop can report its screen as the
+  // main pointer even with a touchpad, and then never got the computer layout.
   const DESK_MQ_ = (typeof window.matchMedia === 'function')
-    ? window.matchMedia('(pointer: fine) and (min-width: 900px)') : null;
+    ? window.matchMedia('(any-pointer: fine) and (min-width: 900px)') : null;
   function isDesk_() { return !!(DESK_MQ_ && DESK_MQ_.matches); }
   document.documentElement.classList.toggle('desk', isDesk_());
 
@@ -8762,7 +8764,7 @@ function parFlagCutoff_(today) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.26.1';
+    const versionStr = '0.26.2';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
