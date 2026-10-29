@@ -65,6 +65,13 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - The app shows its phone layout. Drive it by script and say the layout itself is unseen.
 - **After a rebuild, use `location.reload()`.** Navigating to the same page with only a new `#hash` keeps the old build. `sessionStorage.clear()` shows the sign-in screen again.
 
+## CI and tests
+
+- **CI (`.github/workflows/gates.yml`) runs on Linux with LF files.** Git stores LF, so only a Windows checkout has CRLF. Gate anchors written with `\r\n` failed 12 controls on the first GitHub run (2026-10-29), and `plant()` now matches the file's own line ending.
+- **To reproduce a CI failure locally:** `git -c core.autocrlf=false clone https://github.com/SebHEH/mog-mobile.git <scratch dir>`, then run `TZ=UTC node tests/run_all.js` inside it.
+- **GitHub Actions logs need a signed-in account, even on this public repo.** The logs API answers 403, and the page says "Sign in to view logs". The runs API gives each run's status and step results without a token: `https://api.github.com/repos/SebHEH/mog-mobile/actions/runs?head_sha=<sha>`.
+- **Testing an edited tracked file inside a scratch clone:** `git reset --hard` there quietly puts the old file back, so copy it in under an untracked name. `deploy.py`'s git check was tested this way.
+
 ## Google Drive connector
 
 - It returns a Sheet's tabs with a couple of sample rows, not the data, and a download is one huge base64 blob.

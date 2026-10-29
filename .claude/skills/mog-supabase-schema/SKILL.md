@@ -12,9 +12,8 @@ functions, each checking a PIN session token or a store's sync key first.
 
 **The general method is the global `supabase-schema-change` skill:** the lockdown block, dropping an
 old signature, `notify pgrst`, the smoke harness, the public-key probe, a fake that copies the
-constraints. It was proposed on 2026-10-20. Until the Claude-SKills repo applies it, read the
-proposal: `~/.claude/skills/_global-skill-proposals/supabase-schema-change-2026-10-20.md` (or its
-copy under `_archive/` once reviewed). This skill pins MOG's files and order on top of it.
+constraints. It's installed with the team skills (proposed from here 2026-10-20, applied by
+Claude-SKills). This skill pins MOG's files and order on top of it.
 
 Design records, read the relevant one before designing a change:
 - [docs/MOG_SupabaseMigration.md](../../../docs/MOG_SupabaseMigration.md) (section 7 is the table

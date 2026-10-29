@@ -18,7 +18,7 @@ Project facts and gotchas that used to live in Claude's memory on one computer (
 
 Replace the path here with the newest handoff at the end of each session that ships material changes. (The `mog-session-handoff` skill rewrites this line.)
 
-@docs/MOG_SessionHandoff_2026_10_20.md
+@docs/MOG_SessionHandoff_2026_10_29.md
 
 ## Quick orientation
 
@@ -114,7 +114,7 @@ Skills auto-load and trigger via the descriptions in their frontmatter.
 | `mog-pwa-audit` | Full-file audit of the PWA layer (`template/index.html` + `sw.js`) for latent bugs / dead code / unlocalized strings / cache hygiene. PWA-layer twin of `appsscript-codebase-audit`. Triggers on "audit the PWA" / "review template/index.html" / after a big PWA edit. |
 | `mog-editor-web-reskin` | Turnkey recipe for polishing one KM web-editor tool (dual-host modal via `doGet?page=…`) into a full-page web app — bespoke per tool, `body.mge-web`-gated so the Sheet dialog is untouched. Triggers on "polish the next tool" / "do Manage Vendors/Pick Path/Order History next" / before touching any editor modal's web rendering (step 1 = the `setLang` class-clobber fix is a hard prerequisite). Pins the web chrome + in-place-update + validation-clear patterns and the `/dev`-vs-`/exec` iterate rule. |
 | `mog-health-check-extend` | Add a new diagnostic check (± one-click web fix) to the Store Health Check. Triggers on "add a health check for X" / "make the Health Check catch this" / "the Health Check said nothing was wrong but X was broken". Pins the `add()`/`runHealthFix`/`_core_` (no-`getUi()`) mechanics + the read-only rule + the `Health.gs`-not-`HealthCheck.gs` basename gotcha. |
-| `mog-supabase-schema` | Any change under `supabase/` (a new `mog_*` function, table or column). Pins the files each schema version touches (`schema_vN.sql`, `smoke_vN.sql`, `check_api.sh`, `tests/fake_supabase.js`, the migration doc's function table), the ship order (Sebastian runs the SQL first, then the gates, then the deploy), and the rule that a probe never sends a PIN to a real store. Stems off the global `supabase-schema-change` (proposed 2026-10-20). |
+| `mog-supabase-schema` | Any change under `supabase/` (a new `mog_*` function, table or column). Pins the files each schema version touches (`schema_vN.sql`, `smoke_vN.sql`, `check_api.sh`, `tests/fake_supabase.js`, the migration doc's function table), the ship order (a maintainer runs the SQL first, then the gates, then the deploy), and the rule that a probe never sends a PIN to a real store. Stems off the global `supabase-schema-change`. |
 | `mog-exec-repoint` | Per-store incident runbook: a store's PWA shows "Offline" because its `/exec` deployment rotted (code + GET fine, POST fails to deliver). Triggers on "store X is offline" / "the PWA won't load for [store]" / "[store] backend is down". Diagnose single-vs-global, cut a FRESH `clasp deploy` (not `--redeploy` of the same id), repoint `.clasp-targets.json` + `stores.json`, cache-bump. Happened tnytf 06-26, rprfo 07-06. |
 
 **User-global** (`~/.claude/skills/<name>/SKILL.md` — load in every Claude Code session):
