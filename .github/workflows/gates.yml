@@ -1,0 +1,25 @@
+# The order-math and app gates (tests/README.md) on every push and pull
+# request, so a change never reaches main with a gate nobody ran. Branch
+# protection on main requires this check before a pull request can merge
+# (CLAUDE.md, Two maintainers).
+name: gates
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # ordermath_equivalence reads an older revision with git show
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'  # editor_link.test.js runs editor_link.py
+      - run: node tests/run_all.js

@@ -10,6 +10,10 @@ If sources conflict, items higher in this list win for "what's currently in flig
 
 @docs/MOG_CurrentState.md
 
+Project facts and gotchas that used to live in Claude's memory on one computer (two people work here now):
+
+@docs/MOG_ProjectNotes.md
+
 ## Latest session handoff
 
 Replace the path here with the newest handoff at the end of each session that ships material changes. (The `mog-session-handoff` skill rewrites this line.)
@@ -22,7 +26,7 @@ Replace the path here with the newest handoff at the end of each session that sh
 - **Deploy**:
   - PWA: GitHub Pages auto-deploys from `main`. Edit `template/` → run `python build.py` → commit + push.
   - Apps Script: `clasp` via `deploy.py` (at repo root, alongside `build.py`). Edit `apps-script/<file>` → run `python deploy.py` (bound-sidebar-only changes) or `python deploy.py --redeploy` (any MOGApi.gs / `api_*` change — bumps each store's web-app `/exec` URL too). Push reaches all 11 targets (10 stores + the template) in ~40s; `--redeploy` adds ~3s/target.
-- **Build / test**: No CI yet. `python build.py --dry-run` previews PWA build. `python deploy.py --dry-run` previews Apps Script deploy (combine with `--redeploy` to preview the redeploy phase too). `node tests/run_all.js` runs the order-math gates: the real `.gs` code under Node, no dependencies (see `tests/README.md`). Run it before deploying any change to `OrderMath.gs`, the count/dashboard path in `MOGApi.gs`, or `Sync.gs`. Everything else is verified manually (open the live URL, run an order).
+- **Build / test**: CI (`.github/workflows/gates.yml`) runs `node tests/run_all.js` on every push and pull request. `python build.py --dry-run` previews PWA build. `python deploy.py --dry-run` previews Apps Script deploy (combine with `--redeploy` to preview the redeploy phase too). `node tests/run_all.js` runs the order-math gates: the real `.gs` code under Node, no dependencies (see `tests/README.md`). Run it before deploying any change to `OrderMath.gs`, the count/dashboard path in `MOGApi.gs`, or `Sync.gs`. Everything else is verified manually (open the live URL, run an order).
 
 ## Layer routing
 
@@ -33,7 +37,7 @@ Every change anchors to one of these layers. Pick the layer before drafting any 
 | **Hub** | `index.html`, `sw.js`, `manifest.json`, `stores.json` | Concept picker, manager mode, store registry. First thing a KM sees. |
 | **Per-store PWA** | `template/index.html`, `template/sw.js` | The store-facing app. `build.py` copies this to every `<slug>/` dir with deployment URLs injected. |
 | **Apps Script backend** | `apps-script/*.gs`, `apps-script/*.html`, `apps-script/appsscript.json` | Bound script that runs in each Sheet. Identical across all 11 deploy targets — per-store config lives in spreadsheet data, not code. |
-| **Supabase** | `supabase/schema*.sql`, `supabase/tests/` | Every store runs on it: counts, Emergency Override, the cycle and the order log, the catalog (edited in the app), recipients and People. Phones talk to it directly (`phone_direct`); each Sheet is frozen for catalog edits and gets a nightly LOG_ORDERS backup. Design records: `docs/MOG_SupabaseMigration.md` and `docs/MOG_OneApp_Spec.md` (read them before touching this layer). Schema changes are run by Sebastian in the SQL Editor. |
+| **Supabase** | `supabase/schema*.sql`, `supabase/tests/` | Every store runs on it: counts, Emergency Override, the cycle and the order log, the catalog (edited in the app), recipients and People. Phones talk to it directly (`phone_direct`); each Sheet is frozen for catalog edits and gets a nightly LOG_ORDERS backup. Design records: `docs/MOG_SupabaseMigration.md` and `docs/MOG_OneApp_Spec.md` (read them before touching this layer). Schema changes are run by Sebastian or Donny in the SQL Editor (skill `mog-supabase-schema`); Claude never writes through the connector. |
 | **Deploy infrastructure** | `build.py`, `deploy.py`, `apps-script/.clasp-targets.json` | How code reaches production. `.clasp-targets.json` holds both `scriptId` (for source push) and `deploymentId` (for web-app version bump) per target. `deploy.py --discover` finds deploymentIds on a fresh checkout. |
 | **Generated (do NOT edit)** | `rpr/`, `rprfo/`, `rpt/`, `rptfo/`, `rpfr/`, `rpfrf/`, `tnyt/`, `tnytf/`, `tnyr/`, `tnyrf/` | Output of `build.py`. Overwritten on every build. |
 
@@ -57,6 +61,38 @@ Carry these across every session:
 8. **Slugs in `stores.json` are immutable once published.** KMs have bookmarks and home-screen icons at `/<slug>/`. Renaming breaks them.
 9. **Source push and web-app redeploy are separate steps.** `clasp push` (default `python deploy.py`) updates the script project, which bound sidebars read from HEAD — that's enough for changes to `ManageVendors.html`, `ManageItems.html`, `OrderHistory.html`, etc. and the `.gs` functions they call directly. The PWA hits each Sheet's `/exec` URL, which serves a *versioned snapshot*, so changes to `MOGApi.gs` (or any `api_*` function the PWA calls) need `python deploy.py --redeploy` to bump the version. When unsure, use `--redeploy`.
 10. **Every server function is private (`_`) unless it's on the reviewed list in `tests/public_surface.test.js`.** The web app runs as the owner for anonymous visitors, and Apps Script lets any page it serves call any public function, so a public function is reachable by anyone with a store's `/exec` URL (D18, 2026-10-16). Pages reach the server only through `webedit_call` (token check, then the `webeditDispatch_` allowlist) and the auth layer. Sheet dialogs get a token from the menu that opens them (`sheetBootJson_`). Menu items and triggers can call private functions; an editor-run function stays public and starts with `requireEditorRun_()`.
+
+## Two maintainers (Sebastian and Donny)
+
+Sebastian owns the accounts; Donny is a collaborator. Both edit, deploy and run SQL, usually not at the same time: say when you start, and before you deploy or run SQL. Donny's setup and his session prompts: [ONBOARDING.md](ONBOARDING.md).
+
+| Surface | Sebastian | Donny |
+|---|---|---|
+| GitHub `SebHEH/mog-mobile` | Owner. May push to `main`; merges pull requests. | Collaborator. Works on a branch (`donny/<topic>`) and opens a pull request. |
+| Apps Script (11 projects, bound to Sebastian's Sheets) | Owner. | Editor on every Sheet; deploys with his own `clasp login`. |
+| Supabase org "HEH" (free plan) | Owner. | Developer: runs SQL in the SQL Editor, can't change settings. |
+| Claude's Supabase connector | Read-only URL. | Read-only URL. |
+
+Where this file or a repo skill says "Sebastian" about testing, approving, running SQL or committing, read "the maintainer running this session". Account ownership stays Sebastian's.
+
+1. **Start every session with `git pull`.** Donny's session-start prompt does it.
+2. **Donny's changes go through a pull request, and Sebastian merges.**
+   - Branch protection on `main` requires a pull request and the `gates` check.
+   - CI (`.github/workflows/gates.yml`) runs `node tests/run_all.js` on every push and pull request.
+3. **Generated store folders are never hand-merged.** After a merge or rebase that touches `template/` or `stores.json`, run `python build.py` and commit what it writes.
+4. **Deploys:**
+   - `deploy.py` fetches `origin/main` and refuses when this copy is missing commits from it.
+   - A deploy to every store runs only from `main` with `apps-script/` committed.
+   - A canary (`--target rprfo`) may run from a branch.
+   - Tell the other person before a fan-out.
+5. **Who the web app runs as.** `appsscript.json` has `executeAs: USER_DEPLOYING`, so after a `--redeploy` a store's `/exec` likely runs as whoever redeployed. That isn't measured yet. Before your first `--redeploy`, consent once in every store's project (ONBOARDING.md step 4), then redeploy the canary and check its `/exec` answers.
+6. **Triggers and recap emails run as whoever installed them.** Today that's Sebastian on every store (the 3:30 AM close, installed by Move this store to Supabase). Any of these moves that store's close and recap email to your account, so agree on it first:
+   - re-installing a trigger (Move, or the Health Check's install fix);
+   - onboarding a new store.
+7. **Supabase SQL:** either maintainer runs it in the SQL Editor, through `mog-supabase-schema`. Pull before writing the next `schema_vN.sql`, and tell the other person which number you're taking.
+8. **Handoffs name their author** (`**Author:**` under the session date). A second session on the same day adds a "Later session" section, as before.
+9. **Global skill lessons.** The proposal mailbox (`~/.claude/skills/_global-skill-proposals/`) is local to each computer, so only Sebastian's sessions file proposals. Donny's sessions write the lesson under the handoff's *Process lessons*, tagged `[→ global proposal]`, and Sebastian files it.
+10. **Claude's memory is per computer.** Project facts go in the repo ([docs/MOG_ProjectNotes.md](docs/MOG_ProjectNotes.md), this file, the handoffs), never only in one person's memory.
 
 ## Skills
 
@@ -111,7 +147,7 @@ Repo-local skills in `./.claude/skills/` ARE owned by this repo — edit those i
 3. **Verification is opening the live URL or running the function** — not "no errors in tooling output." Sebastian validates by using the thing.
 4. Read the actual file before editing — assume it may have drifted since the last session.
 5. No "🤖 Generated with Claude Code" footers on commit messages.
-6. Suggest commits, don't auto-commit. Sebastian owns the commit decision.
+6. Suggest commits, don't auto-commit. The maintainer in the session owns the commit decision.
 7. PowerShell PATH may be stale after a fresh tooling install on Windows. If `node`, `npm`, `clasp`, or `python` returns "not found" right after `winget install`, prefix the next command with `$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User");`.
 8. **Every request to run a function in the Apps Script editor names its file.** Paste the output of `python editor_link.py <function> <store>`: the `.gs` file, the function, the store, and direct links to that store's editor and Sheet (global skill `appsscript-editor-action`). Never a bare function name, and never leave the store implicit (one codebase, ten Sheets). Sebastian's standing rule, 2026-10-15.
 9. **Every next step that involves a file links that file.** Whenever a suggestion, a hand-off, or a "next, do X" names a file Sebastian has to open, run, paste, or check (a SQL file to run in the Supabase SQL Editor, a smoke test, a doc, a generated page), give it as a clickable repo-relative Markdown link, e.g. [supabase/schema_v3.sql](supabase/schema_v3.sql), right where the step says to use it, with what to do with it. The links go in the turn's final message: the app collapses text written above a next-step question box into a one-line summary, so links placed there disappear. Never a bare file name. Sebastian's standing rule, 2026-10-16.
@@ -135,7 +171,9 @@ Repo-local skills in `./.claude/skills/` ARE owned by this repo — edit those i
 ```
 mog-mobile/
 ├── CLAUDE.md                    This file. Load-on-start anchor.
+├── ONBOARDING.md                A second maintainer's setup (Donny) and his session-start / wrap-up prompts.
 ├── README.md                    Human-facing docs (architecture, add-a-store walkthrough).
+├── .github/workflows/gates.yml  CI: node tests/run_all.js on every push and pull request.
 ├── index.html                   Hub picker landing page.
 ├── sw.js                        Hub service worker.
 ├── manifest.json                PWA manifest for the hub.
@@ -203,6 +241,7 @@ mog-mobile/
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.
+│   ├── MOG_ProjectNotes.md      Project facts and gotchas (moved from Claude's per-computer memory, 2026-10-29).
 │   ├── MOG_SupabaseMigration.md Design record for the count-path move to Supabase (decisions, ownership, rollout).
 │   ├── MOG_OneApp_Spec.md       Agreed spec: the ordering app and the editor become one app per store (decisions A1-A7, P1-P4, phases).
 │   └── MOG_SessionHandoff_*.md  Per-session handoffs (newest @-imported above).

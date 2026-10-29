@@ -93,6 +93,7 @@ Use this structure, in this order:
 # Session Handoff — <Topic>
 
 **Session date:** YYYY-MM-DD
+**Author:** <Sebastian or Donny — two maintainers since 2026-10-29 (CLAUDE.md); a same-day "Later session" section names its own author>
 **Session focus:** <one sentence — what we set out to do>
 **Outcome:** <1-3 sentences — what actually shipped, with the key verification result>
 **Next session focus:** <one sentence — the most likely next direction>

@@ -1,6 +1,6 @@
 ---
 name: mog-supabase-schema
-description: MOG's specializer for any change to the Supabase layer (a supabase/*.sql file, a new or changed public.mog_* function, a new mog.* table or column), stemming off the global supabase-schema-change skill. Pins the files every schema version touches (schema_vN.sql, smoke_vN.sql, check_api.sh, tests/fake_supabase.js, the migration doc's function table), the ship order (Sebastian runs the SQL first, then the gates, then deploy.py --redeploy on the rprfo canary, then build.py), the probe rule that keeps a real store's PIN lockout untouched, and how to check the live database read-only. Trigger on "add a Supabase function", "a new column in mog.items", "schema v10", "write the migration", "check_api failed", "PGRST205", or any edit under supabase/. Skip when only reading live data (query the read-only connector directly) and for a new store's provisioning (mog-add-store).
+description: MOG's specializer for any change to the Supabase layer (a supabase/*.sql file, a new or changed public.mog_* function, a new mog.* table or column), stemming off the global supabase-schema-change skill. Pins the files every schema version touches (schema_vN.sql, smoke_vN.sql, check_api.sh, tests/fake_supabase.js, the migration doc's function table), the ship order (Sebastian or Donny runs the SQL first, then the gates, then deploy.py --redeploy on the rprfo canary, then build.py), the probe rule that keeps a real store's PIN lockout untouched, and how to check the live database read-only. Trigger on "add a Supabase function", "a new column in mog.items", "schema v10", "write the migration", "check_api failed", "PGRST205", or any edit under supabase/. Skip when only reading live data (query the read-only connector directly) and for a new store's provisioning (mog-add-store).
 ---
 
 # mog-supabase-schema
@@ -24,8 +24,11 @@ Design records, read the relevant one before designing a change:
 ## A change is the next version
 
 The current version is in `docs/MOG_CurrentState.md` ("schema v9" as of 2026-10-20). A change ships
-as a new `schema_vN.sql`, never as an edit to a file Sebastian already ran: each file is run once,
-in order. Re-running any of them must stay harmless.
+as a new `schema_vN.sql`, never as an edit to a file already run: each file is run once, in order.
+Re-running any of them must stay harmless.
+
+**Two maintainers run SQL** (CLAUDE.md, Two maintainers): `git pull` before writing the next
+`schema_vN.sql`, and tell the other person which number you're taking, so you never both write v10.
 
 ## Every file, every time
 
@@ -68,7 +71,7 @@ in order. Re-running any of them must stay harmless.
 ## Ship order
 
 1. **Claude writes every file above**, and `node tests/run_all.js` passes.
-2. **Sebastian runs, in the Supabase SQL Editor, in this order** (link each file in the final
+2. **The maintainer (Sebastian or Donny) runs, in the Supabase SQL Editor, in this order** (link each file in the final
    message, CLAUDE.md convention #9):
    1. `supabase/schema_vN.sql`;
    2. `supabase/tests/smoke_vN.sql`: every row PASS;
@@ -78,7 +81,7 @@ in order. Re-running any of them must stay harmless.
 3. **Claude confirms read-only** with the Supabase connector's `execute_sql` on project
    `mnfwqmrstdeuczveyykv` (memory `reference_supabase_connector`). For example,
    `select proname from pg_proc where proname = 'mog_x';`, or a store's flags in `mog.stores`.
-   Never write; writes stay Sebastian's.
+   Never write; writes stay with the maintainers, in the SQL Editor.
 4. **Then the code that calls it** (`mog-deploy-workflow`):
    - Apps Script: `python deploy.py --redeploy`, canary rprfo first;
    - the app: `python build.py`, then commit and push.
@@ -101,4 +104,4 @@ in order. Re-running any of them must stay harmless.
 
   Anything edited in the app since the move is not in the Sheet.
 - **A file that deletes or rewrites data** can't be undone by re-running an older file. Say so in its
-  header and get Sebastian's OK before he runs it.
+  header and get Sebastian's OK before anyone runs it.

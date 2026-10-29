@@ -33,7 +33,7 @@ Read the change request and answer: **which layer?**
 | `apps-script/.clasp-targets.json` (add/remove deploy target, populate `deploymentId`) | Deploy infrastructure | `git commit; git push` (config-only). Next `python deploy.py` will pick it up. | `python deploy.py --dry-run` should list the new target without `FILL_ME_IN` errors. For a new store, run `python deploy.py --discover --target <slug>` to find the deploymentId. |
 | `build.py` or `deploy.py` itself | Deploy infrastructure | `git commit; git push`. Test by running the changed tool against a no-op input. | Run with `--dry-run` first, confirm output is what's expected, then run for real. |
 | `icons/*` or `docs/*` | Static assets / docs | `git commit; git push`. | For icons: verify the PWA install prompt shows the new icon on a fresh device or after clearing site data. |
-| `supabase/schema_vN.sql` (a new or changed `mog_*` function, table or column) | Supabase | **Runs FIRST, before any deploy below.** Sebastian runs it in the Supabase SQL Editor, then `smoke_vN.sql`, then `check_api.sh`. The database ships before the code that relies on it. Then the calling code's own row in this table. Files and order: **`mog-supabase-schema`**. | Every smoke row PASS, `check_api.sh` all PASS, then a read-only `execute_sql` check on project `mnfwqmrstdeuczveyykv`. |
+| `supabase/schema_vN.sql` (a new or changed `mog_*` function, table or column) | Supabase | **Runs FIRST, before any deploy below.** A maintainer (Sebastian or Donny, after telling the other) runs it in the Supabase SQL Editor, then `smoke_vN.sql`, then `check_api.sh`. The database ships before the code that relies on it. Then the calling code's own row in this table. Files and order: **`mog-supabase-schema`**. | Every smoke row PASS, `check_api.sh` all PASS, then a read-only `execute_sql` check on project `mnfwqmrstdeuczveyykv`. |
 | `tests/*` | Gates | Nothing deploys. `node tests/run_all.js`, then commit with the code it gates. | All gates pass. |
 
 ## Canary-first discipline (carry-forward from Sebastian's stated preference)
@@ -46,6 +46,12 @@ For ANY multi-target deploy (clasp to 9 stores; `build.py` regenerating 8 store 
    **A PWA change CAN be canaried to one store** (2026-10-18; Copy order went to rpt, live counting to rprfo). `build.py` regenerates every store folder, so: run it, then `git checkout -- <every other store folder>`, and commit the `template/` source plus only the canary's `<slug>/index.html` and `<slug>/sw.js`. The other stores keep serving their old page until the fan-out, which is just `python build.py` again with all store folders committed. Afterwards, check the canary's live `sw.js` shows the new `CACHE_VERSION` and another store's still shows the old one. Then ask Sebastian to test the canary's URL.
 2. Wait for Sebastian to actually open the thing and confirm it works. Don't accept "no errors in tooling output" as verification.
 3. Only then run the full deploy: `python deploy.py` (with `--redeploy` if applicable) for Apps Script, or just confirm the other 7 store URLs also work.
+
+**Two maintainers (since 2026-10-29): `deploy.py` checks git first.**
+- It fetches `origin/main` and refuses when this copy is missing commits from it, because clasp pushes the local folder as-is and would roll the other person's Apps Script back on every store.
+- A deploy to every store runs only from `main` with `apps-script/` committed; a `--target` canary may run from a branch or with uncommitted edits.
+- `--skip-git-check` is for emergencies.
+- Before a fan-out, tell the other maintainer. See CLAUDE.md, Two maintainers.
 
 The reason: spreadsheet data and per-store state vary subtly. A change that works in the canary's data shape may surface a bug in tnyt's. Catching it on the canary means 1 store affected, not 9.
 

@@ -31,6 +31,12 @@ Prerequisites:
   - apps-script/.clasp-targets.json filled in with real Script IDs
   - For --redeploy: deploymentIds populated too (run --discover if not)
 
+Git check (two maintainers): every deploy first fetches origin/main and
+refuses if this copy is missing commits from it. A deploy to every store
+also needs the main branch with apps-script/ committed; --target <slug>
+(a canary) may run from a branch with uncommitted edits.
+--skip-git-check bypasses all of this (emergencies only).
+
 Usage:
   python deploy.py                              push to all targets
   python deploy.py --target rpr                 push to one target
@@ -205,8 +211,48 @@ def print_summary(results):
         print(r['slug'].ljust(width) + '  ' + r['push'].ljust(10) + '  ' + r['redeploy'])
 
 
+def git(*args):
+    """Run a git command in the repo; return (exit code, stdout stripped)."""
+    try:
+        r = subprocess.run(['git'] + list(args), cwd=ROOT, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return 1, ''
+    return r.returncode, r.stdout.strip()
+
+
+def check_git_state(args):
+    """Two people deploy from their own copies (CLAUDE.md, Two maintainers).
+    clasp pushes the local folder as it is, so a copy missing the other
+    person's commits would quietly roll their Apps Script back on every
+    store. Refuse that; and send a deploy to every store only from main with
+    apps-script/ committed. A one-store canary may run from a branch or with
+    uncommitted edits."""
+    if args.skip_git_check:
+        print('WARNING: --skip-git-check: not comparing with origin/main.')
+        return
+    code, _ = git('fetch', '--quiet', 'origin', 'main')
+    if code != 0:
+        print('WARNING: could not reach GitHub (git fetch failed); checking against the last fetch.')
+    code, behind = git('rev-list', '--count', 'HEAD..origin/main')
+    if code == 0 and behind not in ('', '0'):
+        die('this copy is missing ' + behind + ' commit(s) that are on origin/main.\n'
+            '  Deploying now would put the older Apps Script back on every target you push to.\n'
+            '  Run git pull (or merge main into your branch), then deploy again.')
+    if args.target:
+        return
+    _, branch = git('rev-parse', '--abbrev-ref', 'HEAD')
+    if branch != 'main':
+        die('a deploy to every store runs from main (this copy is on ' + (branch or '?') + ').\n'
+            '  Merge first, or test on one store: python deploy.py --redeploy --target rprfo')
+    _, dirty = git('status', '--porcelain', '--', 'apps-script')
+    if dirty:
+        die('apps-script/ has uncommitted changes; commit them before a deploy to every store,\n'
+            '  so what the stores run is in git:\n' + dirty)
+
+
 def cmd_deploy(args, clasp_path):
     """Push (and optionally redeploy) to selected targets."""
+    check_git_state(args)
     targets = load_targets(args.target)
     check_placeholder_script_ids(targets)
     if args.redeploy:
@@ -304,6 +350,8 @@ def main():
     parser.add_argument('--description', help='Description tag for --redeploy (passed to clasp deploy).')
     parser.add_argument('--discover', action='store_true',
                         help='Discovery mode: print deploymentIds to paste into .clasp-targets.json.')
+    parser.add_argument('--skip-git-check', action='store_true',
+                        help='Deploy without comparing this copy with origin/main (emergencies only).')
     args = parser.parse_args()
 
     if args.description and not args.redeploy:
