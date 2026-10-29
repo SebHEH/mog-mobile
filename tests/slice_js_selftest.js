@@ -10,7 +10,8 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = fs.readFileSync(path.join(__dirname, 'slice_js.js'), 'utf8');
+// In LF: the controls' anchors are, and a Windows checkout may give the file CRLF.
+const SRC = fs.readFileSync(path.join(__dirname, 'slice_js.js'), 'utf8').replace(/\r\n/g, '\n');
 const load = src => { const m = { exports: {} }; new Function('module', 'exports', src)(m, m.exports); return m.exports; };
 const throws = fn => { try { fn(); return false; } catch (e) { return true; } };
 const compiles = s => { try { new vm.Script(s); return true; } catch (e) { return false; } };
