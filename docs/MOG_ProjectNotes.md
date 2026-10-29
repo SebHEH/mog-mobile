@@ -68,6 +68,9 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 ## CI and tests
 
 - **CI (`.github/workflows/gates.yml`) runs on Linux with LF files.** Git stores LF, so only a Windows checkout has CRLF. Gate anchors written with `\r\n` failed 12 controls on the first GitHub run (2026-10-29), and `plant()` now matches the file's own line ending.
+- **A Windows copy needs `core.autocrlf` on** (Git for Windows' default; `git config core.autocrlf` prints `true`). `build.py` writes CRLF on Windows (Python's text mode), so with the setting off, every generated store file shows as changed after a build. Donny's copy had it off (2026-10-29).
+  - To turn it on in an existing copy: `git config core.autocrlf true`, run `python build.py`, then `git add -u -- rpr rprfo rpt rptfo rpfr rpfrf tnyt tnytf tnyr tnyrf` once.
+  - That last step is needed because Git still holds the old LF file sizes. Until it runs, `git status` lists the store files as changed even though `git diff` is empty. When the build changed nothing else, it stages nothing.
 - **To reproduce a CI failure locally:** `git -c core.autocrlf=false clone https://github.com/SebHEH/mog-mobile.git <scratch dir>`, then run `TZ=UTC node tests/run_all.js` inside it.
 - **GitHub Actions logs need a signed-in account, even on this public repo.** The logs API answers 403, and the page says "Sign in to view logs". The runs API gives each run's status and step results without a token: `https://api.github.com/repos/SebHEH/mog-mobile/actions/runs?head_sha=<sha>`.
 - **Testing an edited tracked file inside a scratch clone:** `git reset --hard` there quietly puts the old file back, so copy it in under an untracked name. `deploy.py`'s git check was tested this way.

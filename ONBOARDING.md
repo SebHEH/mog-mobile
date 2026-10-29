@@ -44,7 +44,8 @@ Set me up to work on MOG (https://github.com/SebHEH/mog-mobile), which I maintai
 1. Clone it to Documents/GitHub/mog-mobile in my home folder (git pull instead if it's already
    there). If git asks me to sign in, tell me and wait.
 2. Check git, python, node and clasp, and show their versions. For anything missing, give me the
-   install command for this computer.
+   install command for this computer. On Windows, also check that git config core.autocrlf prints
+   true inside the repo; if it doesn't, show me the fix in docs/MOG_ProjectNotes.md (CI and tests).
 3. Show which Google account clasp is logged in as.
 4. In the repo, run node tests/run_all.js and show me its last line (it should say ALL PASS).
 5. Run python deploy.py --dry-run --target rprfo and show me the first lines. It's a preview and
