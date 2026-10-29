@@ -69,7 +69,7 @@
   // An editor page opened by itself on a computer (a bookmark, an old link)
   // goes to the app, which opens it beside the sidebar.
   if (!SHELL && window.parent === window && typeof window.matchMedia === 'function' &&
-      window.matchMedia('(pointer: fine) and (min-width: 900px)').matches) {
+      window.matchMedia('(any-pointer: fine) and (min-width: 900px)').matches) {
     location.replace('../#' + ROUTE);
     return;
   }
