@@ -318,7 +318,12 @@ function deepDiff(a, b, p) {
 // Replace exactly one occurrence of `find` (a planted defect for a control).
 // Refuses an anchor that is missing or not unique: either would make the
 // plant a no-op or plant it twice, and the control would lie.
+// Many anchors were written with \r\n, which only a Windows checkout has (git
+// stores LF; CI checks out LF), so both sides take the file's own line ending.
 function plant(text, find, replace) {
+  const eol = text.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
+  find = find.replace(/\r?\n/g, eol);
+  replace = replace.replace(/\r?\n/g, eol);
   const first = text.indexOf(find);
   if (first < 0) throw new Error('plant: anchor not found: ' + find);
   if (text.indexOf(find, first + 1) >= 0) throw new Error('plant: anchor not unique: ' + find);
