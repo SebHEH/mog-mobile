@@ -14,7 +14,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
 - **Each Sheet** is frozen for catalog edits. It still holds the Apps Script: the 3:30 AM close, the recap email, the onboarding moves. It also gets a nightly LOG_ORDERS backup.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions:** app v0.26.1 / store cache v67, hub cache v11, schema v9.
+- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v11.
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
 - **The three empty stores:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
@@ -23,6 +23,11 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - all 10 stores closed between 3:23 and 3:38 AM;
   - rpr and rprfo had orders, and their recaps went to their Supabase recipients;
   - the other stores had nothing ordered, so no email (by design).
+
+**2026-11-01: vendor contacts, HQ control, the warehouse spec** (`docs/MOG_SessionHandoff_2026_11_01.md`).
+- **Vendor contacts** (schema v10): each store's vendors carry a contact, edited on the new app-only Vendors page, shown on the phone's vendor card. Rosslyn BOH and Founders BOH are loaded.
+- **HQ control** (schema v11, `/hq/`): adds a vendor or LTO items to many stores at once, every store or none, one undoable change per store. Sign-in is per person by invite; nobody is invited yet.
+- **Spec approved, nothing built:** `docs/MOG_Warehouse_Spec.md`, in the order concept library, warehouse (Happy Supply) W1-W2, stores without a Sheet, then Chasin' Tails and NUE.
 
 **Two maintainers (2026-10-29).** Sebastian's assistant Donny now maintains MOG too (CLAUDE.md, Two maintainers; his setup in [ONBOARDING.md](../ONBOARDING.md)).
 - **Changes:** Donny works on branches and opens pull requests; Sebastian merges.
@@ -52,19 +57,20 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - Each touches only the ticked items. The old Assign tab's save rewrote a vendor's whole list and dropped other items' drifted rows.
   - Saving an item now needs a par.
   - `ManageItems.html` stays for the Sheet dialog and `/exec`.
-- **The Vendors redesign** is next, from the same mockup.
+- **The Vendors redesign** shipped 2026-11-01 (app-only `template/editor/Vendors.html`, with each vendor's contact).
 
 Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](MOG_OneApp_Spec.md), [docs/MOG_SupabaseMigration.md](MOG_SupabaseMigration.md), [docs/MOG_LogicBlueprint.md](MOG_LogicBlueprint.md).
 
 ### Next-session candidates
 
-1. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
+1. **The concept library** (`docs/MOG_Warehouse_Spec.md` §1), after Sebastian's first HQ sign-in and a test rollout on the TEST store. Then Happy Supply to the Roll Play stores through HQ, and the warehouse (§2).
+2. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
    - Sebastian's steps: GitHub collaborator on both repos, branch protection on `main`, the Supabase Developer invite, Editor on the 11 Sheets, PINs.
    - Then Donny consents in each store and runs `python deploy.py --redeploy --target rprfo`.
    - Record the result in `docs/MOG_ProjectNotes.md` and CLAUDE.md rule 5.
-2. **Confirm the 2026-10-20 fixes held:** each store's recap goes out once, and nothing new shows up in the nightly run's log (not checked since 10-20).
-3. **Check the new Items page live, then build the Vendors redesign** from the same mockup (an app-only `template/editor/Vendors.html` the same way; Import Vendor is already gone). Small follow-up: the Overview's "Give each item a storage area and a par" step could open Items on Needs setup.
-4. **Logic findings held back on 2026-10-20** (edge cases; decide before fixing):
+3. **Confirm the 2026-10-20 fixes held:** each store's recap goes out once, and nothing new shows up in the nightly run's log (not checked since 10-20).
+4. **Check the Items and Vendors pages, and the phone's Contact sheet, live** (all were checked by script only). Small follow-up: the Overview's "Give each item a storage area and a par" step could open Items on Needs setup.
+5. **Logic findings held back on 2026-10-20** (edge cases; decide before fixing):
    - A same-day manual close from the Sheet, followed by that night's close of the same day, replaces the day's order log with an empty one.
    - Turning Emergency Override off before 3:30 AM drops the vendors ordered under it from that night's log and email.
    - A per-vendor day pick can be saved while Override is off.
@@ -75,7 +81,7 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
      - R27's wording;
      - R16's evidence.
    - `audit_modals.py` (the `mog-modal-ux-sweep` skill) still looks for `google.script.host.close()`, so it flags Manage Items and Vendors, whose Close moved into EditorShell in July.
-5. **Redundancy items held back on 2026-10-20:**
+6. **Redundancy items held back on 2026-10-20:**
    - `VENDOR_META` is empty, but the equivalence gate compiles an older revision against the same constant list.
    - The nightly recipients copy is a no-op on all 10 stores; the `recipients_people` gate is built around it.
    - The old `/exec` editor still serves its pages for moved stores; it should send them to the app.
@@ -85,14 +91,14 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - The v1 Supabase fallback (`mog_snapshot` / `mog_save_counts`) can go once old app versions are gone.
    - `template/sw.js` `FORCE_CLIENT_RELOAD`: never change `FORCE_RELOAD_ID`.
    - Stale repo skills: `mog-apps-script-caching`, `mog-rpc-consolidation`, `mog-editor-web-reskin`, `mog-sheet-formula-verify`, `mog-health-check-extend`.
-6. **Small open items:**
+7. **Small open items:**
    - `mog-deploy-workflow`'s HTML-modal row still says modals run in Rhino ES5 (CLAUDE.md invariant #4 says otherwise).
    - GitHub Actions warns that `checkout@v4`, `setup-node@v4` and `setup-python@v5` target the deprecated Node 20, and that `ubuntu-latest` moves to Ubuntu 26. Bump the actions when newer majors exist, and watch the first run on Ubuntu 26.
    - Clear Config doesn't clear the four Supabase keys (`Admin.gs`; walk through first).
    - `supabase_move`'s `provisionProblems` counts a commented-out SQL row.
    - Lei'd has no circular logo.
    - On the first real onboarding, record whether a copied Sheet keeps its Script Properties.
-7. **Later:**
+8. **Later:**
    - keep visited Manage pages alive;
    - send the recap email from Supabase;
    - retire the last `/exec` uses (Daily summary button, reset fallback);
@@ -193,8 +199,8 @@ Most recent first. Keep about five; older rows move to the archive.
 
 | Date | Session | Outcome |
 |---|---|---|
+| 2026-11-01 | Vendor contacts, HQ control, warehouse spec | Schema v10: vendor contacts, the app-only Vendors page, a Contact sheet on the phone (app v0.27.0 / cache v68); contacts loaded at Rosslyn BOH and Founders BOH, no passwords. Schema v11: HQ control at `/hq/` (per-person invite and passphrase, every store or none, remembered vendor names); gates `vendor_contacts`, `hq_rollout` (26 total); smoke 15/15 and 27/27, probe 68/68. `docs/MOG_Warehouse_Spec.md` approved. Blueprint R28. Commits `1893926`, `39afc44`. Detail: `docs/MOG_SessionHandoff_2026_11_01.md`. |
 | 2026-10-20 → 10-29 | Supabase skills audit, a second maintainer (Donny) | Skills: two global Supabase skills (`supabase-schema-change`, `appsscript-to-supabase-migration`, applied by Claude-SKills) and repo skill `mog-supabase-schema`; `route.py` routes `supabase/`; `check_api.sh` stopped sending a wrong PIN to rprfo. Two maintainers: a CLAUDE.md section, ONBOARDING.md, a git check in `deploy.py`, CI on GitHub (first run failed on CRLF test anchors, fixed in `plant()`, then green), Claude's memory moved to `docs/MOG_ProjectNotes.md`. Commits `eb907a0`, `2dd9264`, `1dbe516`; nothing the stores run changed. Detail: `docs/MOG_SessionHandoff_2026_10_29.md`. |
 | 2026-10-20 | Night check, logic check, cleanup, Manage Items redesign | First all-Supabase night checked clean. Logic check: all gates pass, 4 fixes (recap duplicate check, late offline counts, phone rounding on the shared math, negative counts). Cleanup: Import Vendor and 3 Sheet-only tools removed, dead code removed, this doc trimmed (archive kept). Commit `ffc816b`: Apps Script on all 11 targets, app v0.26.1 / cache v67. Manage Items redesign (app-only `Items.html`, bulk bar with 3 new one-change saves, gate `items_bulk`), commit `a4e6e98`, live on all 10. Blueprint R5, R12, R14 bumped. Detail: `docs/MOG_SessionHandoff_2026_10_20.md`. |
 | 2026-10-19 (later, 3) | New-store onboarding + all four concepts | `mog-add-store` rewritten for Supabase stores (11 steps, `validate.py wired`); wizard and Sheet menus accept all four concepts; `build.py` refuses bad slugs and concepts; gate `concepts`. Commit `4720ff2`. Detail: `docs/MOG_SessionHandoff_2026_10_19.md`. |
 | 2026-10-19 (later) | Phase 4's rest, one app on a computer, every store moved | Schema v9 (order history, recipients, People, Health in the app); the sidebar shell with Manage pages in a frame; the Overview; all 10 stores' editors moved (tnyr, tnyrf, tnyt started empty). Commits `30c08ce`→`7f23850`. Same handoff. |
-| 2026-10-18 → 10-19 | MarginEdge import, Phase 4 editor tools | Import from MarginEdge; Manage Vendors, Storage Areas and Shelf to Sheet on Supabase; schema v8; Move the editor to the app. Commits `62a356d`→`09b3279`. Same handoff. |

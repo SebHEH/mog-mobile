@@ -15,6 +15,8 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **Secrets:**
   - Apps Script reaches Supabase with a per-store sync key, never the service-role key. Anyone who can edit a store's Sheet can read its Script Properties, so a leaked key reaches one store.
   - Never ask anyone to paste a sync key or a PIN into a chat.
+  - **The repo is public** (`SebHEH/mog-mobile`). A one-off data load that holds people's phone numbers or emails (vendor reps' contacts, 2026-11-01) stays out of it: write it in the scratchpad and have a maintainer paste it in the SQL Editor.
+  - **Never store a password in MOG.** Every KM with the store PIN can read a vendor's contact, and the change log keeps every value. A vendor login keeps the username and "Password: ask the GM" (Sebastian, 2026-11-01).
 
 ## Stores
 
@@ -60,6 +62,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - Five wrong tries lock only that person out for 15 minutes; a store's PIN lockout is never touched.
 - **A save writes every ticked store or none.** Each store sees one change by "HQ · <name>" in its Changes and can undo it there. New items arrive with no par and no area (the store's Needs setup).
 - **Try a rollout on the TEST store (rprfotest) first:** HQ lists it apart, and no one orders from it.
+- **Invite only the maintainers.** An HQ sign-in can change every store's vendors and items: the page only adds, but the server takes any catalog change from it, and there is no narrower HQ role. Chef Dan's warehouse stock belongs in the warehouse hub, with a warehouse role of its own (Sebastian, 2026-11-01).
 
 ## Local previews and the browser pane
 
@@ -81,6 +84,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **A Windows copy needs `core.autocrlf` on** (Git for Windows' default; `git config core.autocrlf` prints `true`). `build.py` writes CRLF on Windows (Python's text mode), so with the setting off, every generated store file shows as changed after a build. Donny's copy had it off (2026-10-29).
   - To turn it on in an existing copy: `git config core.autocrlf true`, run `python build.py`, then `git add -u -- rpr rprfo rpt rptfo rpfr rpfrf tnyt tnytf tnyr tnyrf` once.
   - That last step is needed because Git still holds the old LF file sizes. Until it runs, `git status` lists the store files as changed even though `git diff` is empty. When the build changed nothing else, it stages nothing.
+- **Gates plant defects by exact text.** Before changing a line in `catalogEdit.js`, `template/index.html` or a `.gs` file, grep `tests/` for it: a control whose anchor moved fails with "plant: anchor not found", and its find text has to move with the line (`me_import`'s par control, 2026-11-01).
 - **To reproduce a CI failure locally:** `git -c core.autocrlf=false clone https://github.com/SebHEH/mog-mobile.git <scratch dir>`, then run `TZ=UTC node tests/run_all.js` inside it.
 - **GitHub Actions logs need a signed-in account, even on this public repo.** The logs API answers 403, and the page says "Sign in to view logs". The runs API gives each run's status and step results without a token: `https://api.github.com/repos/SebHEH/mog-mobile/actions/runs?head_sha=<sha>`.
 - **Testing an edited tracked file inside a scratch clone:** `git reset --hard` there quietly puts the old file back, so copy it in under an untracked name. `deploy.py`'s git check was tested this way.

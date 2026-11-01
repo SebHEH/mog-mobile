@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: a4e6e98 (2026-10-20) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: 39afc44 (2026-11-01) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -304,7 +304,9 @@ naive rebuild silently loses.*
   legitimately differs per store is the par (driven by that store's sales and product mix), the
   delivery cadence with its vendors, and sometimes the vendors themselves (some vendors are not
   available in every region). *(Owner-confirmed intent. Not enforced today: each store's catalog is
-  currently built by hand, so standardization is a goal, not a guarantee. See growth seams.)*
+  currently built by hand, so standardization is a goal, not a guarantee. Since 2026-11-01 HQ rollouts
+  (R28) add the same vendor or items to many stores at once, and a per-concept library is specced,
+  `docs/MOG_Warehouse_Spec.md`. See growth seams.)*
 - **R23. One writer per kind of data; nothing syncs both ways.**
   - The database owns the counts, the current order day, the overrides and the order log.
   - A store's catalog (items, pars, vendors, storage areas, the pick path) is owned by its Sheet until the store moves, and copied one way into the database after every edit and nightly.
@@ -336,6 +338,12 @@ naive rebuild silently loses.*
   - Each one confirms, records who made it, can be taken back on the phone, and leaves a flag in Manage Items: Apply makes it permanent (a logged, undoable catalog change), Dismiss clears the flag.
   - "From now on" changes the catalog par itself (logged, with Undo), and only where the database owns the catalog (R23); everywhere else a phone offers "just today" only. Nothing that deletes or deactivates happens on a phone.
   - Why: the person at the shelf sees a busy day or a stock-out coming and needs today's order right without a computer, while managers keep control of the standing catalog. *(Confirmed: `docs/MOG_OneApp_Spec.md` A2, Q1-Q4, owner 2026-10-18.)*
+- **R28. HQ adds to many stores at once; each store still owns its catalog.**
+  - HQ (the maintainers, each signed in as themselves) adds a vendor, with starting delivery days, cutoff and contact, or new items (an LTO) to any set of stores in one save. Every store gets it or none does.
+  - New items arrive with no par and no storage area: they wait in the store's Needs setup and are on no count list until the store sets them up. An item the store already has (same name) keeps its main vendor, par and area, and only gains the rollout's vendors it didn't list, as backups. A store that already has the vendor keeps it as it is.
+  - HQ names a vendor once and remembers what each store calls it ("B&T" is "B&T Distributions" at Rosslyn BOH). Store vendor names are never renamed.
+  - Each store sees HQ's change in its own change log, signed by the person, and can undo it there (R23).
+  - Why: a concept's stores should order the same items (R22), and an LTO has to reach every store at once, while pars, areas and cadence stay each store's. *(Confirmed: owner 2026-11-01; `docs/MOG_Warehouse_Spec.md`.)*
 
 ---
 
@@ -378,6 +386,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | name | identifier (per store) | Also the vendor-tab header, which drives its item spine. |
 | delivery cadence | 7 day-multipliers | One multiplier per weekday; 0 = no delivery that day (R3). Drives coverage (R2). |
 | cutoff time | time or null | Order-by time (informational). Part of why par carries a buffer (R21). |
+| contact | person, phone, email, how to order, order email, website, account #, notes (all optional) | Per store: each store has its own accounts. Shown on the phone's vendor card. Never passwords. (2026-11-01) |
 
 #### Entity: Count line (per item, per vendor, per day)
 | Field | Type (conceptual) | Notes |
@@ -516,7 +525,9 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
   of friction and the thing a rebuild should most reduce. The seam is a store-provisioning flow that
   creates a store and seeds its catalog with little or no hand entry. Import from MarginEdge
   (below) is the partial step built so far; the older Import Vendor CSV panel was retired in its
-  favor on 2026-10-20.
+  favor on 2026-10-20. Creating a store with no Google Sheet at all is specced (2026-11-01,
+  `docs/MOG_Warehouse_Spec.md` §3): the nightly close, the recap email and the setup need a home
+  that isn't a per-store Sheet first.
 - **Seed the catalog from MarginEdge.** Beyond cost, MarginEdge should be able to populate a store's
   item list, so onboarding a store becomes "pull the items" instead of "type in the items." The first
   version is built (2026-10-18): the Vendor Items CSV imported in the editor. Next steps are the API
@@ -528,7 +539,14 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
   catalog that each store inherits and then tunes (its own pars from its sales/product mix, its own
   vendor cadence, its own regionally-available vendors). Today each store's catalog is built
   independently, so this is a design target, not current behavior; a rebuild should make the concept
-  catalog a real, inheritable entity.
+  catalog a real, inheritable entity. Built so far (2026-11-01): HQ rollouts to many stores at once
+  (R28). Next: a per-concept, per-side library seeded from one store and cleaned in HQ, which a new
+  store's order guide starts from (`docs/MOG_Warehouse_Spec.md` §1).
+- **HEH's own warehouse (Happy Supply).** HEH buys some products centrally, stores them (rented cold
+  storage, a store's freezer) and sends them to stores, charging each store back monthly. Specced
+  2026-11-01 (`docs/MOG_Warehouse_Spec.md` §2): the warehouse is one vendor among a store's vendors,
+  with its own stock, costs and admin role behind it; only a store's items from that vendor link to
+  warehouse products, and a KM sends that vendor's order to the warehouse from the review screen.
 - **Cost and sales integration.** Pull cost from MarginEdge and sales/usage from Toast so pars can be
   informed by real data and the recap can carry cost. The count engine is where these land; the Item
   and Order-history entities are where cost/usage fields attach. The goal is a plug-and-play system

@@ -18,7 +18,7 @@ Project facts and gotchas that used to live in Claude's memory on one computer (
 
 Replace the path here with the newest handoff at the end of each session that ships material changes. (The `mog-session-handoff` skill rewrites this line.)
 
-@docs/MOG_SessionHandoff_2026_10_29.md
+@docs/MOG_SessionHandoff_2026_11_01.md
 
 ## Quick orientation
 
@@ -249,6 +249,7 @@ mog-mobile/
 │   ├── MOG_ProjectNotes.md      Project facts and gotchas (moved from Claude's per-computer memory, 2026-10-29).
 │   ├── MOG_SupabaseMigration.md Design record for the count-path move to Supabase (decisions, ownership, rollout).
 │   ├── MOG_OneApp_Spec.md       Agreed spec: the ordering app and the editor become one app per store (decisions A1-A7, P1-P4, phases).
+│   ├── MOG_Warehouse_Spec.md    Agreed spec (2026-11-01): the warehouse (Happy Supply), the concept library, stores without a Sheet, and their build order.
 │   └── MOG_SessionHandoff_*.md  Per-session handoffs (newest @-imported above).
 ├── .claude/
 │   └── skills/                  Repo-specific skills.
