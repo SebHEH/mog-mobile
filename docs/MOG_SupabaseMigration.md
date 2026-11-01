@@ -194,6 +194,12 @@ Tables live in the private schema `mog`, which the Data API doesn't expose. **Th
 | `mog_editor_review(token, id, status)` (schema v7) | the editor page | token; a phone's today edit marked applied or dismissed |
 | `mog.prepare_test_store(slug)` (schema v7) | SQL Editor only | gives a test store a cycle and turns its phones on (refuses a real store) |
 | `mog_sync_switch_editor(slug, key, startEmpty)` (schema v8) | Apps Script (Move the editor to the app) | sync key; `editor_direct` on and the phones' catalog rebuilt from the tables; `startEmpty` clears the store's catalog tables first; refuses a store with nothing seeded unless starting empty; a second call changes nothing |
+| (schema v10: no new function) | the Vendors page, the phone | a vendor's contact (`mog.vendors.contact`) is saved with `mog_editor_apply` and reaches phones as the catalog's `vendorContacts`, only when a vendor has one |
+| `mog.hq_invite(name)` / `mog.hq_remove_user(name)` (schema v11) | SQL Editor only | a one-use code for 24 hours (also resets a forgotten passphrase) / removes the person and their sign-ins |
+| `mog_hq_claim(name, code, passphrase)` (schema v11) | HQ page (hq/) | the invite code; sets the person's own passphrase (12+ characters) and signs in; wrong codes count toward that person's lockout |
+| `mog_hq_login(name, passphrase)` → HQ token (12h) (schema v11) | HQ page | the person's passphrase; 5 wrong, then 15 minutes for that person only (a store's PIN lockout is never touched); an unknown name answers like a wrong passphrase |
+| `mog_hq_data(token)` (schema v11) | HQ page | HQ token; every store (tables once its editor has moved), the remembered vendor names, the last 50 HQ changes |
+| `mog_hq_apply(token, changes, links)` (schema v11) | HQ page | HQ token; each store's ops (worked out by catalogEdit.js `commitHqRollout`) through `mog.editor_apply_ops`, one `mog.change_log` entry per store by `HQ · <name>`, all stores or none (`CONFLICT` / `REJECTED` write nothing); then the vendor names (`mog.hq_vendor_links`, gone with their vendor) |
 
 **Per-store sync keys instead of the service-role key:** a bound script's Script Properties can be read by anyone who can edit that store's Sheet. A leaked sync key reaches only that one store; the service-role key would expose every store. The service-role key is never used outside the Supabase dashboard.
 

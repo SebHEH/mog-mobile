@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>HQ control · MOG</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- HQ control (schema v11): add a vendor, or a concept's LTO items, to many
+       stores at once. Built by build.py into hq/ (the Supabase project and
+       the concept names are injected below). Each store's change is worked
+       out by catalogEdit.js, the editor's own code (commitHqRollout), and
+       mog_hq_apply writes every store or none, one logged change per store
+       that the store can undo in its own Changes. -->
+  <script>window.MOG_HQ = /*__MOG_HQ__*/null;</script>
+  <script src="catalogEdit.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    :root { --ink: #1f1e1b; --muted: #5f5e5a; --line: #e6e4dd; --soft: #faf9f5; --accent: #2d8c6b; --accent-soft: #e9f4ef;
+            --warn-bg: #fbefd6; --warn-ink: #7a4d00; --bad: #a3261a; --ok: #1a6b48; }
+    body { margin: 0; font-family: 'Inter', Arial, Helvetica, sans-serif; font-size: 14px; color: var(--ink); background: #f5f4ed; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    a { color: var(--ink); }
+    [hidden] { display: none !important; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 24px 48px; }
+    header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 24px; background: #fff; border-bottom: 1px solid var(--line); }
+    header.top h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
+    header.top .who { margin-left: auto; color: var(--muted); font-size: 13px; }
+    .btn { height: 40px; padding: 0 16px; border: 1px solid rgba(0,0,0,0.18); border-radius: 10px; background: #fff; font-weight: 600; cursor: pointer; }
+    .btn.primary { border: 0; background: var(--accent); color: #fff; font-weight: 700; }
+    .btn.small { height: 32px; padding: 0 12px; font-size: 13px; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .link { border: 0; background: none; padding: 0; font-weight: 600; text-decoration: underline; cursor: pointer; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+    .card + .card { margin-top: 14px; }
+    h2 { margin: 0 0 4px; font-size: 17px; }
+    .help { color: var(--muted); font-size: 13px; line-height: 1.45; margin: 0 0 12px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 16px; }
+    .tabs button { height: 36px; padding: 0 14px; border: 1px solid rgba(0,0,0,0.16); border-radius: 999px; background: #fff; font-weight: 500; cursor: pointer; }
+    .tabs button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; min-width: 0; }
+    .field.wide { grid-column: 1 / -1; }
+    .field input, .field textarea, .field select, td input, td select { height: 38px; padding: 0 10px; border: 1px solid rgba(0,0,0,0.18); border-radius: 9px; background: #fff; font-weight: 400; width: 100%; }
+    .field textarea { height: 64px; padding: 8px 10px; resize: vertical; }
+    .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; max-width: 520px; }
+    .week button { height: 40px; border-radius: 9px; border: 1px solid rgba(0,0,0,0.16); background: #fff; font-weight: 700; cursor: pointer; padding: 0; }
+    .week button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    .check { display: inline-flex; align-items: center; gap: 8px; font-weight: 400; cursor: pointer; }
+    .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--ink); }
+    .stores { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .concept { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--soft); }
+    .concept h3 { margin: 0 0 6px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+    .concept h3 .link { font-size: 12px; margin-left: auto; }
+    .concept label { display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer; }
+    .concept label.off { color: #9a9993; cursor: default; }
+    .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 700;
+           background: #ebe9e0; color: #4a4945; }
+    .tag.warn { background: var(--warn-bg); color: var(--warn-ink); }
+    .tag.ok { background: var(--accent-soft); color: var(--ok); }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    td { padding: 8px; border-top: 1px solid #f0efea; vertical-align: top; }
+    tr:first-child td { border-top: 0; }
+    .scroll { overflow-x: auto; }
+    .items td input { min-width: 120px; }
+    .muted { color: var(--muted); }
+    .bad { color: var(--bad); }
+    .good { color: var(--ok); }
+    .status { min-height: 20px; margin-top: 10px; font-size: 13px; }
+    .newv { border: 1px dashed rgba(0,0,0,0.2); border-radius: 12px; padding: 12px; margin-top: 10px; }
+    #signin { max-width: 420px; margin: 60px auto; }
+    @media (max-width: 760px) {
+      .grid, .grid.three { grid-template-columns: minmax(0, 1fr); }
+      .wrap { padding: 14px 12px 40px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <h1>HQ control</h1>
+    <span class="who" id="who"></span>
+    <button type="button" class="btn small" id="signout" hidden>Sign out</button>
+  </header>
+
+  <!-- Sign in, or use an invite -->
+  <div class="card" id="signin" hidden>
+    <h2 id="si-title">Sign in</h2>
+    <p class="help" id="si-help">Your own HQ passphrase. Five wrong tries lock you out for 15 minutes (only you, never a store).</p>
+    <form id="si-form" autocomplete="on">
+      <div class="field"><label for="si-name">Name</label><input id="si-name" autocomplete="username" required></div>
+      <div class="field" id="si-code-f" hidden style="margin-top:10px"><label for="si-code">Invite code</label><input id="si-code" autocomplete="one-time-code"></div>
+      <div class="field" style="margin-top:10px"><label for="si-pass" id="si-pass-l">Passphrase</label><input id="si-pass" type="password" autocomplete="current-password" required></div>
+      <div class="field" id="si-pass2-f" hidden style="margin-top:10px"><label for="si-pass2">The new passphrase again</label><input id="si-pass2" type="password" autocomplete="new-password"></div>
+      <div class="row" style="margin-top:14px"><button class="btn primary" id="si-go" type="submit">Sign in</button>
+        <button type="button" class="link" id="si-toggle">I have an invite code</button></div>
+      <div class="status bad" id="si-status" role="status"></div>
+    </form>
+  </div>
+
+  <main class="wrap" id="app" hidden>
+    <div class="tabs" role="toolbar" aria-label="HQ">
+      <button type="button" data-tab="items" aria-pressed="true">Add LTO items</button>
+      <button type="button" data-tab="vendor" aria-pressed="false">Add a vendor</button>
+      <button type="button" data-tab="links" aria-pressed="false">Vendor names</button>
+      <button type="button" data-tab="recent" aria-pressed="false">Recent</button>
+    </div>
+
+    <section id="stores-card" class="card">
+      <h2>Stores</h2>
+      <p class="help">Tick the stores this goes to. Try a rollout on the TEST store first if you like; it's a copy no one orders from.</p>
+      <div class="stores" id="stores"></div>
+    </section>
+
+    <!-- Add LTO items -->
+    <section id="tab-items" class="card">
+      <h2>Add LTO items</h2>
+      <p class="help">Each store gets the items with no par and no storage area: they wait in its Items page under <b>Needs setup</b>, on no count list, until the store sets them up. An item a store already has keeps its own vendor, par and area, and only gains the vendors below that it doesn't list yet.</p>
+      <div class="grid"><div class="field"><label for="lto-label">What this is (shows in each store's Changes)</label>
+        <input id="lto-label" maxlength="80" placeholder="e.g. Spring LTO: Crab roll"></div></div>
+      <div class="scroll" style="margin-top:12px"><table class="items">
+        <thead><tr><th>Item name</th><th>Pack</th><th>Main vendor</th><th>Backup vendors</th><th>Notes</th><th></th></tr></thead>
+        <tbody id="lto-rows"></tbody></table></div>
+      <datalist id="hq-vendor-names"></datalist>
+      <div class="row" style="margin-top:8px"><button type="button" class="btn small" id="lto-add">Add another item</button>
+        <span class="muted" style="font-size:12.5px">Backups: several names, separated by commas.</span></div>
+      <div id="lto-map"></div>
+      <div id="lto-preview"></div>
+      <div class="row" style="margin-top:14px"><button type="button" class="btn primary" id="lto-save" disabled>Add to the stores</button></div>
+      <div class="status" id="lto-status" role="status"></div>
+    </section>
+
+    <!-- Add a vendor -->
+    <section id="tab-vendor" class="card" hidden>
+      <h2>Add a vendor</h2>
+      <p class="help">Each ticked store that doesn't have it yet gets it, with these days, cutoff and contact as a start; the store can change them on its Vendors page. A store that already has it is left as it is.</p>
+      <div class="grid"><div class="field"><label for="v-name">Vendor name</label><input id="v-name" maxlength="100" placeholder="e.g. Happy Supply"></div></div>
+      <div class="field" style="margin-top:12px"><span>Delivery days</span><div class="week" id="v-week"></div><span class="help" id="v-explain" style="margin:4px 0 0"></span></div>
+      <div class="row" style="margin-top:6px"><div class="field"><label for="v-cutoff">Order due by</label><input id="v-cutoff" type="time" style="width:150px" disabled></div>
+        <label class="check" style="margin-top:22px"><input type="checkbox" id="v-nocut" checked>No cutoff</label></div>
+      <h3 style="margin:16px 0 6px;font-size:14px">Contact</h3>
+      <div class="grid three" id="v-contact"></div>
+      <div id="v-preview"></div>
+      <div class="row" style="margin-top:14px"><button type="button" class="btn primary" id="v-save" disabled>Add to the stores</button></div>
+      <div class="status" id="v-status" role="status"></div>
+    </section>
+
+    <!-- Vendor names -->
+    <section id="tab-links" class="card" hidden>
+      <h2>Vendor names</h2>
+      <p class="help">What each store calls a vendor HQ names, remembered when you confirm a match in a rollout. Forget one to be asked again next time.</p>
+      <div class="scroll" id="links"></div>
+      <div class="status" id="links-status" role="status"></div>
+    </section>
+
+    <!-- Recent -->
+    <section id="tab-recent" class="card" hidden>
+      <h2>Recent</h2>
+      <p class="help">The last 50 HQ changes. A store undoes one in its own Manage → Changes.</p>
+      <div class="scroll" id="recent"></div>
+    </section>
+  </main>
+
+  <script>
+  (function () {
+    'use strict';
+    const CFG = window.MOG_HQ || {};
+    const CE = window.CatalogEdit;
+    const CONCEPTS = CFG.concepts || {};
+    const DAY = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const DAY3 = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const CONTACT = [['person', 'Contact name'], ['phone', 'Phone'], ['email', 'Email'], ['orderVia', 'How to order'],
+                     ['orderEmail', 'Send orders to'], ['website', 'Website or app link'], ['account', 'Account #'], ['notes', 'Notes']];
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const lc = s => String(s == null ? '' : s).trim().toLowerCase();
+    const NEW = '__new__';
+
+    const S = { token: null, name: '', data: null, tab: 'items', picked: {}, rows: [], map: {}, newDays: {}, vDays: [false, false, false, false, false, false, false],
+                vAddAnyway: {}, busy: false, invite: false };
+    try { S.token = sessionStorage.getItem('mog_hq_token'); } catch (e) { S.token = null; }
+
+    // ---- Supabase ----
+    async function rpc(fn, params) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30000);
+      try {
+        const resp = await fetch(CFG.url + '/rest/v1/rpc/' + fn, { method: 'POST', signal: controller.signal,
+          headers: { apikey: CFG.key, 'Content-Type': 'application/json' }, body: JSON.stringify(params) });
+        const text = await resp.text();
+        let json = null;
+        try { json = JSON.parse(text); } catch (e) { json = null; }
+        if (resp.status !== 200 || !json || typeof json.ok !== 'boolean') throw new Error('Supabase answered ' + resp.status + ': ' + text.slice(0, 120));
+        return json;
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw new Error('The server did not answer. Check the connection and try again.');
+        throw e;
+      } finally { clearTimeout(timer); }
+    }
+    function keepToken(t) { S.token = t; try { if (t) sessionStorage.setItem('mog_hq_token', t); else sessionStorage.removeItem('mog_hq_token'); } catch (e) { /* signs in again next time */ } }
+
+    // ---- Sign in ----
+    function showSignin(msg) {
+      $('app').hidden = true; $('signout').hidden = true; $('who').textContent = '';
+      $('signin').hidden = false; $('si-status').textContent = msg || '';
+      $('si-code-f').hidden = !S.invite; $('si-pass2-f').hidden = !S.invite;
+      $('si-title').textContent = S.invite ? 'Use your invite' : 'Sign in';
+      $('si-pass-l').textContent = S.invite ? 'Choose a passphrase (12 characters or more)' : 'Passphrase';
+      $('si-pass').setAttribute('autocomplete', S.invite ? 'new-password' : 'current-password');
+      $('si-help').textContent = S.invite
+        ? 'The code from Sebastian or Donny, used once. The passphrase is yours alone: a few words you will remember is good.'
+        : 'Your own HQ passphrase. Five wrong tries lock you out for 15 minutes (only you, never a store).';
+      $('si-go').textContent = S.invite ? 'Set it and sign in' : 'Sign in';
+      $('si-toggle').textContent = S.invite ? 'I already have a passphrase' : 'I have an invite code';
+    }
+    $('si-toggle').onclick = () => { S.invite = !S.invite; showSignin(''); };
+    $('si-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const name = $('si-name').value.trim(), pass = $('si-pass').value;
+      if (S.invite && pass !== $('si-pass2').value) { $('si-status').textContent = 'The two passphrases differ.'; return; }
+      $('si-go').disabled = true; $('si-status').textContent = '';
+      try {
+        const r = S.invite ? await rpc('mog_hq_claim', { p_name: name, p_code: $('si-code').value.trim(), p_passphrase: pass })
+                           : await rpc('mog_hq_login', { p_name: name, p_passphrase: pass });
+        if (!r.ok) {
+          $('si-status').textContent = r.lockout ? 'Too many tries. Wait ' + Math.ceil((r.retryAfterMs || 900000) / 60000) + ' minutes.'
+            : r.error === 'PASSPHRASE_TOO_SHORT' ? 'The passphrase needs 12 characters or more.' : r.error;
+          return;
+        }
+        $('si-pass').value = ''; $('si-pass2').value = ''; $('si-code').value = '';
+        S.invite = false;
+        keepToken(r.data.token);
+        await load();
+      } catch (err) { $('si-status').textContent = err.message; }
+      finally { $('si-go').disabled = false; }
+    };
+    $('signout').onclick = () => { keepToken(null); S.data = null; showSignin('Signed out.'); };
+
+    async function load() {
+      const r = await rpc('mog_hq_data', { p_token: S.token });
+      if (!r.ok) { keepToken(null); showSignin(r.error === 'SESSION_EXPIRED' ? 'Your sign-in ran out. Sign in again.' : r.error); return false; }
+      S.data = r.data; S.name = r.data.name;
+      $('signin').hidden = true; $('app').hidden = false; $('signout').hidden = false;
+      $('who').textContent = 'Signed in as ' + S.name;
+      if (!S.rows.length) S.rows = [blankRow(), blankRow()];
+      renderAll();
+      return true;
+    }
+
+    // ---- Shared bits ----
+    function storeBy(slug) { return S.data.stores.find(s => s.slug === slug); }
+    function pickedStores() { return S.data.stores.filter(s => S.picked[s.slug] && s.editorDirect && s.tables); }
+    function storeName(s) { return (s.location || s.slug) + (s.isTest ? ' (TEST)' : ''); }
+    function linkFor(slug, hqName) { const l = S.data.links.find(x => x.slug === slug && lc(x.hqName) === lc(hqName)); return l ? l.vendor : null; }
+    function vendorNames(st) { return st.tables.vendors.map(v => v.name); }
+    function allHqNames() {
+      const seen = new Map();
+      for (const l of S.data.links) seen.set(lc(l.hqName), l.hqName);
+      for (const st of S.data.stores) if (st.tables) for (const v of st.tables.vendors) if (!seen.has(lc(v.name))) seen.set(lc(v.name), v.name);
+      return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+    }
+    function explain(mults) {
+      const lines = [];
+      for (let i = 0; i < 7; i++) if (mults[i] > 0) lines.push(DAY[i] + '’s order arrives ' + DAY[(i + 1) % 7] + ' and covers ' + mults[i] + (mults[i] === 1 ? ' day' : ' days'));
+      return lines.length ? lines.join('. ') + '.' : 'No delivery days yet: the vendor won’t show on Today until a store sets them.';
+    }
+    function weekHtml(days, attr) {
+      return DAY3.map((d, i) => '<button type="button" ' + attr + '="' + i + '" aria-pressed="' + (days[i] ? 'true' : 'false') + '" aria-label="' + DAY[i] + '">' + d + '</button>').join('');
+    }
+
+    function renderStores() {
+      const groups = new Map();
+      for (const s of S.data.stores) {
+        const key = s.isTest ? '~test' : (s.concept || '');
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(s);
+      }
+      $('stores').innerHTML = Array.from(groups.entries()).map(([key, list]) => {
+        const title = key === '~test' ? 'Test store' : (CONCEPTS[key] || key || 'No concept');
+        return '<div class="concept"><h3>' + esc(title) + (key === '~test' ? '' : '<button type="button" class="link" data-all="' + esc(key) + '">All</button>') + '</h3>' +
+          list.map(s => '<label class="' + (s.editorDirect ? '' : 'off') + '"><input type="checkbox" data-store="' + esc(s.slug) + '"' +
+            (S.picked[s.slug] ? ' checked' : '') + (s.editorDirect ? '' : ' disabled') + '>' + esc(s.location || s.slug) +
+            (s.isTest ? ' <span class="tag">TEST</span>' : '') + (s.editorDirect ? '' : ' <span class="tag warn">still on the Sheet</span>') +
+            (s.tables && !s.tables.items.length ? ' <span class="tag">empty</span>' : '') + '</label>').join('') + '</div>';
+      }).join('');
+    }
+    $('stores').addEventListener('change', e => {
+      const slug = e.target.getAttribute('data-store');
+      if (slug) { S.picked[slug] = e.target.checked; renderWork(); }
+    });
+    $('stores').addEventListener('click', e => {
+      const key = e.target.getAttribute && e.target.getAttribute('data-all');
+      if (key == null) return;
+      const list = S.data.stores.filter(s => !s.isTest && (s.concept || '') === key && s.editorDirect);
+      const on = !list.every(s => S.picked[s.slug]);
+      for (const s of list) S.picked[s.slug] = on;
+      renderStores(); renderWork();
+    });
+
+    function renderTabs() {
+      document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-tab') === S.tab ? 'true' : 'false'));
+      $('tab-items').hidden = S.tab !== 'items'; $('tab-vendor').hidden = S.tab !== 'vendor';
+      $('tab-links').hidden = S.tab !== 'links'; $('tab-recent').hidden = S.tab !== 'recent';
+      $('stores-card').hidden = S.tab === 'links' || S.tab === 'recent';
+    }
+    document.querySelector('.tabs').addEventListener('click', e => {
+      const t = e.target.getAttribute('data-tab'); if (!t) return;
+      S.tab = t; renderTabs(); renderWork();
+    });
+
+    function renderAll() {
+      $('hq-vendor-names').innerHTML = allHqNames().map(n => '<option value="' + esc(n) + '">').join('');
+      if (!S.formReady) { renderVendorForm(); S.formReady = true; }   // once: a reload keeps what's typed
+      renderStores(); renderTabs(); renderRows(); renderWork(); renderLinks(); renderRecent();
+    }
+    function renderWork() {
+      if (S.tab === 'items') renderLtoMap();
+      if (S.tab === 'vendor') renderVendorPreview();
+    }
+
+    // ---- Add LTO items ----
+    function blankRow() { return { name: '', pack: '', vendor: '', backups: '', notes: '' }; }
+    function renderRows() {
+      $('lto-rows').innerHTML = S.rows.map((r, i) =>
+        '<tr><td><input data-row="' + i + '" data-k="name" value="' + esc(r.name) + '" maxlength="300" aria-label="Item name"></td>' +
+        '<td><input data-row="' + i + '" data-k="pack" value="' + esc(r.pack) + '" placeholder="e.g. CS (4 x 5 LB)" aria-label="Pack"></td>' +
+        '<td><input data-row="' + i + '" data-k="vendor" value="' + esc(r.vendor) + '" list="hq-vendor-names" aria-label="Main vendor"></td>' +
+        '<td><input data-row="' + i + '" data-k="backups" value="' + esc(r.backups) + '" list="hq-vendor-names" aria-label="Backup vendors"></td>' +
+        '<td><input data-row="' + i + '" data-k="notes" value="' + esc(r.notes) + '" aria-label="Notes"></td>' +
+        '<td><button type="button" class="link" data-drop="' + i + '" aria-label="Remove this row">Remove</button></td></tr>').join('');
+    }
+    $('lto-rows').addEventListener('input', e => {
+      const i = e.target.getAttribute('data-row'); if (i == null) return;
+      S.rows[Number(i)][e.target.getAttribute('data-k')] = e.target.value;
+    });
+    $('lto-rows').addEventListener('change', () => renderLtoMap());
+    $('lto-rows').addEventListener('click', e => {
+      const i = e.target.getAttribute && e.target.getAttribute('data-drop'); if (i == null) return;
+      S.rows.splice(Number(i), 1); if (!S.rows.length) S.rows.push(blankRow());
+      renderRows(); renderLtoMap();
+    });
+    $('lto-add').onclick = () => { S.rows.push(blankRow()); renderRows(); };
+    $('lto-label').addEventListener('change', () => renderLtoMap());
+
+    const splitNames = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
+    function ltoItems() {
+      return S.rows.filter(r => r.name.trim()).map(r => ({ name: r.name.trim(), pack: r.pack.trim(), notes: r.notes.trim(),
+        vendor: r.vendor.trim(), backups: splitNames(r.backups) }));
+    }
+    function hqVendorsUsed(items) {
+      const seen = new Map();
+      for (const it of items) for (const v of [it.vendor].concat(it.backups)) if (v && !seen.has(lc(v))) seen.set(lc(v), v);
+      return Array.from(seen.values());
+    }
+    // Each store's vendor for each HQ vendor: what the person picked, else
+    // the remembered name, else matchVendor's guess, else "add it".
+    function choiceFor(slug, hqName) {
+      const k = slug + '|' + lc(hqName);
+      if (S.map[k] !== undefined) return { value: S.map[k], how: 'picked' };
+      const st = storeBy(slug), names = vendorNames(st);
+      const linked = linkFor(slug, hqName);
+      if (linked && names.indexOf(linked) >= 0) return { value: linked, how: 'remembered' };
+      const m = CE.matchVendor(names, hqName);
+      return m ? { value: m.name, how: m.how } : { value: NEW, how: 'none' };
+    }
+    function renderLtoMap() {
+      const items = ltoItems(), stores = pickedStores(), used = hqVendorsUsed(items);
+      const missing = items.filter(it => !it.vendor).map(it => it.name);
+      let h = '';
+      if (missing.length) h += '<p class="bad">Give every item a main vendor: ' + esc(missing.join(', ')) + '.</p>';
+      if (used.length && stores.length) {
+        h += '<h3 style="margin:18px 0 4px;font-size:14px">Vendor at each store</h3><p class="help">Check each one. A green tag is a name HQ remembers; amber is a guess.</p>' +
+          '<div class="scroll"><table><thead><tr><th>Store</th>' + used.map(v => '<th>' + esc(v) + '</th>').join('') + '</tr></thead><tbody>' +
+          stores.map(st => '<tr><td>' + esc(storeName(st)) + '</td>' + used.map(v => {
+            const c = choiceFor(st.slug, v);
+            const tag = c.how === 'remembered' || c.how === 'same' ? '<span class="tag ok">' + (c.how === 'same' ? 'same name' : 'remembered') + '</span>'
+              : c.how === 'close' ? '<span class="tag warn">guess</span>' : c.how === 'none' ? '<span class="tag warn">not there</span>' : '';
+            return '<td><select data-map="' + esc(st.slug + '|' + lc(v)) + '" aria-label="' + esc(v + ' at ' + storeName(st)) + '">' +
+              '<option value="' + NEW + '"' + (c.value === NEW ? ' selected' : '') + '>Add "' + esc(v) + '" here</option>' +
+              vendorNames(st).map(n => '<option value="' + esc(n) + '"' + (n === c.value ? ' selected' : '') + '>' + esc(n) + '</option>').join('') +
+              '</select> ' + tag + '</td>';
+          }).join('') + '</tr>').join('') + '</tbody></table></div>';
+        const toAdd = used.filter(v => stores.some(st => choiceFor(st.slug, v).value === NEW));
+        h += toAdd.map(v => {
+          const days = S.newDays[lc(v)] || (S.newDays[lc(v)] = [false, false, false, false, false, false, false]);
+          return '<div class="newv"><b>New vendor "' + esc(v) + '"</b> at ' + esc(stores.filter(st => choiceFor(st.slug, v).value === NEW).map(storeName).join(', ')) +
+            '<div class="help" style="margin:4px 0 8px">Its delivery days as a start; each store can change them, and add a contact, on its Vendors page.</div>' +
+            '<div class="week">' + weekHtml(days, 'data-newday="' + esc(lc(v)) + '" data-i') + '</div></div>';
+        }).join('');
+      }
+      $('lto-map').innerHTML = h;
+      renderLtoPreview();
+    }
+    $('lto-map').addEventListener('change', e => {
+      const k = e.target.getAttribute('data-map'); if (!k) return;
+      S.map[k] = e.target.value; renderLtoMap();
+    });
+    $('lto-map').addEventListener('click', e => {
+      const b = e.target.closest && e.target.closest('button[data-newday]'); if (!b) return;
+      const days = S.newDays[b.getAttribute('data-newday')]; const i = Number(b.getAttribute('data-i'));
+      days[i] = !days[i]; renderLtoMap();
+    });
+
+    // Each store's share, worked out the way the editor works out a save.
+    function ltoPlan() {
+      const items = ltoItems(), stores = pickedStores(), label = $('lto-label').value.trim();
+      if (!items.length || !stores.length || items.some(it => !it.vendor)) return null;
+      const used = hqVendorsUsed(items);
+      return stores.map(st => {
+        const names = {}, adds = [], links = [];
+        for (const v of used) {
+          const c = choiceFor(st.slug, v);
+          if (c.value === NEW) {
+            names[lc(v)] = v;
+            adds.push({ name: v, mults: CE.multsFromDays(S.newDays[lc(v)] || []), cutoff: '', contact: {} });
+          } else names[lc(v)] = c.value;
+          links.push({ slug: st.slug, hqName: v, vendor: names[lc(v)] });
+        }
+        const share = { label: label, vendors: adds,
+          items: items.map(it => ({ name: it.name, pack: it.pack, notes: it.notes, vendor: names[lc(it.vendor)],
+                                    backups: it.backups.map(b => names[lc(b)]) })) };
+        try { return { st, links, out: CE.call(st.tables, 'commitHqRollout', [share]) }; }
+        catch (err) { return { st, links, error: err.message }; }
+      });
+    }
+    function shareText(r) {
+      const parts = [];
+      if (r.vendorsAdded.length) parts.push('adds vendor ' + r.vendorsAdded.join(', '));
+      if (r.itemsAdded.length) parts.push('adds ' + r.itemsAdded.join(', '));
+      for (const b of r.backupsAdded) parts.push(b.name + ' also from ' + b.vendors.join(', '));
+      return parts.join('; ') || 'nothing to add';
+    }
+    function renderLtoPreview() {
+      const plan = ltoPlan();
+      S.ltoPlan = plan;
+      if (!plan) { $('lto-preview').innerHTML = ''; $('lto-save').disabled = true; return; }
+      $('lto-preview').innerHTML = '<h3 style="margin:18px 0 6px;font-size:14px">What each store gets</h3><div class="scroll"><table><thead><tr><th>Store</th><th>Change</th><th>Skipped</th></tr></thead><tbody>' +
+        plan.map(p => '<tr><td>' + esc(storeName(p.st)) + '</td>' + (p.error ? '<td class="bad" colspan="2">' + esc(p.error) + '</td>'
+          : '<td>' + esc(shareText(p.out.result)) + '</td><td class="muted">' +
+            esc(p.out.result.skipped.map(s => s.name + ' (' + s.reason + ')').join(', ')) + '</td>') + '</tr>').join('') + '</tbody></table></div>';
+      $('lto-save').disabled = S.busy || plan.some(p => p.error) || !plan.some(p => p.out.ops.length);
+    }
+    $('lto-save').onclick = () => save(S.ltoPlan, 'lto-status', () => {
+      S.rows = [blankRow(), blankRow()]; S.map = {}; S.newDays = {}; $('lto-label').value = ''; renderRows();
+    });
+
+    // ---- Add a vendor ----
+    function renderVendorForm() {
+      $('v-week').innerHTML = weekHtml(S.vDays, 'data-vday');
+      $('v-explain').textContent = explain(CE.multsFromDays(S.vDays));
+      $('v-contact').innerHTML = CONTACT.map(([k, label]) => '<div class="field' + (k === 'notes' ? ' wide' : '') + '"><label for="v-c-' + k + '">' + label + '</label>' +
+        (k === 'notes' ? '<textarea id="v-c-' + k + '" maxlength="500"></textarea>' : '<input id="v-c-' + k + '" maxlength="200">') + '</div>').join('');
+    }
+    $('v-week').addEventListener('click', e => {
+      const i = e.target.getAttribute && e.target.getAttribute('data-vday'); if (i == null) return;
+      S.vDays[Number(i)] = !S.vDays[Number(i)];
+      e.target.setAttribute('aria-pressed', S.vDays[Number(i)] ? 'true' : 'false');
+      $('v-explain').textContent = explain(CE.multsFromDays(S.vDays));
+      renderVendorPreview();
+    });
+    $('v-nocut').onchange = () => { $('v-cutoff').disabled = $('v-nocut').checked; renderVendorPreview(); };
+    $('v-name').addEventListener('input', () => renderVendorPreview());
+    $('v-cutoff').addEventListener('input', () => renderVendorPreview());
+    function vendorPlan() {
+      const name = $('v-name').value.trim(), stores = pickedStores();
+      if (!name || !stores.length) return null;
+      if (!$('v-nocut').checked && !$('v-cutoff').value) return { needCutoff: true };
+      const contact = {};
+      for (const [k] of CONTACT) contact[k] = $('v-c-' + k).value.trim();
+      const vendor = { name, mults: CE.multsFromDays(S.vDays), cutoff: $('v-nocut').checked ? '' : $('v-cutoff').value, contact };
+      return stores.map(st => {
+        const m = CE.matchVendor(vendorNames(st), name);
+        const add = !m || (m.how === 'close' && S.vAddAnyway[st.slug]);
+        const links = [{ slug: st.slug, hqName: name, vendor: add ? name : m.name }];
+        if (!add) return { st, links, have: m, out: { ops: [], label: '', result: null } };
+        try { return { st, links, out: CE.call(st.tables, 'commitHqRollout', [{ label: '', vendors: [vendor], items: [] }]) }; }
+        catch (err) { return { st, links, error: err.message }; }
+      });
+    }
+    function renderVendorPreview() {
+      const plan = vendorPlan();
+      S.vPlan = plan;
+      if (!plan || plan.needCutoff) {
+        $('v-preview').innerHTML = plan && plan.needCutoff ? '<p class="bad">Set the time the order is due, or tick No cutoff.</p>' : '';
+        $('v-save').disabled = true; return;
+      }
+      $('v-preview').innerHTML = '<h3 style="margin:18px 0 6px;font-size:14px">What each store gets</h3><div class="scroll"><table><thead><tr><th>Store</th><th>Change</th></tr></thead><tbody>' +
+        plan.map(p => '<tr><td>' + esc(storeName(p.st)) + '</td><td>' + (p.error ? '<span class="bad">' + esc(p.error) + '</span>'
+          : p.have ? (p.have.how === 'same' ? '<span class="muted">Already has it</span>'
+            : 'Has <b>' + esc(p.have.name) + '</b>, likely the same: left as it is. <label class="check"><input type="checkbox" data-anyway="' + esc(p.st.slug) + '">Add "' + esc($('v-name').value.trim()) + '" anyway</label>')
+          : esc('Adds ' + $('v-name').value.trim()) + (S.vAddAnyway[p.st.slug] ? ' <label class="check"><input type="checkbox" data-anyway="' + esc(p.st.slug) + '" checked>Add anyway</label>' : '')) + '</td></tr>').join('') +
+        '</tbody></table></div>';
+      $('v-save').disabled = S.busy || plan.some(p => p.error) || !plan.some(p => p.out.ops.length || p.links.length);
+    }
+    $('v-preview').addEventListener('change', e => {
+      const slug = e.target.getAttribute('data-anyway'); if (!slug) return;
+      S.vAddAnyway[slug] = e.target.checked; renderVendorPreview();
+    });
+    $('v-save').onclick = () => save(S.vPlan, 'v-status', () => {
+      $('v-name').value = ''; S.vDays = [false, false, false, false, false, false, false]; S.vAddAnyway = {};
+      $('v-nocut').checked = true; $('v-cutoff').value = ''; $('v-cutoff').disabled = true; renderVendorForm();
+    });
+
+    // ---- Saving: every store or none ----
+    async function save(plan, statusId, reset) {
+      if (!plan || S.busy) return;
+      const changes = plan.filter(p => p.out && p.out.ops.length).map(p => ({ slug: p.st.slug, label: p.out.label, ops: p.out.ops }));
+      const links = [].concat.apply([], plan.map(p => p.links || []));
+      S.busy = true; $(statusId).className = 'status'; $(statusId).textContent = 'Saving…';
+      try {
+        const r = await rpc('mog_hq_apply', { p_token: S.token, p_changes: changes, p_links: links });
+        if (!r.ok) {
+          if (r.error === 'SESSION_EXPIRED') { keepToken(null); showSignin('Your sign-in ran out. Sign in again; nothing was saved.'); return; }
+          await load();
+          $(statusId).className = 'status bad';
+          $(statusId).textContent = r.error === 'CONFLICT'
+            ? 'A store changed since HQ loaded it (' + (r.detail || '') + '). Nothing was saved anywhere. HQ reloaded every store: check the preview and save again.'
+            : 'Nothing was saved anywhere: ' + r.error;
+          return;
+        }
+        reset();
+        await load();
+        $(statusId).className = 'status good';
+        $(statusId).textContent = r.data.changes.length
+          ? 'Saved at ' + r.data.changes.length + (r.data.changes.length === 1 ? ' store' : ' stores') + '. Each store sees it in Manage → Changes, by ' + r.data.by + '.'
+          : 'Saved the vendor names. No store needed a change.';
+      } catch (err) {
+        $(statusId).className = 'status bad'; $(statusId).textContent = 'Not saved: ' + err.message;
+      } finally { S.busy = false; renderWork(); }
+    }
+
+    // ---- Vendor names ----
+    function renderLinks() {
+      if (!S.data.links.length) { $('links').innerHTML = '<p class="muted">None yet. They\'re remembered the first time you confirm a match in a rollout.</p>'; return; }
+      $('links').innerHTML = '<table><thead><tr><th>HQ name</th><th>Store</th><th>That store\'s vendor</th><th></th></tr></thead><tbody>' +
+        S.data.links.map(l => { const st = storeBy(l.slug);
+          return '<tr><td>' + esc(l.hqName) + '</td><td>' + esc(st ? storeName(st) : l.slug) + '</td><td>' + esc(l.vendor) + '</td>' +
+            '<td><button type="button" class="link" data-forget="' + esc(l.slug) + '" data-hq="' + esc(l.hqName) + '">Forget</button></td></tr>'; }).join('') +
+        '</tbody></table>';
+    }
+    $('links').addEventListener('click', async e => {
+      const slug = e.target.getAttribute && e.target.getAttribute('data-forget'); if (!slug || S.busy) return;
+      S.busy = true;
+      try {
+        const r = await rpc('mog_hq_apply', { p_token: S.token, p_changes: [], p_links: [{ slug, hqName: e.target.getAttribute('data-hq'), vendor: null }] });
+        $('links-status').textContent = r.ok ? 'Forgotten.' : r.error;
+        await load();
+      } catch (err) { $('links-status').textContent = err.message; }
+      finally { S.busy = false; }
+    });
+
+    // ---- Recent ----
+    function renderRecent() {
+      const list = S.data.recent;
+      $('recent').innerHTML = !list.length ? '<p class="muted">Nothing yet.</p>' :
+        '<table><thead><tr><th>When</th><th>Store</th><th>By</th><th>What</th></tr></thead><tbody>' +
+        list.map(x => { const st = storeBy(x.slug);
+          return '<tr><td style="white-space:nowrap">' + esc(new Date(x.at).toLocaleString()) + '</td><td>' + esc(st ? storeName(st) : x.slug) + '</td>' +
+            '<td>' + esc(String(x.by || '').replace(/^HQ · /, '')) + '</td><td>' + esc(x.label) + (x.undoneBy ? ' <span class="tag">undone at the store</span>' : '') + '</td></tr>'; }).join('') +
+        '</tbody></table>';
+    }
+
+    // ---- Start ----
+    if (!CE || !CFG.url) { document.body.innerHTML = '<p style="padding:24px">HQ isn\'t built right: run build.py.</p>'; return; }
+    if (S.token) load().catch(err => showSignin(err.message)); else showSignin('');
+  })();
+  </script>
+</body>
+</html>

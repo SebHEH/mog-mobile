@@ -43,6 +43,8 @@ SYNC_GS        = os.path.join(ROOT, 'apps-script', 'Sync.gs')
 APPS_SCRIPT    = os.path.join(ROOT, 'apps-script')
 DASHBOARD_GS   = os.path.join(APPS_SCRIPT, 'Dashboard.gs')
 EDITOR_SRC     = os.path.join(TEMPLATE_DIR, 'editor')
+HQ_TEMPLATE    = os.path.join(TEMPLATE_DIR, 'hq', 'index.html')
+HQ_DIR         = os.path.join(ROOT, 'hq')
 PREVIEW_DIR    = os.path.join(ROOT, '_preview')   # git-ignored: test stores, never published
 
 # The editor on Supabase (docs/MOG_OneApp_Spec.md Phases 2 and 4): each
@@ -80,6 +82,7 @@ SCRIPTLET_RE  = re.compile(r'<\?!=\s*(.*?)\s*\?>', re.S)
 RESERVED_SLUGS = {
     'template', '_build_scripts', 'sw.js', 'manifest.webmanifest',
     'stores.json', 'build.py', 'readme', 'readme.md',
+    'hq',   # HQ control (generate_hq)
 }
 
 # Supabase's rule (mog.stores, mog.provision_store, the Move this store to
@@ -94,6 +97,7 @@ ICON_PLACEHOLDER    = '__MOG_APPLE_TOUCH_ICON__'
 SUPABASE_PLACEHOLDER   = '/*__MOG_SUPABASE__*/null'
 ORDER_MATH_PLACEHOLDER = '/* __MOG_ORDER_MATH__ build-injected */'
 STORE_PLACEHOLDER      = '/*__MOG_STORE__*/null'
+HQ_PLACEHOLDER         = '/*__MOG_HQ__*/null'
 REGISTRY_MARKER     = '// __STORE_REGISTRY__ build-injected'
 
 # Maps the human-readable concept name (from stores.json) to a CSS theme
@@ -421,6 +425,32 @@ def generate_store(entry, template_html, template_sw, dry_run, order_math, supab
 # Hub registry injection
 # ---------------------------------------------------------------------------
 
+def generate_hq(supabase, dry_run):
+    """hq/: HQ control (schema v11), with the Supabase project and the
+    concepts' names (the theme slugs the database keeps, mog.stores.concept)
+    injected, and catalogEdit.js beside it: HQ works out each store's change
+    with the editor's own code."""
+    with open(HQ_TEMPLATE, 'r', encoding='utf-8') as f:
+        page = f.read()
+    if page.count(HQ_PLACEHOLDER) != 1:
+        fail(f"template/hq/index.html: expected {HQ_PLACEHOLDER} exactly once, found {page.count(HQ_PLACEHOLDER)}")
+    concepts = {}
+    for name, theme in CONCEPT_TO_THEME.items():
+        concepts.setdefault(theme, name)   # the first spelling (ĂN before AN)
+    cfg = {'url': supabase[0], 'key': supabase[1], 'concepts': concepts}
+    files = {'index.html': page.replace(HQ_PLACEHOLDER, js_json(cfg))}
+    with open(os.path.join(EDITOR_SRC, 'catalogEdit.js'), 'r', encoding='utf-8') as f:
+        files['catalogEdit.js'] = f.read()
+    for name, body in files.items():
+        if dry_run:
+            print(f"  [dry-run] write hq/{name} ({len(body):,} bytes)")
+            continue
+        os.makedirs(HQ_DIR, exist_ok=True)
+        with open(os.path.join(HQ_DIR, name), 'w', encoding='utf-8') as f:
+            f.write(body)
+        print(f"  [done]    write hq/{name} ({len(body):,} bytes)")
+
+
 def inject_hub_registry(stores, dry_run):
     """
     If root index.html exists and contains the STORE_REGISTRY marker line,
@@ -569,6 +599,9 @@ def main():
 
     print("[hub] registry injection")
     inject_hub_registry(stores, dry_run)
+
+    print("[hq] HQ control")
+    generate_hq(supabase, dry_run)
 
     print("[done]" + (" (dry-run, no files written)" if dry_run else ""))
 

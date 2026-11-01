@@ -301,6 +301,7 @@ class FakeSupabase {
     this.calls.push(fn);
     if (PHONE_FNS[fn]) return this.handlePhone(fn, p);
     if (EDITOR_FNS[fn]) return this.handleEditor(fn, p);
+    if (HQ_FNS[fn]) return this.handleHq(fn, p);
     const s = this.stores.get(p.p_slug);
     const ok = data => ({ ok: true, data });
     const err = error => ({ ok: false, error });
@@ -791,6 +792,129 @@ FakeSupabase.prototype.editorPublish = function (s) {
   s.catalog = catalogFromTables(s);
   return s.version;
 };
+// ---- HQ control (schema_v11.sql) --------------------------------------------
+// People with their own lockout (5 wrong, 15 minutes), a one-use invite that
+// becomes a passphrase, 12-hour tokens, the remembered vendor names (gone
+// with their vendor: the SQL's on delete cascade, applied here on read), and
+// one save across stores that writes every store or none.
+const HQ_FNS = { mog_hq_claim: 1, mog_hq_login: 1, mog_hq_data: 1, mog_hq_apply: 1 };
+FakeSupabase.prototype.hqState = function () {
+  if (!this.hq) this.hq = { users: new Map(), sessions: new Map(), links: [], tokenSeq: 0 };
+  return this.hq;
+};
+// mog.hq_invite: the code, as the SQL Editor shows it.
+FakeSupabase.prototype.hqInvite = function (name) {
+  const H = this.hqState();
+  const have = Array.from(H.users.keys()).find(n => n.toLowerCase() === String(name).trim().toLowerCase()) || String(name).trim();
+  const code = 'C0DE' + (++H.tokenSeq);
+  H.users.set(have, { pass: null, invite: code, inviteExpires: this.nowMs + 24 * 3600000, fail: 0, lockedUntil: 0 });
+  for (const [t, x] of H.sessions) if (x.name === have) H.sessions.delete(t);
+  return code;
+};
+FakeSupabase.prototype.hqLinks = function () {
+  const H = this.hqState();
+  H.links = H.links.filter(l => { const s = this.stores.get(l.slug); return s && s.tables && s.tables.vendors.some(v => v.name === l.vendor); });
+  return H.links;
+};
+FakeSupabase.prototype.handleHq = function (fn, p) {
+  const H = this.hqState();
+  const ok = data => ({ ok: true, data });
+  const err = (error, extra) => Object.assign({ ok: false, error }, extra || {});
+  const now = this.nowMs;
+  const userFor = name => {
+    const key = Array.from(H.users.keys()).find(n => n.toLowerCase() === String(name == null ? '' : name).trim().toLowerCase());
+    if (!key) return null;
+    const u = H.users.get(key);
+    if (u.lockedUntil && u.lockedUntil <= now) { u.fail = 0; u.lockedUntil = 0; }
+    return { key, u };
+  };
+  const fail = (u, msg) => {
+    u.fail++;
+    if (u.fail >= 5) { u.lockedUntil = now + 900000; return err('Too many attempts', { lockout: true, retryAfterMs: 900000 }); }
+    return err(msg);
+  };
+  const session = key => {
+    H.users.get(key).fail = 0; H.users.get(key).lockedUntil = 0;
+    const token = 'hqtok' + (++H.tokenSeq);
+    H.sessions.set(token, { name: key, expires: now + 12 * 3600000 });
+    return ok({ token, name: key, expiresAt: 'fake' });
+  };
+  const locked = u => err('Too many attempts', { lockout: true, retryAfterMs: u.lockedUntil - now });
+
+  if (fn === 'mog_hq_claim') {
+    const f = userFor(p.p_name);
+    if (!f || !f.u.invite || f.u.inviteExpires < now) return err('This invite isn\'t valid any more. Ask for a new one.');
+    if (f.u.lockedUntil) return locked(f.u);
+    if (String(p.p_code == null ? '' : p.p_code).trim().toUpperCase() !== f.u.invite) return fail(f.u, 'Wrong name or code');
+    if (String(p.p_passphrase == null ? '' : p.p_passphrase).length < 12) return err('PASSPHRASE_TOO_SHORT');
+    f.u.pass = String(p.p_passphrase); f.u.invite = null; f.u.inviteExpires = 0;
+    return session(f.key);
+  }
+  if (fn === 'mog_hq_login') {
+    const f = userFor(p.p_name);
+    if (!f || f.u.pass === null) return err('Wrong name or passphrase');
+    if (f.u.lockedUntil) return locked(f.u);
+    if (String(p.p_passphrase == null ? '' : p.p_passphrase) !== f.u.pass) return fail(f.u, 'Wrong name or passphrase');
+    return session(f.key);
+  }
+  const sess = H.sessions.get(p.p_token);
+  if (!sess || sess.expires <= now || !H.users.has(sess.name)) return err('SESSION_EXPIRED');
+  const name = sess.name;
+
+  if (fn === 'mog_hq_data') {
+    const stores = Array.from(this.stores.entries()).map(([slug, s]) => ({
+      slug, location: s.profile.location || null, abbr: s.profile.abbr || null, concept: s.profile.concept || '',
+      isTest: !!s.isTest, editorDirect: !!s.editorDirect, tables: s.editorDirect ? editorTablesJson(s.tables) : null }))
+      .sort((a, b) => (a.concept < b.concept ? -1 : a.concept > b.concept ? 1 : 0) || (a.isTest - b.isTest) ||
+                      String(a.location).localeCompare(String(b.location)) || (a.slug < b.slug ? -1 : 1));
+    const recent = [];
+    for (const [slug, s] of this.stores) for (const l of (s.changeLog || [])) {
+      if (String(l.by || '').indexOf('HQ · ') === 0) recent.push({ id: l.id, slug, at: l.at, by: l.by, label: l.label, undoneBy: l.undoneBy });
+    }
+    recent.sort((a, b) => b.id - a.id);
+    return ok({ name, stores, links: clone(this.hqLinks()).sort((a, b) => (a.hqName < b.hqName ? -1 : a.hqName > b.hqName ? 1 : 0) || (a.slug < b.slug ? -1 : 1)),
+                recent: recent.slice(0, 50) });
+  }
+
+  // mog_hq_apply: work every store out first, write only when all of them took.
+  const changes = p.p_changes, links = p.p_links == null ? [] : p.p_links;
+  if (!Array.isArray(changes) || changes.length > 50) return err('changes must be an array of at most 50 stores');
+  if (!Array.isArray(links) || links.length > 1000) return err('links must be an array');
+  const by = ('HQ · ' + name).slice(0, 40);
+  const next = new Map();
+  for (const ch of changes.slice().sort((a, b) => (String(a.slug) < String(b.slug) ? -1 : 1))) {
+    const s = this.stores.get(ch.slug);
+    if (!s || !s.editorDirect) return err('REJECTED: ' + (ch.slug || '(no store)') + ' isn\'t on the app\'s editor');
+    if (!Array.isArray(ch.ops)) return err('REJECTED: ' + ch.slug + ' ops must be an array');
+    if (!ch.ops.length) continue;
+    if (ch.ops.length > 5000) return err('REJECTED: too many changes at once for ' + ch.slug);
+    try { next.set(ch.slug, { s, ch, tables: editorApplyOps(s.tables, ch.ops) }); } catch (e) {
+      const m = String(e.message);
+      return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: ch.slug + ' ' + m.slice(10) }) : err('REJECTED: ' + ch.slug + ' ' + m);
+    }
+  }
+  const tablesOf = slug => (next.has(slug) ? next.get(slug).tables : (this.stores.get(slug) || {}).tables);
+  for (const l of links) {
+    if (l.vendor == null || l.vendor === '') continue;
+    const t = tablesOf(l.slug);
+    if (!t || !t.vendors.some(v => v.name === l.vendor)) return err('REJECTED: links foreign key: ' + l.slug + ' ' + l.vendor);
+    const hq = String(l.hqName == null ? '' : l.hqName).trim();
+    if (!hq || hq.length > 100) return err('REJECTED: hq_vendor_links_hq_name_check');
+  }
+  const out = [];
+  for (const [slug, x] of next) {
+    x.s.tables = x.tables;
+    const entry = this.editorLog(x.s, by, String(x.ch.label || '').trim().slice(0, 300) || 'HQ change', x.ch.ops, null);
+    out.push({ slug, changeId: entry.id, catalogVersion: this.editorPublish(x.s) });
+  }
+  for (const l of links) {
+    const hq = String(l.hqName == null ? '' : l.hqName).trim();
+    H.links = H.links.filter(k => !(k.slug === l.slug && k.hqName.toLowerCase() === hq.toLowerCase()));
+    if (l.vendor) H.links.push({ slug: l.slug, hqName: hq, vendor: l.vendor });
+  }
+  return ok({ by, changes: out });
+};
+
 FakeSupabase.prototype.editorLog = function (s, by, label, ops, undoes) {
   s.changeLog = s.changeLog || [];
   this.changeSeq = (this.changeSeq || 0) + 1;

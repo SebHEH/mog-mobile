@@ -105,6 +105,17 @@ check "v9 helper: person_now not exposed"         404 ''   -X POST "${J[@]}" -d 
 # schema v10
 check "v10 helper: vendor_contact_clean not exposed" 404 '' -X POST "${J[@]}" -d '{"p":{}}' "$(rpc vendor_contact_clean)"
 
+# schema v11 (a made-up name only: a real person's name would count toward their lockout)
+check "v11 tables: hq_users not reachable"        404 ''   "$URL/rest/v1/hq_users"
+check "v11 tables: hq_sessions not reachable"     404 ''   "$URL/rest/v1/hq_sessions"
+check "v11 tables: hq_vendor_links not reachable" 404 ''   "$URL/rest/v1/hq_vendor_links"
+check "v11 helper: hq_invite not exposed"         404 ''   -X POST "${J[@]}" -d '{"p_name":"zz probe"}' "$(rpc hq_invite)"
+check "v11 helper: hq_session not exposed"        404 ''   -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc hq_session)"
+check "v11 hq_login: an unknown name is refused"  200 'Wrong name or passphrase' -X POST "${J[@]}" -d '{"p_name":"zz probe","p_passphrase":"bogus bogus bogus"}' "$(rpc mog_hq_login)"
+check "v11 hq_claim: an unknown name is refused"  200 'invite'          -X POST "${J[@]}" -d '{"p_name":"zz probe","p_code":"0000","p_passphrase":"bogus bogus bogus"}' "$(rpc mog_hq_claim)"
+check "v11 hq_data: bad token refused"            200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_hq_data)"
+check "v11 hq_apply: bad token refused"           200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_changes":[],"p_links":[]}' "$(rpc mog_hq_apply)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

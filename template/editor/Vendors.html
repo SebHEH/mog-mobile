@@ -221,26 +221,10 @@
 
     function byName(n) { for (var i = 0; i < S.vendors.length; i++) if (S.vendors[i].name === n) return S.vendors[i]; return null; }
 
-    // Delivery days <-> the order-day multipliers (ManageVendors.html's
-    // computeMultsFromDelivery / inferDeliveryFromMults). An order placed on
-    // day i arrives the next day and covers the days until the following
-    // delivery, so mults[i] is that gap (0 when nothing is due).
-    function multsFromDays(days) {
-      var mults = [0, 0, 0, 0, 0, 0, 0];
-      for (var i = 0; i < 7; i++) {
-        var tomorrow = (i + 1) % 7;
-        if (!days[tomorrow]) continue;
-        var gap = 1;
-        for (var j = 1; j <= 7; j++) { if (days[(tomorrow + j) % 7]) { gap = j; break; } }
-        mults[i] = gap;
-      }
-      return mults;
-    }
-    function daysFromMults(mults) {
-      var days = [false, false, false, false, false, false, false];
-      for (var i = 0; i < 7; i++) if (Number(mults[i]) > 0) days[(i + 1) % 7] = true;
-      return days;
-    }
+    // Delivery days <-> the order-day multipliers: catalogEdit.js's, shared
+    // with HQ (ManageVendors.html keeps its own for the Sheet dialog).
+    var multsFromDays = CatalogEdit.multsFromDays;
+    var daysFromMults = CatalogEdit.daysFromMults;
     function byHand(mults) { return multsFromDays(daysFromMults(mults)).join(',') !== mults.map(Number).join(','); }
     function hasDays(mults) { return mults.some(function (m) { return Number(m) > 0; }); }
 

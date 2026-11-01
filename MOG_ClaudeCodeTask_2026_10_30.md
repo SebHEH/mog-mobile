@@ -101,7 +101,7 @@ Do not implement these until I pick. Present each with the options, the cost, an
 
 ### C2. H1 same-day close destroys the day's log
 
-This is the held-back CurrentState item, now diagnosed in the audit. The recommended fix is `last_closed_date` on `mog.store_state`, set on every close. A close whose `p_closing <= last_closed_date` and is not an explicit `sameDay` re-close still advances the cycle, but skips the log replacement in both `mog.order_log` and `LOG_ORDERS`, so the day's history survives and the new day still starts. If I approve, follow [.claude/skills/mog-supabase-schema/SKILL.md](.claude/skills/mog-supabase-schema/SKILL.md): the next schema version (`schema_v11.sql`, `smoke_v11.sql`: v10 is vendor contacts, taken 2026-11-01), fake-Supabase and gate updates, SQL run by a maintainer first, then the code.
+This is the held-back CurrentState item, now diagnosed in the audit. The recommended fix is `last_closed_date` on `mog.store_state`, set on every close. A close whose `p_closing <= last_closed_date` and is not an explicit `sameDay` re-close still advances the cycle, but skips the log replacement in both `mog.order_log` and `LOG_ORDERS`, so the day's history survives and the new day still starts. If I approve, follow [.claude/skills/mog-supabase-schema/SKILL.md](.claude/skills/mog-supabase-schema/SKILL.md): the next free schema version (v10 and v11 were taken 2026-11-01 by vendor contacts and HQ control, so likely `schema_v12.sql` and `smoke_v12.sql`: check `supabase/` first), fake-Supabase and gate updates, SQL run by a maintainer first, then the code.
 
 ### C3. H2 override off before 3:30 changes the log and recap
 
@@ -113,7 +113,7 @@ Decide whether a partially delivered recap should retry the failed addresses or 
 
 ## Batch D: hardening, after Batch A (no deploy)
 
-- **D1. #25** Bound `p_cycle_date` in `mog_sync_set_state` to 7 days either side of the store's local today. Needs a schema version (fold into C2's `schema_v11.sql` if both are approved).
+- **D1. #25** Bound `p_cycle_date` in `mog_sync_set_state` to 7 days either side of the store's local today. Needs a schema version (fold into C2's schema version if both are approved).
 - **D2. #26** Cap the rows array in `mog.upsert_counts` (and its wrappers) at ~2,000, returning the normal error envelope. Fold into the same schema version.
 - **D3. #27** Make `api_saveOnHand_` treat a blank or non-finite `onHand` the way `mog.to_onhand` does. Add a case to `supabase_step4.test.js` or a small unit check.
 - **D4. #37** When `appendLogBackup_` fails, send the recap from the rows in hand (`sendRecapRowsNow_`) instead of scheduling a read of an empty log.

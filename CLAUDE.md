@@ -39,7 +39,7 @@ Every change anchors to one of these layers. Pick the layer before drafting any 
 | **Apps Script backend** | `apps-script/*.gs`, `apps-script/*.html`, `apps-script/appsscript.json` | Bound script that runs in each Sheet. Identical across all 11 deploy targets — per-store config lives in spreadsheet data, not code. |
 | **Supabase** | `supabase/schema*.sql`, `supabase/tests/` | Every store runs on it: counts, Emergency Override, the cycle and the order log, the catalog (edited in the app), recipients and People. Phones talk to it directly (`phone_direct`); each Sheet is frozen for catalog edits and gets a nightly LOG_ORDERS backup. Design records: `docs/MOG_SupabaseMigration.md` and `docs/MOG_OneApp_Spec.md` (read them before touching this layer). Schema changes are run by Sebastian or Donny in the SQL Editor (skill `mog-supabase-schema`); Claude never writes through the connector. |
 | **Deploy infrastructure** | `build.py`, `deploy.py`, `apps-script/.clasp-targets.json` | How code reaches production. `.clasp-targets.json` holds both `scriptId` (for source push) and `deploymentId` (for web-app version bump) per target. `deploy.py --discover` finds deploymentIds on a fresh checkout. |
-| **Generated (do NOT edit)** | `rpr/`, `rprfo/`, `rpt/`, `rptfo/`, `rpfr/`, `rpfrf/`, `tnyt/`, `tnytf/`, `tnyr/`, `tnyrf/` | Output of `build.py`. Overwritten on every build. |
+| **Generated (do NOT edit)** | `rpr/`, `rprfo/`, `rpt/`, `rptfo/`, `rpfr/`, `rpfrf/`, `tnyt/`, `tnytf/`, `tnyr/`, `tnyrf/`, `hq/` | Output of `build.py`. Overwritten on every build. `hq/` comes from `template/hq/`. |
 
 **Anti-patterns:**
 - Editing `rpr/index.html` directly instead of `template/index.html` → lost on next build.
@@ -185,6 +185,8 @@ mog-mobile/
 ├── template/                    PER-STORE PWA SOURCE.
 │   ├── index.html               (311 KB — the store app UI).
 │   ├── sw.js                    (6.9 KB — store SW).
+│   ├── hq/index.html            HQ control (schema v11): add a vendor or a concept's LTO items to many stores at once. build.py
+│   │                            publishes it at hq/ with catalogEdit.js beside it; sign-in is a person's own HQ passphrase.
 │   └── editor/                  The editor on Supabase (one-app Phases 2 and 4): catalogEdit.js (Manage Items, Manage Vendors,
 │                                Storage Areas and Shelf to Sheet over the catalog tables, gated against Items.gs / Vendors.gs /
 │                                PickPath.gs) + host.js (runs those Apps Script pages and Editor Home as static pages) + meImport.js
@@ -237,6 +239,7 @@ mog-mobile/
 │   ├── schema_v8.sql            One-app Phase 4: the area rename step for the editor's saves and Undo, mog_sync_switch_editor (run after v7).
 │   ├── schema_v9.sql            Phase 4's rest: the order log read (mog_history) + the switch's LOG_ORDERS copy, recipients, People (rename/remove), the Health status (run after v8).
 │   ├── schema_v10.sql           Vendor contacts: mog.vendors.contact, saved through mog_editor_apply, phones get vendorContacts in the catalog (run after v9).
+│   ├── schema_v11.sql           HQ control: HQ people (invite, own passphrase and lockout), remembered vendor names, mog_hq_data / mog_hq_apply (all stores or none) (run after v10).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
 │   └── tests/                   smoke.sql … smoke_v8.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).

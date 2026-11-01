@@ -369,7 +369,7 @@ const CONTROLS = [
     find: 'w.vendors.push({ name: name, mults: [0, 0, 0, 0, 0, 0, 0], cutoff: null });',
     replace: 'w.vendors.push({ name: name, mults: [1, 1, 1, 1, 1, 1, 1], cutoff: null });' },
   { file: 'ce', name: 'new items go to the top of the list', find: '      seq++;\n', replace: '      seq = 1;\n' },
-  { file: 'ce', name: 'an imported item gets a par', find: "pack: '', par: null,", replace: "pack: '', par: 0," },
+  { file: 'ce', name: 'an imported item gets a par', find: "pack: s_(row.pack), par: null,", replace: "pack: s_(row.pack), par: 0," },
   { file: 'ce', name: 'the primary drops out of the vendors', find: '      const eligible = [primary];', replace: '      const eligible = [];' },
   { file: 'ce', name: 'a quoted comma splits the field', find: "        if (c !== '\"') field += c;",
     replace: "        if (c === ',') { row.push(field); field = ''; } else if (c !== '\"') field += c;" },

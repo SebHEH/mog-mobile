@@ -12,9 +12,10 @@
 //     over 300) are refused instead of written
 // Some calls are the editor's own, with no Sheet twin: commitImportItems
 // (Import from MarginEdge, tests/me_import.test.js), the Items page's bulk
-// saves (tests/items_bulk.test.js), and the Vendors page's getVendorsPage and
+// saves (tests/items_bulk.test.js), the Vendors page's getVendorsPage and
 // commitSaveVendor (a vendor's days, cutoff and contact, schema v10;
-// tests/vendor_contacts.test.js).
+// tests/vendor_contacts.test.js), and HQ's commitHqRollout (one store's
+// share of a vendor or LTO rollout, schema v11; tests/hq_rollout.test.js).
 // The store is never part of this file: the tables it gets are one store's,
 // and mog_editor_apply takes the store from the sign-in token.
 //
@@ -216,6 +217,75 @@
                itemCount: t.items.filter(it => it.active && it.primaryVendor === v.name).length,
                backupCount: backups.size };
     });
+  }
+
+  // ---- Delivery days (the Vendors page and HQ) -------------------------------
+  // ManageVendors.html's computeMultsFromDelivery / inferDeliveryFromMults,
+  // index 0 = Monday. An order placed on day i arrives the next day and
+  // covers the days until the following delivery, so mults[i] is that gap
+  // (0 when nothing is due).
+  function multsFromDays(days) {
+    const mults = [0, 0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < 7; i++) {
+      const tomorrow = (i + 1) % 7;
+      if (!days[tomorrow]) continue;
+      let gap = 1;
+      for (let j = 1; j <= 7; j++) { if (days[(tomorrow + j) % 7]) { gap = j; break; } }
+      mults[i] = gap;
+    }
+    return mults;
+  }
+  function daysFromMults(mults) {
+    const days = [false, false, false, false, false, false, false];
+    for (let i = 0; i < 7; i++) if (Number(mults[i]) > 0) days[(i + 1) % 7] = true;
+    return days;
+  }
+
+  // ---- The same vendor at another store (HQ) ---------------------------------
+  // A store's name for a vendor HQ names: the same name in any case, else the
+  // closest one once the words that only tell a company apart ("and",
+  // "Inc", "Distributions") are dropped: equal, one the start of the other,
+  // or a letter in five apart ("Chefs Warehouse", "Chef Centre"). HQ shows
+  // every match for a person to confirm. null = no match.
+  const VENDOR_NOISE = ['and', 'the', 'inc', 'co', 'llc', 'ltd', 'corp', 'company',
+                        'distribution', 'distributions', 'distributor', 'distributors'];
+  function vendorKey(name) {
+    return s_(name).toLowerCase().replace(/&/g, ' ').split(/[^a-z0-9]+/)
+      .filter(w => w && VENDOR_NOISE.indexOf(w) < 0).join('');
+  }
+  function editDistance(a, b) {
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      for (let j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      }
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  function matchVendor(names, wanted) {
+    const w = s_(wanted);
+    if (!w) return null;
+    const same = names.find(n => s_(n).toLowerCase() === w.toLowerCase());
+    if (same) return { name: same, how: 'same' };
+    const k = vendorKey(w);
+    if (!k) return null;
+    let best = null;
+    for (const n of names) {
+      const nk = vendorKey(n);
+      if (!nk) continue;
+      let score;
+      if (nk === k) score = 0;
+      else if (Math.min(nk.length, k.length) >= 3 && (nk.indexOf(k) === 0 || k.indexOf(nk) === 0)) score = 1;
+      else {
+        const d = editDistance(nk, k);
+        if (d > Math.max(1, Math.floor(Math.max(nk.length, k.length) / 5))) continue;
+        score = 1 + d;
+      }
+      if (!best || score < best.score) best = { name: n, score: score };
+    }
+    return best ? { name: best.name, how: 'close' } : null;
   }
 
   // getManageItemsBootstrap_. The Par Review flags come from the order log
@@ -875,6 +945,53 @@
     return { ok: true, mode: add ? 'add' : 'edit', name: v.name, cutoffTime: v.cutoff, contact: contact || {} };
   }
 
+  // HQ's change at one store (hq/; schema v11 applies every store's together).
+  // p = { label, vendors: [{ name, mults, cutoff, contact }]   vendors to add here
+  //       items:   [{ name, pack, notes, vendor, backups }] } this store's vendor names
+  // Each piece is the editor's own save: a vendor as the Vendors page adds
+  // it; a new item as Import from MarginEdge adds one (no par, no storage
+  // area, so it waits in the store's Needs setup and on no count list yet);
+  // an item the store already has (same name) keeps its main vendor, par and
+  // area, and any of the rollout's vendors it doesn't list yet is added the
+  // way the Items page's "Add to a vendor" does.
+  function hqRollout(w, p) {
+    p = p || {};
+    const vendorsAdded = [];
+    for (const v of (Array.isArray(p.vendors) ? p.vendors : [])) {
+      vendorsAdded.push(saveVendor(w, Object.assign({}, v, { mode: 'add' })).name);
+    }
+    const byName = new Map();
+    for (const it of w.items) if (s_(it.name)) byName.set(s_(it.name).toLowerCase(), it);
+    const fresh = [], backupsAdded = [], skipped = [];
+    for (const row of (Array.isArray(p.items) ? p.items : [])) {
+      const name = s_(row && row.name);
+      if (!name) throw new Error('Item Name is required.');
+      const main = normalizeVendorOrThrow(w, row.vendor);
+      const backups = (Array.isArray(row.backups) ? row.backups : []).map(v => normalizeVendorOrThrow(w, v))
+        .filter((v, i, all) => v.toLowerCase() !== main.toLowerCase() && all.indexOf(v) === i);
+      const have = byName.get(name.toLowerCase());
+      if (!have) {
+        fresh.push({ name: name, primaryVendor: main, eligible: backups, pack: row.pack, notes: row.notes });
+        continue;
+      }
+      if (have.active !== true) { skipped.push({ name: s_(have.name), reason: 'inactive here' }); continue; }
+      const listed = new Set([s_(have.primaryVendor)].concat(have.eligible || []).map(v => s_(v).toLowerCase()));
+      const added = [];
+      for (const v of [main].concat(backups)) {
+        if (listed.has(v.toLowerCase())) continue;
+        const res = setItemsVendor(w, [have.id], v, true);
+        if (res.changed) { added.push(v); listed.add(v.toLowerCase()); }
+        else if (res.skipped.length) { skipped.push({ name: s_(have.name), reason: res.skipped[0].reason }); break; }
+      }
+      if (added.length) backupsAdded.push({ name: s_(have.name), vendors: added });
+      else if (!skipped.some(x => x.name === s_(have.name))) skipped.push({ name: s_(have.name), reason: 'already here' });
+    }
+    const imported = fresh.length ? importItems(w, { items: fresh }) : { itemsAdded: 0, skipped: [] };
+    const itemsAdded = fresh.map(r => r.name).filter(n => !imported.skipped.some(x => x.name === n));
+    return { ok: true, label: s_(p.label), vendorsAdded: vendorsAdded, itemsAdded: itemsAdded, backupsAdded: backupsAdded,
+             skipped: skipped.concat(imported.skipped) };
+  }
+
   // ---- Storage Areas (PickPath.gs) ---------------------------------------------
 
   const MAX_AREAS = 18;   // Core.gs AREA_TABLE: SETUP rows 2-19
@@ -1095,8 +1212,8 @@
       taken.add(name.toLowerCase());
       maxN++;
       seq++;
-      w.items.push({ id: 'ITEM-' + String(maxN).padStart(4, '0'), name: name, primaryVendor: primary, pack: '', par: null,
-                     active: true, useMult: true, notes: '', sku: s_(row.sku), category: s_(row.category),
+      w.items.push({ id: 'ITEM-' + String(maxN).padStart(4, '0'), name: name, primaryVendor: primary, pack: s_(row.pack), par: null,
+                     active: true, useMult: true, notes: s_(row.notes), sku: s_(row.sku), category: s_(row.category),
                      eligible: eligible, seq: seq });
       itemsAdded++;
     }
@@ -1238,6 +1355,14 @@
       const v = findVendor(base, s_(args[0]));
       return 'Removed vendor "' + (v ? v.name : s_(args[0])) + '"';
     }
+    if (fn === 'commitHqRollout') {
+      const parts = [];
+      const few = names => (names.length <= 6 ? ' (' + names.join(', ') + ')' : '');
+      if (result.vendorsAdded.length) parts.push('added vendor' + (result.vendorsAdded.length === 1 ? ' ' : 's ') + result.vendorsAdded.join(', '));
+      if (result.itemsAdded.length) parts.push('added ' + plural(result.itemsAdded.length, 'item') + few(result.itemsAdded));
+      for (const b of result.backupsAdded) parts.push(b.name + ' also from ' + b.vendors.join(', '));
+      return 'HQ' + (result.label ? ' "' + result.label + '"' : '') + (parts.length ? ': ' + parts.join('; ') : '');
+    }
     if (fn === 'commitSaveVendor' && result.mode === 'add') {
       return 'Added vendor "' + result.name + '"' + (Object.keys(result.contact).length ? ' with its contact' : '');
     }
@@ -1299,6 +1424,7 @@
     commitUpdateVendorMultsAndCutoff: (w, args) => updateVendor(w, args[0], args[1], args[2]),
     commitRemoveVendor: (w, args) => removeVendor(w, args[0]),
     commitSaveVendor: (w, args) => saveVendor(w, args[0]),
+    commitHqRollout: (w, args) => hqRollout(w, args[0]),
     commitStorageAreasDraft: (w, args, shifts, renames) => storageAreasDraft(w, args[0], renames),
     commitReorderPickPath: (w, args) => reorderPickPath(w, args[0], args[1]),
     commitPlaceBackupVendors: w => placeBackupVendors(w)
@@ -1317,7 +1443,8 @@
   }
 
   const api = { call: call, applyOps: applyOps, inverseOps: inverseOps, reads: Object.keys(READS),
-                writes: Object.keys(WRITES), vendorList: vendorList, parseCsv: parseCsv };
+                writes: Object.keys(WRITES), vendorList: vendorList, parseCsv: parseCsv,
+                multsFromDays: multsFromDays, daysFromMults: daysFromMults, matchVendor: matchVendor };
   root.CatalogEdit = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : this);
