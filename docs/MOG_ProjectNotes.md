@@ -20,10 +20,11 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 
 - **Canary: rprfo** (`route.py`'s `CANARY`). rpr's pars may not be true 1-day pars, so it's a poor test store.
 - **Not used:**
-  - rpt, rptfo, rpfr and rpfrf (Roll Play Tysons and Founders);
+  - rpt, rptfo and rpfrf (Roll Play Tysons, and Founders FOH);
   - tnyt (Teas'n You Tysons BOH), which moved to the app empty.
 
   Never use them as canaries or as evidence of real behavior. rpfr was built from rpt's Sheet (and the FOH pair the same way), so drift shows up in pairs. Tysons FOH (tnytf) runs that whole store, including a "BOH section - Warehouse" area.
+- **Founders BOH (rpfr) is in use (2026-11-01).** Roll Play Founders Row is its own store now (it no longer shares with Chasin' Tails and NUE), with its own vendor accounts; its contacts come from Tony. Whether Founders FOH (rpfrf) is in use too isn't confirmed.
 - **Rockville BOH (tnyr) and FOH (tnyrf) are in use.** Each imports its items from the same Rockville MarginEdge file, ticking only its own. The import's "already in the store" check doesn't look at the other store, so nothing stops an item landing in both.
 - **`rprfotest`** (a Supabase-only test store, `is_test`) holds **rprfo's real PIN**. Never type it, and never sign in there by script.
 

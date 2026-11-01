@@ -119,7 +119,7 @@ See `CLAUDE.md` → "Standing invariants" (10 rules). They aren't repeated here 
 | `rprfo` | Roll Play - Rosslyn FOH | Canary: the first to get every deploy. |
 | `rpt` | Roll Play - Tysons BOH | Not used yet. |
 | `rptfo` | Roll Play - Tysons FOH | Not used yet. |
-| `rpfr` | Roll Play - Founders BOH | Not used yet. |
+| `rpfr` | Roll Play - Founders BOH | In use since 2026-11 (Founders Row is its own store now). |
 | `rpfrf` | Roll Play - Founders FOH | Not used yet. |
 | `tnyt` | Teas'n You - Tysons BOH | Empty, not used. Its `/exec` flaked after redeploys (10-16, 10-19) and recovered both times. |
 | `tnytf` | Teas'n You - Tysons FOH | |

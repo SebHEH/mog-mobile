@@ -190,9 +190,10 @@ mog-mobile/
 │                                PickPath.gs) + host.js (runs those Apps Script pages and Editor Home as static pages) + meImport.js
 │                                (Import from MarginEdge: vendors, then items, then one logged save). host.js also answers Order
 │                                History, the Par Review flags (OrderMath.gs, copied in as orderMath.js) and the Health Check
-│                                (catalogEdit.js getStoreHealthReport) from Supabase. Items.html, Overview.html and Changes.html are
-│                                pages only the app has (Manage Items since the 2026-10-20 redesign, with its bulk bar; the
-│                                Manage home; the change log). ManageItems.html stays for the Sheet dialog and /exec only. On a computer every page runs
+│                                (catalogEdit.js getStoreHealthReport) from Supabase. Items.html, Vendors.html, Overview.html and Changes.html are
+│                                pages only the app has (Manage Items since the 2026-10-20 redesign, with its bulk bar; Vendors
+│                                since 2026-11-01, with each vendor's contact; the Manage home; the change log). ManageItems.html
+│                                and ManageVendors.html stay for the Sheet dialog and /exec only. On a computer every page runs
 │                                inside the app, in a frame beside its sidebar (?embed=1, spec U2). build.py publishes it at
 │                                <slug>/editor/ for a store marked "editor": "supabase" (every store), and --preview for a test store.
 ├── apps-script/                 APPS SCRIPT SOURCE.
@@ -235,6 +236,7 @@ mog-mobile/
 │   ├── schema_v7.sql            Phone quick edits (one-app Phase 3): "just today" par/add in mog.quick_edits + the snapshot, mog_set_par, review list (run after v6).
 │   ├── schema_v8.sql            One-app Phase 4: the area rename step for the editor's saves and Undo, mog_sync_switch_editor (run after v7).
 │   ├── schema_v9.sql            Phase 4's rest: the order log read (mog_history) + the switch's LOG_ORDERS copy, recipients, People (rename/remove), the Health status (run after v8).
+│   ├── schema_v10.sql           Vendor contacts: mog.vendors.contact, saved through mog_editor_apply, phones get vendorContacts in the catalog (run after v9).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
 │   └── tests/                   smoke.sql … smoke_v8.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).

@@ -102,6 +102,9 @@ check "v9 sync: bad key can't seed recipients"    200 'BAD_SYNC_KEY'    -X POST 
 check "v9 helper: recipients_check not exposed"   404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_list":[],"p_gm_edit":true}' "$(rpc recipients_check)"
 check "v9 helper: person_now not exposed"         404 ''   -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_name":"x"}' "$(rpc person_now)"
 
+# schema v10
+check "v10 helper: vendor_contact_clean not exposed" 404 '' -X POST "${J[@]}" -d '{"p":{}}' "$(rpc vendor_contact_clean)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

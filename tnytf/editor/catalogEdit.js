@@ -10,12 +10,16 @@
 //     active (D23); the Sheet deactivates them
 //   - names the database can't hold (a vendor over 100 characters, an item
 //     over 300) are refused instead of written
-// One call is the editor's own, with no Sheet twin: commitImportItems
-// (Import from MarginEdge), checked by tests/me_import.test.js.
+// Some calls are the editor's own, with no Sheet twin: commitImportItems
+// (Import from MarginEdge, tests/me_import.test.js), the Items page's bulk
+// saves (tests/items_bulk.test.js), and the Vendors page's getVendorsPage and
+// commitSaveVendor (a vendor's days, cutoff and contact, schema v10;
+// tests/vendor_contacts.test.js).
 // The store is never part of this file: the tables it gets are one store's,
 // and mog_editor_apply takes the store from the sign-in token.
 //
-// tables = { vendors:  [{ name, mults, cutoff }],
+// tables = { vendors:  [{ name, mults, cutoff, contact? }]   (contact only
+//                                                            when it has one)
 //            areas:    [{ name, ord }],
 //            items:    [{ id, name, primaryVendor, pack, par, active, useMult,
 //                         notes, sku, category, eligible, seq }],
@@ -163,6 +167,55 @@
       mults: (v.mults || []).slice(0, 7).map(x => Number(x) || 0),
       cutoffTime: v.cutoff || null
     }));
+  }
+
+  // ---- A vendor's contact (schema v10) ---------------------------------------
+  // The eight keys, text only, trimmed, empty ones left out: the rule
+  // mog.vendor_contact_clean applies. Keys go in jsonb's stored order
+  // (shorter first, then A to Z), so a contact saved here reads back from
+  // Supabase exactly as it went in and an unchanged one makes no change.
+  // null when there is nothing to keep.
+  const CONTACT_KEYS = ['person', 'phone', 'email', 'orderVia', 'orderEmail', 'website', 'account', 'notes'];
+  const CONTACT_LABEL = { person: 'contact name', phone: 'phone', email: 'email', orderVia: 'how to order',
+                          orderEmail: 'order email', website: 'website', account: 'account number', notes: 'notes' };
+  const jsonbKeyOrder = (a, b) => (a.length - b.length) || (a < b ? -1 : a > b ? 1 : 0);
+  const CONTACT_ORDER = CONTACT_KEYS.slice().sort(jsonbKeyOrder);
+  function cleanContact(c) {
+    if (!c || typeof c !== 'object' || Array.isArray(c)) return null;
+    const out = {};
+    for (const k of CONTACT_ORDER) {
+      if (typeof c[k] !== 'string') continue;
+      const v = c[k].trim(), max = k === 'notes' ? 500 : 200;
+      if (v.length > max) {
+        const label = CONTACT_LABEL[k];
+        throw new Error(label.charAt(0).toUpperCase() + label.slice(1) + ': ' + max + ' characters at most.');
+      }
+      if (v) out[k] = v;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+  // The same contact for comparing: key order fixed, empty = none. Never throws.
+  function contactKey(c) {
+    if (!c || typeof c !== 'object') return null;
+    const keys = Object.keys(c).sort(jsonbKeyOrder);
+    return keys.length ? JSON.stringify(keys.map(k => [k, c[k]])) : null;
+  }
+
+  // The Vendors page: every vendor A to Z with its days, cutoff and contact,
+  // and the counts the phone's vendor card shows (the catalog's itemCounts and
+  // backupCounts: active items it's the main vendor of, and active items on
+  // its list whose main vendor is another one).
+  function getVendorsPage(t) {
+    const active = new Map(t.items.filter(it => it.active).map(it => [it.id, it]));
+    return vendorList(t).map(name => {
+      const v = findVendor(t, name);
+      const backups = new Set(t.pickRows.filter(r => r.vendor === v.name && active.has(r.id) &&
+                                                     active.get(r.id).primaryVendor !== v.name).map(r => r.id));
+      return { name: v.name, mults: (v.mults || []).slice(0, 7).map(x => Number(x) || 0), cutoffTime: v.cutoff || null,
+               contact: v.contact ? clone(v.contact) : {},
+               itemCount: t.items.filter(it => it.active && it.primaryVendor === v.name).length,
+               backupCount: backups.size };
+    });
   }
 
   // getManageItemsBootstrap_. The Par Review flags come from the order log
@@ -805,6 +858,23 @@
     return { ok: true, name: name };
   }
 
+  // The Vendors page's one save: a new vendor, or an existing one's days,
+  // cutoff and contact together. p = { mode: 'add' | 'edit', name, mults (7),
+  // cutoff ('HH:MM', 'H:MM AM/PM' or ''), contact }. A name never changes.
+  function saveVendor(w, p) {
+    p = p || {};
+    const add = p.mode === 'add';
+    const contact = cleanContact(p.contact);
+    if (p.cutoff && normalizeCutoff(p.cutoff) === null) {
+      throw new Error('Cutoff time format not recognized. Use "HH:MM" (24h) or "H:MM AM/PM".');
+    }
+    if (add) addVendor(w, p.name, p.mults, p.cutoff);
+    else updateVendor(w, p.name, p.mults, p.cutoff);
+    const v = findVendor(w, String(p.name || '').trim());
+    if (contact) v.contact = contact; else delete v.contact;
+    return { ok: true, mode: add ? 'add' : 'edit', name: v.name, cutoffTime: v.cutoff, contact: contact || {} };
+  }
+
   // ---- Storage Areas (PickPath.gs) ---------------------------------------------
 
   const MAX_AREAS = 18;   // Core.gs AREA_TABLE: SETUP rows 2-19
@@ -1064,14 +1134,14 @@
   // The fields a row's "before" must still match for a change to apply. The
   // order fields (seq) are not part of it: they only place a row.
   const USER_FIELDS = {
-    vendors:  ['mults', 'cutoff'],
+    vendors:  ['mults', 'cutoff', 'contact'],
     areas:    ['ord'],
     items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible'],
     pickRows: ['area', 'shelfOrder']
   };
   function matches(t, row, want) {
-    return USER_FIELDS[t].every(f => JSON.stringify(row[f] === undefined ? null : row[f]) ===
-                                     JSON.stringify(want[f] === undefined ? null : want[f]));
+    const v = (f, x) => (f === 'contact' ? contactKey(x) : JSON.stringify(x === undefined ? null : x));
+    return USER_FIELDS[t].every(f => v(f, row[f]) === v(f, want[f]));
   }
 
   // Apply ops to tables (a copy), as mog_editor_apply does: refused with
@@ -1168,6 +1238,21 @@
       const v = findVendor(base, s_(args[0]));
       return 'Removed vendor "' + (v ? v.name : s_(args[0])) + '"';
     }
+    if (fn === 'commitSaveVendor' && result.mode === 'add') {
+      return 'Added vendor "' + result.name + '"' + (Object.keys(result.contact).length ? ' with its contact' : '');
+    }
+    if (fn === 'commitSaveVendor') {
+      const before = findVendor(base, result.name), after = findVendor(work, result.name);
+      const parts = [];
+      if (before && after && JSON.stringify(before.mults) !== JSON.stringify(after.mults)) {
+        parts.push('day multipliers ' + before.mults.join(' ') + ' → ' + after.mults.join(' '));
+      }
+      if (before && after && before.cutoff !== after.cutoff) parts.push('cutoff ' + fmt(before.cutoff) + ' → ' + fmt(after.cutoff));
+      const was = (before && before.contact) || {}, now = (after && after.contact) || {};
+      const changed = CONTACT_KEYS.filter(k => (was[k] || '') !== (now[k] || '')).map(k => CONTACT_LABEL[k]);
+      if (changed.length) parts.push('contact (' + changed.join(', ') + ')');
+      return 'Updated vendor "' + result.name + '"' + (parts.length ? ': ' + parts.join('; ') : '');
+    }
     if (fn === 'commitStorageAreasDraft') {
       const oldNames = new Map(base.areas.map(a => [a.name.toLowerCase(), a.name]));
       const parts = [];
@@ -1198,6 +1283,7 @@
     getVendorList: t => vendorList(t),
     getStorageAreaList: t => getStorageAreaList(t),
     getVendorTableData: t => getVendorTableData(t),
+    getVendorsPage: t => getVendorsPage(t),
     getPickPathForSidebar: (t, args) => pickPathForSidebar(t, args[0])
   };
   const WRITES = {
@@ -1212,6 +1298,7 @@
     commitAddVendor: (w, args) => addVendor(w, args[0], args[1], args[2]),
     commitUpdateVendorMultsAndCutoff: (w, args) => updateVendor(w, args[0], args[1], args[2]),
     commitRemoveVendor: (w, args) => removeVendor(w, args[0]),
+    commitSaveVendor: (w, args) => saveVendor(w, args[0]),
     commitStorageAreasDraft: (w, args, shifts, renames) => storageAreasDraft(w, args[0], renames),
     commitReorderPickPath: (w, args) => reorderPickPath(w, args[0], args[1]),
     commitPlaceBackupVendors: w => placeBackupVendors(w)

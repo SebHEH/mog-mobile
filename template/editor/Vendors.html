@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Vendors in the app (mockup "Manage Items and Vendors redesign",
+       screens 5-6): one list with each vendor's delivery days, when its
+       order is due, its items and its contact; a vendor panel beside it for
+       the days, the cutoff and the contact (schema v10), saved together.
+       Only in the app's editor: the Sheet dialog and the /exec editor keep
+       apps-script/ManageVendors.html. Every save goes through host.js to
+       catalogEdit.js: getVendorsPage, commitSaveVendor, commitRemoveVendor. -->
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', Arial, Helvetica, sans-serif; margin: 0; color: #1f1e1b; background: #fff; font-size: 14px; }
+    .lang-en .es, .lang-es .en { display: none; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    body.mge-web .web-titlebar { max-width: none; }
+    .web-title { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .vd-head-btn { margin-left: auto; height: 42px; padding: 0 18px; border: 0; border-radius: 10px; background: var(--web-accent, #2d8c6b);
+                   color: var(--web-accent-text, #fff); font: 700 14px Inter, Arial, sans-serif; letter-spacing: 0; cursor: pointer;
+                   display: inline-flex; align-items: center; gap: 6px; }
+    .vd-head-btn:hover { filter: brightness(0.95); }
+
+    #vd-wrap { display: flex; align-items: flex-start; min-height: calc(100vh - 110px); }
+    #vd-main { flex: 1 1 auto; min-width: 0; padding: 6px 24px 32px; display: flex; flex-direction: column; gap: 14px; }
+
+    .vd-alert { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; border-radius: 12px;
+                background: #fbefd6; border: 1px solid #efd29a; color: #5c3a00; }
+    .vd-alert[hidden] { display: none; }
+    .vd-alert svg { width: 18px; height: 18px; flex: 0 0 auto; }
+    .vd-alert button { border: 0; background: none; padding: 0; font-weight: 700; color: #5c3a00; text-decoration: underline; cursor: pointer; }
+
+    .vd-card { border: 1px solid #e6e4dd; border-radius: 14px; overflow-x: auto; background: #fff; }
+    table.vd-table { width: 100%; min-width: 640px; border-collapse: collapse; }
+    .vd-table th { text-align: left; font-size: 12px; font-weight: 600; color: #5f5e5a; padding: 0 12px; height: 42px; white-space: nowrap;
+                   border-bottom: 1px solid #ecebe5; }
+    .vd-table th:first-child, .vd-table td:first-child { padding-left: 20px; }
+    .vd-table td { padding: 13px 12px; border-top: 1px solid #f0efea; vertical-align: middle; }
+    .vd-table tr:first-child td { border-top: 0; }
+    .vd-table tbody tr { cursor: pointer; }
+    .vd-table tbody tr:hover td { background: #faf9f5; }
+    .vd-table tbody tr.open td { background: var(--web-accent-soft, #e9f4ef); }
+    .vd-table tbody tr.open td:first-child { box-shadow: inset 3px 0 0 var(--web-accent, #2d8c6b); }
+    .vd-name { font-weight: 700; overflow-wrap: anywhere; }
+    .vd-sub { font-size: 12.5px; color: #6b6a65; margin-top: 2px; }
+    .vd-sub.none { color: #9a9993; }
+    .vd-days { display: flex; gap: 4px; }
+    .vd-day { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+              font-size: 11.5px; font-weight: 700; background: #f0eee6; color: #8a8984; }
+    .vd-day.on { background: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff); }
+    .vd-badge { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
+                background: #fbefd6; color: #7a4d00; white-space: nowrap; }
+    .vd-num { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .vd-chev { width: 40px; color: #6b6a65; }
+    .vd-chev svg { width: 18px; height: 18px; display: block; }
+    #vd-wrap.narrow .c-items, #vd-wrap.narrow .vd-chev { display: none; }
+    #vd-wrap.narrow table.vd-table { min-width: 480px; }
+    .vd-empty { padding: 28px 18px; color: #5f5e5a; text-align: center; }
+    .vd-note { margin: 0; font-size: 12.5px; color: #6b6a65; }
+
+    /* Vendor panel */
+    #vd-panel { flex: 0 0 460px; position: sticky; top: 0; align-self: flex-start; height: 100vh; display: flex; flex-direction: column;
+                border-left: 1px solid #e6e4dd; background: #fff; }
+    #vd-panel[hidden] { display: none; }
+    .pn-head { padding: 18px 22px 14px; border-bottom: 1px solid #ecebe5; }
+    .pn-top { display: flex; align-items: center; gap: 6px; }
+    .pn-id { font-size: 12.5px; color: #6b6a65; margin-right: auto; }
+    .pn-icon { width: 32px; height: 32px; border-radius: 8px; border: 0; background: #fff; display: inline-flex;
+               align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+    .pn-icon svg { width: 18px; height: 18px; }
+    .pn-title { margin: 8px 0 0; font-size: 21px; font-weight: 700; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+    .pn-body { flex: 1 1 auto; overflow-y: auto; padding: 16px 22px 22px; display: flex; flex-direction: column; gap: 18px; }
+    .pn-section { display: flex; flex-direction: column; gap: 10px; border: 0; margin: 0; padding: 0; min-width: 0; }
+    .pn-section > legend, .pn-label { font-size: 13px; font-weight: 600; padding: 0; margin-bottom: 2px; }
+    .pn-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+    .pn-week button { height: 46px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.16); background: #fff; font-size: 13px; font-weight: 700; cursor: pointer; padding: 0; }
+    .pn-week button[aria-pressed="true"] { background: var(--web-accent, #2d8c6b); border-color: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff); }
+    .pn-explain { border-radius: 12px; background: #faf9f5; border: 1px solid #ecebe5; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+    .pn-explain-h { font-size: 11.5px; font-weight: 700; color: #5f5e5a; letter-spacing: 0.04em; text-transform: uppercase; }
+    .pn-explain span { color: #5f5e5a; }
+    .pn-help { font-size: 12.5px; color: #5f5e5a; font-weight: 400; line-height: 1.45; }
+    .pn-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .pn-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; min-width: 0; }
+    .pn-field.wide { grid-column: span 2; }
+    .pn-field input[type="text"], .pn-field input[type="tel"], .pn-field input[type="email"], .pn-field input[type="url"],
+    .pn-field input[type="time"], .pn-field textarea { height: 40px; padding: 0 12px; border: 1px solid rgba(0,0,0,0.18);
+               border-radius: 10px; background: #fff; font-weight: 400; width: 100%; }
+    .pn-field textarea { height: 76px; padding: 10px 12px; resize: vertical; }
+    .pn-field input:disabled { background: #f5f4ed; color: #8a8984; }
+    .pn-cutrow { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+    .pn-cutrow input[type="time"] { width: 150px; height: 40px; padding: 0 12px; border: 1px solid rgba(0,0,0,0.18); border-radius: 10px; background: #fff; }
+    .pn-cutrow input[type="time"]:disabled { background: #f5f4ed; color: #8a8984; }
+    .pn-check { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 400; cursor: pointer; }
+    .pn-check input { width: 16px; height: 16px; margin: 0; accent-color: #1f1e1b; }
+    .pn-adv { border-radius: 12px; border: 1px solid rgba(0,0,0,0.1); padding: 12px 14px; }
+    .pn-adv summary { font-size: 13px; font-weight: 600; cursor: pointer; }
+    .pn-mults { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+    .pn-mults label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; text-align: center; }
+    .pn-mults input { height: 36px; width: 100%; padding: 0 4px; border: 1px solid rgba(0,0,0,0.18); border-radius: 8px; text-align: center; font-weight: 400; }
+    .pn-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 22px; border-top: 1px solid #ecebe5; background: #fff; }
+    .pn-status { flex-basis: 100%; font-size: 13px; min-height: 0; }
+    .pn-status.err { color: #a3261a; }
+    .pn-status.ok { color: #1a6b48; }
+    .pn-danger { border: 0; background: none; padding: 6px 4px; color: #a3261a; font-weight: 600; font-size: 13px; cursor: pointer; margin-right: auto; }
+    .pn-spacer { margin-right: auto; }
+    .pn-btn { height: 40px; padding: 0 16px; border: 1px solid rgba(0,0,0,0.18); border-radius: 10px; background: #fff; font-weight: 600; cursor: pointer; }
+    .pn-btn.primary { border: 0; background: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff); font-weight: 700; }
+    .pn-btn:disabled { opacity: 0.5; cursor: default; }
+
+    /* A narrow window: the panel covers the list. */
+    @media (max-width: 899px) {
+      #vd-panel { position: fixed; inset: 0; z-index: 40; height: auto; flex-basis: auto; border-left: 0; }
+      #vd-main { padding: 6px 12px 24px; }
+      .pn-grid { grid-template-columns: minmax(0, 1fr); }
+      .pn-field.wide { grid-column: auto; }
+    }
+
+    #vd-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); z-index: 50;
+                background: #1f1e1b; color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 14px; box-shadow: 0 10px 28px rgba(0,0,0,0.25); }
+    #vd-toast[hidden] { display: none; }
+    #vd-toast.err { background: #8a2020; }
+  </style>
+</head>
+<body class="lang-en">
+  <!-- Boot vars FIRST — EditorShell (included below) reads WEB_BOOT/MOG_WEB. -->
+  <script>
+    var WEB_BOOT  = <?!= webBootJson ?>;
+    var MOG_WEB   = !!(WEB_BOOT && WEB_BOOT.web);
+    var MOG_STORE = (WEB_BOOT && WEB_BOOT.store)   || '';
+    var MOG_ABBR  = (WEB_BOOT && WEB_BOOT.abbr)    || '';
+    var BASE_URL  = (WEB_BOOT && WEB_BOOT.base)    || '';
+    var THEME     = (WEB_BOOT && WEB_BOOT.theme)   || {};
+    var CONCEPT   = (WEB_BOOT && WEB_BOOT.concept) || '';
+    var MOG_TOKEN = null;   // set by the PIN gate (EditorShell)
+  </script>
+
+  <?!= include('EditorShell'); ?>
+
+  <div class="web-titlebar">
+    <h1 class="web-title"><span class="en">Vendors</span><span class="es">Proveedores</span>
+      <button type="button" class="vd-head-btn" id="vd-add-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        <span class="en">Add vendor</span><span class="es">Agregar proveedor</span>
+      </button>
+    </h1>
+    <p class="web-subtitle"><span class="en">Who you order from, the days they deliver, when the order is due, and who to call.</span><span class="es">A quién le pides, qué días entregan, para cuándo es el pedido y a quién llamar.</span></p>
+  </div>
+
+  <div id="vd-wrap">
+    <div id="vd-main">
+      <div class="vd-alert" id="vd-alert" role="alert" hidden></div>
+      <div class="vd-card">
+        <table class="vd-table">
+          <thead><tr>
+            <th scope="col"><span class="en">Vendor</span><span class="es">Proveedor</span></th>
+            <th scope="col"><span class="en">Delivers</span><span class="es">Entrega</span></th>
+            <th scope="col"><span class="en">Order due</span><span class="es">Pedido para</span></th>
+            <th scope="col" class="c-items"><span class="en">Items</span><span class="es">Artículos</span></th>
+            <th scope="col" class="vd-chev"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Open</span></th>
+          </tr></thead>
+          <tbody id="vd-tbody"><tr><td class="vd-empty" colspan="5"><span class="en">Loading…</span><span class="es">Cargando…</span></td></tr></tbody>
+        </table>
+      </div>
+      <p class="vd-note"><span class="en">Orders go in the day before each delivery. A vendor added by a MarginEdge import has no delivery days until you set them.</span><span class="es">Los pedidos se hacen el día antes de cada entrega. Un proveedor importado de MarginEdge no tiene días de entrega hasta que los pongas.</span></p>
+    </div>
+    <aside id="vd-panel" aria-label="Vendor" hidden></aside>
+  </div>
+  <div id="vd-toast" role="status" hidden></div>
+
+  <script>
+    var LANG = mgeGetLang_();
+    document.body.classList.remove('lang-en', 'lang-es');
+    document.body.classList.add('lang-' + LANG);
+    var ES = (LANG === 'es');
+    function T(en, es) { return ES ? es : en; }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function plural(n, en, enMany, es, esMany) { return n + ' ' + (n === 1 ? T(en, es) : T(enMany, esMany)); }
+    // Index 0 = Monday, as in the vendors' mults.
+    var DAY = ES ? ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+                 : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    var DAY3 = ES ? ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    var DAY1 = ES ? ['L', 'M', 'X', 'J', 'V', 'S', 'D'] : ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    var ICON = {
+      close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+      chev: '<path d="m9 18 6-6-6-6"/>',
+      warn: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'
+    };
+    function icon(name) {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>';
+    }
+    // The contact's fields (schema v10), in the order the panel shows them.
+    var CONTACT = [
+      { k: 'person',     type: 'text',  en: 'Contact name', es: 'Nombre del contacto', ph: T('e.g. Jayson', 'ej. Jayson') },
+      { k: 'phone',      type: 'tel',   en: 'Phone', es: 'Teléfono', ph: '(571) 555-0100' },
+      { k: 'email',      type: 'email', en: 'Email', es: 'Correo', ph: 'name@vendor.com' },
+      { k: 'account',    type: 'text',  en: 'Account #', es: 'N.º de cuenta', ph: '' },
+      { k: 'orderVia',   type: 'text',  en: 'How to order', es: 'Cómo pedir', wide: true,
+        ph: T('e.g. App or website, email, text', 'ej. App o sitio web, correo, mensaje') },
+      { k: 'orderEmail', type: 'email', en: 'Send orders to', es: 'Enviar pedidos a', ph: 'orders@vendor.com' },
+      { k: 'website',    type: 'url',   en: 'Website or app link', es: 'Sitio web o app', ph: 'vendor.com' },
+      { k: 'notes',      type: 'area',  en: 'Notes', es: 'Notas', wide: true, ph: '' }
+    ];
+
+    // ---- Talking to the server: host.js answers from the catalog tables ----
+    function call(fn) {
+      var args = [].slice.call(arguments, 1);
+      return new Promise(function (resolve, reject) {
+        var r = mgeRpc_().withSuccessHandler(resolve).withFailureHandler(reject);
+        r[fn].apply(r, args);
+      });
+    }
+
+    // ---- State ----
+    var S = { vendors: [], loaded: false, panel: null, draft: null, base: '', dirty: false, busy: false,
+              adv: false };   // adv: the panel's Advanced section is open (not part of the draft)
+
+    function byName(n) { for (var i = 0; i < S.vendors.length; i++) if (S.vendors[i].name === n) return S.vendors[i]; return null; }
+
+    // Delivery days <-> the order-day multipliers (ManageVendors.html's
+    // computeMultsFromDelivery / inferDeliveryFromMults). An order placed on
+    // day i arrives the next day and covers the days until the following
+    // delivery, so mults[i] is that gap (0 when nothing is due).
+    function multsFromDays(days) {
+      var mults = [0, 0, 0, 0, 0, 0, 0];
+      for (var i = 0; i < 7; i++) {
+        var tomorrow = (i + 1) % 7;
+        if (!days[tomorrow]) continue;
+        var gap = 1;
+        for (var j = 1; j <= 7; j++) { if (days[(tomorrow + j) % 7]) { gap = j; break; } }
+        mults[i] = gap;
+      }
+      return mults;
+    }
+    function daysFromMults(mults) {
+      var days = [false, false, false, false, false, false, false];
+      for (var i = 0; i < 7; i++) if (Number(mults[i]) > 0) days[(i + 1) % 7] = true;
+      return days;
+    }
+    function byHand(mults) { return multsFromDays(daysFromMults(mults)).join(',') !== mults.map(Number).join(','); }
+    function hasDays(mults) { return mults.some(function (m) { return Number(m) > 0; }); }
+
+    function fmtCutoff(hhmm) {
+      if (!hhmm) return '';
+      var p = String(hhmm).split(':'), h = Number(p[0]), m = p[1] || '00';
+      return (h % 12 || 12) + ':' + m + ' ' + (h < 12 ? 'AM' : 'PM');
+    }
+    function orderDaysText(mults) {
+      var out = [];
+      for (var i = 0; i < 7; i++) if (Number(mults[i]) > 0) out.push(DAY[i]);
+      return out.length ? out.join(', ') : T('Never', 'Nunca');
+    }
+    function cutoffText(v) {
+      if (!hasDays(v.mults)) return T('Set delivery days first', 'Primero pon los días de entrega');
+      return v.cutoffTime ? T('By ', 'Antes de las ') + fmtCutoff(v.cutoffTime) : T('No cutoff', 'Sin hora límite');
+    }
+    function contactLine(c) {
+      var bits = [c.person, c.phone].filter(Boolean);
+      if (!bits.length) bits = [c.email || c.orderEmail || c.orderVia || c.website].filter(Boolean);
+      return bits.join(' · ');
+    }
+
+    // ---- The list ----
+    function renderAlert() {
+      var el = document.getElementById('vd-alert');
+      var none = S.vendors.filter(function (v) { return !hasDays(v.mults); });
+      if (!none.length) { el.hidden = true; el.innerHTML = ''; return; }
+      var names = none.map(function (v) {
+        return '<button type="button" data-open="' + esc(v.name) + '">' + esc(v.name) + '</button>';
+      }).join(', ');
+      el.innerHTML = icon('warn') + '<span>' + (none.length === 1
+        ? T('<b>' + esc(none[0].name) + '</b> has no delivery days, so it never shows on Today.',
+            '<b>' + esc(none[0].name) + '</b> no tiene días de entrega, así que nunca aparece en Hoy.') +
+          ' <button type="button" data-open="' + esc(none[0].name) + '">' + T('Set its days', 'Pon sus días') + '</button>'
+        : T(none.length + ' vendors have no delivery days, so they never show on Today: ',
+            none.length + ' proveedores no tienen días de entrega, así que nunca aparecen en Hoy: ') + names) + '</span>';
+      el.hidden = false;
+    }
+    function renderTable() {
+      var tb = document.getElementById('vd-tbody');
+      document.getElementById('vd-wrap').classList.toggle('narrow', !!S.panel);
+      if (!S.vendors.length) {
+        tb.innerHTML = '<tr><td class="vd-empty" colspan="5">' +
+          esc(T('No vendors yet. Add one, or import them from MarginEdge on the Items page.',
+                'Todavía no hay proveedores. Agrega uno, o impórtalos de MarginEdge en Artículos.')) + '</td></tr>';
+        return;
+      }
+      var openName = S.panel && S.panel.mode === 'edit' ? S.panel.name : null;
+      tb.innerHTML = S.vendors.map(function (v) {
+        var days = daysFromMults(v.mults), line = contactLine(v.contact);
+        var chips = hasDays(v.mults)
+          ? '<div class="vd-days" aria-label="' + esc(T('Delivers ', 'Entrega ') + DAY.filter(function (d, i) { return days[i]; }).join(', ')) + '">' +
+              DAY1.map(function (l, i) { return '<span class="vd-day' + (days[i] ? ' on' : '') + '" aria-hidden="true">' + esc(l) + '</span>'; }).join('') + '</div>'
+          : '<span class="vd-badge">' + esc(T('No delivery days', 'Sin días de entrega')) + '</span>';
+        return '<tr data-name="' + esc(v.name) + '"' + (v.name === openName ? ' class="open"' : '') + '>' +
+          '<td><div class="vd-name">' + esc(v.name) + '</div>' +
+            '<div class="vd-sub' + (line ? '' : ' none') + '">' + esc(line || T('No contact yet', 'Sin contacto')) + '</div></td>' +
+          '<td>' + chips + '</td>' +
+          '<td><div>' + esc(hasDays(v.mults) ? orderDaysText(v.mults) : T('Never', 'Nunca')) + '</div><div class="vd-sub">' + esc(cutoffText(v)) + '</div></td>' +
+          '<td class="c-items"><div class="vd-num">' + esc(plural(v.itemCount, 'item', 'items', 'artículo', 'artículos')) + '</div>' +
+            (v.backupCount ? '<div class="vd-sub">' + esc(T('+' + v.backupCount + ' as backup', '+' + v.backupCount + ' como respaldo')) + '</div>' : '') + '</td>' +
+          '<td class="vd-chev">' + icon('chev') + '</td></tr>';
+      }).join('');
+    }
+
+    // ---- The panel ----
+    function draftFrom(v) {
+      var c = {};
+      CONTACT.forEach(function (f) { c[f.k] = (v.contact && v.contact[f.k]) || ''; });
+      var mults = v.mults.map(Number);
+      return { name: v.name, mults: mults, days: daysFromMults(mults), cutoff: v.cutoffTime || '', noCutoff: !v.cutoffTime,
+               contact: c };
+    }
+    function emptyDraft() {
+      var c = {};
+      CONTACT.forEach(function (f) { c[f.k] = ''; });
+      return { name: '', mults: [0, 0, 0, 0, 0, 0, 0], days: [false, false, false, false, false, false, false], cutoff: '', noCutoff: true,
+               contact: c };
+    }
+    function markDirty() {
+      S.dirty = JSON.stringify(S.draft) !== S.base;
+      mgeSetLeaveGuard_(S.dirty ? function (proceed) { guard(proceed); } : null);
+      var save = document.getElementById('pn-save');
+      if (save) save.disabled = S.busy || (S.panel.mode === 'edit' && !S.dirty);
+    }
+    // Unsaved edits ask first: Save, Don't save, or Cancel.
+    function guard(proceed) {
+      if (!S.dirty) { proceed(); return; }
+      mgeGuard3_({
+        title: { en: 'Save your changes?', es: '¿Guardar los cambios?' },
+        msg: S.panel && S.panel.mode === 'add'
+          ? { en: 'You started a new vendor and haven’t added it.', es: 'Empezaste un proveedor nuevo y no lo agregaste.' }
+          : { en: 'You changed this vendor and haven’t saved it.', es: 'Cambiaste este proveedor y no lo guardaste.' },
+        saveLabel: S.panel && S.panel.mode === 'add' ? { en: 'Add vendor', es: 'Agregar proveedor' } : undefined,
+        onSave: function () { save().then(function (ok) { if (ok) proceed(); }); },
+        onDiscard: function () { S.dirty = false; mgeSetLeaveGuard_(null); proceed(); }
+      });
+    }
+    function setDraft(d) { S.draft = d; S.base = JSON.stringify(d); S.dirty = false; mgeSetLeaveGuard_(null); }
+    function openVendor(name) {
+      guard(function () {
+        var v = byName(name); if (!v) return;
+        S.panel = { mode: 'edit', name: name };
+        setDraft(draftFrom(v));
+        S.adv = byHand(S.draft.mults);   // order sizes set by hand open the section
+        renderPanel(); renderTable();
+      });
+    }
+    function openAdd() {
+      guard(function () {
+        S.panel = { mode: 'add' };
+        setDraft(emptyDraft());
+        S.adv = false;
+        renderPanel(); renderTable();
+        var n = document.getElementById('pn-name'); if (n) n.focus();
+      });
+    }
+    function closePanel() {
+      guard(function () {
+        S.panel = null; S.draft = null; S.dirty = false; mgeSetLeaveGuard_(null);
+        renderPanel(); renderTable();
+      });
+    }
+
+    // What each order covers, in words, from the multipliers.
+    function explainHtml(d) {
+      var lines = [];
+      for (var i = 0; i < 7; i++) {
+        var m = Number(d.mults[i]);
+        if (!(m > 0)) continue;
+        var arrive = (i + 1) % 7, covers;
+        if (m % 1 === 0) {
+          var last = (arrive + m - 1) % 7;
+          covers = m === 1 ? T('covers 1 day (' + DAY3[arrive] + ')', 'cubre 1 día (' + DAY3[arrive] + ')')
+                           : T('covers ' + m + ' days (' + DAY3[arrive] + ' to ' + DAY3[last] + ')',
+                               'cubre ' + m + ' días (' + DAY3[arrive] + ' a ' + DAY3[last] + ')');
+        } else {
+          covers = T('is sized for ' + m + ' days', 'se calcula para ' + m + ' días');
+        }
+        lines.push('<div><b>' + esc(T(DAY[i] + '’s order', 'El pedido del ' + DAY[i])) + '</b> <span>' +
+          esc(T('arrives ' + DAY[arrive] + ' and ', 'llega el ' + DAY[arrive] + ' y ') + covers) + '</span></div>');
+      }
+      if (!lines.length) {
+        return '<div class="pn-explain"><span>' + esc(T('No delivery days: this vendor never shows on Today.',
+                                                         'Sin días de entrega: este proveedor nunca aparece en Hoy.')) + '</span></div>';
+      }
+      return '<div class="pn-explain"><div class="pn-explain-h">' + esc(T('What gets ordered', 'Qué se pide')) + '</div>' + lines.join('') + '</div>';
+    }
+    function renderPanel() {
+      var pn = document.getElementById('vd-panel');
+      if (!S.panel) { pn.hidden = true; pn.innerHTML = ''; return; }
+      var d = S.draft, edit = S.panel.mode === 'edit', v = edit ? byName(S.panel.name) : null;
+      if (edit && !v) { S.panel = null; pn.hidden = true; pn.innerHTML = ''; return; }
+      var h = '<div class="pn-head"><div class="pn-top">' +
+        '<span class="pn-id">' + esc(edit
+          ? plural(v.itemCount, 'item', 'items', 'artículo', 'artículos') +
+            (v.backupCount ? T(' · ' + v.backupCount + ' more use it as a backup', ' · ' + v.backupCount + ' más lo usan de respaldo') : '')
+          : T('New vendor', 'Proveedor nuevo')) + '</span>' +
+        '<button type="button" class="pn-icon" id="pn-close" aria-label="' + esc(T('Close', 'Cerrar')) + '">' + icon('close') + '</button></div>' +
+        '<h2 class="pn-title">' + esc(edit ? v.name : T('Add a vendor', 'Agregar un proveedor')) + '</h2></div>';
+
+      h += '<div class="pn-body">';
+      if (!edit) {
+        h += '<label class="pn-field">' + esc(T('Name', 'Nombre')) +
+          '<input type="text" id="pn-name" maxlength="100" value="' + esc(d.name) + '" placeholder="' + esc(T('e.g. Happy Supply', 'ej. Happy Supply')) + '"></label>';
+      }
+
+      h += '<fieldset class="pn-section"><legend>' + esc(T('Delivery days', 'Días de entrega')) + '</legend><div class="pn-week">' +
+        DAY3.map(function (n, i) {
+          return '<button type="button" data-day="' + i + '" aria-pressed="' + (d.days[i] ? 'true' : 'false') + '" aria-label="' + esc(DAY[i]) + '">' + esc(n) + '</button>';
+        }).join('') + '</div>' + explainHtml(d) +
+        '<details class="pn-adv" id="pn-adv"' + (S.adv ? ' open' : '') + '><summary>' +
+          esc(T('Advanced: set the order size by hand', 'Avanzado: fijar el tamaño del pedido a mano')) + '</summary>' +
+          '<div class="pn-help" style="margin-top:8px">' + esc(T('How many days each day’s order covers. Only for a delivery that has to cover a different number of days than the calendar says. Changing a delivery day above starts these over.',
+            'Cuántos días cubre el pedido de cada día. Solo para una entrega que debe cubrir otro número de días que el calendario. Cambiar un día de entrega arriba los recalcula.')) + '</div>' +
+          '<div class="pn-mults">' + DAY3.map(function (n, i) {
+            return '<label>' + esc(n) + '<input type="number" step="any" min="0" data-mult="' + i + '" value="' + esc(d.mults[i]) + '" aria-label="' + esc(T(DAY[i] + '’s order, in days', 'Pedido del ' + DAY[i] + ', en días')) + '"></label>';
+          }).join('') + '</div></details></fieldset>';
+
+      h += '<div class="pn-section"><label class="pn-label" for="pn-cutoff">' + esc(T('Order due by', 'Pedido antes de las')) + '</label>' +
+        '<div class="pn-cutrow"><input type="time" id="pn-cutoff" value="' + esc(d.noCutoff ? '' : d.cutoff) + '"' + (d.noCutoff ? ' disabled' : '') +
+          ' aria-label="' + esc(T('Order due by', 'Pedido antes de las')) + '">' +
+        '<label class="pn-check"><input type="checkbox" id="pn-nocut"' + (d.noCutoff ? ' checked' : '') + '>' +
+          esc(T('No cutoff (pickup or walk-in)', 'Sin hora límite (recoger o en tienda)')) + '</label></div>' +
+        '<div class="pn-help">' + esc(T('Today shows a warning 90 minutes before this time.', 'Hoy muestra un aviso 90 minutos antes de esta hora.')) + '</div></div>';
+
+      h += '<fieldset class="pn-section"><legend>' + esc(T('Contact', 'Contacto')) + '</legend>' +
+        '<div class="pn-help" style="margin-top:-4px">' + esc(T('Shows on this vendor’s card on Today, so whoever orders can reach them.',
+          'Aparece en la tarjeta del proveedor en Hoy, para que quien pida pueda contactarlo.')) + '</div><div class="pn-grid">' +
+        CONTACT.map(function (f) {
+          var input = f.type === 'area'
+            ? '<textarea id="pn-c-' + f.k + '" data-contact="' + f.k + '" maxlength="500">' + esc(d.contact[f.k]) + '</textarea>'
+            : '<input type="' + f.type + '" id="pn-c-' + f.k + '" data-contact="' + f.k + '" maxlength="200" value="' + esc(d.contact[f.k]) + '"' +
+                (f.ph ? ' placeholder="' + esc(f.ph) + '"' : '') + (f.type === 'tel' ? ' autocomplete="off"' : '') + '>';
+          return '<label class="pn-field' + (f.wide ? ' wide' : '') + '">' + esc(T(f.en, f.es)) + input + '</label>';
+        }).join('') + '</div></fieldset>';
+      h += '</div>';
+
+      h += '<div class="pn-foot"><div class="pn-status" id="pn-status"></div>' +
+        (edit ? '<button type="button" class="pn-danger" id="pn-remove">' + esc(T('Remove vendor…', 'Quitar proveedor…')) + '</button>'
+              : '<span class="pn-spacer"></span>') +
+        '<button type="button" class="pn-btn" id="pn-cancel">' + esc(T('Cancel', 'Cancelar')) + '</button>' +
+        '<button type="button" class="pn-btn primary" id="pn-save">' + esc(edit ? T('Save changes', 'Guardar cambios') : T('Add vendor', 'Agregar proveedor')) + '</button></div>';
+
+      pn.innerHTML = h;
+      pn.hidden = false;
+      markDirty();
+    }
+    function renderPanelKeep() {
+      var body = document.querySelector('#vd-panel .pn-body'), top = body ? body.scrollTop : 0;
+      renderPanel();
+      var nb = document.querySelector('#vd-panel .pn-body'); if (nb) nb.scrollTop = top;
+    }
+    function setStatus(text, kind) {
+      var el = document.getElementById('pn-status');
+      if (el) { el.textContent = text || ''; el.className = 'pn-status' + (kind ? ' ' + kind : ''); }
+    }
+
+    // ---- Saving ----
+    // One save for the days, the cutoff and the contact. Resolves true when it saved.
+    function save() {
+      var d = S.draft, edit = S.panel.mode === 'edit';
+      var name = edit ? S.panel.name : d.name.trim();
+      if (!name) { setStatus(T('Give the vendor a name.', 'Ponle un nombre al proveedor.'), 'err'); return Promise.resolve(false); }
+      if (d.mults.some(function (m) { return !(Number(m) >= 0) || String(m) === ''; })) {
+        setStatus(T('Each order size is a number of days, 0 or more.', 'Cada tamaño de pedido es un número de días, 0 o más.'), 'err');
+        return Promise.resolve(false);
+      }
+      if (!d.noCutoff && !d.cutoff) {
+        setStatus(T('Set the time the order is due, or tick No cutoff.', 'Pon la hora del pedido, o marca Sin hora límite.'), 'err');
+        return Promise.resolve(false);
+      }
+      var contact = {};
+      CONTACT.forEach(function (f) { contact[f.k] = String(d.contact[f.k] || '').trim(); });
+      var payload = { mode: edit ? 'edit' : 'add', name: name, mults: d.mults.map(Number), cutoff: d.noCutoff ? '' : d.cutoff, contact: contact };
+      S.busy = true; markDirty(); setStatus(T('Saving…', 'Guardando…'));
+      return call('commitSaveVendor', payload).then(function (res) {
+        return reload().then(function () {
+          S.busy = false;
+          S.panel = { mode: 'edit', name: res.name };
+          var v = byName(res.name);
+          if (v) setDraft(draftFrom(v));
+          renderPanel(); renderTable();
+          if (edit) setStatus(T('Saved.', 'Guardado.'), 'ok');
+          else toast(T('Added ' + res.name + '.', 'Se agregó ' + res.name + '.'));
+          return true;
+        });
+      }, function (err) {
+        S.busy = false; markDirty(); setStatus(errText(err), 'err');
+        return false;
+      });
+    }
+    function removeVendor() {
+      var v = byName(S.panel.name); if (!v) return;
+      mgeConfirm_({
+        title: { en: 'Remove this vendor?', es: '¿Quitar este proveedor?' },
+        msg: { en: '"' + v.name + '" comes off every item and count list. ' +
+                   (v.itemCount ? 'Its ' + plural(v.itemCount, 'item', 'items', 'artículo', 'artículos') + ' stay active with no vendor until you choose one in Items. ' : '') +
+                   'Undo is in Changes.',
+               es: '"' + v.name + '" sale de todos los artículos y listas de conteo. ' +
+                   (v.itemCount ? 'Sus ' + plural(v.itemCount, 'item', 'items', 'artículo', 'artículos') + ' siguen activos sin proveedor hasta que elijas uno en Artículos. ' : '') +
+                   'Puedes deshacerlo en Cambios.' },
+        confirmLabel: { en: 'Remove', es: 'Quitar' }, danger: true,
+        onConfirm: function () {
+          S.busy = true; markDirty();
+          call('commitRemoveVendor', v.name).then(function () {
+            S.panel = null; S.draft = null; S.dirty = false; S.busy = false; mgeSetLeaveGuard_(null);
+            return reload().then(function () { renderPanel(); toast(T('Removed ' + v.name + '.', 'Se quitó ' + v.name + '.')); });
+          }, function (err) { S.busy = false; markDirty(); setStatus(errText(err), 'err'); });
+        }
+      });
+    }
+    function reload() {
+      return call('getVendorsPage').then(function (list) { S.vendors = list || []; renderAlert(); renderTable(); });
+    }
+
+    // ---- Small things ----
+    function errText(err) {
+      var m = err && err.message ? err.message : String(err || '');
+      return m || T('Something went wrong. Try again.', 'Algo salió mal. Inténtalo de nuevo.');
+    }
+    var toastTimer = null;
+    function toast(text, isErr) {
+      var el = document.getElementById('vd-toast');
+      el.textContent = text; el.className = isErr ? 'err' : ''; el.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.hidden = true; }, isErr ? 9000 : 5000);
+    }
+
+    function wire() {
+      document.getElementById('vd-add-btn').onclick = openAdd;
+      document.getElementById('vd-tbody').addEventListener('click', function (e) {
+        var tr = e.target.closest('tr[data-name]'); if (tr) openVendor(tr.getAttribute('data-name'));
+      });
+      document.getElementById('vd-alert').addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-open]'); if (b) openVendor(b.getAttribute('data-open'));
+      });
+      var pn = document.getElementById('vd-panel');
+      pn.addEventListener('input', function (e) {
+        var d = S.draft; if (!d) return;
+        var t = e.target;
+        if (t.id === 'pn-name') d.name = t.value;
+        else if (t.getAttribute('data-contact')) d.contact[t.getAttribute('data-contact')] = t.value;
+        else if (t.getAttribute('data-mult') !== null) {
+          var i = Number(t.getAttribute('data-mult'));
+          d.mults[i] = t.value === '' ? '' : Number(t.value);
+          d.days = daysFromMults(d.mults);
+          // The day buttons and the explanation follow; the inputs keep focus.
+          pn.querySelectorAll('button[data-day]').forEach(function (b) {
+            b.setAttribute('aria-pressed', d.days[Number(b.getAttribute('data-day'))] ? 'true' : 'false');
+          });
+          var ex = pn.querySelector('.pn-explain'); if (ex) ex.outerHTML = explainHtml(d);
+        }
+        else if (t.id === 'pn-cutoff') d.cutoff = t.value;
+        else return;
+        markDirty();
+      });
+      pn.addEventListener('change', function (e) {
+        var d = S.draft; if (!d) return;
+        if (e.target.id === 'pn-nocut') {
+          d.noCutoff = e.target.checked;
+          renderPanelKeep();
+          var c = document.getElementById('pn-cutoff'); if (c && !d.noCutoff) c.focus();
+        }
+      });
+      // Advanced open or closed stays across re-renders (toggle doesn't bubble).
+      pn.addEventListener('toggle', function (e) { if (e.target.id === 'pn-adv') S.adv = e.target.open; }, true);
+      pn.addEventListener('click', function (e) {
+        var b = e.target.closest('button'); if (!b) return;
+        var d = S.draft;
+        if (b.getAttribute('data-day') !== null) {
+          var i = Number(b.getAttribute('data-day'));
+          d.days[i] = !d.days[i];
+          d.mults = multsFromDays(d.days);
+          renderPanelKeep();
+        }
+        else if (b.id === 'pn-close') closePanel();
+        else if (b.id === 'pn-cancel') {
+          if (S.panel.mode === 'edit' && S.dirty) { setDraft(JSON.parse(S.base)); renderPanel(); }
+          else closePanel();
+        }
+        else if (b.id === 'pn-save') { if (!S.busy) save(); }
+        else if (b.id === 'pn-remove') { if (!S.busy) removeVendor(); }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && S.panel && !document.querySelector('.mge-dlg-overlay.open, #mge-dlg-overlay.open')) closePanel();
+      });
+    }
+
+    function startVendors_() {
+      mgeMountWebChrome_();
+      document.documentElement.classList.add('mge-web');
+      setBreadcrumb_(
+        [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+        { en: 'Vendors', es: 'Proveedores' }
+      );
+      if (!startVendors_.wired) { wire(); startVendors_.wired = true; }
+      reload().then(function () { S.loaded = true; }, function (err) {
+        document.getElementById('vd-tbody').innerHTML = '<tr><td class="vd-empty" colspan="5">' +
+          esc(T('Couldn’t load the vendors: ', 'No se pudieron cargar los proveedores: ') + errText(err)) + '</td></tr>';
+      });
+    }
+    mgeStartGate_(startVendors_);
+  </script>
+</body>
+</html>

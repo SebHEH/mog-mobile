@@ -1084,6 +1084,21 @@
     .cta-copy:active { background: var(--teal-light); }
     .cta-copy.copied { background: var(--teal-light); }
 
+    /* A vendor's contact (schema v10): the card's Contact pill and its sheet,
+       which reuses .name-backdrop / .name-sheet. */
+    .vc-btn { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; min-height: 30px; padding: 0 10px;
+      border: 1px solid var(--border-2); border-radius: 999px; background: var(--bg); color: var(--teal-dark);
+      font-size: 12px; font-weight: 600; vertical-align: middle; cursor: pointer; }
+    .vc-list { margin: 4px 0 14px; max-height: 60vh; overflow-y: auto; }
+    .vc-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .vc-row:last-child { border-bottom: none; }
+    .vc-k { flex: 0 0 104px; font-size: 12px; color: var(--text-2); }
+    .vc-v { flex: 1 1 150px; min-width: 0; font-size: 15px; overflow-wrap: anywhere; }
+    .vc-v.vc-notes { white-space: pre-wrap; }
+    .vc-acts { display: flex; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
+    .vc-act { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: var(--r-md);
+      background: var(--teal-light); color: var(--teal-dark); font-size: 14px; font-weight: 600; text-decoration: none; }
+
     /* Recap (master summary) view */
     .recap-summary {
       background: var(--bg-soft);
@@ -2968,6 +2983,20 @@
         es: 'Esto marcará este proveedor como revisado para hoy. Puedes deshacerlo tocando la tarjeta.'
       },
       bulkMarkAllCta: { en: 'Mark all remaining as reviewed', es: 'Marcar todo lo demás como revisado' },
+      // A vendor's contact (schema v10), from the vendor card
+      vcButton:     { en: 'Contact', es: 'Contacto' },
+      vcPerson:     { en: 'Contact', es: 'Contacto' },
+      vcPhone:      { en: 'Phone', es: 'Teléfono' },
+      vcCall:       { en: 'Call', es: 'Llamar' },
+      vcText:       { en: 'Text', es: 'Mensaje' },
+      vcEmail:      { en: 'Email', es: 'Correo' },
+      vcOrderEmail: { en: 'Send orders to', es: 'Enviar pedidos a' },
+      vcWebsite:    { en: 'Website', es: 'Sitio web' },
+      vcOpen:       { en: 'Open', es: 'Abrir' },
+      vcHow:        { en: 'How to order', es: 'Cómo pedir' },
+      vcAccount:    { en: 'Account #', es: 'N.º de cuenta' },
+      vcNotes:      { en: 'Notes', es: 'Notas' },
+      vcClose:      { en: 'Close', es: 'Cerrar' },
       bulkMarkConfirmTitle: { en: 'Mark all as reviewed?', es: '¿Marcar todo como revisado?' },
       bulkMarkConfirmMsg: {
         en: 'These vendors will be marked as reviewed and the daily summary will be emailed:',
@@ -4316,6 +4345,7 @@
   function renderToday(data) {
     const view = $('view-today');
     state.lastLiveSig = liveSignature_();   // what the live lines below are drawn from
+    state.lastContactsSig = contactsSignature_();   // and the Contact pills
     updateRail_();   // the snapshot behind this data says whether the editor has moved
     if (!data || !data.vendors || !data.vendors.length) {
       view.innerHTML =
@@ -4476,7 +4506,7 @@
         // The inline mark-reviewed button lives inside the card. If the
         // click came from that button (or its children), do NOT open the
         // vendor — the button's own handler will run instead.
-        if (e.target.closest('.pill-mark')) return;
+        if (e.target.closest('.pill-mark') || e.target.closest('.vc-btn')) return;
         const vendor = card.getAttribute('data-vendor');
         // On a computer the list stays beside the open vendor: its own card
         // brings its count back (from the review) and opens nothing new.
@@ -4510,6 +4540,14 @@
         e.stopPropagation();  // don't trigger card click
         const vendor = btn.getAttribute('data-mark-vendor');
         await onInlineMarkReviewedClick_(vendor, data.date);
+      });
+    });
+
+    // A vendor's Contact pill opens its contact sheet, not the vendor.
+    view.querySelectorAll('.vc-btn[data-contact-vendor]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openVendorContact_(btn.getAttribute('data-contact-vendor'));
       });
     });
 
@@ -4790,11 +4828,17 @@
     if (urgency === 'approaching') urgencyClass = ' cutoff-approaching';
     else if (urgency === 'missed') urgencyClass = ' cutoff-missed';
 
+    // The Contact pill, when the vendor has a contact (Manage → Vendors).
+    const contactHtml = vendorContact_(v.name)
+      ? '<button type="button" class="vc-btn" data-contact-vendor="' + escapeHtml(v.name) + '">' +
+          '<i class="ti ti-phone" aria-hidden="true"></i>' + escapeHtml(t('vcButton')) + '</button>'
+      : '';
+
     return (
       '<div class="vendor-card tappable' + statusClass + urgencyClass + '" data-vendor="' + escapeHtml(v.name) + '">' +
         '<div class="vendor-row">' +
           '<div>' +
-            '<div class="vendor-name">' + escapeHtml(v.name) + '</div>' +
+            '<div class="vendor-name">' + escapeHtml(v.name) + contactHtml + '</div>' +
             '<div class="vendor-meta">' + metaText + '</div>' +
             vendorLiveHtml_(v.name, status) +
           '</div>' +
@@ -4930,8 +4974,9 @@
       // The next loadToday triggered by reset detection elsewhere
       // will sort this out. For now, drop.
       if (data.date !== state.cache.dashboard.date) return;
-      if (!dashboardsDiffer_(state.cache.dashboard, data) && liveSignature_() === state.lastLiveSig) {
-        // No visual changes (counts nor who's counting); just bump the
+      if (!dashboardsDiffer_(state.cache.dashboard, data) && liveSignature_() === state.lastLiveSig &&
+          contactsSignature_() === state.lastContactsSig) {
+        // No visual changes (counts, who's counting, contacts); just bump the
         // timestamp so we don't immediately re-check on the next interaction.
         setDashboardFetchedAt_(Date.now());
         return;
@@ -5577,6 +5622,57 @@
   function fmtQty_(n) {
     const x = Number(n);
     return isFinite(x) ? String(Math.round(x * 1000) / 1000) : '—';
+  }
+
+  // ---- A vendor's contact (schema v10) ----
+  // From the catalog's vendorContacts, which only a store that saved a
+  // contact has (Manage → Vendors). null when the vendor has none.
+  function vendorContact_(name) {
+    const all = direct.catalog && direct.catalog.vendorContacts;
+    const c = all && Object.prototype.hasOwnProperty.call(all, name) ? all[name] : null;
+    return c && typeof c === 'object' && Object.keys(c).length ? c : null;
+  }
+  function contactsSignature_() {
+    return JSON.stringify((direct.catalog && direct.catalog.vendorContacts) || null);
+  }
+  // Links only for values that make one: a phone with enough digits, an
+  // address with an @, a web address that parses as http(s).
+  function vcPhoneDigits_(s) { const d = String(s || '').replace(/[^0-9+]/g, ''); return d.replace(/\D/g, '').length >= 7 ? d : ''; }
+  function vcEmailOk_(s) { return /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(String(s || '')); }
+  function vcWebHref_(s) {
+    let u = String(s || '').trim();
+    if (!u) return '';
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    try { const p = new URL(u); return (p.protocol === 'https:' || p.protocol === 'http:') ? p.href : ''; } catch (e) { return ''; }
+  }
+  function openVendorContact_(vendor) {
+    const c = vendorContact_(vendor);
+    if (!c) return;
+    const row = (label, valueHtml, acts, cls) =>
+      '<div class="vc-row"><span class="vc-k">' + escapeHtml(t(label)) + '</span>' +
+        '<span class="vc-v' + (cls ? ' ' + cls : '') + '">' + valueHtml + '</span>' +
+        (acts ? '<span class="vc-acts">' + acts + '</span>' : '') + '</div>';
+    const act = (href, icon, label, external) =>
+      '<a class="vc-act" href="' + escapeHtml(href) + '"' + (external ? ' target="_blank" rel="noopener"' : '') + '>' +
+        '<i class="ti ti-' + icon + '" aria-hidden="true"></i>' + escapeHtml(t(label)) + '</a>';
+    let html = '';
+    if (c.person) html += row('vcPerson', escapeHtml(c.person));
+    if (c.phone) {
+      const d = vcPhoneDigits_(c.phone);
+      html += row('vcPhone', escapeHtml(c.phone), d ? act('tel:' + d, 'phone', 'vcCall') + act('sms:' + d, 'message', 'vcText') : '');
+    }
+    if (c.email) html += row('vcEmail', escapeHtml(c.email), vcEmailOk_(c.email) ? act('mailto:' + c.email, 'mail', 'vcEmail') : '');
+    if (c.orderEmail) html += row('vcOrderEmail', escapeHtml(c.orderEmail), vcEmailOk_(c.orderEmail) ? act('mailto:' + c.orderEmail, 'mail', 'vcEmail') : '');
+    if (c.website) { const h = vcWebHref_(c.website); html += row('vcWebsite', escapeHtml(c.website), h ? act(h, 'external-link', 'vcOpen', true) : ''); }
+    if (c.orderVia) html += row('vcHow', escapeHtml(c.orderVia));
+    if (c.account) html += row('vcAccount', escapeHtml(c.account));
+    if (c.notes) html += row('vcNotes', escapeHtml(c.notes), '', 'vc-notes');
+    const wrap = openQeSheet_(
+      '<h3>' + escapeHtml(vendor) + '</h3>' +
+      '<div class="vc-list">' + html + '</div>' +
+      '<button type="button" class="cta-secondary" id="vc-close">' + escapeHtml(t('vcClose')) + '</button>');
+    wrap.querySelector('.name-sheet').setAttribute('aria-label', vendor);
+    $('vc-close').addEventListener('click', closeQeSheet_);
   }
 
   function closeQeSheet_() { const w = $('qe-backdrop'); if (w) w.remove(); }
@@ -7860,7 +7956,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.26.1';
+    const versionStr = '0.27.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =

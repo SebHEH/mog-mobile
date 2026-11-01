@@ -58,7 +58,10 @@ EDITOR_PAGES  = {'index.html':    ('EditorHome', 'Editor', 'home'),
                  # redesign); apps-script/ManageItems.html stays for the Sheet
                  # dialog and the /exec editor (onboarding, rollback).
                  'items.html':    ('editor:Items', 'Items', 'items'),
-                 'vendors.html':  ('ManageVendors', 'Manage Vendors', 'vendors'),
+                 # Vendors too since 2026-11-01 (the redesign, with each
+                 # vendor's contact, schema v10); apps-script/ManageVendors.html
+                 # stays for the Sheet dialog and the /exec editor.
+                 'vendors.html':  ('editor:Vendors', 'Vendors', 'vendors'),
                  'areas.html':    ('StorageAreas', 'Storage Areas', 'areas'),
                  'pickpath.html': ('ReorderPickPath', 'Shelf to Sheet', 'pickpath'),
                  'history.html':  ('OrderHistory', 'Order History', 'history'),

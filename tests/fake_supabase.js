@@ -18,9 +18,29 @@ function toOnHand(v) {
   return null;
 }
 
+// schema_v10.sql mog.vendor_contact_clean: the eight keys, text only, trimmed
+// (mog.js_trim is JS trim), empty ones left out, too long throws. Keys come
+// out in jsonb's stored order (shorter first, then bytewise), so a contact
+// read back from the fake looks like one read back from Postgres.
+const CONTACT_KEYS = ['person', 'phone', 'email', 'orderVia', 'orderEmail', 'website', 'account', 'notes'];
+const jsonbKeyOrder = (a, b) => (a.length - b.length) || (a < b ? -1 : a > b ? 1 : 0);
+function vendorContactClean(p) {
+  const out = {};
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return out;
+  for (const k of CONTACT_KEYS.slice().sort(jsonbKeyOrder)) {
+    if (typeof p[k] !== 'string') continue;
+    const v = p[k].trim(), max = k === 'notes' ? 500 : 200;
+    if (v.length > max) throw new Error('Contact ' + k + ' is longer than ' + max + ' characters');
+    if (v) out[k] = v;
+  }
+  return out;
+}
+
 // schema_v4.sql's catalog tables: mog.replace_catalog_tables' input checks and
 // the table rules (checks, primary keys, case-insensitive unique names,
-// foreign keys). Throws the first broken rule; returns clean copies.
+// foreign keys). Throws the first broken rule; returns clean copies. A
+// vendor keeps its contact (v10) only when it has one, as mog.tables_json
+// reads it.
 const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 function checkCatalogTables(t) {
   const isArr = k => t && Array.isArray(t[k]);
@@ -45,7 +65,10 @@ function checkCatalogTables(t) {
     if (!Array.isArray(mults) || mults.length !== 7 || mults.some(m => num(m, 'mult') === null)) throw new Error('vendors_mults_check');
     const cutoff = (e.cutoff === undefined || e.cutoff === null || e.cutoff === '') ? null : e.cutoff;
     if (cutoff !== null && !HHMM.test(cutoff)) throw new Error('vendors_cutoff_check');
-    return { name: name(e.name, 100, 'vendor'), mults: mults.slice(), cutoff };
+    const v = { name: name(e.name, 100, 'vendor'), mults: mults.slice(), cutoff };
+    const contact = vendorContactClean(e.contact);
+    if (Object.keys(contact).length) v.contact = contact;
+    return v;
   });
   uniq(vendors, v => v.name, 'vendors_pkey');
   uniq(vendors, v => v.name.toLowerCase(), 'vendors_name_ci');
@@ -90,7 +113,8 @@ function catalogFromTables(s) {
   const areaOrd = new Map(t.areas.map(a => [a.name, a.ord]));
   const obj = pairs => { const o = {}; for (const [k, v] of pairs) o[k] = v; return o; };
   const counts = rows => { const m = new Map(); for (const k of rows) m.set(k, (m.get(k) || 0) + 1); return obj(m); };
-  return {
+  const withContact = t.vendors.filter(v => v.contact && Object.keys(v.contact).length);   // v10: only when one has it
+  return Object.assign({
     schema: 1,
     timeZone: pr.timeZone || 'America/New_York',
     location: pr.location != null ? pr.location : 'Unknown',
@@ -107,7 +131,7 @@ function catalogFromTables(s) {
     itemCounts: counts(t.items.filter(it => it.active && it.primaryVendor).map(it => it.primaryVendor)),
     backupCounts: counts(t.pickRows.filter(r => { const it = itemById.get(r.id); return it.active && it.primaryVendor !== r.vendor; })
       .map(r => r.vendor))
-  };
+  }, withContact.length ? { vendorContacts: obj(withContact.map(v => [v.name, clone(v.contact)])) } : {});
 }
 
 class FakeSupabase {
@@ -363,6 +387,7 @@ class FakeSupabase {
         if (s.editorDirect) return err('EDITOR_DIRECT');
         let next;
         try { next = checkCatalogTables(p.p_tables); } catch (e) { return err('SEED_REJECTED: ' + e.message); }
+        for (const v of next.vendors) delete v.contact;   // replace_catalog_tables names its columns: no contact
         const pr = (p.p_tables && p.p_tables.profile) || {};
         for (const k of ['timeZone', 'location', 'abbr', 'concept']) if (pr[k] != null) s.profile[k] = String(pr[k]);
         s.tables = next;
@@ -683,12 +708,16 @@ function recipientsCheck(stored, list, gmEdit) {
 }
 const EDITOR_FIELDS = {
   items: ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible'],
-  pickRows: ['area', 'shelfOrder'], vendors: ['mults', 'cutoff'], areas: ['ord']
+  pickRows: ['area', 'shelfOrder'], vendors: ['mults', 'cutoff', 'contact'], areas: ['ord']
 };
 const editorIdent = (t, r) => (t === 'items' ? r.id : t === 'pickRows' ? r.vendor + ' / ' + r.id : r.name);
+// v10: a contact is compared clean, and an empty one is the same as none.
 function editorSame(t, cur, want) {
-  const v = x => JSON.stringify(x === undefined || x === null || x === '' ? null : x);
-  return EDITOR_FIELDS[t].every(f => v(cur[f]) === v(want[f]));
+  const v = (x, f) => {
+    if (f === 'contact') { x = vendorContactClean(x); if (!Object.keys(x).length) x = null; }
+    return JSON.stringify(x === undefined || x === null || x === '' ? null : x);
+  };
+  return EDITOR_FIELDS[t].every(f => v(cur[f], f) === v(want[f], f));
 }
 // mog.editor_apply_ops: the tables after ops, or an Error (CONFLICT: ..., or
 // what the database would refuse: links, unique names, unlisted vendors).
