@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: 39afc44 (2026-11-01) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: 84ac2cb (2026-11-02) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -305,8 +305,8 @@ naive rebuild silently loses.*
   delivery cadence with its vendors, and sometimes the vendors themselves (some vendors are not
   available in every region). *(Owner-confirmed intent. Not enforced today: each store's catalog is
   currently built by hand, so standardization is a goal, not a guarantee. Since 2026-11-01 HQ rollouts
-  (R28) add the same vendor or items to many stores at once, and a per-concept library is specced,
-  `docs/MOG_Warehouse_Spec.md`. See growth seams.)*
+  (R28) add the same vendor or items to many stores at once, and since 2026-11-02 each concept keeps a
+  library per side (R29), `docs/MOG_Warehouse_Spec.md`. See growth seams.)*
 - **R23. One writer per kind of data; nothing syncs both ways.**
   - The database owns the counts, the current order day, the overrides and the order log.
   - A store's catalog (items, pars, vendors, storage areas, the pick path) is owned by its Sheet until the store moves, and copied one way into the database after every edit and nightly.
@@ -344,6 +344,15 @@ naive rebuild silently loses.*
   - HQ names a vendor once and remembers what each store calls it ("B&T" is "B&T Distributions" at Rosslyn BOH). Store vendor names are never renamed.
   - Each store sees HQ's change in its own change log, signed by the person, and can undo it there (R23).
   - Why: a concept's stores should order the same items (R22), and an LTO has to reach every store at once, while pars, areas and cadence stay each store's. *(Confirmed: owner 2026-11-01; `docs/MOG_Warehouse_Spec.md`.)*
+- **R29. Each concept keeps one standard item list per side (BOH, FOH): the concept library.**
+  - A library item has a name, a pack, a main vendor, backup vendors and notes, with vendors by HQ's names. It has no par, no storage area and no stock: those stay each store's (R22).
+  - A store's side comes from its location name (BOH or FOH), and the side picks its library.
+  - An empty library starts from one store's active items. An item name listed twice there becomes one item, its other vendors as backups. HQ then cleans it. Seeds: Rosslyn BOH and FOH for Roll Play, Tysons BOH and Rockville FOH for Teas'n You.
+  - Every save is the whole list and bumps a version. A save made from an older version is refused, and every save keeps the list it replaced.
+  - Names are unique ignoring case, every item needs a main vendor, and a backup is never the main vendor.
+  - Setting up a store from its library works like an LTO rollout (R28): items arrive with no par and no area, and an item the store already has keeps its own settings. An LTO rollout can add its items to the library in the same save; both happen or neither does.
+  - A library never changes a store's catalog or the phones by itself.
+  - Why: the standard list of R22 needs one place to live, and a new store should start from it instead of typing its items. *(Confirmed: owner 2026-11-01, `docs/MOG_Warehouse_Spec.md` §1. The owner picked "no area, like an LTO" over carrying the library's storage areas into the store.)*
 
 ---
 
@@ -362,6 +371,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | slug | identifier | Immutable once published (bookmarks/home-screen icons depend on it). |
 | concept | enum | Roll Play / Teas'n You / ĂN / Lei'd Poke. Drives theming plus minor config. |
 | location name | text | Display name, for example "Rosslyn BOH". Encodes BOH vs. FOH. |
+| side | BOH / FOH | Read from the location name; picks the store's concept library (R29). |
 | store PIN | secret | The store's street number. Gates app + editor. |
 | master PIN | secret | Gates destructive/admin actions. |
 | recipients | list of {name, email, active, GM?} | Who gets the recap email; the GM row comes first and changes only on a computer. Owned by the database once the store's editor moved (R23). |
@@ -387,6 +397,15 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | delivery cadence | 7 day-multipliers | One multiplier per weekday; 0 = no delivery that day (R3). Drives coverage (R2). |
 | cutoff time | time or null | Order-by time (informational). Part of why par carries a buffer (R21). |
 | contact | person, phone, email, how to order, order email, website, account #, notes (all optional) | Per store: each store has its own accounts. Shown on the phone's vendor card. Never passwords. (2026-11-01) |
+
+#### Entity: Concept library (one per concept and side, R29)
+| Field | Type (conceptual) | Notes |
+|---|---|---|
+| concept + side | composite key | For example Roll Play BOH. |
+| version | integer | Bumped on every save; a save made from an older version is refused. |
+| seeded from | store ref | The store the list started from. |
+| items | ordered list of {name, pack, main vendor, backup vendors, notes} | Names unique ignoring case; vendors by HQ's names. No par, area or stock. |
+| log | list of {who, when, label, list before} | Every save keeps the list it replaced. |
 
 #### Entity: Count line (per item, per vendor, per day)
 | Field | Type (conceptual) | Notes |
@@ -539,9 +558,10 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
   catalog that each store inherits and then tunes (its own pars from its sales/product mix, its own
   vendor cadence, its own regionally-available vendors). Today each store's catalog is built
   independently, so this is a design target, not current behavior; a rebuild should make the concept
-  catalog a real, inheritable entity. Built so far (2026-11-01): HQ rollouts to many stores at once
-  (R28). Next: a per-concept, per-side library seeded from one store and cleaned in HQ, which a new
-  store's order guide starts from (`docs/MOG_Warehouse_Spec.md` §1).
+  catalog a real, inheritable entity. Built so far: HQ rollouts to many stores at once (R28,
+  2026-11-01) and a per-concept, per-side library seeded from one store and cleaned in HQ, which a
+  new store's order guide starts from (R29, 2026-11-02; `docs/MOG_Warehouse_Spec.md` §1). A store
+  copies from its library once; nothing keeps the two in step afterwards.
 - **HEH's own warehouse (Happy Supply).** HEH buys some products centrally, stores them (rented cold
   storage, a store's freezer) and sends them to stores, charging each store back monthly. Specced
   2026-11-01 (`docs/MOG_Warehouse_Spec.md` §2): the warehouse is one vendor among a store's vendors,

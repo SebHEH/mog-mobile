@@ -11,6 +11,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **One writer per kind of data.** Nothing syncs both ways ([docs/MOG_SupabaseMigration.md](MOG_SupabaseMigration.md) §3).
 - **The order math lives only in `apps-script/OrderMath.gs`.** The server runs it and `build.py` copies it verbatim into the app. Never re-implement it in SQL or as a hand copy (the 08-03 bug class).
 - **The Sheet dialogs are being phased out** (2026-07-21). Don't invest in modal visual polish. Behavior fixes in the dual-host `.html` pages still matter.
+- **Computer pages (the editor, HQ) use the order guide's computer look with the HEH brand,** and a choice among known values is pick-only: a dropdown or chips, never a free-text box beside a list, which invites a new misspelled vendor (Sebastian, 2026-11-01, on HQ's first library page). A new screen gets a mockup in that look before it's built.
 - **Loading bars and transition screens** were parked until every store moved to Supabase. That happened 2026-10-20, so they're now a polish candidate.
 - **Secrets:**
   - Apps Script reaches Supabase with a per-store sync key, never the service-role key. Anyone who can edit a store's Sheet can read its Script Properties, so a leaked key reaches one store.
@@ -90,6 +91,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **Gates plant defects by exact text.** Before changing a line in `catalogEdit.js`, `template/index.html` or a `.gs` file, grep `tests/` for it: a control whose anchor moved fails with "plant: anchor not found", and its find text has to move with the line (`me_import`'s par control, 2026-11-01).
 - **To reproduce a CI failure locally:** `git -c core.autocrlf=false clone https://github.com/SebHEH/mog-mobile.git <scratch dir>`, then run `TZ=UTC node tests/run_all.js` inside it.
 - **GitHub Actions logs need a signed-in account, even on this public repo.** The logs API answers 403, and the page says "Sign in to view logs". The runs API gives each run's status and step results without a token: `https://api.github.com/repos/SebHEH/mog-mobile/actions/runs?head_sha=<sha>`.
+  - That list holds the Pages deploy run too, so a wait loop matches the run named `gates`; one that took the first "completed" stopped on Pages (2026-11-01).
 - **Testing an edited tracked file inside a scratch clone:** `git reset --hard` there quietly puts the old file back, so copy it in under an untracked name. `deploy.py`'s git check was tested this way.
 
 ## Google Drive connector
@@ -101,5 +103,6 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 
 - **Bash heredocs strip backslashes and choke on long quoted text.** Write scripts with the Write tool to the scratchpad and run them from there. Make edits that contain backslashes with the Edit tool.
 - **Guard scripted replaces:** `assert s.count(old) == 1` before each one.
+- **`build.py` can fail once with `OSError: [Errno 22]`** writing a store's `editor/` file: a passing Windows file lock. Run it again (2026-11-01).
 - **Python run from Git Bash prints CRLF:** pipe it through `tr -d '\r'` before a `while read` loop.
 - **Check non-ASCII edits:** the Edit tool once turned a typed `ă` into `ă`, so check the bytes with `cat -A` when a JS escape (not the character) matters.

@@ -14,20 +14,25 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
 - **Each Sheet** is frozen for catalog edits. It still holds the Apps Script: the 3:30 AM close, the recap email, the onboarding moves. It also gets a nightly LOG_ORDERS backup.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v12 (the concept library; Sebastian runs it in the SQL Editor before its HQ page ships).
+- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v12.
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
-- **The three empty stores:**
+- **The three stores that moved empty:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
-  - Tysons BOH (`tnyt`): stays empty, like the unused Roll Play Tysons and Founders stores.
+  - Tysons BOH (`tnyt`): its KMs have been setting it up since 10-26 (208 items on 11-01). It seeds the Teas'n You BOH library.
 - **The first all-Supabase night (10-19 → 10-20) was clean:**
   - all 10 stores closed between 3:23 and 3:38 AM;
   - rpr and rprfo had orders, and their recaps went to their Supabase recipients;
   - the other stores had nothing ordered, so no email (by design).
 
+**2026-11-02: the concept library and the HQ redesign** (`docs/MOG_SessionHandoff_2026_11_02.md`).
+- **Concept library** (schema v12): one standard item list per concept and side, kept on HQ's Libraries page. A library starts from one store, then gets cleaned, and sets up a store like an LTO (no par, no area). None is started yet.
+- **HQ redesigned** in the order guide's computer look with the HEH brand. Stores are picked as a concept, then its stores. The main vendor is a dropdown and backups are chips. Nobody has seen it on a screen yet.
+- **HQ in use:** Sebastian is signed up and ran one TEST rollout on rprfotest; its Undo is still untried.
+
 **2026-11-01: vendor contacts, HQ control, the warehouse spec** (`docs/MOG_SessionHandoff_2026_11_01.md`).
 - **Vendor contacts** (schema v10): each store's vendors carry a contact, edited on the new app-only Vendors page, shown on the phone's vendor card. Rosslyn BOH and Founders BOH are loaded.
-- **HQ control** (schema v11, `/hq/`): adds a vendor or LTO items to many stores at once, every store or none, one undoable change per store. Sign-in is per person by invite; nobody is invited yet.
-- **Spec approved, nothing built:** `docs/MOG_Warehouse_Spec.md`, in the order concept library, warehouse (Happy Supply) W1-W2, stores without a Sheet, then Chasin' Tails and NUE.
+- **HQ control** (schema v11, `/hq/`): adds a vendor or LTO items to many stores at once, every store or none, one undoable change per store. Sign-in is per person by invite; only Sebastian is invited.
+- **Spec approved:** `docs/MOG_Warehouse_Spec.md`, in the order concept library (built 11-02), warehouse (Happy Supply) W1-W2, stores without a Sheet, then Chasin' Tails and NUE.
 
 **Two maintainers (2026-10-29).** Sebastian's assistant Donny now maintains MOG too (CLAUDE.md, Two maintainers; his setup in [ONBOARDING.md](../ONBOARDING.md)).
 - **Changes:** Donny works on branches and opens pull requests; Sebastian merges.
@@ -63,8 +68,14 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
 
 ### Next-session candidates
 
-1. **Use the concept library** (schema v12, HQ's Libraries page, in the redesigned HQ of 2026-11-01; `docs/MOG_Warehouse_Spec.md` §1, built 2026-11-01): Sebastian's TEST-store rollout first (none run yet), then start the four libraries (Rosslyn BOH and FOH, Tysons BOH, Rockville FOH), clean them, and set up a store. Then Happy Supply to the Roll Play stores through HQ, and the warehouse (§2).
-2. **Commit the fake-Supabase preview as a tool** (Sebastian, 2026-11-01): a script plus a `.claude/launch.json` entry that serves the app, the editor and `/hq/` against `tests/fake_supabase.js` with a fixture store and PIN, replacing the scratch server every session rebuilds from `docs/MOG_ProjectNotes.md` (built twice on 2026-11-01).
+1. **Use the concept library** (schema v12, HQ's Libraries page; `docs/MOG_Warehouse_Spec.md` §1). Sebastian's steps:
+   - undo the TEST rollout "Horse Pho" in rprfotest's Changes;
+   - look at the redesigned HQ on a screen;
+   - start the four libraries (Rosslyn BOH and FOH, Tysons BOH, Rockville FOH) and clean them;
+   - set up a store from one.
+
+   Then Happy Supply to the Roll Play stores through HQ, and the warehouse (§2).
+2. **Commit the local test tools** (Sebastian, 2026-11-01): a script plus a `.claude/launch.json` entry that serves the app, the editor and `/hq/` against `tests/fake_supabase.js` with a fixture store and PIN, and the PGlite SQL runner that ran the schema chain and smoke files before hand-over. Both are rebuilt in the scratchpad every session: the preview three times by 11-02.
 3. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
    - Sebastian's steps: GitHub collaborator on both repos, branch protection on `main`, the Supabase Developer invite, Editor on the 11 Sheets, PINs.
    - Then Donny consents in each store and runs `python deploy.py --redeploy --target rprfo`.
@@ -128,7 +139,7 @@ See `CLAUDE.md` → "Standing invariants" (10 rules). They aren't repeated here 
 | `rptfo` | Roll Play - Tysons FOH | Not used yet. |
 | `rpfr` | Roll Play - Founders BOH | In use since 2026-11 (Founders Row is its own store now). |
 | `rpfrf` | Roll Play - Founders FOH | Not used yet. |
-| `tnyt` | Teas'n You - Tysons BOH | Empty, not used. Its `/exec` flaked after redeploys (10-16, 10-19) and recovered both times. |
+| `tnyt` | Teas'n You - Tysons BOH | Being set up by its KMs since 10-26. Its `/exec` flaked after redeploys (10-16, 10-19) and recovered both times. |
 | `tnytf` | Teas'n You - Tysons FOH | |
 | `tnyr` | Teas'n You - Rockville BOH | Started empty; KMs setting it up. |
 | `tnyrf` | Teas'n You - Rockville FOH | Started empty; KMs setting it up. |
@@ -200,8 +211,8 @@ Most recent first. Keep about five; older rows move to the archive.
 
 | Date | Session | Outcome |
 |---|---|---|
+| 2026-11-02 | Concept library, HQ redesign | Schema v12: `mog.stores.side`, the concept libraries (one per concept and side, versioned whole-list saves with a log), set up a store from one like an LTO, add an LTO's items to the library in the same save; smoke 21/21, probe 74/74, gate `concept_library` (27 total). HQ redesigned from an approved mockup: the order guide's computer look with the HEH brand, concept then stores, pick-only vendors. Blueprint R29. Commits `67cccb0`, `84ac2cb`. Detail: `docs/MOG_SessionHandoff_2026_11_02.md`. |
 | 2026-11-01 | Vendor contacts, HQ control, warehouse spec | Schema v10: vendor contacts, the app-only Vendors page, a Contact sheet on the phone (app v0.27.0 / cache v68); contacts loaded at Rosslyn BOH and Founders BOH, no passwords. Schema v11: HQ control at `/hq/` (per-person invite and passphrase, every store or none, remembered vendor names); gates `vendor_contacts`, `hq_rollout` (26 total); smoke 15/15 and 27/27, probe 68/68. `docs/MOG_Warehouse_Spec.md` approved. Blueprint R28. Commits `1893926`, `39afc44`. Detail: `docs/MOG_SessionHandoff_2026_11_01.md`. |
 | 2026-10-20 → 10-29 | Supabase skills audit, a second maintainer (Donny) | Skills: two global Supabase skills (`supabase-schema-change`, `appsscript-to-supabase-migration`, applied by Claude-SKills) and repo skill `mog-supabase-schema`; `route.py` routes `supabase/`; `check_api.sh` stopped sending a wrong PIN to rprfo. Two maintainers: a CLAUDE.md section, ONBOARDING.md, a git check in `deploy.py`, CI on GitHub (first run failed on CRLF test anchors, fixed in `plant()`, then green), Claude's memory moved to `docs/MOG_ProjectNotes.md`. Commits `eb907a0`, `2dd9264`, `1dbe516`; nothing the stores run changed. Detail: `docs/MOG_SessionHandoff_2026_10_29.md`. |
 | 2026-10-20 | Night check, logic check, cleanup, Manage Items redesign | First all-Supabase night checked clean. Logic check: all gates pass, 4 fixes (recap duplicate check, late offline counts, phone rounding on the shared math, negative counts). Cleanup: Import Vendor and 3 Sheet-only tools removed, dead code removed, this doc trimmed (archive kept). Commit `ffc816b`: Apps Script on all 11 targets, app v0.26.1 / cache v67. Manage Items redesign (app-only `Items.html`, bulk bar with 3 new one-change saves, gate `items_bulk`), commit `a4e6e98`, live on all 10. Blueprint R5, R12, R14 bumped. Detail: `docs/MOG_SessionHandoff_2026_10_20.md`. |
 | 2026-10-19 (later, 3) | New-store onboarding + all four concepts | `mog-add-store` rewritten for Supabase stores (11 steps, `validate.py wired`); wizard and Sheet menus accept all four concepts; `build.py` refuses bad slugs and concepts; gate `concepts`. Commit `4720ff2`. Detail: `docs/MOG_SessionHandoff_2026_10_19.md`. |
-| 2026-10-19 (later) | Phase 4's rest, one app on a computer, every store moved | Schema v9 (order history, recipients, People, Health in the app); the sidebar shell with Manage pages in a frame; the Overview; all 10 stores' editors moved (tnyr, tnyrf, tnyt started empty). Commits `30c08ce`→`7f23850`. Same handoff. |
