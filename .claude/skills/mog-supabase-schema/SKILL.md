@@ -96,6 +96,10 @@ file is run once, in order. Re-running any of them must stay harmless.
      every smoke file, then `schema_vN.sql` again, which must change no row; CI runs the same on
      every push. Then plant a defect or two in a scratch copy of `supabase/` (with `node_modules`
      beside it): each must turn a smoke row to FAIL.
+     - **An error running the file is not a catch:** it means the plant broke the SQL, not the
+       rule, so re-plant until a named smoke row says FAIL. A plant script that counts any `FAIL`
+       line reads a broken plant as caught (2026-11-02: a plant leaving two assignments to one
+       column).
      - The runner skips what PGlite can't pass and says why: `smoke.sql` and `smoke_v2` (v1
        assertions that v3 changed), `smoke_v4` (no ICU; `und-x-icu` faked as "C") and two rows of
        `smoke_v7`.
