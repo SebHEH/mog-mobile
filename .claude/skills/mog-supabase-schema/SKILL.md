@@ -68,7 +68,9 @@ Re-running any of them must stay harmless.
   `mog.editor_fields_match`, `catalogEdit.js` `matches`, the fake's `editorSame`. Empty counts as
   none, and its keys go in jsonb's stored order (shorter first, then bytewise), so `diff()` never
   sees a key-order change as an edit and Undo of an older change is refused instead of wiping it
-  (schema v10).
+  (schema v10). The same holds for a jsonb list read back (v12's library items come as `name, pack,
+  notes, vendor, backups`): the fake sends jsonb's key order, and the client compares through its
+  cleaner (`cleanLibrary`), never as raw JSON, or an untouched draft looks changed.
 - **A long function redefined from an earlier version is generated, not retyped:** a scratch script
   copies the old definition from its `schema_vN.sql` and applies asserted one-match replacements
   (schema v10's `editor_apply_ops` from v8, `catalog_from_tables` from v4). Nothing else in the
@@ -83,6 +85,14 @@ Re-running any of them must stay harmless.
 ## Ship order
 
 1. **Claude writes every file above**, and `node tests/run_all.js` passes.
+   - **Then runs the SQL locally in PGlite** (Postgres in Node, `@electric-sql/pglite`): the chain
+     `schema.sql` through `schema_vN.sql`, then `smoke_v6` through `smoke_vN`; then `schema_vN.sql`
+     a second time (re-run safe); then one planted defect, which must turn smoke rows to FAIL.
+     - Expected local FAILs: `smoke.sql` and `smoke_v2` (v1 assertions that v3 changed), and
+       `smoke_v4` (PGlite has no ICU and fakes `und-x-icu` as "C").
+     - The runner lives in the scratchpad until it's committed (`docs/MOG_CurrentState.md`'s test-tools
+       candidate).
+     - Schema v12 went live 21/21 on its first run after this check.
 2. **The maintainer (Sebastian or Donny) runs, in the Supabase SQL Editor, in this order** (link each file in the final
    message, CLAUDE.md convention #9):
    1. `supabase/schema_vN.sql`;
