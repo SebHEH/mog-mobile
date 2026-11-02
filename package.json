@@ -1,0 +1,11 @@
+{
+  "name": "mog-mobile",
+  "private": true,
+  "description": "Only for the SQL check (npm ci, then npm run sql): supabase/tests/run_pglite.mjs runs every schema file and smoke test in PGlite, Postgres in Node. The gates in tests/ need no install.",
+  "scripts": {
+    "sql": "node supabase/tests/run_pglite.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.16"
+  }
+}

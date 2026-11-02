@@ -441,10 +441,11 @@ def generate_hq(supabase, dry_run):
     files = {'index.html': page.replace(HQ_PLACEHOLDER, js_json(cfg))}
     with open(os.path.join(EDITOR_SRC, 'catalogEdit.js'), 'r', encoding='utf-8') as f:
         files['catalogEdit.js'] = f.read()
-    # The HEH logo and the concept marks, from the HEH brand kit.
+    # The HEH logo and the concept marks, from the HEH brand kit, and the
+    # page's own scripts (warehouse.js: Happy Supply, schema v13).
     hq_src = os.path.dirname(HQ_TEMPLATE)
     for name in sorted(os.listdir(hq_src)):
-        if name.endswith('.svg'):
+        if name.endswith('.svg') or name.endswith('.js'):
             with open(os.path.join(hq_src, name), 'r', encoding='utf-8') as f:
                 files[name] = f.read()
     for name, body in files.items():

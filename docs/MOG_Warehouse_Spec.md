@@ -1,7 +1,7 @@
 # MOG — Warehouse (Happy Supply), concept library and new stores: spec
 
 **Agreed:** 2026-11-01, Sebastian (spec-first, decisions below).
-**Status:** approved. §1 (concept library) built as schema v12 on 2026-11-01; the rest isn't built. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
+**Status:** approved. §1 (concept library) built as schema v12 on 2026-11-01; §2's W1 built as schema v13 on 2026-11-02 (not yet run on Supabase); the rest isn't built. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
 **Reference, not ported:** Chef Daniel's Happy Supply artifact (a claude.ai page) and "Happy Supply: System Overview for IT" (2026-10-26). They show what people already want; MOG rebuilds it from scratch on Supabase. Daniel's data isn't moved (it isn't really in use); the warehouse starts with a first count.
 
 ---
@@ -109,6 +109,80 @@ A store orders from Happy Supply in its order guide like any vendor, and the ord
 | W1 | Warehouse data and Dan's page: products, locations, stock, vendor orders in (updating the average cost), transfers, counts and adjustments, history. The warehouse role on HQ's people. |
 | W2 | Store orders: Happy Supply's items at each store linked to warehouse products (publishing a product to stores uses the HQ rollout); Send to Happy Supply on review; Dan ships from a chosen location (stock drops, price locks); the store marks it received. |
 | W3 | Chargebacks per store and month (CSV, PDF statement). Chasin' Tails and NUE order through their own order guides once they're on MOG (step 4). |
+
+### Design: W1, with W2's data (walkthrough 2026-11-02)
+
+**Status:** approved by Sebastian 2026-11-02, and so were W1's screens (mocked up on the HQ canvas: Inventory and count, Incoming, Products and prices, https://claude.ai/artifact/3pJWHSWbMxVUyaRjmXkXqg). **W1 is built (schema v13, 2026-11-02), not yet run on Supabase or deployed**; W2's tables below are designed, not built.
+
+**Built for W1 (schema v13):**
+- `supabase/schema_v13.sql`: the roles, the W1 tables and the nine `mog_wh_*` calls below; `smoke_v13.sql` (44 checks); a `check_api.sh` block.
+- `template/hq/warehouse.js`: HQ's Happy Supply section (Inventory with Count a location, Incoming, Products and prices, Stock history), shown to the warehouse role; `template/hq/index.html` signs in with roles and shows each person the sections theirs open. `build.py` copies it into `hq/`.
+- The screens match the mockup, with two changes: the sidebar's "Shipments" is "Incoming" (it could have meant orders leaving), and Orders and Chargebacks wait for W2 and W3.
+- Gates: `tests/warehouse.test.js` (the page's sums and payloads against the fake; 6 planted-defect controls); CI also runs the real SQL in PGlite (`supabase/tests/run_pglite.mjs`).
+- Seen in the browser against the fake only.
+- **Price detail for W2:** a store's price uses the average cost to 4 decimals, so it can differ by a cent from the sum of the 2-decimal figures shown (shrimp at $77.3095 + $6 fee + 5% is $87.47, not $87.48).
+
+**Decided (Sebastian, 2026-11-02):**
+- Design W1 and W2's data together, build W1 first.
+- Happy Supply is added to the Roll Play stores with W2's first products, in one HQ rollout per store (vendor and items in one change, one Undo), not before.
+- **Stock never goes below 0.** A ship or transfer that would is refused until Dan counts that product at that location; the count logs the difference with a reason.
+- **CI runs the real SQL.** The PGlite runner is committed with W1, and CI runs the schema chain and the smoke files on real Postgres (the repo's first npm dependency, pinned).
+- **Schema number:** the next free one when the file is written (pull, then check `supabase/`). Numbers aren't held for a person: either maintainer may build the audit fix (`MOG_ClaudeCodeTask_2026_10_30.md` C2), and whichever schema file comes first takes v13.
+
+**Where Dan works.** The HQ page (`/hq/`), with a Happy Supply section in its sidebar, shown by role. The approved HQ mockup already draws it there ("Happy Supply, inside the same HQ", its Orders board: https://claude.ai/artifact/3pJWHSWbMxVUyaRjmXkXqg). The warehouse screens go in their own file beside the page (`template/hq/warehouse.js`); the page is 83 KB already.
+
+**Who signs in (W1).**
+- `mog.hq_users.roles`: `hq`, `warehouse` or both. Everyone already invited gets both.
+- `mog.hq_invite(name, roles)` invites with roles. The one-argument form keeps an existing person's roles and gives a new person `hq`.
+- `mog_hq_data` and `mog_hq_apply` refuse a token without `hq`; every `mog_wh_*` refuses one without `warehouse`. Signing in returns the roles, and the page shows only the sections they open.
+
+**Warehouse tables (W1).** All in the private `mog` schema, reached only through `mog_wh_*` functions.
+
+| Table | One row is | What it holds |
+|---|---|---|
+| `mog.wh_locations` | a storage location (Berliner, Tysons freezer) | name, order, active |
+| `mog.wh_suppliers` | a vendor the warehouse buys from | name; picked on a vendor order, added on Products and prices (pick-only, never free text) |
+| `mog.wh_products` | something HEH stocks (king crab, shrimp) | name, pack (`20 LB case`), par in cases over all locations, average cost per case, handling fee per case, active, the stores it's limited to (none = every store) |
+| `mog.wh_stock` | a product's cases at one location | kept by the functions in the same transaction as each move; never below 0 |
+| `mog.wh_moves` | one change to stock, never edited | product, location, cases (+ or -), kind (received, transfer out, transfer in, count, shipped), the order or transfer number, cost per case on a receipt, reason on a count, who, when |
+| `mog.wh_pos`, `mog.wh_po_lines` | a numbered vendor order in (PO-0001) and its lines | supplier, to which location, ordered then received or cancelled; per line the product, cases and cost per case |
+| `mog.wh_transfers`, `mog.wh_transfer_lines` | a numbered move between locations (TR-0001) and its lines | from, to, in transit between send and receive |
+| `mog.wh_settings` | one row | markup % and delivery fee per order, both 0 to start |
+
+**What Dan does (W1).** Each is one `mog_wh_*` call, one transaction, with the product's stock rows locked:
+- **Products, locations, suppliers, settings:** save one; refused when someone saved it since (CONFLICT).
+- **Vendor order in:** create, edit while open, cancel, receive. Receiving takes the cases and cost actually delivered per line; stock rises at the order's location, and the average cost becomes (cases on hand x average + cases in x cost) / (cases on hand + cases in), over every location.
+- **Transfer:** send (the cases leave the from-location and show in transit), then receive (they arrive). The cost doesn't change.
+- **Count:** the cases counted per product at one location. A difference becomes a `count` move with a reason, required.
+- **Reads:** `mog_wh_data` (products, stock, open orders and transfers, settings), `mog_wh_history` (moves, by product or location, newest first).
+
+**Store orders (W2: designed now, built next).**
+
+| Table | One row is | What it holds |
+|---|---|---|
+| `mog.wh_store_vendor` | which of a store's vendors is Happy Supply | follows a rename, goes with the vendor; set by the HQ publish |
+| `mog.wh_item_links` | a store item that comes from a warehouse product | store and item to product; goes with the item; set by the HQ publish |
+| `mog.wh_orders`, `mog.wh_order_lines` | a store's Happy Supply order (HS-0001) and its lines | store, cycle date, needed-by date, note, sent by; sent, shipped, received or cancelled; per line the item, product, cases ordered and shipped, ship-from location, price per case locked at ship, average cost at ship |
+
+- **Send to Happy Supply** (the phone, with its PIN session): `mog_wh_send` takes the reviewed vendor's lines (item, cases). The server finds each line's product and refuses an unlinked item by name. Sending again for the same store, vendor and cycle replaces the order while it's still `sent`.
+- **Dan ships** (`mog_wh_ship`): a location and cases per line. Stock drops (a `shipped` move with the order number), and each line's price per case locks: (average cost + handling fee) x (1 + markup %).
+- **The store marks it received** (`mog_wh_received`).
+- **The phone** gets the store's Happy Supply vendor and this cycle's order status in its snapshot, only when there is one. Prices and fees never reach a phone.
+- **Publishing a product to stores** extends the HQ rollout: one change per store adds the Happy Supply vendor (the first time), the item (no par, no area) and its link.
+- **W3's chargebacks** read `mog.wh_order_lines` (the price locked at ship).
+
+**Where the rules live.** In the SQL functions, not in the pages: the handling fee must never reach a store, a price locks on the server, and two tabs (or Dan and a store) acting at once can't oversell. This differs from the catalog, whose rules live in `catalogEdit.js` and reach the database as ops.
+
+**Checks.** The version's smoke file on the real SQL (PGlite in CI and on the computer, then the SQL Editor), a `check_api.sh` block, the fake (`tests/fake_supabase.js`) for the page, and a gate for the page's calls and the role refusals.
+
+**Not in W1:**
+- store orders (W2) and chargebacks (W3);
+- undo: a wrong count is fixed by another count; a wrong receipt's cost needs a maintainer (the moves keep each receipt's cost, so the average can be replayed if a "Correct a receipt" is wanted later);
+- lots and expiry, emails to vendors or Berliner.
+
+**Open for W2 (not needed for W1):**
+- The HQ mockup's Orders board has an Approve step (New, Approved, Shipped); this spec has sent, shipped, received. It's a status value either way, no table change.
+- A linked store item orders in the product's case (the HQ publish sets its pack). Check with Dan that no store orders king crab or shrimp by the pound.
 
 ---
 

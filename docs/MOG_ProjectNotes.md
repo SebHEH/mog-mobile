@@ -68,6 +68,17 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - A wrong save is put back in the SQL Editor from `mog.library_log.items_before` (there's no Restore button).
   - A library item's keys come back from Postgres in jsonb's order (`name, pack, notes, vendor, backups`), so compare lists through `cleanLibrary`, never as raw JSON (the fake sends the same order).
 
+## Happy Supply, the warehouse (schema v13)
+
+- **Roles:** every HQ person has `hq`, `warehouse` or both (`mog.hq_users.roles`). Everyone invited before v13 has both. HQ's catalog pages answer only `hq`; the Happy Supply pages only `warehouse`. The HQ page shows each person the sections their roles open.
+  - Invite Chef Dan with the warehouse role only: `select mog.hq_invite('Dan', '{warehouse}');` (an HQ sign-in can change every store's catalog, so never give him `hq`).
+  - Change roles without a new invite: `select mog.hq_set_roles('<name>', '{hq,warehouse}');`. A one-argument `mog.hq_invite('<name>')` keeps the person's roles.
+- **The rules live in the SQL** (`mog_wh_*`), not the page: the handling fee must never reach a store, and two tabs must not take the same stock twice. The page's two previews (the average after a delivery, a store's price) are the SQL's sums, held equal by `tests/warehouse.test.js`.
+- **The average cost** covers every location and what's in transit, kept to 4 decimals; only deliveries move it (transfers and counts don't).
+- **Stock never goes below 0:** a transfer that would is refused, and Dan counts first. A count's difference needs a reason.
+- **Numbers (PO-0001, TR-0001) come from what's there,** not a sequence, so `smoke_v13.sql` can run on the live database: it adds its own `zz smoke 13 ...` rows and deletes them, the settings' version aside.
+- **No Undo in W1.** A wrong count is fixed by another count. A wrong cost on a delivery needs a maintainer in the SQL Editor; `mog.wh_moves` keeps each delivery's cost, so the average can be replayed.
+
 ## Local previews and the browser pane
 
 - **Give local pages as full addresses:** `http://localhost:8765/...` (the `mog-static` entry in `.claude/launch.json`). A bare `/path` in chat opens the file viewer at the drive root. If another chat's server holds 8765, use `mog-static-alt` (port 8767).
@@ -84,6 +95,9 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 
 ## CI and tests
 
+- **The real SQL runs in CI** (2026-11-02): after the gates, `npm ci` and `node supabase/tests/run_pglite.mjs` run every schema file in order in PGlite (Postgres in Node, the repo's one npm package, pinned in `package.json`), every smoke file, then the newest schema file again, which must change no row. Run it locally before taking a schema file to the SQL Editor; it takes a few seconds.
+  - PGlite can't pass `smoke.sql`, `smoke_v2.sql` (v1 assertions v3 changed on purpose), `smoke_v4.sql` (no ICU collation) and two rows of `smoke_v7.sql`; the runner skips them and says why. They still run in the SQL Editor.
+  - The gates in `tests/` still need no install.
 - **CI (`.github/workflows/gates.yml`) runs on Linux with LF files.** Git stores LF, so only a Windows checkout has CRLF. Gate anchors written with `\r\n` failed 12 controls on the first GitHub run (2026-10-29), and `plant()` now matches the file's own line ending.
 - **A Windows copy needs `core.autocrlf` on** (Git for Windows' default; `git config core.autocrlf` prints `true`). `build.py` writes CRLF on Windows (Python's text mode), so with the setting off, every generated store file shows as changed after a build. Donny's copy had it off (2026-10-29).
   - To turn it on in an existing copy: `git config core.autocrlf true`, run `python build.py`, then `git add -u -- rpr rprfo rpt rptfo rpfr rpfrf tnyt tnytf tnyr tnyrf` once.

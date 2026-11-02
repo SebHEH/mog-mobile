@@ -23,3 +23,8 @@ jobs:
         with:
           python-version: '3.12'  # editor_link.test.js runs editor_link.py
       - run: node tests/run_all.js
+      # The real SQL in Postgres (PGlite, the one npm package): every schema
+      # file in order, every smoke test, then the newest file again, which
+      # must change no row.
+      - run: npm ci
+      - run: node supabase/tests/run_pglite.mjs

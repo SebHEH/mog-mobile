@@ -26,7 +26,7 @@ Replace the path here with the newest handoff at the end of each session that sh
 - **Deploy**:
   - PWA: GitHub Pages auto-deploys from `main`. Edit `template/` → run `python build.py` → commit + push.
   - Apps Script: `clasp` via `deploy.py` (at repo root, alongside `build.py`). Edit `apps-script/<file>` → run `python deploy.py` (bound-sidebar-only changes) or `python deploy.py --redeploy` (any MOGApi.gs / `api_*` change — bumps each store's web-app `/exec` URL too). Push reaches all 11 targets (10 stores + the template) in ~40s; `--redeploy` adds ~3s/target.
-- **Build / test**: CI (`.github/workflows/gates.yml`) runs `node tests/run_all.js` on every push and pull request. `python build.py --dry-run` previews PWA build. `python deploy.py --dry-run` previews Apps Script deploy (combine with `--redeploy` to preview the redeploy phase too). `node tests/run_all.js` runs the order-math gates: the real `.gs` code under Node, no dependencies (see `tests/README.md`). Run it before deploying any change to `OrderMath.gs`, the count/dashboard path in `MOGApi.gs`, or `Sync.gs`. Everything else is verified manually (open the live URL, run an order).
+- **Build / test**: CI (`.github/workflows/gates.yml`) runs `node tests/run_all.js` on every push and pull request, then the real SQL in PGlite (`npm ci`, then `node supabase/tests/run_pglite.mjs`: every schema file, every smoke test). `python build.py --dry-run` previews PWA build. `python deploy.py --dry-run` previews Apps Script deploy (combine with `--redeploy` to preview the redeploy phase too). `node tests/run_all.js` runs the order-math gates: the real `.gs` code under Node, no dependencies (see `tests/README.md`). Run it before deploying any change to `OrderMath.gs`, the count/dashboard path in `MOGApi.gs`, or `Sync.gs`. Everything else is verified manually (open the live URL, run an order).
 
 ## Layer routing
 
@@ -173,7 +173,8 @@ mog-mobile/
 ├── CLAUDE.md                    This file. Load-on-start anchor.
 ├── ONBOARDING.md                A second maintainer's setup (Donny) and his session-start / wrap-up prompts.
 ├── README.md                    Human-facing docs (architecture, add-a-store walkthrough).
-├── .github/workflows/gates.yml  CI: node tests/run_all.js on every push and pull request.
+├── .github/workflows/gates.yml  CI: node tests/run_all.js, then the SQL in PGlite, on every push and pull request.
+├── package.json                 Only for the SQL check: @electric-sql/pglite (pinned), for supabase/tests/run_pglite.mjs.
 ├── index.html                   Hub picker landing page.
 ├── sw.js                        Hub service worker.
 ├── manifest.json                PWA manifest for the hub.
@@ -191,6 +192,9 @@ mog-mobile/
 │   │                            edited item by item, and sent to stores like an LTO ("Set up stores from it"). The page is
 │   │                            the order guide's computer look with the HEH brand (sidebar: Roll out, Libraries, Vendors,
 │   │                            Vendor names); heh-logo.svg and the concept marks beside it come from the HEH brand kit.
+│   │                            hq/warehouse.js (schema v13): Happy Supply's Inventory (with a count), Incoming (vendor
+│   │                            orders in, transfers), Products and prices and Stock history, for the warehouse role. Each
+│   │                            person sees the sections their roles (hq, warehouse) open.
 │   └── editor/                  The editor on Supabase (one-app Phases 2 and 4): catalogEdit.js (Manage Items, Manage Vendors,
 │                                Storage Areas and Shelf to Sheet over the catalog tables, gated against Items.gs / Vendors.gs /
 │                                PickPath.gs) + host.js (runs those Apps Script pages and Editor Home as static pages) + meImport.js
@@ -245,9 +249,11 @@ mog-mobile/
 │   ├── schema_v10.sql           Vendor contacts: mog.vendors.contact, saved through mog_editor_apply, phones get vendorContacts in the catalog (run after v9).
 │   ├── schema_v11.sql           HQ control: HQ people (invite, own passphrase and lockout), remembered vendor names, mog_hq_data / mog_hq_apply (all stores or none) (run after v10).
 │   ├── schema_v12.sql           Concept library: mog.stores.side (from the location), mog.libraries / library_items / library_log, mog_hq_apply with libraries (run after v11).
+│   ├── schema_v13.sql           Happy Supply W1: HQ roles (hq, warehouse), the warehouse tables (stock never below 0, every move kept), mog_wh_* (run after v12).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v12.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
+│   └── tests/                   smoke.sql … smoke_v13.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
+│                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.

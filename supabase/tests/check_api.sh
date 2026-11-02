@@ -124,6 +124,22 @@ check "v12 helper: library_put not exposed"       404 ''   -X POST "${J[@]}" -d 
 check "v12 helper: side_from_location not exposed" 404 ''  -X POST "${J[@]}" -d '{"p":"Rosslyn BOH"}' "$(rpc side_from_location)"
 check "v12 hq_apply with libraries: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_changes":[],"p_links":[],"p_libraries":[]}' "$(rpc mog_hq_apply)"
 
+# schema v13 (the warehouse; a bogus token only)
+check "v13 tables: wh_products not reachable"      404 ''   "$URL/rest/v1/wh_products"
+check "v13 tables: wh_stock not reachable"         404 ''   "$URL/rest/v1/wh_stock"
+check "v13 tables: wh_moves not reachable"         404 ''   "$URL/rest/v1/wh_moves"
+check "v13 helper: wh_move not exposed"            404 ''   -X POST "${J[@]}" -d '{"p_by":"x","p_product":1,"p_location":1,"p_cases":1,"p_kind":"count","p_ref":null,"p_cost":null,"p_reason":"x"}' "$(rpc wh_move)"
+check "v13 helper: hq_set_roles not exposed"       404 ''   -X POST "${J[@]}" -d '{"p_name":"x","p_roles":["hq"]}' "$(rpc hq_set_roles)"
+check "v13 wh_data: bad token refused"             200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_wh_data)"
+check "v13 wh_history: bad token refused"          200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_product_id":null,"p_location_id":null,"p_before_id":null}' "$(rpc mog_wh_history)"
+check "v13 wh_save: bad token refused"             200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_kind":"location","p_row":{}}' "$(rpc mog_wh_save)"
+check "v13 wh_po_save: bad token refused"          200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_po":{}}' "$(rpc mog_wh_po_save)"
+check "v13 wh_po_cancel: bad token refused"        200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_id":1,"p_version":1}' "$(rpc mog_wh_po_cancel)"
+check "v13 wh_po_receive: bad token refused"       200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_receipt":{}}' "$(rpc mog_wh_po_receive)"
+check "v13 wh_transfer_send: bad token refused"    200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_transfer":{}}' "$(rpc mog_wh_transfer_send)"
+check "v13 wh_transfer_receive: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_id":1}' "$(rpc mog_wh_transfer_receive)"
+check "v13 wh_count: bad token refused"            200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_count":{}}' "$(rpc mog_wh_count)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

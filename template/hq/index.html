@@ -19,9 +19,13 @@
        Each store's change is worked out by catalogEdit.js, the editor's own
        code (commitHqRollout), and mog_hq_apply writes every store (and
        library) or none, one logged change per store that the store can undo
-       in its own Changes. -->
+       in its own Changes.
+       Happy Supply (schema v13, warehouse.js): the warehouse's stock, vendor
+       orders in, transfers and counts, for the warehouse role. Each person
+       sees the sections their roles open (hq, warehouse or both). -->
   <script>window.MOG_HQ = /*__MOG_HQ__*/null;</script>
   <script src="catalogEdit.js"></script>
+  <script src="warehouse.js"></script>
   <style>
     * { box-sizing: border-box; }
     :root { --ink: #1a1a1a; --ink2: #3d3d3a; --muted: #5f5e5a; --label: #64635e; --line: rgba(0,0,0,0.08); --line2: rgba(0,0,0,0.18);
@@ -193,6 +197,23 @@
     .crumb { font-size: 13px; color: var(--muted); }
     .crumb button { border: 0; background: none; padding: 0; color: var(--ink2); font-weight: 600; text-decoration: underline; cursor: pointer; }
 
+    /* Happy Supply (warehouse.js) */
+    .nav .badge { margin-left: auto; font-size: 12px; font-weight: 700; color: #fff; background: var(--ink); border-radius: 999px; padding: 2px 8px; }
+    .nav .dotw { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: #c08a1a; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+    .stat { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+    .stat .k { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; color: var(--label); }
+    .stat .v { margin-top: 6px; font-family: var(--head); font-size: 24px; }
+    .stat .m { margin-top: 2px; font-size: 13px; color: var(--muted); }
+    .card.focus { border: 2px solid var(--ink); padding: 21px 23px 23px; }
+    .cell-in { width: 100%; height: 40px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 9px; background: #fff; font-size: 15px; }
+    .cell-in:disabled { background: var(--ground); color: var(--muted); }
+    .cell-in[aria-invalid="true"] { border: 2px solid var(--bad); }
+    .note-box { padding: 12px 14px; border-radius: 12px; background: var(--ground); font-size: 14px; color: var(--ink2); }
+    .err { margin: 0; font-size: 14px; font-weight: 600; color: var(--bad); }
+    .panel h2 { font-size: 19px; }
+    [id^="v-wh-"] > .status:empty { display: none; }
+
     /* Sign in */
     .signin { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
     .signin .card { width: 100%; max-width: 420px; padding: 28px; }
@@ -234,13 +255,22 @@
         <img src="heh-logo.svg" alt="Happy Endings Hospitality">
         <div class="who"><b>HQ</b><span class="muted" id="who"></span></div>
       </div>
+      <div id="nav-hq">
       <div class="eyebrow">CATALOG</div>
       <button type="button" class="nav" data-nav="rollout"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>Roll out</button>
       <button type="button" class="nav" data-nav="libraries"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M9 5a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 8h4"/><path d="M9 16h4"/><path d="M13.8 4.56l2.18 -.53c.56 -.13 1.13 .19 1.28 .73l3.7 13.42a1.02 1.02 0 0 1 -.64 1.22l-2.31 .57c-.56 .13 -1.13 -.19 -1.28 -.73l-3.7 -13.42a1.02 1.02 0 0 1 .77 -1.26z"/></svg>Libraries</button>
       <button type="button" class="nav" data-nav="vendor"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-11a1 1 0 0 1 1 -1h9v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5"/></svg>Vendors</button>
       <button type="button" class="nav" data-nav="links"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 15l6 -6"/><path d="M11 6l.46 -.54a5 5 0 0 1 7.07 7.07l-.53 .47"/><path d="M13 18l-.4 .53a5.07 5.07 0 0 1 -7.12 0a4.97 4.97 0 0 1 0 -7.07l.52 -.46"/></svg>Vendor names</button>
+      </div>
+      <div id="nav-wh" hidden>
+      <div class="eyebrow" style="padding-top:18px">HAPPY SUPPLY</div>
+      <button type="button" class="nav" data-nav="wh-inventory"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5l0 9l-8 4.5l-8 -4.5l0 -9l8 -4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12l0 9"/><path d="M12 12l-8 -4.5"/></svg>Inventory<span class="dotw" id="wh-dot-inventory" hidden aria-label="Below par"></span></button>
+      <button type="button" class="nav" data-nav="wh-incoming"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10h14l-4 -4"/><path d="M17 14h-14l4 4"/></svg>Incoming<span class="badge" id="wh-badge-incoming" hidden></span></button>
+      <button type="button" class="nav" data-nav="wh-products"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1"/><path d="M5 16h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1"/><path d="M15 12h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1"/><path d="M15 4h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1"/></svg>Products and prices</button>
+      </div>
       <div class="spacer"></div>
-      <button type="button" class="nav" data-nav="recent"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8l0 4l2 2"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></svg>Recent changes</button>
+      <button type="button" class="nav" data-nav="wh-history" id="nav-wh-history" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8l0 4l2 2"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></svg>Stock history</button>
+      <button type="button" class="nav" data-nav="recent" id="nav-recent"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8l0 4l2 2"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></svg>Recent changes</button>
       <button type="button" class="nav" id="signout"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2"/><path d="M9 12h12l-3 -3"/><path d="M18 15l3 -3"/></svg>Sign out</button>
     </nav>
 
@@ -390,8 +420,8 @@
                 pick: { rollout: {}, setup: {}, vendor: {} }, concept: { rollout: null, setup: null, vendor: null },
                 rows: [], map: {}, newDays: {}, daysFrom: {}, ltoLibs: {},
                 lib: null, libQ: '', libFilter: 'all', libSel: 0, panel: null, seed: null, setupLib: null,
-                vDays: blankDays(), vAddAnyway: {} };
-    try { S.token = sessionStorage.getItem('mog_hq_token'); } catch (e) { S.token = null; }
+                vDays: blankDays(), vAddAnyway: {}, roles: null };
+    try { S.token = sessionStorage.getItem('mog_hq_token'); S.roles = JSON.parse(sessionStorage.getItem('mog_hq_roles') || 'null'); } catch (e) { S.token = null; S.roles = null; }
 
     // ---- Supabase ----
     async function rpc(fn, params) {
@@ -410,7 +440,13 @@
         throw e;
       } finally { clearTimeout(timer); }
     }
-    function keepToken(t) { S.token = t; try { if (t) sessionStorage.setItem('mog_hq_token', t); else sessionStorage.removeItem('mog_hq_token'); } catch (e) { /* signs in again next time */ } }
+    function keepToken(t) { S.token = t; try { if (t) sessionStorage.setItem('mog_hq_token', t); else sessionStorage.removeItem('mog_hq_token'); } catch (e) { /* signs in again next time */ } if (!t) keepRoles(null); }
+    // hq, warehouse or both, from the sign-in (schema v13); null = not known
+    // (a sign-in from before it), and load() asks for both.
+    function keepRoles(r) { S.roles = Array.isArray(r) ? r : null; try { if (S.roles) sessionStorage.setItem('mog_hq_roles', JSON.stringify(S.roles)); else sessionStorage.removeItem('mog_hq_roles'); } catch (e) { /* asks for both next time */ } }
+    const has = role => !S.roles || S.roles.indexOf(role) >= 0;
+    const WH = window.HQWarehouse ? window.HQWarehouse.create({ rpc, token: () => S.token, view: () => S.view, go: v => go(v),
+      signedOut: msg => { keepToken(null); S.data = null; showSignin(msg); } }) : null;
 
     // ---- Sign in ----
     function showSignin(msg) {
@@ -442,22 +478,41 @@
         $('si-pass').value = ''; $('si-pass2').value = ''; $('si-code').value = '';
         S.invite = false;
         keepToken(r.data.token);
+        keepRoles(r.data.roles);
         await load();
       } catch (err) { $('si-status').textContent = err.message; }
       finally { $('si-go').disabled = false; }
     };
-    $('signout').onclick = () => { keepToken(null); S.data = null; showSignin('Signed out.'); };
+    $('signout').onclick = () => { keepToken(null); S.data = null; if (WH) WH.clear(); showSignin('Signed out.'); };
 
+    // HQ's catalog (the hq role) and Happy Supply (the warehouse role): each
+    // asked for only when the person has its role; with no roles known, both,
+    // and the roles are what answered.
     async function load() {
-      const r = await rpc('mog_hq_data', { p_token: S.token });
-      if (!r.ok) { keepToken(null); showSignin(r.error === 'SESSION_EXPIRED' ? 'Your sign-in ran out. Sign in again.' : r.error); return false; }
-      S.data = r.data; S.name = r.data.name;
-      S.data.libraries = S.data.libraries || [];   // none before schema v12
+      const wantHq = has('hq'), wantWh = has('warehouse') && !!WH;
+      const res = await Promise.all([wantHq ? rpc('mog_hq_data', { p_token: S.token }) : null, wantWh ? WH.fetch() : null]);
+      const h = res[0], w = res[1], okHq = !!(h && h.ok), okWh = !!(w && w.ok);
+      if (!okHq && !okWh) {
+        const e = (h && h.error) || (w && w.error) || 'SESSION_EXPIRED';
+        keepToken(null); showSignin(e === 'SESSION_EXPIRED' || e === 'NOT_ALLOWED' ? 'Your sign-in ran out. Sign in again.' : e); return false;
+      }
+      if (!S.roles) keepRoles((okHq ? ['hq'] : []).concat(okWh ? ['warehouse'] : []));
+      S.data = okHq ? h.data : null;
+      S.name = okHq ? h.data.name : w.data.name;
+      if (okWh) WH.take(w.data);
       $('signin').hidden = true; $('app').hidden = false;
-      $('who').textContent = S.name;
-      if (!S.rows.length) S.rows = [blankRow()];
-      const first = conceptKeys().find(k => storesOf(k).length) || conceptKeys()[0];
-      for (const v of ['rollout', 'vendor']) if (!S.concept[v]) S.concept[v] = first;
+      $('who').textContent = S.name + (okHq ? '' : ' · warehouse');
+      $('nav-hq').hidden = !okHq; $('nav-recent').hidden = !okHq;
+      $('nav-wh').hidden = !okWh; $('nav-wh-history').hidden = !okWh;
+      if (okHq) {
+        S.data.libraries = S.data.libraries || [];   // none before schema v12
+        if (!S.rows.length) S.rows = [blankRow()];
+        const first = conceptKeys().find(k => storesOf(k).length) || conceptKeys()[0];
+        for (const v of ['rollout', 'vendor']) if (!S.concept[v]) S.concept[v] = first;
+      }
+      const isWh = S.view.indexOf('wh-') === 0;
+      if (!okHq && !isWh) S.view = 'wh-inventory';
+      if (!okWh && isWh) S.view = 'rollout';
       renderAll();
       return true;
     }
@@ -665,10 +720,12 @@
         const v = b.getAttribute('data-nav');
         if (v === S.view || (v === 'libraries' && S.view === 'setup')) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
       });
-      for (const v of ['rollout', 'libraries', 'setup', 'vendor', 'links', 'recent']) $('v-' + v).hidden = S.view !== v;
+      for (const v of ['rollout', 'libraries', 'setup', 'vendor', 'links', 'recent'].concat(WH ? WH.views : [])) $('v-' + v).hidden = S.view !== v;
+      if (WH) WH.badges();
     }
     function renderAll() {
       renderNav();
+      if (S.view.indexOf('wh-') === 0) { if (WH) WH.render(S.view); return; }
       if (S.view === 'rollout') renderRollout();
       if (S.view === 'libraries') renderLibraries();
       if (S.view === 'setup') renderSetup();
@@ -994,9 +1051,10 @@
     // ---- Events ----
     document.addEventListener('click', async e => {
       const t = e.target.closest ? e.target.closest('button') : null;
-      if (!t || !S.data || t.disabled) return;
+      if (!t || t.disabled) return;
       const nav = t.getAttribute('data-nav');
-      if (nav) { go(nav); return; }
+      if (nav && (S.data || nav.indexOf('wh-') === 0)) { go(nav); return; }
+      if (!S.data) return;
       const quick = t.getAttribute('data-quick');
       if (quick) { const v = t.getAttribute('data-view'); quickPick(v, quick); return renderStoresChanged(v); }
       const tile = t.getAttribute('data-tile');

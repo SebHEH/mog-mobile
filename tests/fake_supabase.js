@@ -302,6 +302,7 @@ class FakeSupabase {
     if (PHONE_FNS[fn]) return this.handlePhone(fn, p);
     if (EDITOR_FNS[fn]) return this.handleEditor(fn, p);
     if (HQ_FNS[fn]) return this.handleHq(fn, p);
+    if (WH_FNS[fn]) return this.handleWh(fn, p);
     const s = this.stores.get(p.p_slug);
     const ok = data => ({ ok: true, data });
     const err = error => ({ ok: false, error });
@@ -799,6 +800,8 @@ FakeSupabase.prototype.editorPublish = function (s) {
 // one save across stores that writes every store or none. v12: each store's
 // side (from its location, as mog.store_side_fill), and the concept libraries
 // saved whole in that same save (mog.library_put: cleaned, versioned, logged).
+// v13: each person's roles (hq, warehouse); the catalog calls answer only the
+// hq role (mog.hq_session), and signing in returns the roles.
 const HQ_FNS = { mog_hq_claim: 1, mog_hq_login: 1, mog_hq_data: 1, mog_hq_apply: 1 };
 FakeSupabase.prototype.hqState = function () {
   if (!this.hq) this.hq = { users: new Map(), sessions: new Map(), links: [], tokenSeq: 0, libraries: new Map(), libraryLog: [] };
@@ -852,15 +855,32 @@ function libraryPut(libs, log, by, lib, nowIso) {
   log.push({ concept, side, at: nowIso, by, label: jsTrim(lib.label).slice(0, 300) || 'Saved the library', version: next.version, itemsBefore: clone(cur.items) });
   return { concept, side, version: next.version };
 }
-// mog.hq_invite: the code, as the SQL Editor shows it.
-FakeSupabase.prototype.hqInvite = function (name) {
+// mog.hq_invite: the code, as the SQL Editor shows it. Roles given (v13's
+// two-argument form) replace the person's; left out, an existing person
+// keeps theirs and a new one gets hq.
+FakeSupabase.prototype.hqInvite = function (name, roles) {
   const H = this.hqState();
   const have = Array.from(H.users.keys()).find(n => n.toLowerCase() === String(name).trim().toLowerCase()) || String(name).trim();
   const code = 'C0DE' + (++H.tokenSeq);
-  H.users.set(have, { pass: null, invite: code, inviteExpires: this.nowMs + 24 * 3600000, fail: 0, lockedUntil: 0 });
+  const keep = H.users.has(have) ? H.users.get(have).roles : ['hq'];
+  H.users.set(have, { pass: null, invite: code, inviteExpires: this.nowMs + 24 * 3600000, fail: 0, lockedUntil: 0,
+                      roles: roles ? hqRolesClean(roles) : keep });
   for (const [t, x] of H.sessions) if (x.name === have) H.sessions.delete(t);
   return code;
 };
+// mog.hq_set_roles
+FakeSupabase.prototype.hqSetRoles = function (name, roles) {
+  const H = this.hqState();
+  const have = Array.from(H.users.keys()).find(n => n.toLowerCase() === String(name).trim().toLowerCase());
+  if (have) H.users.get(have).roles = hqRolesClean(roles);
+  return !!have;
+};
+// mog.hq_roles_clean: hq, warehouse or both, sorted.
+function hqRolesClean(roles) {
+  const v = Array.from(new Set((roles || []).map(r => String(r == null ? '' : r).trim().toLowerCase()).filter(Boolean))).sort();
+  if (!v.length || v.some(r => r !== 'hq' && r !== 'warehouse')) throw new Error("Roles are hq, warehouse or both, for example '{warehouse}'.");
+  return v;
+}
 FakeSupabase.prototype.hqLinks = function () {
   const H = this.hqState();
   H.links = H.links.filter(l => { const s = this.stores.get(l.slug); return s && s.tables && s.tables.vendors.some(v => v.name === l.vendor); });
@@ -887,7 +907,7 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
     H.users.get(key).fail = 0; H.users.get(key).lockedUntil = 0;
     const token = 'hqtok' + (++H.tokenSeq);
     H.sessions.set(token, { name: key, expires: now + 12 * 3600000 });
-    return ok({ token, name: key, expiresAt: 'fake' });
+    return ok({ token, name: key, expiresAt: 'fake', roles: clone(H.users.get(key).roles) });
   };
   const locked = u => err('Too many attempts', { lockout: true, retryAfterMs: u.lockedUntil - now });
 
@@ -909,6 +929,7 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
   }
   const sess = H.sessions.get(p.p_token);
   if (!sess || sess.expires <= now || !H.users.has(sess.name)) return err('SESSION_EXPIRED');
+  if (H.users.get(sess.name).roles.indexOf('hq') < 0) return err('SESSION_EXPIRED');
   const name = sess.name;
 
   if (fn === 'mog_hq_data') {
@@ -981,6 +1002,366 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
     if (l.vendor) H.links.push({ slug: l.slug, hqName: hq, vendor: l.vendor });
   }
   return ok({ by, changes: out, libraries: libsOut });
+};
+
+// ---- The warehouse, Happy Supply W1 (schema_v13.sql) -----------------------
+// Locations, suppliers, products, each product's cases per location (never
+// below 0), every move kept, vendor orders in (PO-0001), transfers (TR-0001,
+// in transit until received), counts (a difference needs a reason). Each
+// write works on a copy and keeps it only when it took, as the SQL's
+// transaction does; the refusals say what the SQL says. The calls take an HQ
+// token with the warehouse role (SESSION_EXPIRED / NOT_ALLOWED otherwise).
+const WH_FNS = { mog_wh_data: 1, mog_wh_history: 1, mog_wh_save: 1, mog_wh_po_save: 1, mog_wh_po_cancel: 1,
+                 mog_wh_po_receive: 1, mog_wh_transfer_send: 1, mog_wh_transfer_receive: 1, mog_wh_count: 1 };
+const whRej = m => new Error('REJECTED: ' + m);
+const whRound = (v, d) => { const f = Math.pow(10, d); const r = Math.round(Math.abs(v) * f) / f; return v < 0 ? -r : r; };
+const whIsObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
+function whNum(v, what) { if (typeof v !== 'number' || !isFinite(v)) throw whRej(what + ' needs a number'); return v; }
+function whCases(v, what, zero) {
+  const n = whRound(whNum(v, what), 2);
+  if (n < 0 || (n === 0 && !zero)) throw whRej(what + ' needs ' + (zero ? '0 or more' : 'more than 0') + ' cases');
+  if (n > 100000) throw whRej(what + ' is more than 100,000 cases');
+  return n;
+}
+function whMoney(v, what) {
+  const n = whRound(whNum(v, what), 2);
+  if (n < 0 || n > 1000000) throw whRej(what + ' needs an amount from $0 to $1,000,000');
+  return n;
+}
+function whId(v, what) { if (typeof v !== 'number' || !Number.isInteger(v)) throw whRej(what + ' is missing'); return v; }
+function whName(v, what, max) {
+  const s = typeof v === 'string' ? v.trim() : '';
+  if (!s) throw whRej(what + ' needs a name');
+  if (s.length > max) throw whRej('"' + s.slice(0, 40) + '" is longer than ' + max + ' characters');
+  return s;
+}
+function whText(v, what, max) {
+  const s = typeof v === 'string' ? v.trim() : '';
+  if (s.length > max) throw whRej(what + ' is longer than ' + max + ' characters');
+  return s;
+}
+function whBool(v, what, dflt) {
+  if (v == null) return dflt;
+  if (typeof v !== 'boolean') throw whRej(what + ' is yes or no');
+  return v;
+}
+function whLines(v, what, max) {
+  if (!Array.isArray(v) || !v.length) throw whRej(what + ' needs at least one product');
+  if (v.length > max) throw whRej(what + ' has more than ' + max + ' lines');
+  if (v.some(x => !whIsObj(x))) throw whRej(what + ' has a line that isn\'t a line');
+  return v;
+}
+const whCs = n => String(Number(n)) + (Number(n) === 1 ? ' case' : ' cases');
+// mog.wh_avg_after
+function whAvgAfter(owned, avg, cases, cost) {
+  if (cases <= 0) return avg;
+  if (owned <= 0) return whRound(cost, 4);
+  return whRound((owned * avg + cases * cost) / (owned + cases), 4);
+}
+function whInTransit(W, product) {
+  let n = 0;
+  for (const t of W.transfers) if (t.status === 'in_transit') for (const l of t.lines) if (l.productId === product) n += l.cases;
+  return whRound(n, 2);
+}
+function whOwned(W, product) {
+  let n = 0;
+  for (const k of Object.keys(W.stock)) if (Number(k.split('|')[0]) === product) n += W.stock[k];
+  return whRound(n + whInTransit(W, product), 2);
+}
+function whProduct(W, id) { return W.products.find(p => p.id === id) || null; }
+function whLocation(W, id) { return W.locations.find(l => l.id === id) || null; }
+function whLockProducts(W, ids) {
+  if (ids.some(id => !whProduct(W, id))) throw whRej('a product here isn\'t in the warehouse any more');
+}
+// mog.wh_move
+function whMove(W, by, product, location, cases, kind, ref, cost, reason, now) {
+  const key = product + '|' + location;
+  const have = W.stock[key] || 0;
+  const after = whRound(have + cases, 2);
+  const p = whProduct(W, product);
+  if (after < 0) throw whRej(whLocation(W, location).name + ' has ' + whCs(have) + ' of ' + p.name);
+  if (kind === 'received') p.avgCost = whAvgAfter(whOwned(W, product), p.avgCost, cases, cost);
+  W.stock[key] = after;
+  W.moves.push({ id: ++W.seq.move, at: now, by, productId: product, locationId: location, cases, kind, ref: ref || null,
+                 unitCost: cost == null ? null : cost, reason: reason || null, casesAfter: after, avgAfter: p.avgCost });
+}
+function whNextNumber(list, prefix) {
+  const n = list.reduce((m, x) => Math.max(m, Number(x.number.slice(3))), 0) + 1;
+  const s = String(n);
+  return prefix + '-' + (s.length >= 4 ? s : ('000' + s).slice(-4));
+}
+function whPoJson(W, p) {
+  return { id: p.id, number: p.number, supplierId: p.supplierId, supplier: W.suppliers.find(s => s.id === p.supplierId).name,
+    locationId: p.locationId, location: whLocation(W, p.locationId).name, status: p.status, note: p.note,
+    createdAt: p.createdAt, createdBy: p.createdBy, closedAt: p.closedAt, closedBy: p.closedBy, version: p.version,
+    lines: p.lines.map(l => { const pr = whProduct(W, l.productId);
+      return { ord: l.ord, productId: l.productId, product: pr.name, pack: pr.pack, cases: l.cases, cost: l.cost,
+               casesReceived: l.casesReceived, costReceived: l.costReceived }; }) };
+}
+function whTransferJson(W, t) {
+  return { id: t.id, number: t.number, fromId: t.fromId, from: whLocation(W, t.fromId).name, toId: t.toId, to: whLocation(W, t.toId).name,
+    status: t.status, note: t.note, sentAt: t.sentAt, sentBy: t.sentBy, closedAt: t.closedAt, closedBy: t.closedBy,
+    lines: t.lines.map(l => ({ ord: l.ord, productId: l.productId, product: whProduct(W, l.productId).name, cases: l.cases })) };
+}
+const byLower = f => (a, b) => (f(a).toLowerCase() < f(b).toLowerCase() ? -1 : f(a).toLowerCase() > f(b).toLowerCase() ? 1 : 0);
+FakeSupabase.prototype.whState = function () {
+  const H = this.hqState();
+  if (!H.wh) H.wh = { locations: [], suppliers: [], products: [], stock: {}, moves: [], pos: [], transfers: [],
+                      settings: { markupPct: 0, deliveryFee: 0, version: 1, updatedAt: null, updatedBy: null },
+                      seq: { loc: 0, sup: 0, prod: 0, move: 0, po: 0, tr: 0 } };
+  return H.wh;
+};
+// mog.wh_state
+FakeSupabase.prototype.whData = function (name) {
+  const W = this.whState(), H = this.hqState();
+  const lastClosed = (list, open) => list.filter(x => x.status === open).concat(list.filter(x => x.status !== open).sort((a, b) => b.id - a.id).slice(0, 30))
+    .sort((a, b) => b.id - a.id);
+  return {
+    name, roles: clone(H.users.get(name).roles), settings: clone(W.settings),
+    locations: W.locations.slice().sort((a, b) => (a.ord - b.ord) || byLower(x => x.name)(a, b)).map(l => clone(l)),
+    suppliers: W.suppliers.slice().sort(byLower(x => x.name)).map(s => clone(s)),
+    products: W.products.slice().sort(byLower(x => x.name)).map(p => {
+      const stock = {};
+      for (const k of Object.keys(W.stock)) if (Number(k.split('|')[0]) === p.id && W.stock[k] !== 0) stock[k.split('|')[1]] = W.stock[k];
+      const last = W.moves.filter(m => m.productId === p.id && m.kind === 'received').pop();
+      return Object.assign(clone(p), { stock, inTransit: whInTransit(W, p.id), lastReceipt: last ? { ref: last.ref, at: last.at } : null });
+    }),
+    pos: lastClosed(W.pos, 'ordered').map(p => whPoJson(W, p)),
+    transfers: lastClosed(W.transfers, 'in_transit').map(t => whTransferJson(W, t)),
+    stores: Array.from(this.stores.entries()).map(([slug, s]) => ({ slug, location: s.profile.location || null, concept: s.profile.concept || '',
+      side: s.side != null ? s.side : sideFromLocation(s.profile.location), isTest: !!s.isTest }))
+      .sort((a, b) => (a.concept < b.concept ? -1 : a.concept > b.concept ? 1 : 0) || (a.isTest - b.isTest) ||
+                      String(a.location).localeCompare(String(b.location)) || (a.slug < b.slug ? -1 : 1))
+  };
+};
+
+// mog.wh_do_save
+function whDoSave(W, by, kind, row, now, slugs) {
+  if (!whIsObj(row)) throw whRej('nothing to save');
+  const id = row.id == null ? null : whId(row.id, 'The id');
+  if (kind === 'product') {
+    const name = whName(row.name, 'The product', 120);
+    const pack = whText(row.pack, 'The pack', 60);
+    const par = whCases(row.par, 'The par', true);
+    const fee = whMoney(row.handlingFee, 'The handling fee');
+    const active = whBool(row.active, 'Active', true);
+    if (row.stores != null && !Array.isArray(row.stores)) throw whRej('the stores are a list');
+    const stores = Array.from(new Set((row.stores || []).map(x => (typeof x === 'string' ? x : JSON.stringify(x))))).sort();
+    const unknown = stores.find(x => !slugs.has(x));
+    if (unknown !== undefined) throw whRej('no store called ' + unknown);
+    if (W.products.some(p => p.name.toLowerCase() === name.toLowerCase() && p.id !== id)) throw whRej('there\'s already a product called "' + name + '"');
+    if (id == null) {
+      const p = { id: ++W.seq.prod, name, pack, par, avgCost: 0, handlingFee: fee, stores, active, version: 1, updatedAt: now, updatedBy: by };
+      W.products.push(p);
+      return { kind: 'product', id: p.id, name };
+    }
+    const p = whProduct(W, id);
+    if (!p) throw whRej('that product isn\'t in the warehouse any more');
+    if (p.version !== whNum(row.version, 'The version')) throw new Error('CONFLICT: ' + name + ' was changed since you opened it (by ' + (p.updatedBy || 'someone') + ')');
+    Object.assign(p, { name, pack, par, handlingFee: fee, stores, active, version: p.version + 1, updatedAt: now, updatedBy: by });
+    return { kind: 'product', id, name };
+  }
+  if (kind === 'location' || kind === 'supplier') {
+    const name = whName(row.name, kind === 'location' ? 'The location' : 'The supplier', 60);
+    const active = whBool(row.active, 'Active', true);
+    const list = kind === 'location' ? W.locations : W.suppliers;
+    if (list.some(x => x.name.toLowerCase() === name.toLowerCase() && x.id !== id)) throw whRej('there\'s already a ' + kind + ' called "' + name + '"');
+    if (kind === 'location') {
+      const ord = row.ord == null ? null : whRound(whNum(row.ord, 'The order'), 0);
+      if (id == null) {
+        const l = { id: ++W.seq.loc, name, ord: ord == null ? W.locations.reduce((m, x) => Math.max(m, x.ord), 0) + 10 : ord, active };
+        W.locations.push(l);
+        return { kind, id: l.id, name };
+      }
+      const l = whLocation(W, id);
+      if (!l) throw whRej('that location isn\'t in the warehouse any more');
+      if (!active) {
+        let held = 0;
+        for (const k of Object.keys(W.stock)) if (Number(k.split('|')[1]) === id) held += W.stock[k];
+        if (held > 0) throw whRej(name + ' still holds ' + whCs(whRound(held, 2)) + ': move it or count it to 0 first');
+      }
+      Object.assign(l, { name, ord: ord == null ? l.ord : ord, active });
+      return { kind, id, name };
+    }
+    if (id == null) { const s = { id: ++W.seq.sup, name, active }; W.suppliers.push(s); return { kind, id: s.id, name }; }
+    const s = W.suppliers.find(x => x.id === id);
+    if (!s) throw whRej('that supplier isn\'t in the warehouse any more');
+    Object.assign(s, { name, active });
+    return { kind, id, name };
+  }
+  if (kind === 'settings') {
+    const pct = whRound(whNum(row.markupPct, 'The markup'), 2);
+    if (pct < 0 || pct > 100) throw whRej('the markup is from 0 to 100%');
+    const fee = whMoney(row.deliveryFee, 'The delivery fee');
+    if (W.settings.version !== whNum(row.version, 'The version')) throw new Error('CONFLICT: the settings were changed since you opened them (by ' + (W.settings.updatedBy || 'someone') + ')');
+    Object.assign(W.settings, { markupPct: pct, deliveryFee: fee, version: W.settings.version + 1, updatedAt: now, updatedBy: by });
+    return { kind: 'settings' };
+  }
+  throw whRej('nothing called ' + (kind == null ? '(none)' : kind) + ' to save');
+}
+// mog.wh_do_po_save
+function whDoPoSave(W, by, po, now) {
+  if (!whIsObj(po)) throw whRej('nothing to save');
+  let id = po.id == null ? null : whId(po.id, 'The order');
+  const supplierId = whId(po.supplierId, 'The supplier');
+  const locationId = whId(po.locationId, 'Where it goes');
+  const note = whText(po.note, 'The note', 300);
+  const lines = whLines(po.lines, 'A vendor order', 100);
+  if (!W.suppliers.some(s => s.id === supplierId && s.active)) throw whRej('pick a supplier from the list');
+  if (!W.locations.some(l => l.id === locationId && l.active)) throw whRej('pick where it goes from the list');
+  let rec;
+  if (id == null) {
+    rec = { id: ++W.seq.po, number: whNextNumber(W.pos, 'PO'), supplierId, locationId, status: 'ordered', note,
+            createdAt: now, createdBy: by, closedAt: null, closedBy: null, version: 1, lines: [] };
+    W.pos.push(rec);
+    id = rec.id;
+  } else {
+    rec = W.pos.find(p => p.id === id);
+    if (!rec) throw whRej('that order isn\'t there any more');
+    if (rec.status !== 'ordered') throw whRej(rec.number + ' was already ' + rec.status);
+    if (rec.version !== whNum(po.version, 'The version')) throw new Error('CONFLICT: ' + rec.number + ' was changed since you opened it');
+    Object.assign(rec, { supplierId, locationId, note, version: rec.version + 1, lines: [] });
+  }
+  const seen = new Set();
+  lines.forEach((x, i) => {
+    const n = i + 1;
+    const product = whId(x.productId, 'Line ' + n + '\'s product');
+    const p = W.products.find(q => q.id === product && q.active);
+    if (!p) throw whRej('line ' + n + ' needs a product from the list');
+    if (seen.has(product)) throw whRej(p.name + ' is on the order twice');
+    seen.add(product);
+    rec.lines.push({ ord: n, productId: product, cases: whCases(x.cases, p.name, false),
+                     cost: x.cost == null ? null : whMoney(x.cost, 'The cost of ' + p.name), casesReceived: null, costReceived: null });
+  });
+  return { kind: 'po', id, number: rec.number };
+}
+function whDoPoCancel(W, by, id, version, now) {
+  const rec = W.pos.find(p => p.id === id);
+  if (!rec) throw whRej('that order isn\'t there any more');
+  if (rec.status !== 'ordered') throw whRej(rec.number + ' was already ' + rec.status);
+  if (rec.version !== version) throw new Error('CONFLICT: ' + rec.number + ' was changed since you opened it');
+  Object.assign(rec, { status: 'cancelled', closedAt: now, closedBy: by, version: rec.version + 1 });
+  return { kind: 'po', id, number: rec.number };
+}
+function whDoPoReceive(W, by, r, now) {
+  if (!whIsObj(r)) throw whRej('nothing to receive');
+  const id = whId(r.id, 'The order');
+  const lines = whLines(r.lines, 'What came in', 100);
+  const rec = W.pos.find(p => p.id === id);
+  if (!rec) throw whRej('that order isn\'t there any more');
+  if (rec.status !== 'ordered') throw whRej(rec.number + ' was already ' + rec.status);
+  if (rec.version !== whNum(r.version, 'The version')) throw new Error('CONFLICT: ' + rec.number + ' was changed since you opened it');
+  whLockProducts(W, rec.lines.map(l => l.productId));
+  let got = 0;
+  for (const ln of rec.lines.slice().sort((a, b) => a.ord - b.ord)) {
+    const name = whProduct(W, ln.productId).name;
+    const x = lines.find(y => typeof y.ord === 'number' && y.ord === ln.ord);
+    if (!x) throw whRej('say what came in of ' + name);
+    const cases = whCases(x.cases, name, true);
+    let cost = null;
+    if (cases > 0) {
+      cost = whMoney(x.cost, 'The cost of ' + name);
+      whMove(W, by, ln.productId, rec.locationId, cases, 'received', rec.number, cost, null, now);
+      got++;
+    }
+    ln.casesReceived = cases; ln.costReceived = cost;
+  }
+  if (!got) throw whRej('nothing came in on ' + rec.number + ': cancel it instead');
+  Object.assign(rec, { status: 'received', closedAt: now, closedBy: by, version: rec.version + 1 });
+  return { kind: 'po', id, number: rec.number, lines: got };
+}
+function whDoTransferSend(W, by, t, now) {
+  if (!whIsObj(t)) throw whRej('nothing to send');
+  const fromId = whId(t.fromId, 'Where it comes from');
+  const toId = whId(t.toId, 'Where it goes');
+  const note = whText(t.note, 'The note', 300);
+  const lines = whLines(t.lines, 'A transfer', 100);
+  if (fromId === toId) throw whRej('a transfer goes to another location');
+  if (!W.locations.some(l => l.id === fromId && l.active) || !W.locations.some(l => l.id === toId && l.active)) throw whRej('pick both locations from the list');
+  whLockProducts(W, lines.map(y => whId(y.productId, 'A line\'s product')));
+  const rec = { id: ++W.seq.tr, number: whNextNumber(W.transfers, 'TR'), fromId, toId, status: 'in_transit', note,
+                sentAt: now, sentBy: by, closedAt: null, closedBy: null, lines: [] };
+  W.transfers.push(rec);
+  const seen = new Set();
+  lines.forEach((x, i) => {
+    const product = whId(x.productId, 'Line ' + (i + 1) + '\'s product');
+    const name = whProduct(W, product).name;
+    if (seen.has(product)) throw whRej(name + ' is on the transfer twice');
+    seen.add(product);
+    const cases = whCases(x.cases, name, false);
+    rec.lines.push({ ord: i + 1, productId: product, cases });
+    whMove(W, by, product, fromId, -cases, 'transfer_out', rec.number, null, null, now);
+  });
+  return { kind: 'transfer', id: rec.id, number: rec.number };
+}
+function whDoTransferReceive(W, by, id, now) {
+  const rec = W.transfers.find(t => t.id === id);
+  if (!rec) throw whRej('that transfer isn\'t there any more');
+  if (rec.status !== 'in_transit') throw whRej(rec.number + ' was already received');
+  whLockProducts(W, rec.lines.map(l => l.productId));
+  for (const l of rec.lines) whMove(W, by, l.productId, rec.toId, l.cases, 'transfer_in', rec.number, null, null, now);
+  Object.assign(rec, { status: 'received', closedAt: now, closedBy: by });
+  return { kind: 'transfer', id, number: rec.number };
+}
+function whDoCount(W, by, c, now) {
+  if (!whIsObj(c)) throw whRej('nothing to count');
+  const locationId = whId(c.locationId, 'The location');
+  const loc = whLocation(W, locationId);
+  if (!loc) throw whRej('pick a location from the list');
+  const lines = whLines(c.lines, 'A count', 500);
+  whLockProducts(W, lines.map(y => whId(y.productId, 'A line\'s product')));
+  const seen = new Set();
+  let changed = 0;
+  lines.forEach((x, i) => {
+    const product = whId(x.productId, 'Line ' + (i + 1) + '\'s product');
+    const name = whProduct(W, product).name;
+    if (seen.has(product)) throw whRej(name + ' is in the count twice');
+    seen.add(product);
+    const cases = whCases(x.cases, name, true);
+    const have = W.stock[product + '|' + locationId] || 0;
+    if (cases === have) return;
+    const reason = whText(x.reason, 'The reason for ' + name, 200);
+    if (!reason) throw whRej(name + ' differs from the record (' + Number(cases) + ' counted, ' + Number(have) + ' on record): say why');
+    whMove(W, by, product, locationId, whRound(cases - have, 2), 'count', null, null, reason, now);
+    changed++;
+  });
+  return { kind: 'count', location: loc.name, changed };
+}
+
+FakeSupabase.prototype.handleWh = function (fn, p) {
+  const H = this.hqState();
+  const sess = H.sessions.get(p.p_token);
+  if (!sess || sess.expires <= this.nowMs || !H.users.has(sess.name)) return { ok: false, error: 'SESSION_EXPIRED' };
+  const name = sess.name;
+  if (H.users.get(name).roles.indexOf('warehouse') < 0) return { ok: false, error: 'NOT_ALLOWED' };
+  const W = this.whState();
+  const now = new Date(this.nowMs).toISOString();
+  if (fn === 'mog_wh_data') return { ok: true, data: this.whData(name) };
+  if (fn === 'mog_wh_history') {
+    const moves = W.moves.filter(m => (p.p_product_id == null || m.productId === p.p_product_id) &&
+                                      (p.p_location_id == null || m.locationId === p.p_location_id) &&
+                                      (p.p_before_id == null || m.id < p.p_before_id))
+      .sort((a, b) => b.id - a.id).slice(0, 200)
+      .map(m => Object.assign(clone(m), { product: whProduct(W, m.productId).name, location: whLocation(W, m.locationId).name }));
+    return { ok: true, data: { moves } };
+  }
+  const next = clone(W);
+  let done;
+  try {
+    if (fn === 'mog_wh_save') done = whDoSave(next, name, p.p_kind, p.p_row, now, new Set(this.stores.keys()));
+    if (fn === 'mog_wh_po_save') done = whDoPoSave(next, name, p.p_po, now);
+    if (fn === 'mog_wh_po_cancel') done = whDoPoCancel(next, name, p.p_id, p.p_version, now);
+    if (fn === 'mog_wh_po_receive') done = whDoPoReceive(next, name, p.p_receipt, now);
+    if (fn === 'mog_wh_transfer_send') done = whDoTransferSend(next, name, p.p_transfer, now);
+    if (fn === 'mog_wh_transfer_receive') done = whDoTransferReceive(next, name, p.p_id, now);
+    if (fn === 'mog_wh_count') done = whDoCount(next, name, p.p_count, now);
+  } catch (e) {
+    const m = String(e.message);
+    if (m.indexOf('CONFLICT: ') === 0) return { ok: false, error: 'CONFLICT', detail: m.slice(10) };
+    return { ok: false, error: m.indexOf('REJECTED: ') === 0 ? m : 'REJECTED: ' + m };
+  }
+  H.wh = next;
+  return { ok: true, data: Object.assign(this.whData(name), { done }) };
 };
 
 FakeSupabase.prototype.editorLog = function (s, by, label, ops, undoes) {
@@ -1172,4 +1553,4 @@ function compileStep4(srcOf) {
 }
 
 module.exports = { FakeSupabase, fakeScriptApp, fakeContentService, toOnHand, compileStep4, FAKE_GRANT_URL,
-  checkCatalogTables, catalogFromTables, recipientsCheck };
+  checkCatalogTables, catalogFromTables, recipientsCheck, whAvgAfter };

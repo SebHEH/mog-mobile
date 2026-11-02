@@ -14,7 +14,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
 - **Each Sheet** is frozen for catalog edits. It still holds the Apps Script: the 3:30 AM close, the recap email, the onboarding moves. It also gets a nightly LOG_ORDERS backup.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v12.
+- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v12 live (v13 written, not run yet).
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
 - **The three stores that moved empty:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
@@ -26,8 +26,9 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 
 **2026-11-02: the concept library and the HQ redesign** (`docs/MOG_SessionHandoff_2026_11_02.md`).
 - **Concept library** (schema v12): one standard item list per concept and side, kept on HQ's Libraries page. A library starts from one store, then gets cleaned, and sets up a store like an LTO (no par, no area). None is started yet.
-- **HQ redesigned** in the order guide's computer look with the HEH brand. Stores are picked as a concept, then its stores. The main vendor is a dropdown and backups are chips. Nobody has seen it on a screen yet.
-- **HQ in use:** Sebastian is signed up and ran one TEST rollout on rprfotest; its Undo is still untried.
+- **HQ redesigned** in the order guide's computer look with the HEH brand. Stores are picked as a concept, then its stores. The main vendor is a dropdown and backups are chips. Sebastian saw it on a screen on 11-02: it looks right, no changes.
+- **HQ in use:** Sebastian is signed up and ran one TEST rollout on rprfotest; its Undo is still untried. Checked live on 11-02: "Horse Pho" (change 237) isn't undone and no library is started.
+- **Warehouse:** the W1 design, with W2's data, is written in `docs/MOG_Warehouse_Spec.md` §2 and approved (11-02): stock never below 0, CI runs the real SQL in PGlite, the schema takes the next free number. Its screens were mocked up and approved, then **W1 was built (11-02): schema v13** (HQ roles, the warehouse tables, `mog_wh_*`) and HQ's Happy Supply pages (`template/hq/warehouse.js`). 28 gates pass, smoke_v13 passes 44/44 in PGlite, and CI now runs the SQL. **Not yet run on Supabase, committed or pushed**; Dan isn't invited. Happy Supply reaches the Roll Play stores with W2's first products, in one HQ rollout per store (Sebastian, 11-02).
 
 **2026-11-01: vendor contacts, HQ control, the warehouse spec** (`docs/MOG_SessionHandoff_2026_11_01.md`).
 - **Vendor contacts** (schema v10): each store's vendors carry a contact, edited on the new app-only Vendors page, shown on the phone's vendor card. Rosslyn BOH and Founders BOH are loaded.
@@ -70,12 +71,11 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
 
 1. **Use the concept library** (schema v12, HQ's Libraries page; `docs/MOG_Warehouse_Spec.md` §1). Sebastian's steps:
    - undo the TEST rollout "Horse Pho" in rprfotest's Changes;
-   - look at the redesigned HQ on a screen;
    - start the four libraries (Rosslyn BOH and FOH, Tysons BOH, Rockville FOH) and clean them;
    - set up a store from one.
 
-   Then Happy Supply to the Roll Play stores through HQ, and the warehouse (§2).
-2. **Commit the local test tools** (Sebastian, 2026-11-01): a script plus a `.claude/launch.json` entry that serves the app, the editor and `/hq/` against `tests/fake_supabase.js` with a fixture store and PIN, and the PGlite SQL runner that ran the schema chain and smoke files before hand-over. Both are rebuilt in the scratchpad every session: the preview three times by 11-02.
+   The warehouse (§2) runs alongside: W1 is built (schema v13); next a maintainer runs v13 in the SQL Editor, then the page ships, then Dan is invited with the warehouse role. W2 (store orders) follows. Happy Supply goes to the Roll Play stores with W2's first products.
+2. **Commit the local test tools** (Sebastian, 2026-11-01): a script plus a `.claude/launch.json` entry that serves the app, the editor and `/hq/` against `tests/fake_supabase.js` with a fixture store and PIN, and the PGlite SQL runner that ran the schema chain and smoke files before hand-over. Both are rebuilt in the scratchpad every session: the preview three times by 11-02 (and a fourth for the warehouse). The PGlite runner is now `supabase/tests/run_pglite.mjs`, and CI runs it (Sebastian's pick, 11-02); the fake-Supabase preview is still left to commit.
 3. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
    - Sebastian's steps: GitHub collaborator on both repos, branch protection on `main`, the Supabase Developer invite, Editor on the 11 Sheets, PINs.
    - Then Donny consents in each store and runs `python deploy.py --redeploy --target rprfo`.
