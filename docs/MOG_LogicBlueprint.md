@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: 6fee3a1 (2026-11-02) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: abce087 (2026-11-02) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -341,7 +341,8 @@ naive rebuild silently loses.*
 - **R28. HQ adds to many stores at once; each store still owns its catalog.**
   - HQ (the maintainers, each signed in as themselves with the hq role, R30) adds a vendor, with starting delivery days, cutoff and contact, or new items (an LTO) to any set of stores in one save. Every store gets it or none does.
   - New items arrive with no par and no storage area: they wait in the store's Needs setup and are on no count list until the store sets them up. An item the store already has (same name) keeps its main vendor, par and area, and only gains the rollout's vendors it didn't list, as backups. A store that already has the vendor keeps it as it is.
-  - HQ names a vendor once and remembers what each store calls it ("B&T" is "B&T Distributions" at Rosslyn BOH). Store vendor names are never renamed.
+  - HQ names a vendor once and remembers what each store calls it ("B&T" is "B&T Distributions" at Rosslyn BOH). HQ never renames a store's vendor; the store can, on its Vendors page, and HQ's remembered name follows.
+  - A store renaming one of its vendors keeps everything that vendor had: its items' main and backup vendor, its count lists, the counts already saved today (one already under the new name keeps its place), the day's "just today" edits and day picks. Past orders keep the name they had. A name another vendor at the store has, ignoring capitals, is refused: two vendors are never merged by a rename. The store can undo it in its change log. *(Confirmed: owner 2026-11-02, schema v15.)*
   - Each store sees HQ's change in its own change log, signed by the person, and can undo it there (R23).
   - Why: a concept's stores should order the same items (R22), and an LTO has to reach every store at once, while pars, areas and cadence stay each store's. *(Confirmed: owner 2026-11-01; `docs/MOG_Warehouse_Spec.md`.)*
 - **R29. Each concept keeps one standard item list per side (BOH, FOH): the concept library.**

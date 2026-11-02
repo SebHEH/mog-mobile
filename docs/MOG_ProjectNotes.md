@@ -103,6 +103,8 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - The app shows its phone layout. Drive it by script and say the layout itself is unseen.
 - **A screenshot can show the page as it was before a click that worked** (2026-11-02: a saved count looked unsaved). Read the state with `javascript_tool` or `read_page` before deciding a click failed, and never click again on a screenshot's word alone: a second Save can write twice.
 - **After a rebuild, use `location.reload()`.** Navigating to the same page with only a new `#hash` keeps the old build. `sessionStorage.clear()` shows the sign-in screen again.
+- **A tab that stops answering in a hidden pane** (`javascript_tool`, `get_page_text` and screenshots all time out, no console errors): close it and open a new tab with `tabs_create`. It worked at once on 2026-11-02, after the first tab hung on `/rprfotest/editor/` redirecting into the app.
+- **A page's own `window.confirm` blocks a hidden pane.** Before a scripted click that asks (HQ's Remove from the library, Roll back, the Changes page's Undo), set `window.confirm = () => true` in that page or frame, and say the dialog itself was answered by script.
 - **Driving HQ by script: query the element again after every click.** A click on a store tile redraws the whole picker, so the second button of a list found before the first click is detached and its click does nothing (2026-11-02: two BOH tiles "clicked", one store picked).
 
 ## CI and tests

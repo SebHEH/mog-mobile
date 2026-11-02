@@ -15,7 +15,8 @@
 **Next session focus:** start and clean the four libraries in HQ, then set up a store from one (Rockville BOH is empty).
 **Later session (same day, Sebastian):** Happy Supply W1 built and live (schema v13). See "Later session" at the end.
 **Later session 2 (same day, Sebastian):** the local preview server and the slicer on Windows (PR 6). See "Later session — the local preview server".
-**Later session 3 (same day, Sebastian):** LTOs, the HQ side (schema v14, live). See the last section.
+**Later session 3 (same day, Sebastian):** LTOs, the HQ side (schema v14, live). See "Later session 3".
+**Later session 4 (same day, Sebastian):** new LTO items first on Items, library tick boxes in HQ, vendor rename (schema v15, live). See the last section.
 
 ---
 
@@ -512,4 +513,129 @@ Read docs/MOG_CurrentState.md, docs/MOG_LTO_Spec.md and the last "Later session"
 LTOs' HQ side is live (schema v14, commit 6fee3a1): New LTO, the LTOs page, End / Roll back / Make it standard; items carry their LTO in mog.items.lto; 29 gates.
 STILL OUTSTANDING: undo the old test rollouts by hand (Horse Pho on rprfotest; Fall Chicken Pho at rpr, rpfr, rpt), remove Horse Meat from the Roll Play BOH library, tell Donny v14 is taken.
 Ask first whether Sebastian sent a live TEST LTO and rolled it back. Then build session 2: the store's Items page shows each new LTO's items at the very top until they have a par and a storage area (banner, pinned rows, "LTO · name" chip, panel note), from the approved "Store · Items" board on the MOG HQ redesign canvas; getAllItemsForView already gives each row its lto. Walk through it first; use preview_start "mog-preview" to check it.
+```
+
+---
+
+## Later session 4 — LTO items first on Items, library tick boxes, vendor rename
+
+**Author:** Sebastian
+**Session focus:** LTOs session 2 (the store's Items page), plus three asks Sebastian added: clear a library's items at once, rename vendors so the names line up across stores, and an easier way to set up Happy Supply and Elpis items with live stock for the people ordering.
+**Outcome:** three of the four are live (commit `abce087`, CI `gates` success, Pages serving it at all 10 stores and HQ about 45 s after the push).
+- Schema v15 (vendor rename) ran live: smoke_v15 18/18 PASS (Sebastian's paste), `check_api.sh` 96 passed, 0 failed, and a read-only check shows the new rename step, still closed to the public key.
+- The fourth ask (live stock for Happy Supply and Elpis) is recorded as open W2 questions, not built.
+- Everything was checked in the local preview only; nobody has used the new pages on a real screen.
+
+**STILL OUTSTANDING (since earlier today):**
+- Horse Pho on Rosslyn FOH (TEST) (change 237) is still not undone.
+- Donny hasn't been told that v13, v14 and now v15 are taken.
+
+**Next session focus:** use what shipped (a live TEST LTO and its Roll back, clearing the Teas'n You BOH test library, lining up vendor names), then either clean the libraries or start W2 spec-first.
+
+### Checked live first (read-only, before asking)
+
+- No LTO has been sent yet (`mog.ltos` empty), so the live TEST LTO hasn't happened.
+- Fall Chicken Pho and the empty Happy Supply vendor were deleted by hand at Rosslyn, Founders and Tysons BOH (3:23 to 3:25 PM). The Roll Play BOH library is empty (Horse Meat removed).
+- The Teas'n You BOH library holds 133 items: Sebastian's test, to clear with the new tick boxes.
+- Vendor names drift across stores: "B&T", "B&T Distributions", "B&T Distributors LLC"; "Elpis", "Elpis Wholesale", "ELPIS". Founders BOH's "B&T" has no items.
+
+### Sebastian's decisions (one walkthrough, all three picks as recommended)
+
+- **Vendor rename:** a rename step in the SQL (schema v15), not a delete and an add, so HQ's remembered name and today's counts follow and a change of capitals works.
+- **Standard items without an LTO:** from the library (tick items, "Send N items to stores"), not a plain Add items page.
+- **Live stock for Happy Supply and Elpis:** designed with W2, spec-first later; recorded now as open questions.
+- Then: run v15 first, then commit and push everything in one push.
+
+### What shipped (`abce087`)
+
+- **The store's Items page** (`template/editor/Items.html`, LTO spec step 5, from the approved "Store · Items" board):
+  - a banner per running LTO that still has items to set up ("New from HQ: <name> · N items to set up", the date, Set it up / Set them up);
+  - those items pinned under "New from LTOs · set these up first" until each has a par and a storage area, then the rest under "All items";
+  - an "LTO · name" chip on every LTO item (solid while pinned);
+  - the panel's LTO note, and "Still needs a par and a storage area to go on the count list";
+  - a "<name> is set up" note once the last item is done, until the page is left.
+  - The pin rule is `catalogEdit.js` `ltoWaiting` (running LTOs only, newest first, items A to Z), held by gate `lto` (three new controls).
+- **HQ Libraries** (`template/hq/index.html`):
+  - a tick box per item, and "Tick all" for the items shown (search and filter apply);
+  - a bar for the ticked items: Remove from the library (one versioned save; the confirm says there's no Undo button) or Send N items to stores;
+  - Send uses the library's Set up path with only those items: no LTO record, no pinning, items wait in Needs setup.
+- **Vendor rename** (`template/editor/Vendors.html`, `catalogEdit.js`, `supabase/schema_v15.sql`):
+  - the Name field shows for an existing vendor, with a note while the name differs; the save is one change ("Renamed vendor "B&T" to "B&T Distribution"") that Undo reverses;
+  - `saveVendor` records a `{ rename: 'vendors' }` step; `applyOps` and `diff` take it as they take an area rename;
+  - v15's `mog.editor_apply_ops` (generated from v14 with one asserted replacement) renames the vendor (items' main vendor, pick rows and HQ's remembered names follow on update cascade) and renames it in the items' vendor lists, the counts (one already under the new name keeps its place), the "just today" edits, the override's day picks and presence;
+  - refused: a name another vendor has ignoring capitals (merging is not a rename), a vendor not there by that name, an unknown rename kind.
+  - Not renamed: past orders, and an LTO's record of the vendors it added (its Roll back then leaves a renamed vendor in place).
+- **Tests:**
+  - new gate `vendor_rename` (one store, 200 random stores, the fake; 5 controls): 30 gates;
+  - `tests/fake_supabase.js` mirrors v15 (`followVendorRenames`);
+  - `smoke_v15.sql` (18 rows) and a v15 block in `check_api.sh`;
+  - `smoke_v8.sql`'s "only areas rename" probe now names a kind no version renames (`items`), so it passes on v8 and v15;
+  - `editor_host`'s planted-defect anchor moved with the `diff()` line.
+- **Docs:** LTO spec (session 2 built), warehouse spec (live stock and Elpis as open W2 questions), Blueprint R28 (a store can rename its vendor) and R31 (the Items page), migration §7, project notes, CLAUDE.md.
+- **Preview:** `.claude/launch.json` gains `mog-preview-alt` (port 8771) for when another chat's preview holds 8770.
+
+### Validation
+
+- **Gates:** "run_all: ALL PASS (30 gates)"; `lto` and `vendor_rename` with every control biting.
+- **PGlite:** every schema and smoke file, "smoke_v15.sql: 18/18 PASS", "schema_v15.sql (again), no row changed", "run_pglite: ALL PASS".
+- **Planted SQL defects** in a scratch copy, each failing a named smoke_v15 row: vendor lists not renamed, counts not moved, a count under the new name overwritten, day picks not renamed, no CONFLICT on a taken name.
+- **Preview (`mog-preview-alt`, driven by script in a hidden pane):**
+  - an LTO sent to the TEST store: the banner, both items pinned, set up one by one down to "Fall Chicken Pho is set up";
+  - a library started, a search with Tick all, Send 3 items to one store, then the whole library removed and "Start from a store" back; no sideways scroll at 375 px;
+  - a vendor renamed, a taken name refused before any save, the rename's entry in Changes and its Undo;
+  - no console or server errors.
+- **Live:** smoke_v15 18/18, `check_api.sh` 96/96, read-only check of v15, CI `gates` success on `abce087`, Pages markers at all 10 stores and HQ.
+
+### Outstanding (carry forward)
+
+1. **Sebastian, live, now that it ships:**
+   1. HQ → Libraries → Teas'n You → BOH → Tick all → Remove from the library: clears the 133-item test.
+   2. Pick one spelling per vendor, then rename at each store (Manage → Vendors → the vendor → Name): B&T at Founders BOH, Rosslyn and Tysons BOH, Rockville BOH; Elpis at Rosslyn FOH, Founders FOH, Tysons FOH, Rockville BOH and FOH.
+   3. A live TEST LTO: HQ → New LTO → Rosslyn FOH (TEST) → Send; check its Items banner; then HQ → LTOs → Roll back.
+   4. Undo Horse Pho in Rosslyn FOH (TEST)'s Manage → Changes (change 237).
+2. **Tell Donny** that schemas v13, v14 and v15 are taken.
+3. **Seen on a screen:** the Items banner, the HQ tick boxes and the Vendors rename were driven by script in a hidden pane; their layout hasn't been looked at.
+4. **W2, spec-first** (`docs/MOG_Warehouse_Spec.md` §2, "Open for W2"): live stock for the people ordering, Elpis (held stock vs its own items, who records its shipments), plus Dan's pound question and the Approve step. Chef Dan still isn't invited.
+5. **Small:** a store can't merge two vendors (a taken name is refused); renaming LTO-added vendors leaves them behind on Roll back; an offline phone still holding the old name can save a count under it after a rename (orphaned, not read).
+6. **From the sessions above, unchanged:** start and clean the libraries, confirm the repo's origin in the desktop app, `gh`.
+
+### Files touched (later session 4)
+
+- **Supabase:** `supabase/schema_v15.sql` (new), `supabase/tests/smoke_v15.sql` (new), `supabase/tests/check_api.sh` (v15 block), `supabase/tests/smoke_v8.sql` (one probe).
+- **Editor:** `template/editor/Items.html`, `template/editor/Vendors.html`, `template/editor/catalogEdit.js` (`ltoWaiting`, `renameVendor`, the rename in `saveVendor`, `applyOps`, `diff`, `describe`).
+- **HQ:** `template/hq/index.html` (library tick boxes, the bar, Send items).
+- **Tests:** `tests/vendor_rename.test.js` (new), `tests/lto.test.js`, `tests/fake_supabase.js`, `tests/editor_host.test.js`.
+- **Generated** (`build.py`): every store's `editor/catalogEdit.js`, `editor/items.html` and `editor/vendors.html`; `hq/index.html`, `hq/catalogEdit.js`.
+- **Docs:** `docs/MOG_LTO_Spec.md`, `docs/MOG_Warehouse_Spec.md`, `docs/MOG_LogicBlueprint.md` and `.html` (R28 after the push, stamp `abce087`), `docs/MOG_SupabaseMigration.md`, `docs/MOG_ProjectNotes.md`, `docs/MOG_CurrentState.md`, `CLAUDE.md`, this handoff.
+- **Other:** `.claude/launch.json` (`mog-preview-alt`).
+- **Outside the repo (scratchpad):** `gen_v15.py`, `v15_head.sql`, `v15_tail.sql` (they generated v15; the file is the record), `plant_v15.py` (one-off), `wait_live.sh`.
+
+### Process lessons
+
+- Checking the live database read-only before asking turned "did you send a TEST LTO?" into a fact (none sent) and found the 133-item test library and the vendor-name drift behind the asks. [→ docs/MOG_ProjectNotes.md]
+- A line changed in `catalogEdit.js` (`diff()`'s rename line) was a gate's planted-defect anchor: `editor_host` failed "plant: anchor not found" until its find text moved. The project-notes rule was missed again; `run_all` caught it before the commit. [→ docs/MOG_ProjectNotes.md]
+- A new schema widened what an older smoke row asserts is refused (smoke_v8's "only areas rename"). Skipping the row in the runner wasn't enough: the probe now really renamed Sysco, and two later rows of that file failed. Pointing the probe at a kind no version accepts kept smoke_v8 passing on v8 and v15. [→ mog-supabase-schema]
+- A planted SQL defect that made the rename call itself throw (a key clash from the plant's own order) failed every rename row, and the plant script counted it as caught. It was re-planted until only the rows about that rule failed. [→ mog-supabase-schema]
+- A gate control whose defect makes the code throw outside the check showed as "crashed instead of biting"; `vendor_rename` wraps its whole check so a throw is a reported problem. [→ tests/vendor_rename.test.js]
+- Another chat's preview held port 8770; `mog-preview-alt` (8771) was added, and both rebuild the same `_preview/rprfotest/`. [→ docs/MOG_ProjectNotes.md, .claude/launch.json]
+- In the hidden pane a tab stopped answering after a redirect (a new tab worked), and a page's `window.confirm` would block a scripted click. [→ docs/MOG_ProjectNotes.md]
+- Four asks in one message, one of them W2-sized: three were built and the fourth recorded as open W2 questions, chosen in the walkthrough's picker. [→ one-off]
+
+**Skill gate:** one picker round, two questions, both Apply, both into `mog-supabase-schema`: a newer schema that accepts what an older smoke row says is refused (point the probe at something no version accepts), and a plant that makes the call itself throw is not a catch. Not asked: the anchor rule and the live-check-first habit (already in the project notes), the preview port, the hung tab and `window.confirm` (project facts, in the project notes), the gate that wraps its check (in the test), the four-asks split (one-off). Checked: Sebastian's picks this session (all as recommended), no corrections, no rejected tool uses.
+
+### Commits landed (later session 4)
+
+```
+abce087 LTO items first on Items, library tick boxes in HQ, vendor rename (schema v15)
+```
+
+Plus this handoff's commits.
+
+### Opening prompt for next session
+
+```
+Read docs/MOG_CurrentState.md and the last "Later session" of docs/MOG_SessionHandoff_2026_11_02.md first, and run git pull.
+Live since abce087: new LTO items pinned at the top of each store's Items page, tick boxes on HQ's Libraries (Remove, Send N items to stores without an LTO), and vendor rename on the Vendors page (schema v15: items, lists, counts, today's edits and HQ's names follow); 30 gates.
+Ask first what Sebastian saw: did the Teas'n You BOH test library clear, were the B&T and Elpis names lined up, and did a live TEST LTO show its Items banner and roll back? STILL OUTSTANDING: Horse Pho on rprfotest, tell Donny v13 to v15 are taken.
+Then either help clean the libraries, or start W2 (store orders) spec-first: live stock for the people ordering Happy Supply and Elpis, who records Elpis's shipments, Dan's pound question, the Approve step (docs/MOG_Warehouse_Spec.md §2, "Open for W2"). Use preview_start "mog-preview" (or "mog-preview-alt") to check anything you build.
 ```
