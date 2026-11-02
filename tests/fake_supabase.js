@@ -792,16 +792,66 @@ FakeSupabase.prototype.editorPublish = function (s) {
   s.catalog = catalogFromTables(s);
   return s.version;
 };
-// ---- HQ control (schema_v11.sql) --------------------------------------------
+// ---- HQ control (schema_v11.sql, v12) ---------------------------------------
 // People with their own lockout (5 wrong, 15 minutes), a one-use invite that
 // becomes a passphrase, 12-hour tokens, the remembered vendor names (gone
 // with their vendor: the SQL's on delete cascade, applied here on read), and
-// one save across stores that writes every store or none.
+// one save across stores that writes every store or none. v12: each store's
+// side (from its location, as mog.store_side_fill), and the concept libraries
+// saved whole in that same save (mog.library_put: cleaned, versioned, logged).
 const HQ_FNS = { mog_hq_claim: 1, mog_hq_login: 1, mog_hq_data: 1, mog_hq_apply: 1 };
 FakeSupabase.prototype.hqState = function () {
-  if (!this.hq) this.hq = { users: new Map(), sessions: new Map(), links: [], tokenSeq: 0 };
+  if (!this.hq) this.hq = { users: new Map(), sessions: new Map(), links: [], tokenSeq: 0, libraries: new Map(), libraryLog: [] };
   return this.hq;
 };
+// mog.side_from_location
+function sideFromLocation(loc) {
+  const s = String(loc == null ? '' : loc);
+  return /(^|[^A-Za-z0-9_])FOH($|[^A-Za-z0-9_])/i.test(s) ? 'FOH' : /(^|[^A-Za-z0-9_])BOH($|[^A-Za-z0-9_])/i.test(s) ? 'BOH' : null;
+}
+// mog.library_put over a copy of the libraries: the new library, or throws
+// CONFLICT: / REJECTED: as the SQL raises them.
+function libraryPut(libs, log, by, lib, nowIso) {
+  const jsTrim = v => String(v == null ? '' : v).trim();
+  if (!lib || typeof lib !== 'object' || Array.isArray(lib)) throw new Error('REJECTED: a library must be an object');
+  const concept = lib.concept, side = lib.side;
+  if (typeof concept !== 'string' || !/^[a-z0-9-]{1,30}$/.test(concept)) throw new Error('REJECTED: no concept called ' + (concept == null ? '(none)' : concept));
+  if (side !== 'BOH' && side !== 'FOH') throw new Error('REJECTED: a library\'s side is BOH or FOH');
+  if (typeof lib.version !== 'number') throw new Error('REJECTED: the library\'s version is missing');
+  if (!Array.isArray(lib.items) || lib.items.length > 2000) throw new Error('REJECTED: a library\'s items are a list of at most 2000');
+  const key = concept + '|' + side;
+  const cur = libs.get(key) || { concept, side, version: 0, seededFrom: null, updatedAt: null, updatedBy: null, items: [] };
+  if (cur.version !== lib.version) throw new Error('CONFLICT: the ' + concept + ' ' + side + ' library was saved since HQ loaded it (by ' + (cur.updatedBy || 'someone') + ')');
+  const items = [], names = new Set();
+  lib.items.forEach((it, i) => {
+    if (!it || typeof it !== 'object' || Array.isArray(it)) throw new Error('REJECTED: item ' + (i + 1) + ' isn\'t an item');
+    const name = jsTrim(it.name);
+    const what = name ? '"' + name.slice(0, 60) + '"' : 'Item ' + (i + 1);
+    if (!name) throw new Error('REJECTED: Item ' + (i + 1) + ' has no name');
+    if (name.length > 300) throw new Error('REJECTED: ' + what + ' is longer than 300 characters');
+    if (names.has(name.toLowerCase())) throw new Error('REJECTED: ' + what + ' is in the library twice');
+    names.add(name.toLowerCase());
+    const vendor = jsTrim(it.vendor);
+    if (!vendor) throw new Error('REJECTED: ' + what + ' has no main vendor');
+    if (vendor.length > 100) throw new Error('REJECTED: ' + what + '\'s main vendor is longer than 100 characters');
+    const backups = [];
+    for (const b of (Array.isArray(it.backups) ? it.backups : [])) {
+      const v = typeof b === 'string' ? jsTrim(b) : '';
+      if (!v || v.toLowerCase() === vendor.toLowerCase() || backups.some(x => x.toLowerCase() === v.toLowerCase())) continue;
+      if (v.length > 100) throw new Error('REJECTED: ' + what + '\'s backup vendor is longer than 100 characters');
+      backups.push(v);
+    }
+    if (backups.length > 20) throw new Error('REJECTED: ' + what + ' has more than 20 backup vendors');
+    const pack = jsTrim(it.pack), notes = jsTrim(it.notes);
+    if (pack.length > 300 || notes.length > 1000) throw new Error('REJECTED: ' + what + '\'s pack or notes are too long');
+    items.push({ name, pack, vendor, backups, notes });
+  });
+  const next = { concept, side, version: cur.version + 1, updatedAt: nowIso, updatedBy: by, items,
+                 seededFrom: Object.prototype.hasOwnProperty.call(lib, 'seededFrom') ? (jsTrim(lib.seededFrom).slice(0, 100) || null) : cur.seededFrom };
+  libs.set(key, next);
+  log.push({ concept, side, at: nowIso, by, label: jsTrim(lib.label).slice(0, 300) || 'Saved the library', version: next.version, itemsBefore: clone(cur.items) });
+  return { concept, side, version: next.version };
+}
 // mog.hq_invite: the code, as the SQL Editor shows it.
 FakeSupabase.prototype.hqInvite = function (name) {
   const H = this.hqState();
@@ -864,7 +914,8 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
   if (fn === 'mog_hq_data') {
     const stores = Array.from(this.stores.entries()).map(([slug, s]) => ({
       slug, location: s.profile.location || null, abbr: s.profile.abbr || null, concept: s.profile.concept || '',
-      isTest: !!s.isTest, editorDirect: !!s.editorDirect, tables: s.editorDirect ? editorTablesJson(s.tables) : null }))
+      isTest: !!s.isTest, editorDirect: !!s.editorDirect, side: s.side != null ? s.side : sideFromLocation(s.profile.location),
+      tables: s.editorDirect ? editorTablesJson(s.tables) : null }))
       .sort((a, b) => (a.concept < b.concept ? -1 : a.concept > b.concept ? 1 : 0) || (a.isTest - b.isTest) ||
                       String(a.location).localeCompare(String(b.location)) || (a.slug < b.slug ? -1 : 1));
     const recent = [];
@@ -872,14 +923,21 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
       if (String(l.by || '').indexOf('HQ · ') === 0) recent.push({ id: l.id, slug, at: l.at, by: l.by, label: l.label, undoneBy: l.undoneBy });
     }
     recent.sort((a, b) => b.id - a.id);
+    // Each item's keys in jsonb's order (shorter first, then bytewise), as the SQL sends them.
+    const libraries = Array.from(H.libraries.values()).map(l => Object.assign(clone(l), {
+      items: l.items.map(it => ({ name: it.name, pack: it.pack, notes: it.notes, vendor: it.vendor, backups: clone(it.backups) })) }))
+      .sort((a, b) => (a.concept < b.concept ? -1 : a.concept > b.concept ? 1 : 0) || (a.side < b.side ? -1 : 1));
     return ok({ name, stores, links: clone(this.hqLinks()).sort((a, b) => (a.hqName < b.hqName ? -1 : a.hqName > b.hqName ? 1 : 0) || (a.slug < b.slug ? -1 : 1)),
-                recent: recent.slice(0, 50) });
+                libraries, recent: recent.slice(0, 50) });
   }
 
   // mog_hq_apply: work every store out first, write only when all of them took.
+  // p_libraries absent is the three-argument (v11) call.
   const changes = p.p_changes, links = p.p_links == null ? [] : p.p_links;
+  const libList = p.p_libraries == null ? [] : p.p_libraries;
   if (!Array.isArray(changes) || changes.length > 50) return err('changes must be an array of at most 50 stores');
   if (!Array.isArray(links) || links.length > 1000) return err('links must be an array');
+  if (!Array.isArray(libList) || libList.length > 20) return err('libraries must be an array of at most 20');
   const by = ('HQ · ' + name).slice(0, 40);
   const next = new Map();
   for (const ch of changes.slice().sort((a, b) => (String(a.slug) < String(b.slug) ? -1 : 1))) {
@@ -901,6 +959,16 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
     const hq = String(l.hqName == null ? '' : l.hqName).trim();
     if (!hq || hq.length > 100) return err('REJECTED: hq_vendor_links_hq_name_check');
   }
+  const libsNext = new Map(Array.from(H.libraries.entries()).map(([k, v]) => [k, clone(v)]));
+  const logNext = [], libsOut = [];
+  for (const lib of libList) {
+    try { libsOut.push(libraryPut(libsNext, logNext, by, lib, new Date(now).toISOString())); } catch (e) {
+      const m = String(e.message);
+      return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: m.slice(10) }) : err(m.indexOf('REJECTED: ') === 0 ? m : 'REJECTED: ' + m);
+    }
+  }
+  H.libraries = libsNext;
+  H.libraryLog = H.libraryLog.concat(logNext);
   const out = [];
   for (const [slug, x] of next) {
     x.s.tables = x.tables;
@@ -912,7 +980,7 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
     H.links = H.links.filter(k => !(k.slug === l.slug && k.hqName.toLowerCase() === hq.toLowerCase()));
     if (l.vendor) H.links.push({ slug: l.slug, hqName: hq, vendor: l.vendor });
   }
-  return ok({ by, changes: out });
+  return ok({ by, changes: out, libraries: libsOut });
 };
 
 FakeSupabase.prototype.editorLog = function (s, by, label, ops, undoes) {

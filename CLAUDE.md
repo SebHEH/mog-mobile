@@ -187,6 +187,8 @@ mog-mobile/
 │   ├── sw.js                    (6.9 KB — store SW).
 │   ├── hq/index.html            HQ control (schema v11): add a vendor or a concept's LTO items to many stores at once. build.py
 │   │                            publishes it at hq/ with catalogEdit.js beside it; sign-in is a person's own HQ passphrase.
+│   │                            Libraries tab (schema v12): each concept's standard items per side, started from a store,
+│   │                            cleaned there, and sent to a store like an LTO ("Set up stores from this library").
 │   └── editor/                  The editor on Supabase (one-app Phases 2 and 4): catalogEdit.js (Manage Items, Manage Vendors,
 │                                Storage Areas and Shelf to Sheet over the catalog tables, gated against Items.gs / Vendors.gs /
 │                                PickPath.gs) + host.js (runs those Apps Script pages and Editor Home as static pages) + meImport.js
@@ -240,9 +242,10 @@ mog-mobile/
 │   ├── schema_v9.sql            Phase 4's rest: the order log read (mog_history) + the switch's LOG_ORDERS copy, recipients, People (rename/remove), the Health status (run after v8).
 │   ├── schema_v10.sql           Vendor contacts: mog.vendors.contact, saved through mog_editor_apply, phones get vendorContacts in the catalog (run after v9).
 │   ├── schema_v11.sql           HQ control: HQ people (invite, own passphrase and lockout), remembered vendor names, mog_hq_data / mog_hq_apply (all stores or none) (run after v10).
+│   ├── schema_v12.sql           Concept library: mog.stores.side (from the location), mog.libraries / library_items / library_log, mog_hq_apply with libraries (run after v11).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v8.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
+│   └── tests/                   smoke.sql … smoke_v12.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.

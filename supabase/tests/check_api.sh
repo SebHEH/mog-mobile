@@ -116,6 +116,14 @@ check "v11 hq_claim: an unknown name is refused"  200 'invite'          -X POST 
 check "v11 hq_data: bad token refused"            200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_hq_data)"
 check "v11 hq_apply: bad token refused"           200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_changes":[],"p_links":[]}' "$(rpc mog_hq_apply)"
 
+# schema v12
+check "v12 tables: libraries not reachable"       404 ''   "$URL/rest/v1/libraries"
+check "v12 tables: library_items not reachable"   404 ''   "$URL/rest/v1/library_items"
+check "v12 tables: library_log not reachable"     404 ''   "$URL/rest/v1/library_log"
+check "v12 helper: library_put not exposed"       404 ''   -X POST "${J[@]}" -d '{"p_by":"x","p_lib":{}}' "$(rpc library_put)"
+check "v12 helper: side_from_location not exposed" 404 ''  -X POST "${J[@]}" -d '{"p":"Rosslyn BOH"}' "$(rpc side_from_location)"
+check "v12 hq_apply with libraries: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_changes":[],"p_links":[],"p_libraries":[]}' "$(rpc mog_hq_apply)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -16,6 +16,9 @@
 // commitSaveVendor (a vendor's days, cutoff and contact, schema v10;
 // tests/vendor_contacts.test.js), and HQ's commitHqRollout (one store's
 // share of a vendor or LTO rollout, schema v11; tests/hq_rollout.test.js).
+// The concept library's list rules (cleanLibrary, librarySeed, libraryAdd,
+// libraryLabel; schema v12, tests/concept_library.test.js) are plain
+// functions: a library is no store's tables.
 // The store is never part of this file: the tables it gets are one store's,
 // and mog_editor_apply takes the store from the sign-in token.
 //
@@ -992,6 +995,106 @@
              skipped: skipped.concat(imported.skipped) };
   }
 
+  // ---- The concept library (hq/, schema v12) ---------------------------------
+  // A concept's standard items for one side, kept by HQ: name, pack, main
+  // vendor and backups (HQ's vendor names), notes. No par and no storage area:
+  // those are each store's, and a store gets the items through
+  // commitHqRollout, like an LTO. mog.library_put keeps the same rules.
+
+  // A list as the database keeps it: trimmed, backups without the main vendor
+  // or repeats (a comma list or an array), each name once ignoring case.
+  // Throws on the first row it can't keep, naming it.
+  function cleanLibrary(items) {
+    const rows = Array.isArray(items) ? items : [];
+    if (rows.length > 2000) throw new Error('A library holds at most 2000 items.');
+    const seen = new Set();
+    return rows.map((row, i) => {
+      const name = s_(row && row.name);
+      if (!name) throw new Error('Item ' + (i + 1) + ' has no name.');
+      const what = '"' + name.substring(0, 60) + '"';
+      if (name.length > 300) throw new Error(what + ' is longer than 300 characters.');
+      if (seen.has(name.toLowerCase())) throw new Error(what + ' is in the library twice.');
+      seen.add(name.toLowerCase());
+      const vendor = s_(row.vendor);
+      if (!vendor) throw new Error(what + ' has no main vendor.');
+      if (vendor.length > 100) throw new Error(what + '\'s main vendor is longer than 100 characters.');
+      const backups = [], listed = new Set([vendor.toLowerCase()]);
+      for (const raw of (Array.isArray(row.backups) ? row.backups : String(row.backups || '').split(','))) {
+        const v = typeof raw === 'string' ? s_(raw) : '';
+        if (!v || listed.has(v.toLowerCase())) continue;
+        if (v.length > 100) throw new Error(what + '\'s backup vendor "' + v.substring(0, 40) + '" is longer than 100 characters.');
+        listed.add(v.toLowerCase());
+        backups.push(v);
+      }
+      if (backups.length > 20) throw new Error(what + ' has more than 20 backup vendors.');
+      const pack = s_(row.pack), notes = s_(row.notes);
+      if (pack.length > 300) throw new Error(what + '\'s pack is longer than 300 characters.');
+      if (notes.length > 1000) throw new Error(what + '\'s notes are longer than 1000 characters.');
+      return { name: name, pack: pack, vendor: vendor, backups: backups, notes: notes };
+    });
+  }
+
+  // A store's items as a library's start, in its list order, with its vendor
+  // names (they become HQ's): its active items that have a main vendor. A
+  // name listed twice (one row per vendor) becomes one item: the first row's
+  // vendor is the main one, the other rows' vendors are backups.
+  function librarySeed(t) {
+    const out = [], byName = new Map(), merged = [];
+    let inactive = 0, noVendor = 0;
+    for (const it of t.items.slice().sort((a, b) => a.seq - b.seq)) {
+      const name = s_(it.name);
+      if (!name) continue;
+      if (it.active !== true) { inactive++; continue; }
+      const main = s_(it.primaryVendor);
+      if (!main) { noVendor++; continue; }
+      let row = byName.get(name.toLowerCase());
+      if (row) { if (merged.indexOf(row.name) < 0) merged.push(row.name); }
+      else {
+        row = { name: name, pack: s_(it.pack), vendor: main, backups: [], notes: s_(it.notes) };
+        byName.set(name.toLowerCase(), row);
+        out.push(row);
+      }
+      for (const v of [main].concat(it.eligible || []).map(s_)) {
+        if (v && v.toLowerCase() !== row.vendor.toLowerCase() && !row.backups.some(b => b.toLowerCase() === v.toLowerCase())) row.backups.push(v);
+      }
+    }
+    return { items: cleanLibrary(out), inactive: inactive, noVendor: noVendor, merged: merged };
+  }
+
+  // An LTO's items added to a library: a name it doesn't have goes at the
+  // end; a name it has keeps its own row (edited in the library itself).
+  function libraryAdd(items, adds) {
+    const list = cleanLibrary(items);
+    const have = new Set(list.map(r => r.name.toLowerCase()));
+    const added = [], kept = [];
+    for (const row of cleanLibrary(adds)) {
+      if (have.has(row.name.toLowerCase())) { kept.push(row.name); continue; }
+      have.add(row.name.toLowerCase());
+      list.push(row);
+      added.push(row.name);
+    }
+    return { items: list, added: added, kept: kept };
+  }
+
+  // A library save in words (mog.library_log's label). A renamed item is one
+  // removed and one added.
+  function libraryLabel(before, after) {
+    const was = new Map(cleanLibrary(before).map(r => [r.name.toLowerCase(), r]));
+    const now = cleanLibrary(after);
+    let added = 0, changed = 0;
+    for (const r of now) {
+      const old = was.get(r.name.toLowerCase());
+      if (!old) added++;
+      else if (JSON.stringify(old) !== JSON.stringify(r)) changed++;
+      was.delete(r.name.toLowerCase());
+    }
+    const parts = [];
+    if (added) parts.push(added + ' added');
+    if (changed) parts.push(changed + ' changed');
+    if (was.size) parts.push(was.size + ' removed');
+    return 'Saved the library' + (parts.length ? ': ' + parts.join(', ') : ' (new order)');
+  }
+
   // ---- Storage Areas (PickPath.gs) ---------------------------------------------
 
   const MAX_AREAS = 18;   // Core.gs AREA_TABLE: SETUP rows 2-19
@@ -1444,7 +1547,8 @@
 
   const api = { call: call, applyOps: applyOps, inverseOps: inverseOps, reads: Object.keys(READS),
                 writes: Object.keys(WRITES), vendorList: vendorList, parseCsv: parseCsv,
-                multsFromDays: multsFromDays, daysFromMults: daysFromMults, matchVendor: matchVendor };
+                multsFromDays: multsFromDays, daysFromMults: daysFromMults, matchVendor: matchVendor,
+                cleanLibrary: cleanLibrary, librarySeed: librarySeed, libraryAdd: libraryAdd, libraryLabel: libraryLabel };
   root.CatalogEdit = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : this);

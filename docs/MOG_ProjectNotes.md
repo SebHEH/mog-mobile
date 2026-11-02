@@ -21,11 +21,10 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 ## Stores
 
 - **Canary: rprfo** (`route.py`'s `CANARY`). rpr's pars may not be true 1-day pars, so it's a poor test store.
-- **Not used:**
-  - rpt, rptfo and rpfrf (Roll Play Tysons, and Founders FOH);
-  - tnyt (Teas'n You Tysons BOH), which moved to the app empty.
+- **Not used:** rpt, rptfo and rpfrf (Roll Play Tysons, and Founders FOH).
 
-  Never use them as canaries or as evidence of real behavior. rpfr was built from rpt's Sheet (and the FOH pair the same way), so drift shows up in pairs. Tysons FOH (tnytf) runs that whole store, including a "BOH section - Warehouse" area.
+  Never use them as canaries or as evidence of real behavior.
+- **Tysons BOH (tnyt) is being set up** (2026-11-01: 208 items, 42 changes from 10-26 to 10-30, 71 items still without a vendor). It moved to the app empty on 10-19; it seeds the Teas'n You BOH library. rpfr was built from rpt's Sheet (and the FOH pair the same way), so drift shows up in pairs. Tysons FOH (tnytf) runs that whole store, including a "BOH section - Warehouse" area.
 - **Founders BOH (rpfr) is in use (2026-11-01).** Roll Play Founders Row is its own store now (it no longer shares with Chasin' Tails and NUE), with its own vendor accounts; its contacts come from Tony. Whether Founders FOH (rpfrf) is in use too isn't confirmed.
 - **Rockville BOH (tnyr) and FOH (tnyrf) are in use.** Each imports its items from the same Rockville MarginEdge file, ticking only its own. The import's "already in the store" check doesn't look at the other store, so nothing stops an item landing in both.
 - **`rprfotest`** (a Supabase-only test store, `is_test`) holds **rprfo's real PIN**. Never type it, and never sign in there by script.
@@ -63,6 +62,9 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **A save writes every ticked store or none.** Each store sees one change by "HQ · <name>" in its Changes and can undo it there. New items arrive with no par and no area (the store's Needs setup).
 - **Try a rollout on the TEST store (rprfotest) first:** HQ lists it apart, and no one orders from it.
 - **Invite only the maintainers.** An HQ sign-in can change every store's vendors and items: the page only adds, but the server takes any catalog change from it, and there is no narrower HQ role. Chef Dan's warehouse stock belongs in the warehouse hub, with a warehouse role of its own (Sebastian, 2026-11-01).
+- **Libraries (schema v12):** one per concept and side, on HQ's Libraries tab. Start an empty one from a store, clean it, save (the whole list, versioned). "Set up stores from this library" sends it like an LTO: no par, no area. Seeds: Rosslyn BOH and FOH for Roll Play, Tysons BOH and Rockville FOH for Teas'n You.
+  - A wrong save is put back in the SQL Editor from `mog.library_log.items_before` (there's no Restore button).
+  - A library item's keys come back from Postgres in jsonb's order (`name, pack, notes, vendor, backups`), so compare lists through `cleanLibrary`, never as raw JSON (the fake sends the same order).
 
 ## Local previews and the browser pane
 

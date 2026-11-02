@@ -101,7 +101,7 @@ Do not implement these until I pick. Present each with the options, the cost, an
 
 ### C2. H1 same-day close destroys the day's log
 
-This is the held-back CurrentState item, now diagnosed in the audit. The recommended fix is `last_closed_date` on `mog.store_state`, set on every close. A close whose `p_closing <= last_closed_date` and is not an explicit `sameDay` re-close still advances the cycle, but skips the log replacement in both `mog.order_log` and `LOG_ORDERS`, so the day's history survives and the new day still starts. If I approve, follow [.claude/skills/mog-supabase-schema/SKILL.md](.claude/skills/mog-supabase-schema/SKILL.md): the next free schema version (v10 and v11 were taken 2026-11-01 by vendor contacts and HQ control, so likely `schema_v12.sql` and `smoke_v12.sql`: check `supabase/` first), fake-Supabase and gate updates, SQL run by a maintainer first, then the code.
+This is the held-back CurrentState item, now diagnosed in the audit. The recommended fix is `last_closed_date` on `mog.store_state`, set on every close. A close whose `p_closing <= last_closed_date` and is not an explicit `sameDay` re-close still advances the cycle, but skips the log replacement in both `mog.order_log` and `LOG_ORDERS`, so the day's history survives and the new day still starts. If I approve, follow [.claude/skills/mog-supabase-schema/SKILL.md](.claude/skills/mog-supabase-schema/SKILL.md): the next free schema version (v10, v11 and v12 were taken 2026-11-01 by vendor contacts, HQ control and the concept library, so likely `schema_v13.sql` and `smoke_v13.sql`: check `supabase/` first), fake-Supabase and gate updates, SQL run by a maintainer first, then the code.
 
 ### C3. H2 override off before 3:30 changes the log and recap
 

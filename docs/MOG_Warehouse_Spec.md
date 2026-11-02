@@ -1,7 +1,7 @@
 # MOG — Warehouse (Happy Supply), concept library and new stores: spec
 
 **Agreed:** 2026-11-01, Sebastian (spec-first, decisions below).
-**Status:** approved, nothing built yet. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
+**Status:** approved. §1 (concept library) built as schema v12 on 2026-11-01; the rest isn't built. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
 **Reference, not ported:** Chef Daniel's Happy Supply artifact (a claude.ai page) and "Happy Supply: System Overview for IT" (2026-10-26). They show what people already want; MOG rebuilds it from scratch on Supabase. Daniel's data isn't moved (it isn't really in use); the warehouse starts with a first count.
 
 ---
@@ -43,12 +43,14 @@ Until step 4, Chasin' Tails and NUE keep ordering through Daniel's artifact.
 - **Split per concept and side** (Roll Play BOH, Roll Play FOH, Teas'n You BOH...). A new BOH store starts from its concept's BOH list. Matches today's separate BOH and FOH order guides (Rosslyn BOH 179 items, its FOH 70).
 - **Seeded once from a store you pick** (for example Rosslyn BOH for Roll Play BOH), then cleaned in HQ: fix names, drop store-only items.
 
-**Design notes (to be walked through before building):**
-- **Lives in Supabase,** edited on a new HQ tab. Each item: name, pack, main vendor and backups as **HQ vendor names** (mapped to each store's names through HQ's remembered names, `mog.hq_vendor_links`), a suggested storage area, notes. No par: pars stay per store.
-- **Setting up a store** copies the library through the HQ rollout (`commitHqRollout`): items arrive in the store's Needs setup, like an LTO.
-- **An HQ LTO rollout can add its items to the library** in the same save.
-- **A store's side isn't stored today** (only in its location's name), so the library's schema version adds it to `mog.stores`.
-- **Open:** whether a store's own additions can be proposed back to the library.
+**Built (schema v12, 2026-11-01; walked through and approved first):**
+- **Lives in Supabase** (`mog.libraries`, `mog.library_items`, `mog.library_log`), edited on HQ's Libraries tab. Each item: name, pack, main vendor and backups as **HQ vendor names** (mapped to each store's names through HQ's remembered names, `mog.hq_vendor_links`), notes. No par and no storage area: both stay per store. (The suggested area was dropped once setup was decided to leave items without one.)
+- **Starting a library from a store** (`librarySeed`): its active items with a vendor, in list order; a name listed twice (one row per vendor) becomes one item with the other vendors as backups. Then cleaned in HQ. A save is the whole list, refused (CONFLICT) if someone saved it since; every save is logged with the list before it.
+- **Seeds (Sebastian, 2026-11-01):** Roll Play BOH from Rosslyn BOH (rpr), Roll Play FOH from Rosslyn FOH (rprfo), Teas'n You BOH from Tysons BOH (tnyt; 71 of its 208 items had no vendor yet and are left out), Teas'n You FOH from Rockville FOH (tnyrf).
+- **Setting up a store** sends the saved library through the HQ rollout (`commitHqRollout`): items arrive with no par and **no area**, in the store's Needs setup, like an LTO (Sebastian's pick over placing them in the library's areas).
+- **An HQ LTO rollout can add its items to the library** in the same save (a checkbox per concept and side of the ticked stores).
+- **A store's side** is `mog.stores.side`, read from its location's name now and for new stores.
+- **Not built:** proposing a store's own additions back to the library (still open).
 
 ---
 
