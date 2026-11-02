@@ -60,15 +60,24 @@ Use **today's actual date** — the date in the session context is authoritative
 
 Skipping step 2 means the next session loads a stale handoff. Skipping step 3 means CurrentState drifts from reality. All happen in the same session.
 
-## Fold the session's lessons into the skills
+## Fold the session's lessons into the skills — never skip it silently
 
-The global `session-handoff` step of that name, run after the three files: `skill-enhance-from-session` over the handoff's Process lessons and Sebastian's corrections this session, one picker round at most, skipped when nothing is new. A MOG-only lesson goes into a `mog-*` skill here; a general one is a proposal (`global-skill-governance`). Tag each bullet `[→ dest]`, then gate it:
+Do the global `session-handoff` step of that name as written, after the three files:
+
+1. **Load `skill-enhance-from-session`** and run it over the handoff's Process lessons **and** every correction Sebastian made this session: his words, a picker answer that overruled your recommendation, a rejected tool use. Writing a lesson into `docs/MOG_ProjectNotes.md` is not this step: a project fact goes there, a rule about how Claude should work goes in a skill.
+2. **One picker round, max four Apply/Skip questions.** A MOG-only lesson goes into a `mog-*` skill here; a general one is a proposal (`global-skill-governance`).
+3. **Nothing new?** Say so in the wrap-up in one line, naming what you checked. Never skip the round without telling him.
+4. **Record it in the handoff:** a `**Skill gate:**` line under each Process lessons block, saying what was asked and picked, or "nothing new (checked: …)".
+
+> Gotcha (2026-11-01): both lessons went to the project notes, the picker round never ran, and the wrap-up said nothing; Sebastian noticed. The `**Skill gate:**` line and the check below exist so that can't recur.
+
+Tag each bullet `[→ dest]`, then gate it:
 
 ```
 python .claude/skills/mog-session-handoff/scripts/handoff_facts.py --check-lessons
 ```
 
-It must end `LESSONS CHECK: PASS`. On an UPDATE-IN-PLACE day the later session's block carries its own `### Process lessons`, and the check reads every one in the file, so an earlier block's lessons must already be tagged. **Applied skill edits are their own commit**, ahead of the one code + docs commit: a lesson-driven skill change does not belong inside a `feat(hub): …` commit.
+It must end `LESSONS CHECK: PASS` and then `SKILL GATE CHECK: PASS` (the MOG wrapper refuses a handoff without a `**Skill gate:**` line per Process lessons block). On an UPDATE-IN-PLACE day the later session's block carries its own `### Process lessons`, and the check reads every one in the file, so an earlier block's lessons must already be tagged. **Applied skill edits are their own commit**, ahead of the one code + docs commit: a lesson-driven skill change does not belong inside a `feat(hub): …` commit.
 
 ## If the session changed MOG *logic*, bump the blueprint too
 
@@ -118,6 +127,8 @@ Use this structure, in this order:
 ## Process lessons
 
 <What you would tell yourself at the start of this session, each bullet ending `[→ dest]` with where it went (see "Fold the session's lessons"). `None.` if none.>
+
+**Skill gate:** <the picker round: each question and Sebastian's pick, or "nothing new (checked: …)">
 
 ## Commits landed this session
 

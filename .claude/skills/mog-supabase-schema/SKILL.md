@@ -60,6 +60,19 @@ Re-running any of them must stay harmless.
   fake's link rules, not just `applyOps`. A fake's read never creates rows.
 - **A constant that a sliced gate needs goes into that gate's slice plan.** `supabase_step4` failed
   on `CATALOG_WRITE_ACTIONS_`.
+- **A new field in a shared payload or table row appears only when it has a value.** v10's vendor
+  `contact` is left out of `tables_json` and the phones' catalog (`vendorContacts`) until a vendor
+  has one, so every store read byte-identical until first use and no existing gate or smoke had to
+  change (`catalog_parity`, `smoke_v4`'s exact payloads, `getVendorTableData`'s pinned shape).
+- **A nested jsonb field in an editor row is compared clean in all three compare sites:** SQL
+  `mog.editor_fields_match`, `catalogEdit.js` `matches`, the fake's `editorSame`. Empty counts as
+  none, and its keys go in jsonb's stored order (shorter first, then bytewise), so `diff()` never
+  sees a key-order change as an edit and Undo of an older change is refused instead of wiping it
+  (schema v10).
+- **A long function redefined from an earlier version is generated, not retyped:** a scratch script
+  copies the old definition from its `schema_vN.sql` and applies asserted one-match replacements
+  (schema v10's `editor_apply_ops` from v8, `catalog_from_tables` from v4). Nothing else in the
+  function can drift.
 - **SQL gotchas met here:**
   - `-` binds tighter than `->` (smoke_v6);
   - `now()` never moves in one DO block (smoke_v5);
