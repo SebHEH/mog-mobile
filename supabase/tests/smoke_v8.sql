@@ -106,7 +106,9 @@ begin
   r := public.mog_editor_apply(tok, 'x', null, '[{"rename": "areas", "from": "Cooler", "to": "dry storage"}]'::jsonb);
   perform pg_temp.chk('rename: a name another area has (ignoring case) is a CONFLICT, and nothing changes',
     r ->> 'error' = 'CONFLICT' and exists (select 1 from mog.areas where slug = 'zztest8' and name = 'Cooler'), r);
-  r := public.mog_editor_apply(tok, 'x', null, '[{"rename": "vendors", "from": "Sysco", "to": "Sysco Foods"}]'::jsonb);
+  -- Vendors rename this way too since schema v15 (smoke_v15), so the probe
+  -- names a kind that never does.
+  r := public.mog_editor_apply(tok, 'x', null, '[{"rename": "items", "from": "Lime", "to": "Limes"}]'::jsonb);
   perform pg_temp.chk('rename: only areas rename this way', r ->> 'error' like 'REJECTED: BAD_OP%', r);
   r := public.mog_editor_apply(tok, 'Saved the storage areas: renamed Cooler → Dry Storage, Dry Storage → Cooler', null,
          '[{"rename": "areas", "from": "Cooler", "to": "(renaming 1)"},

@@ -194,6 +194,15 @@
     .lrow .s { display: block; margin-top: 2px; font-size: 13px; color: var(--muted); }
     .lrow .at { font-size: 13px; color: var(--muted); white-space: nowrap; }
     .list-foot { padding: 12px 18px; font-size: 13px; color: var(--muted); }
+    /* Ticking library items: a tick box beside each row, one in the head for
+       every item shown, and a bar for what to do with the ticked ones. */
+    .lhead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid var(--hair); font-size: 13px; color: var(--muted); }
+    .lhead .check { font-size: 13px; font-weight: 600; color: var(--ink2); }
+    .lwrap { display: flex; align-items: stretch; border-bottom: 1px solid var(--hair); background: #fff; }
+    .lwrap .lrow { border-bottom: 0; padding-left: 10px; }
+    .lwrap.ticked, .lwrap.ticked .lrow { background: var(--ok-bg); }
+    .ltick { display: flex; align-items: center; padding-left: 18px; cursor: pointer; }
+    .ltick input { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); cursor: pointer; }
     .panel { flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
     .where { padding: 14px 16px; border-radius: 12px; background: var(--ground); }
     .where .chips span { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
@@ -353,6 +362,7 @@
           <div class="card toolbar" id="lib-bar"></div>
           <div class="status" id="lib-status" role="status"></div>
           <div id="lib-body"></div>
+          <div class="bar" id="lib-bulk" role="region" aria-label="Ticked items" hidden></div>
         </section>
 
         <!-- Set up stores from a library -->
@@ -451,6 +461,7 @@
                 pick: { rollout: {}, setup: {}, vendor: {} }, concept: { rollout: null, setup: null, vendor: null },
                 rows: [], map: {}, newDays: {}, daysFrom: {},
                 lib: null, libQ: '', libFilter: 'all', libSel: 0, panel: null, seed: null, setupLib: null,
+                libTick: {}, setupOnly: null,
                 vDays: blankDays(), vAddAnyway: {}, roles: null };
     try { S.token = sessionStorage.getItem('mog_hq_token'); S.roles = JSON.parse(sessionStorage.getItem('mog_hq_roles') || 'null'); } catch (e) { S.token = null; S.roles = null; }
 
@@ -845,11 +856,13 @@
           : 'Nothing saved yet.') + '</div>';
       $('lib-add').disabled = !!(S.seed && S.seed.key === S.lib);
       $('lib-setup-btn').disabled = !lib.items.length || !!(S.seed && S.seed.key === S.lib);
+      $('lib-bulk').hidden = true;
       if (S.seed && S.seed.key === S.lib) return renderSeed();
       if (!lib.items.length && S.libSel !== 'new') return renderStart();
       $('lib-body').innerHTML = '<div class="cols"><section class="card list-card" aria-label="Library items">' +
         '<div class="list-tools"><label class="search"><span class="sr">Search this library</span>' + SEARCH +
         '<input id="lib-q" value="' + esc(S.libQ) + '" placeholder="Search items or vendors"></label><div id="lib-filters" class="actions" style="gap:6px"></div></div>' +
+        '<div class="lhead" id="lib-head"></div>' +
         '<div role="list" id="lib-list"></div><div class="list-foot" id="lib-foot"></div></section>' +
         '<section class="card panel" id="lib-panel" aria-label="Item"></section></div>';
       renderLibList();
@@ -865,15 +878,40 @@
         '<button type="button" class="pill" data-libfilter="' + f[0] + '" aria-pressed="' + (S.libFilter === f[0]) + '">' + esc(f[1]) + '</button>').join('');
       const shown = items.map((it, i) => ({ it, i })).filter(x =>
         (S.libFilter !== 'lonely' || lonely(x.it)) && (!q || lc(x.it.name + ' ' + x.it.vendor + ' ' + x.it.backups.join(' ')).indexOf(q) >= 0));
+      S.libShown = shown.map(x => lc(x.it.name));
       $('lib-list').innerHTML = shown.map(x => {
-        const at = carriedAt(S.lib, x.it.name), n = at.filter(a => a.has).length;
-        return '<button type="button" class="lrow" role="listitem" data-libsel="' + x.i + '" aria-current="' + (S.libSel === x.i) + '">' +
+        const at = carriedAt(S.lib, x.it.name), n = at.filter(a => a.has).length, on = !!S.libTick[lc(x.it.name)];
+        return '<div class="lwrap' + (on ? ' ticked' : '') + '" role="listitem"><label class="ltick"><input type="checkbox" data-libtick="' + esc(lc(x.it.name)) + '"' +
+          (on ? ' checked' : '') + ' aria-label="Tick ' + esc(x.it.name) + '"></label>' +
+          '<button type="button" class="lrow" data-libsel="' + x.i + '" aria-current="' + (S.libSel === x.i) + '">' +
           '<span class="t"><span class="n">' + esc(x.it.name) + '</span><span class="s">' + esc((x.it.pack ? x.it.pack + ' · ' : '') + x.it.vendor +
           (x.it.backups.length ? ' + ' + x.it.backups.join(', ') : '')) + '</span></span>' +
           (at.length > 1 && n === 1 ? '<span class="tag warn">One store only</span>' : '') +
-          '<span class="at">' + n + ' of ' + at.length + ' stores</span></button>';
+          '<span class="at">' + n + ' of ' + at.length + ' stores</span></button></div>';
       }).join('') || '<p class="empty" style="margin:16px 18px">No item matches.</p>';
       $('lib-foot').textContent = 'Showing ' + shown.length + ' of ' + plural(items.length, 'item');
+      renderLibTicks();
+    }
+    // The head's tick box ticks every item shown (the search and filter
+    // apply); the bar acts on every ticked item, shown or not.
+    function libTicked() { return libItems(S.lib).filter(it => S.libTick[lc(it.name)]); }
+    function renderLibTicks() {
+      const items = libItems(S.lib), shown = S.libShown || [];
+      for (const k of Object.keys(S.libTick)) if (!items.some(it => lc(it.name) === k)) delete S.libTick[k];
+      const ticked = libTicked(), onShown = shown.filter(k => S.libTick[k]).length;
+      $('lib-head').innerHTML = '<label class="check"><input type="checkbox" id="lib-all"' + (shown.length && onShown === shown.length ? ' checked' : '') +
+        (shown.length ? '' : ' disabled') + '>Tick all ' + (shown.length === items.length ? plural(items.length, 'item') : plural(shown.length, 'item') + ' shown') + '</label>' +
+        (ticked.length ? '<span>' + ticked.length + ' ticked</span>' : '');
+      const all = $('lib-all'); if (all) all.indeterminate = onShown > 0 && onShown < shown.length;
+      document.querySelectorAll('.lwrap').forEach(w => { const c = w.querySelector('[data-libtick]'); w.classList.toggle('ticked', !!S.libTick[c.getAttribute('data-libtick')]); c.checked = !!S.libTick[c.getAttribute('data-libtick')]; });
+      const bar = $('lib-bulk');
+      bar.hidden = !ticked.length;
+      if (!ticked.length) { bar.innerHTML = ''; return; }
+      bar.innerHTML = '<div class="bar-in"><div><div class="bar-title">' + plural(ticked.length, 'item') + ' ticked' + (ticked.length === items.length ? ': the whole library' : '') + '</div>' +
+        '<div class="status">' + esc(few(ticked.map(it => it.name))) + '</div></div>' +
+        '<div class="actions"><button type="button" class="linkbtn" id="lib-untick">Clear</button>' +
+        '<button type="button" class="btn danger-line" id="lib-rm-ticked"' + (S.busy ? ' disabled' : '') + '>Remove from the library</button>' +
+        '<button type="button" class="btn primary" id="lib-send-ticked"' + (S.busy ? ' disabled' : '') + '>Send ' + plural(ticked.length, 'item') + ' to stores</button></div></div>';
     }
     function panelItem() {
       const items = libItems(S.lib);
@@ -945,26 +983,35 @@
     }
 
     // ---- Set up stores from a library ----
+    // The whole library, or only the items ticked on the Libraries page
+    // (S.setupOnly): standard items sent with no LTO, so they wait in Needs
+    // setup like any new item, not pinned as an LTO's are.
+    function setupItems(key) {
+      const items = libItems(key);
+      return S.setupOnly ? items.filter(it => S.setupOnly.indexOf(lc(it.name)) >= 0) : items;
+    }
     function renderSetup() {
-      const key = S.setupLib, items = libItems(key);
-      $('su-crumb').textContent = libName(key) + ' › Set up stores';
-      $('su-h').textContent = 'Set up stores from the ' + libName(key) + ' library';
-      $('su-sub').textContent = plural(items.length, 'item') + '. They arrive with no par and no storage area, and wait in each store\'s Items page under Needs setup. ' +
+      const key = S.setupLib, items = setupItems(key);
+      $('su-crumb').textContent = libName(key) + ' › ' + (S.setupOnly ? 'Send items' : 'Set up stores');
+      $('su-h').textContent = S.setupOnly ? 'Send ' + plural(items.length, 'item') + ' from the ' + libName(key) + ' library'
+                                          : 'Set up stores from the ' + libName(key) + ' library';
+      $('su-sub').textContent = (S.setupOnly ? few(items.map(it => it.name)) + '. ' : plural(items.length, 'item') + '. ') +
+        'They arrive with no par and no storage area, and wait in each store\'s Items page under Needs setup. ' +
         'An item a store already has keeps its own setup and only gains the vendors it lacks.';
       $('su-stores').innerHTML = pickerHtml('setup', true);
       renderSetupWork();
     }
     function renderSetupWork() {
-      const key = S.setupLib, items = libItems(key), stores = pickedStores('setup');
+      const key = S.setupLib, items = setupItems(key), stores = pickedStores('setup');
       const [, side] = key.split('|');
       $('su-vendors').innerHTML = vendorRowsHtml(items, stores);
-      const plan = rolloutPlan(items, 'Set up from the ' + libName(key) + ' library', stores);
+      const plan = rolloutPlan(items, (S.setupOnly ? 'Sent from the ' : 'Set up from the ') + libName(key) + ' library', stores);
       S.setupPlan = plan;
-      $('su-preview').innerHTML = previewHtml(plan, 'Pick the stores to set up in step 1.',
+      $('su-preview').innerHTML = previewHtml(plan, 'Pick the stores in step 1.',
         st => (st.side && st.side !== side ? ' <span class="tag warn">' + esc(st.side) + '</span>' : ''));
       const ok = plan && !plan.some(p => p.error) && plan.some(p => p.out.ops.length);
       $('su-bar').innerHTML = barHtml(plural(items.length, 'item') + ' to ' + plural(stores.length, 'store'), 'Every store or none. Each store sees one change it can undo.',
-        'su-save', stores.length ? 'Set up ' + plural(stores.length, 'store') : 'Pick stores first', ok && !S.busy, 'su-status');
+        'su-save', !stores.length ? 'Pick stores first' : S.setupOnly ? 'Send to ' + plural(stores.length, 'store') : 'Set up ' + plural(stores.length, 'store'), ok && !S.busy, 'su-status');
     }
 
     // ---- Add a vendor ----
@@ -1149,10 +1196,23 @@
         if (await saveLibrary(sd.key, sd.items, 'Started from ' + sd.from + ' (' + plural(sd.items.length, 'item') + ')', { seededFrom: sd.from })) { S.seed = null; resetLibView(true); renderLibraries(); }
         return;
       }
-      if (t.id === 'lib-setup-btn') {
+      if (t.id === 'lib-setup-btn' || t.id === 'lib-send-ticked') {
+        S.setupOnly = t.id === 'lib-send-ticked' ? libTicked().map(it => lc(it.name)) : null;
         S.setupLib = S.lib; S.concept.setup = S.lib.split('|')[0]; S.pick.setup = {};
         $('su-status') && ($('su-status').textContent = '');
         go('setup'); return;
+      }
+      if (t.id === 'lib-untick') { S.libTick = {}; return renderLibTicks(); }
+      if (t.id === 'lib-rm-ticked') {
+        const items = libItems(S.lib), gone = libTicked();
+        if (!gone.length) return;
+        const whole = gone.length === items.length;
+        if (!window.confirm('Remove ' + (whole ? 'all ' + plural(gone.length, 'item') + ' from' : plural(gone.length, 'item') + ' from') + ' the ' + libName(S.lib) + ' library?\n\n' +
+          'Stores keep their own copies. There is no Undo here: a maintainer can put the list back from the library\'s log in the SQL Editor.' +
+          (whole ? '\n\nThe library will be empty, so "Start from a store" comes back.' : ''))) return;
+        const label = gone.length === 1 ? 'Removed "' + gone[0].name + '"' : 'Removed ' + gone.length + ' items' + (whole ? ' (emptied the library)' : '');
+        if (await saveLibrary(S.lib, items.filter(it => !S.libTick[lc(it.name)]), label)) { resetLibView(true); renderLibraries(); }
+        return;
       }
       // Set up
       if (t.id === 'su-save') { save(S.setupPlan, 'su-status', () => { S.pick.setup = {}; }, null); return; }
@@ -1190,6 +1250,9 @@
       if (main != null) { const r = S.rows[Number(main)]; r.vendor = t.value; r.backups = r.backups.filter(b => lc(b) !== lc(t.value)); renderRolloutItems(); return renderRolloutWork(); }
       if (LT && LT.change(t)) return;
       if (t.id === 'lib-concept') { S.lib = libKey(t.value, S.lib.split('|')[1]); resetLibView(); return renderLibraries(); }
+      const tick = t.getAttribute('data-libtick');
+      if (tick) { if (t.checked) S.libTick[tick] = true; else delete S.libTick[tick]; return renderLibTicks(); }
+      if (t.id === 'lib-all') { for (const k of S.libShown || []) { if (t.checked) S.libTick[k] = true; else delete S.libTick[k]; } return renderLibTicks(); }
       if (t.id === 'pn-main') { S.panel.vendor = t.value; S.panel.backups = S.panel.backups.filter(b => lc(b) !== lc(t.value)); return renderPanel(); }
       const any = t.getAttribute('data-anyway');
       if (any) { S.vAddAnyway[any] = t.checked; return renderVendorWork(); }
@@ -1207,7 +1270,7 @@
       if (t.id === 'v-name' || t.id === 'v-cutoff' || t.getAttribute('data-contact')) return renderVendorWork();
     });
     function toggleIn(list, v) { const i = list.findIndex(x => lc(x) === lc(v)); if (i >= 0) list.splice(i, 1); else list.push(v); }
-    function resetLibView(keepStatus) { S.libSel = 0; S.panel = null; S.libQ = ''; S.libFilter = 'all'; if (!keepStatus) libStatus('', ''); }
+    function resetLibView(keepStatus) { S.libSel = 0; S.panel = null; S.libQ = ''; S.libFilter = 'all'; S.libTick = {}; if (!keepStatus) libStatus('', ''); }
     function renderStoresChanged(view) {
       if (view === 'rollout') { $('ro-stores').innerHTML = pickerHtml('rollout'); renderRolloutItems(); return renderRolloutWork(); }
       if (view === 'setup') { $('su-stores').innerHTML = pickerHtml('setup', true); return renderSetupWork(); }

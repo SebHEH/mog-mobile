@@ -436,7 +436,7 @@ const CONTROLS = [
   { name: 'Editor Home offers tools not in the app', scenario: 'pages',
     find: '      for (const sec of window.HOME_SECTIONS) for (const c of sec.cards || []) if (!PAGES[c.page]) c.live = false;', replace: '' },
   { name: 'a renamed area is sent as a delete and an add', scenario: 'tools', file: CE_FILE,
-    find: '    for (const r of renames) renameArea(b, r.from, r.to);', replace: '' },
+    find: "    for (const r of renames) (r.rename === 'vendors' ? renameVendor : renameArea)(b, r.from, r.to);", replace: '' },
   { name: 'a page inside the app asks for the PIN when its session runs out', scenario: 'embed',
     find: '        const fresh = await SHELL.token(String(token || \'\'));', replace: '        const fresh = null;' },
   { name: 'a call inside the app keeps the run-out session', scenario: 'embed',

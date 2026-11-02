@@ -2102,9 +2102,14 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
         '<h2 class="pn-title">' + esc(edit ? v.name : T('Add a vendor', 'Agregar un proveedor')) + '</h2></div>';
 
       h += '<div class="pn-body">';
-      if (!edit) {
-        h += '<label class="pn-field">' + esc(T('Name', 'Nombre')) +
-          '<input type="text" id="pn-name" maxlength="100" value="' + esc(d.name) + '" placeholder="' + esc(T('e.g. Happy Supply', 'ej. Happy Supply')) + '"></label>';
+      h += '<label class="pn-field">' + esc(T('Name', 'Nombre')) +
+        '<input type="text" id="pn-name" maxlength="100" value="' + esc(d.name) + '" placeholder="' + esc(T('e.g. Happy Supply', 'ej. Happy Supply')) + '"></label>';
+      // A rename (schema v15) carries the vendor's items, count lists and
+      // today's counts along; said here while the name differs.
+      if (edit) {
+        h += '<div class="pn-help" id="pn-rename-note" style="margin-top:-8px"' + (d.name.trim() !== v.name ? '' : ' hidden') + '>' +
+          esc(T('Saving renames it on every item, count list and today’s counts here. Past orders keep the old name.',
+                'Al guardar se cambia el nombre en cada artículo, lista de conteo y en los conteos de hoy. Los pedidos pasados conservan el nombre anterior.')) + '</div>';
       }
 
       h += '<fieldset class="pn-section"><legend>' + esc(T('Delivery days', 'Días de entrega')) + '</legend><div class="pn-week">' +
@@ -2162,8 +2167,8 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     // One save for the days, the cutoff and the contact. Resolves true when it saved.
     function save() {
       var d = S.draft, edit = S.panel.mode === 'edit';
-      var name = edit ? S.panel.name : d.name.trim();
-      if (!name) { setStatus(T('Give the vendor a name.', 'Ponle un nombre al proveedor.'), 'err'); return Promise.resolve(false); }
+      var name = edit ? S.panel.name : d.name.trim(), newName = d.name.trim();
+      if (!newName) { setStatus(T('Give the vendor a name.', 'Ponle un nombre al proveedor.'), 'err'); return Promise.resolve(false); }
       if (d.mults.some(function (m) { return !(Number(m) >= 0) || String(m) === ''; })) {
         setStatus(T('Each order size is a number of days, 0 or more.', 'Cada tamaño de pedido es un número de días, 0 o más.'), 'err');
         return Promise.resolve(false);
@@ -2175,6 +2180,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       var contact = {};
       CONTACT.forEach(function (f) { contact[f.k] = String(d.contact[f.k] || '').trim(); });
       var payload = { mode: edit ? 'edit' : 'add', name: name, mults: d.mults.map(Number), cutoff: d.noCutoff ? '' : d.cutoff, contact: contact };
+      if (edit && newName !== name) payload.newName = newName;
       S.busy = true; markDirty(); setStatus(T('Saving…', 'Guardando…'));
       return call('commitSaveVendor', payload).then(function (res) {
         return reload().then(function () {
@@ -2183,7 +2189,8 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
           var v = byName(res.name);
           if (v) setDraft(draftFrom(v));
           renderPanel(); renderTable();
-          if (edit) setStatus(T('Saved.', 'Guardado.'), 'ok');
+          if (edit && res.renamedFrom) setStatus(T('Saved. Renamed from ' + res.renamedFrom + '.', 'Guardado. Antes se llamaba ' + res.renamedFrom + '.'), 'ok');
+          else if (edit) setStatus(T('Saved.', 'Guardado.'), 'ok');
           else toast(T('Added ' + res.name + '.', 'Se agregó ' + res.name + '.'));
           return true;
         });
@@ -2241,7 +2248,11 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       pn.addEventListener('input', function (e) {
         var d = S.draft; if (!d) return;
         var t = e.target;
-        if (t.id === 'pn-name') d.name = t.value;
+        if (t.id === 'pn-name') {
+          d.name = t.value;
+          var note = document.getElementById('pn-rename-note');
+          if (note) note.hidden = d.name.trim() === S.panel.name;
+        }
         else if (t.getAttribute('data-contact')) d.contact[t.getAttribute('data-contact')] = t.value;
         else if (t.getAttribute('data-mult') !== null) {
           var i = Number(t.getAttribute('data-mult'));

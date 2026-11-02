@@ -15,6 +15,8 @@
 //   - standard: only the link goes
 //   - an item number reused by the store's own new item never joins the LTO
 //   - the Items page's rows: lto only when the item has one
+//   - the Items page's "new from LTOs" group (ltoWaiting): running LTOs only,
+//     newest first, items still missing a par or a storage area
 //   - on random stores: nothing outside the LTO changes
 //   - through the fake: send to two stores (one record, a change each, the
 //     stores read their LTO), a KM sets one up, roll back, the store undoes
@@ -187,6 +189,27 @@ function problems(text) {
   if (!vc.lto || vc.lto.id !== L1 || vc.lto.name !== 'Fall Chicken Pho' || vc.lto.status !== 'running') bad('Items row: the LTO', JSON.stringify(vc));
   if (Object.keys(vl).join() !== 'id,name,vendor,eligibleVendors,pack,par,active,useMult,hasArea,storageArea') bad('Items row without an LTO changed shape', Object.keys(vl).join());
 
+  // ---- The Items page's "new from LTOs" group (ltoWaiting) ----
+  if (typeof CE.ltoWaiting !== 'function') bad('ltoWaiting is not exported');
+  else {
+    const fromView = CE.ltoWaiting(view);
+    if (!same(fromView.map(g => g.id + ':' + g.items.map(x => x.name).join(',')), [L1 + ':Pho Spice'])) bad('ltoWaiting from the Items rows', JSON.stringify(fromView));
+    const lt = (id, status, sentAt) => ({ id, name: id, status, sentAt });
+    const older = lt(L1, 'running', '2026-11-02T18:36:00Z'), newer = lt(L2, 'running', '2026-11-03T15:00:00Z');
+    const rows = [
+      { id: 'A', name: 'Pho Spice', active: true, par: '', hasArea: false, lto: older },
+      { id: 'B', name: 'Chicken Breast', active: true, par: 4, hasArea: true, lto: older },
+      { id: 'C', name: 'Basil', active: true, par: 2, hasArea: false, lto: newer },
+      { id: 'D', name: 'Anise', active: true, par: '', hasArea: true, lto: newer },
+      { id: 'E', name: 'Old Leaf', active: false, par: '', hasArea: false, lto: newer },
+      { id: 'F', name: 'Mint', active: true, par: '', hasArea: false, lto: lt('lto_ended', 'ended', '2026-11-04T10:00:00Z') },
+      { id: 'G', name: 'Lime', active: true, par: '', hasArea: false }
+    ];
+    const got = CE.ltoWaiting(rows).map(g => g.id + ':' + g.items.map(x => x.id).join(','));
+    if (!same(got, [L2 + ':D,C', L1 + ':A'])) bad('ltoWaiting: running LTOs, newest first, items missing a par or an area, A to Z', JSON.stringify(got));
+    if (CE.ltoWaiting([rows[1], rows[6]]).length) bad('ltoWaiting listed an LTO with nothing to set up');
+  }
+
   // ---- Refusals ----
   if (!/Which LTO/.test(refused(() => CE.call(setUp, 'commitHqLto', [{ action: 'end' }])))) bad('an end with no LTO was taken');
   if (!/ended, rolled back or made standard/.test(refused(() => CE.call(setUp, 'commitHqLto', [{ action: 'pause', lto: L1 }])))) bad('an unknown action was taken');
@@ -314,6 +337,15 @@ const CONTROLS = [
   { name: 'an item with no storage area counts as set up',
     find: "      const ready = it.par !== null && it.par !== undefined && it.par !== '' && areaOf.has(s_(it.id));",
     replace: "      const ready = it.par !== null && it.par !== undefined && it.par !== '';" },
+  { name: 'an ended LTO\'s items are pinned',
+    find: "      if (!l || l.status !== 'running' || r.active !== true || (r.par !== '' && r.hasArea)) continue;",
+    replace: "      if (!l || r.active !== true || (r.par !== '' && r.hasArea)) continue;" },
+  { name: 'an item with a par but no storage area leaves the pinned group',
+    find: "      if (!l || l.status !== 'running' || r.active !== true || (r.par !== '' && r.hasArea)) continue;",
+    replace: "      if (!l || l.status !== 'running' || r.active !== true || (r.par !== '' || r.hasArea)) continue;" },
+  { name: 'the oldest LTO comes first',
+    find: '    return out.sort((a, b) => (a.sentAt < b.sentAt ? 1 : a.sentAt > b.sentAt ? -1 : a.name.localeCompare(b.name)));',
+    replace: '    return out.sort((a, b) => (a.sentAt < b.sentAt ? -1 : a.sentAt > b.sentAt ? 1 : a.name.localeCompare(b.name)));' },
   { name: 'every Items row gets an lto',
     find: '      if (s_(it.lto)) {\n        const l = ltos.get(s_(it.lto)) || {};',
     replace: '      if (true) {\n        const l = ltos.get(s_(it.lto)) || {};' }

@@ -745,11 +745,21 @@ function editorApplyOps1(tables, ops) {
       continue;
     }
     if ('rename' in op) {   // schema v8: update mog.areas set name; pick_rows follow (on update cascade)
-      if (op.rename !== 'areas' || typeof op.from !== 'string' || typeof op.to !== 'string') throw new Error('BAD_OP');
-      if (!t.areas.some(a => a.name === op.from)) throw new Error('CONFLICT: areas ' + op.from + ' has changed');
-      if (t.areas.some(a => a.name !== op.from && a.name.toLowerCase() === op.to.toLowerCase())) throw new Error('CONFLICT: areas ' + op.to + ' is already there');
-      for (const a of t.areas) if (a.name === op.from) a.name = op.to;
-      for (const r of t.pickRows) if (r.area === op.from) r.area = op.to;
+      if ((op.rename !== 'areas' && op.rename !== 'vendors') || typeof op.from !== 'string' || typeof op.to !== 'string') throw new Error('BAD_OP');
+      const list = t[op.rename];
+      if (!list.some(a => a.name === op.from)) throw new Error('CONFLICT: ' + op.rename + ' ' + op.from + ' has changed');
+      if (list.some(a => a.name !== op.from && a.name.toLowerCase() === op.to.toLowerCase())) throw new Error('CONFLICT: ' + op.rename + ' ' + op.to + ' is already there');
+      if (op.to !== op.to.trim() || !op.to || op.to.length > 100) throw new Error(op.rename + '_name_check');
+      for (const a of list) if (a.name === op.from) a.name = op.to;
+      if (op.rename === 'areas') {
+        for (const r of t.pickRows) if (r.area === op.from) r.area = op.to;
+      } else {   // schema v15: items' main vendor and pick rows follow (on update cascade); array_replace on eligible
+        for (const it of t.items) {
+          if (it.primaryVendor === op.from) it.primaryVendor = op.to;
+          if ((it.eligible || []).indexOf(op.from) >= 0) it.eligible = it.eligible.map(x => (x === op.from ? op.to : x));
+        }
+        for (const r of t.pickRows) if (r.vendor === op.from) r.vendor = op.to;
+      }
       continue;
     }
     const b = op.before || null, a = op.after || null, row = a || b;
@@ -976,6 +986,32 @@ function hqRolesClean(roles) {
   if (!v.length || v.some(r => r !== 'hq' && r !== 'warehouse')) throw new Error("Roles are hq, warehouse or both, for example '{warehouse}'.");
   return v;
 }
+// The rest of schema v15's vendor rename step, outside the catalog tables:
+// the store's counts (a row already under the new name wins), its "just
+// today" edits, the override's day picks, presence, and HQ's remembered
+// names (on update cascade). Called once the ops have applied.
+FakeSupabase.prototype.followVendorRenames = function (slug, s, ops) {
+  for (const op of ops) {
+    if (!op || op.rename !== 'vendors') continue;
+    const from = op.from, to = op.to;
+    for (const m of s.counts.values()) {
+      for (const [k, row] of Array.from(m.entries())) {
+        const k2 = to + '\u0001' + row.id;
+        if (row.vendor !== from || m.has(k2)) continue;
+        m.delete(k);
+        m.set(k2, Object.assign({}, row, { vendor: to }));
+      }
+    }
+    for (const e of (s.quickEdits || [])) if (e.vendor === from) e.vendor = to;
+    if (s.state && s.state.vendorPicks && Object.prototype.hasOwnProperty.call(s.state.vendorPicks, from)) {
+      s.state.vendorPicks[to] = s.state.vendorPicks[from];
+      delete s.state.vendorPicks[from];
+    }
+    for (const pr of s.presence.values()) if (pr.vendor === from) pr.vendor = to;
+    const H = this.hqState();
+    for (const l of H.links) if (l.slug === slug && l.vendor === from) l.vendor = to;
+  }
+};
 FakeSupabase.prototype.hqLinks = function () {
   const H = this.hqState();
   H.links = H.links.filter(l => { const s = this.stores.get(l.slug); return s && s.tables && s.tables.vendors.some(v => v.name === l.vendor); });
@@ -1114,6 +1150,7 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
   const out = [];
   for (const [slug, x] of next) {
     x.s.tables = x.tables;
+    this.followVendorRenames(slug, x.s, x.ch.ops);
     const entry = this.editorLog(x.s, by, String(x.ch.label || '').trim().slice(0, 300) || 'HQ change', x.ch.ops, null);
     out.push({ slug, changeId: entry.id, catalogVersion: this.editorPublish(x.s) });
   }
@@ -1571,7 +1608,7 @@ FakeSupabase.prototype.handleEditor = function (fn, p) {
   }
 
   const tryApply = ops => {
-    try { s.tables = editorApplyOps(s.tables, ops, new Set(this.hqState().ltos.keys())); return null; } catch (e) {
+    try { s.tables = editorApplyOps(s.tables, ops, new Set(this.hqState().ltos.keys())); this.followVendorRenames(slug, s, ops); return null; } catch (e) {
       const m = String(e.message);
       return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: m.slice(10) }) : err('REJECTED: ' + m);
     }

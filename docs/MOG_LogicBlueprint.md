@@ -372,6 +372,7 @@ naive rebuild silently loses.*
     - **Roll back** (a mistake or a test): its items are deleted even if a store set them up, the backup vendors it gave items a store already had come off again, and a vendor it added is removed when no item uses it, so the store is as it was before.
     - **Make it standard** (it stays on the menu): its items go into the concept library for each side it reached (R29) and stop being LTO items at the stores.
   - Where an LTO stands at each store (needs setup, set up, inactive, removed) is read from that store's own items, never stored apart, so a store's setup or Undo shows at once.
+  - At the store, a running LTO's items that still lack a par or a storage area sit at the very top of the Items page, under a banner per LTO, newest first, until each has both; every LTO item carries an "LTO · name" mark.
   - An action made from an older view of the LTO is refused, as is any change to a store the action isn't about.
   - Why: an LTO reaches many stores in one step (R28) and has to leave them the same way, without a sign-in at each store. *(Confirmed: owner 2026-11-02, `docs/MOG_LTO_Spec.md`. The owner picked "inactive" for End over deleting, "delete anyway, name the stores" for Roll back, and "Make it standard" over the rollout's library box.)*
 
@@ -612,7 +613,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
   Built so far (W1, 2026-11-02): the warehouse's own stock, vendor orders in, transfers, counts and
   history, and the warehouse role (R30). Next: store orders (W2) and monthly chargebacks (W3).
 - **LTOs as records.** Built 2026-11-02 (R31, `docs/MOG_LTO_Spec.md`): HQ ends, rolls back or makes
-  standard what it sent. Next: the store's Items page shows new LTO items first until set up; then
+  standard what it sent, and the store's Items page shows new LTO items first until set up. Next:
   lining up each concept's stores with its library, and items a store can't remove (its own spec).
 - **Cost and sales integration.** Pull cost from MarginEdge and sales/usage from Toast so pars can be
   informed by real data and the recap can carry cost. The count engine is where these land; the Item

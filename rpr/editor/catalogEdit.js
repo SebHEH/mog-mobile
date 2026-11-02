@@ -45,6 +45,12 @@
 //     { rename: 'areas', from, to }      a storage area renamed; its pick rows
 //                                        follow (the database's on update
 //                                        cascade)
+//     { rename: 'vendors', from, to }    a vendor renamed (schema v15): its
+//                                        items' main vendor and pick rows
+//                                        follow, its name in the items' vendor
+//                                        lists changes with it, and the
+//                                        database moves the store's counts and
+//                                        HQ's remembered name too
 //     { t, key, before, after }          one row of table t; before null =
 //                                        insert, after null = delete
 //   Order: shifts, renames, then pick-row and area deletes, then inserts and
@@ -941,21 +947,40 @@
     return { ok: true, name: name };
   }
 
-  // The Vendors page's one save: a new vendor, or an existing one's days,
-  // cutoff and contact together. p = { mode: 'add' | 'edit', name, mults (7),
-  // cutoff ('HH:MM', 'H:MM AM/PM' or ''), contact }. A name never changes.
-  function saveVendor(w, p) {
+  // The Vendors page's one save: a new vendor, or an existing one's name,
+  // days, cutoff and contact together. p = { mode: 'add' | 'edit', name,
+  // newName (edit: a rename, schema v15), mults (7), cutoff ('HH:MM',
+  // 'H:MM AM/PM' or ''), contact }. A rename is a rename step (`renames`), so
+  // the database carries the vendor's items, lists, counts and HQ's
+  // remembered name along; a name another vendor has is refused (merging two
+  // vendors is not a rename).
+  function saveVendor(w, p, renames) {
     p = p || {};
     const add = p.mode === 'add';
     const contact = cleanContact(p.contact);
     if (p.cutoff && normalizeCutoff(p.cutoff) === null) {
       throw new Error('Cutoff time format not recognized. Use "HH:MM" (24h) or "H:MM AM/PM".');
     }
-    if (add) addVendor(w, p.name, p.mults, p.cutoff);
-    else updateVendor(w, p.name, p.mults, p.cutoff);
-    const v = findVendor(w, String(p.name || '').trim());
+    let name = String(p.name || '').trim(), renamedFrom = '';
+    const to = s_(p.newName);
+    if (!add && to && to !== name) {
+      const v = findVendor(w, name);
+      if (!v) throw new Error('"' + name + '" not found in vendor list.');
+      if (to.length > 100) throw new Error('Vendor name "' + to + '" is longer than 100 characters.');
+      const taken = w.vendors.find(x => x !== v && s_(x.name).toLowerCase() === to.toLowerCase());
+      if (taken) throw new Error('"' + s_(taken.name) + '" is already a vendor here. Pick another name: two vendors can\'t be merged by renaming one.');
+      renamedFrom = v.name;
+      renameVendor(w, v.name, to);
+      if (renames) renames.push({ rename: 'vendors', from: renamedFrom, to: to });
+      name = to;
+    }
+    if (add) addVendor(w, name, p.mults, p.cutoff);
+    else updateVendor(w, name, p.mults, p.cutoff);
+    const v = findVendor(w, name);
     if (contact) v.contact = contact; else delete v.contact;
-    return { ok: true, mode: add ? 'add' : 'edit', name: v.name, cutoffTime: v.cutoff, contact: contact || {} };
+    const out = { ok: true, mode: add ? 'add' : 'edit', name: v.name, cutoffTime: v.cutoff, contact: contact || {} };
+    if (renamedFrom) out.renamedFrom = renamedFrom;
+    return out;
   }
 
   // HQ's change at one store (hq/; schema v11 applies every store's together).
@@ -1077,6 +1102,24 @@
     return { items: items, ready: count('ready'), setup: count('setup'), inactive: count('inactive') };
   }
 
+  // The Items page's "new from LTOs" group (docs/MOG_LTO_Spec.md step 5),
+  // from getAllItemsForView's rows: each running LTO with its items still
+  // waiting for a par or a storage area (active only, as ltoStoreState counts
+  // them), the newest LTO first, its items A to Z. An LTO with nothing left to
+  // set up isn't listed, so its items go back to their place in the list.
+  function ltoWaiting(rows) {
+    const byLto = new Map();
+    for (const r of (Array.isArray(rows) ? rows : [])) {
+      const l = r && r.lto;
+      if (!l || l.status !== 'running' || r.active !== true || (r.par !== '' && r.hasArea)) continue;
+      if (!byLto.has(l.id)) byLto.set(l.id, { id: l.id, name: l.name, sentAt: l.sentAt || '', items: [] });
+      byLto.get(l.id).items.push(r);
+    }
+    const out = Array.from(byLto.values());
+    for (const g of out) g.items.sort((a, b) => a.name.localeCompare(b.name));
+    return out.sort((a, b) => (a.sentAt < b.sentAt ? 1 : a.sentAt > b.sentAt ? -1 : a.name.localeCompare(b.name)));
+  }
+
   // ---- The concept library (hq/, schema v12) ---------------------------------
   // A concept's standard items for one side, kept by HQ: name, pack, main
   // vendor and backups (HQ's vendor names), notes. No par and no storage area:
@@ -1186,6 +1229,18 @@
   function renameArea(t, from, to) {
     for (const a of t.areas) if (a.name === from) a.name = to;
     for (const r of t.pickRows) if (r.area === from) r.area = to;
+  }
+
+  // A vendor renamed (schema v15), as the database does it: the vendor, its
+  // items' main vendor and its pick rows follow (on update cascade), and the
+  // rename step renames it in every item's vendor list too.
+  function renameVendor(t, from, to) {
+    for (const v of t.vendors) if (v.name === from) v.name = to;
+    for (const it of t.items) {
+      if (it.primaryVendor === from) it.primaryVendor = to;
+      if ((it.eligible || []).indexOf(from) >= 0) it.eligible = it.eligible.map(x => (x === from ? to : x));
+    }
+    for (const r of t.pickRows) if (r.vendor === from) r.vendor = to;
   }
 
   // commitStorageAreasDraft_: the whole list at once. Each entry is
@@ -1415,7 +1470,7 @@
   function diff(base, work, shifts, renames) {
     const b = clone(base);
     for (const from of shifts) for (const it of b.items) if (it.seq >= from) it.seq += 1;
-    for (const r of renames) renameArea(b, r.from, r.to);
+    for (const r of renames) (r.rename === 'vendors' ? renameVendor : renameArea)(b, r.from, r.to);
     const dels = [], puts = [];
     for (const t of TABLES) {
       const before = new Map(b[t].map(r => [keyOf(t, r), r]));
@@ -1457,11 +1512,12 @@
         continue;
       }
       if (op.rename) {
-        if (op.rename !== 'areas' || !t.areas.some(a => a.name === op.from)) throw new Error('CONFLICT: areas ' + op.from + ' changed');
-        if (op.from.toLowerCase() !== op.to.toLowerCase() && t.areas.some(a => a.name.toLowerCase() === op.to.toLowerCase())) {
-          throw new Error('CONFLICT: areas ' + op.to + ' already exists');
+        const kind = op.rename === 'vendors' ? 'vendors' : 'areas';
+        if ((op.rename !== 'areas' && op.rename !== 'vendors') || !t[kind].some(a => a.name === op.from)) throw new Error('CONFLICT: ' + kind + ' ' + op.from + ' changed');
+        if (op.from.toLowerCase() !== op.to.toLowerCase() && t[kind].some(a => a.name.toLowerCase() === op.to.toLowerCase())) {
+          throw new Error('CONFLICT: ' + kind + ' ' + op.to + ' already exists');
         }
-        renameArea(t, op.from, op.to);
+        (kind === 'vendors' ? renameVendor : renameArea)(t, op.from, op.to);
         continue;
       }
       const list = t[op.t];
@@ -1563,7 +1619,7 @@
       return 'Added vendor "' + result.name + '"' + (Object.keys(result.contact).length ? ' with its contact' : '');
     }
     if (fn === 'commitSaveVendor') {
-      const before = findVendor(base, result.name), after = findVendor(work, result.name);
+      const before = findVendor(base, result.renamedFrom || result.name), after = findVendor(work, result.name);
       const parts = [];
       if (before && after && JSON.stringify(before.mults) !== JSON.stringify(after.mults)) {
         parts.push('day multipliers ' + before.mults.join(' ') + ' → ' + after.mults.join(' '));
@@ -1572,6 +1628,7 @@
       const was = (before && before.contact) || {}, now = (after && after.contact) || {};
       const changed = CONTACT_KEYS.filter(k => (was[k] || '') !== (now[k] || '')).map(k => CONTACT_LABEL[k]);
       if (changed.length) parts.push('contact (' + changed.join(', ') + ')');
+      if (result.renamedFrom) return 'Renamed vendor "' + result.renamedFrom + '" to "' + result.name + '"' + (parts.length ? '; ' + parts.join('; ') : '');
       return 'Updated vendor "' + result.name + '"' + (parts.length ? ': ' + parts.join('; ') : '');
     }
     if (fn === 'commitStorageAreasDraft') {
@@ -1619,7 +1676,7 @@
     commitAddVendor: (w, args) => addVendor(w, args[0], args[1], args[2]),
     commitUpdateVendorMultsAndCutoff: (w, args) => updateVendor(w, args[0], args[1], args[2]),
     commitRemoveVendor: (w, args) => removeVendor(w, args[0]),
-    commitSaveVendor: (w, args) => saveVendor(w, args[0]),
+    commitSaveVendor: (w, args, shifts, renames) => saveVendor(w, args[0], renames),
     commitHqRollout: (w, args) => hqRollout(w, args[0]),
     commitHqLto: (w, args) => hqLto(w, args[0]),
     commitStorageAreasDraft: (w, args, shifts, renames) => storageAreasDraft(w, args[0], renames),
@@ -1643,7 +1700,7 @@
                 writes: Object.keys(WRITES), vendorList: vendorList, parseCsv: parseCsv,
                 multsFromDays: multsFromDays, daysFromMults: daysFromMults, matchVendor: matchVendor,
                 cleanLibrary: cleanLibrary, librarySeed: librarySeed, libraryAdd: libraryAdd, libraryLabel: libraryLabel,
-                ltoStoreState: ltoStoreState };
+                ltoStoreState: ltoStoreState, ltoWaiting: ltoWaiting };
   root.CatalogEdit = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : this);

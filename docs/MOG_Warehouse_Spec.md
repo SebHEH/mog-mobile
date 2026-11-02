@@ -183,6 +183,9 @@ A store orders from Happy Supply in its order guide like any vendor, and the ord
 **Open for W2 (not needed for W1):**
 - The HQ mockup's Orders board has an Approve step (New, Approved, Shipped); this spec has sent, shipped, received. It's a status value either way, no table change.
 - A linked store item orders in the product's case (the HQ publish sets its pack). Check with Dan that no store orders king crab or shrimp by the pound.
+- **Live stock for the people ordering** (Sebastian, 2026-11-02, to design with W2, spec-first): a KM ordering from Happy Supply sees what the warehouse has. Not decided: what a KM sees (cases on hand, or in stock / low / out), and whether an order larger than the stock is refused, trimmed or sent anyway.
+- **Elpis** (Sebastian, 2026-11-02, same pass): Elpis Wholesale stores HEH's own paper goods (big shipments from China) and also sells its own items. The paper goods are stock HEH owns, like Happy Supply's; Elpis's own items are an ordinary vendor's. Not decided: whether Elpis's held stock is a Happy Supply location or a second stock-holding vendor; who records what Elpis ships to the stores (Elpis doesn't use MOG); whether stores see that stock too. Today the stores name it "Elpis", "Elpis Wholesale" and "ELPIS"; a store can rename a vendor since schema v15.
+- **Adding standard items to stores without an LTO** (built 2026-11-02, later 4): on HQ's Libraries page, tick items, then "Send N to stores" (the library's Set up path with only those items: no LTO record, no pin). W2's publish still has to add the product link.
 
 ---
 

@@ -20,7 +20,10 @@
        Only in the app's editor: the Sheet dialog and the /exec editor keep
        apps-script/ManageItems.html. Every save goes through host.js to
        catalogEdit.js, the same calls ManageItems.html makes, plus the two
-       bulk saves (commitSetItemsArea, commitSetItemsActive). -->
+       bulk saves (commitSetItemsArea, commitSetItemsActive). New LTO items
+       (docs/MOG_LTO_Spec.md step 5): a banner per running LTO and its items
+       pinned first until each has a par and a storage area (catalogEdit.js
+       ltoWaiting), an "LTO · name" chip and a note in the panel. -->
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Inter', Arial, Helvetica, sans-serif; margin: 0; color: #1f1e1b; background: #fff; font-size: 14px; }
@@ -87,6 +90,35 @@
     .b-muted { background: #ebe9e0; color: #4a4945; }
     .it-foot { padding: 12px 16px; border-top: 1px solid #ecebe5; font-size: 12.5px; color: #6b6a65; }
     .it-empty { padding: 28px 18px; color: #5f5e5a; text-align: center; }
+
+    /* New from LTOs (docs/MOG_LTO_Spec.md step 5): a banner per running LTO
+       with items to set up, those items pinned first, and a chip on every
+       LTO item. */
+    #it-ltos { display: flex; flex-direction: column; gap: 10px; }
+    #it-ltos:empty { display: none; }
+    .lt-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; padding: 16px 18px; border-radius: 14px;
+                 background: var(--web-accent-soft, #e9f4ef); border: 1px solid #cfe6dc; }
+    .lt-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff);
+               display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .lt-icon svg { width: 22px; height: 22px; }
+    .lt-text { flex: 1 1 380px; min-width: 0; }
+    .lt-text h2 { margin: 0; font-size: 16px; font-weight: 800; }
+    .lt-text p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.45; color: #2f3b35; }
+    .lt-btn { height: 42px; padding: 0 18px; border: 0; border-radius: 10px; background: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff);
+              font-weight: 700; cursor: pointer; }
+    .lt-btn:hover { filter: brightness(0.95); }
+    .lt-done { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 18px; border-radius: 14px; background: #f5f4ed; border: 1px solid #e6e4dd; }
+    .lt-done svg { width: 20px; height: 20px; color: #1a6b48; flex-shrink: 0; }
+    .lt-done span { flex: 1 1 320px; }
+    .it-table tbody tr.it-group { cursor: default; }
+    .it-table tbody tr.it-group td, .it-table tbody tr.it-group:hover td { padding: 10px 16px 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em;
+               text-transform: uppercase; color: #64635e; background: #fff; }
+    .it-table tbody tr.it-group.pin td { background: var(--web-accent-soft, #e9f4ef); color: #216b51; }
+    .b-lto { background: var(--web-accent-soft, #e9f4ef); color: #1f1e1b; border: 1px solid #cfe6dc; }
+    .b-lto.solid { background: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff); border-color: transparent; }
+    .pn-callout.lto { background: var(--web-accent-soft, #e9f4ef); border: 1px solid #cfe6dc; color: #2f3b35; font-size: 13px; line-height: 1.45; }
+    .pn-callout.lto b { color: #1f1e1b; }
+    .pn-missing { flex-basis: 100%; font-size: 13px; color: #7a4d00; }
 
     /* Bulk bar */
     #it-bulk { position: sticky; bottom: 16px; z-index: 5; align-self: center; width: min(820px, 100%); background: #1f1e1b; color: #fff;
@@ -1895,6 +1927,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
 
   <div id="it-wrap">
     <div id="it-main">
+      <div id="it-ltos"></div>
       <div id="it-toolbar"></div>
       <div class="it-card">
         <table class="it-table">
@@ -1922,7 +1955,9 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
     var ICON = {
       search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
       up: '<path d="m18 15-6-6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>',
-      close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
+      close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+      tag: '<path d="M6.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M3 6v5.17a2 2 0 0 0 .59 1.42l7.71 7.71a2.41 2.41 0 0 0 3.41 0l5.59 -5.59a2.41 2.41 0 0 0 0 -3.41l-7.71 -7.71a2 2 0 0 0 -1.42 -.59h-5.17a3 3 0 0 0 -3 3z"/>',
+      check: '<path d="M5 12l5 5l10 -10"/>'
     };
     function icon(name) {
       return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>';
@@ -1942,7 +1977,8 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       items: [], areas: [], vendors: [], mults: {}, flags: {}, minOrders: 3, loaded: false,
       view: 'active', vendor: '', onOff: 'on', area: '', q: '', sortKey: 'vendor', sortAsc: true,
       selected: {}, panel: null, draft: null, base: '', dirty: false, busy: false,
-      addAnother: true, newIds: {}, adjusted: {}
+      addAnother: true, newIds: {}, adjusted: {},
+      ltoGroups: [], ltoPrev: null, ltoDone: {}
     };
     var VIEWS = ['active', 'setup', 'review', 'inactive'];
 
@@ -2049,6 +2085,16 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       });
       return rows;
     }
+    // The shown rows with the LTO items still to set up first, in the
+    // banners' order (catalogEdit.js ltoWaiting); the rest in the list's own
+    // sort. A filter that hides a waiting item hides it here too.
+    function listed() {
+      var rows = visible(), at = {}, n = 0;
+      S.ltoGroups.forEach(function (g) { g.items.forEach(function (it) { at[it.id] = ++n; }); });
+      var pin = rows.filter(function (it) { return at[it.id]; }).sort(function (a, b) { return at[a.id] - at[b.id]; });
+      var rest = rows.filter(function (it) { return !at[it.id]; });
+      return { pin: pin, rest: rest, all: pin.concat(rest) };
+    }
     function countView(v) {
       return S.items.filter(function (it) {
         if (v === 'active') return it.active;
@@ -2056,6 +2102,43 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
         if (v === 'review') return hasReview(it);
         return !it.active;
       }).length;
+    }
+
+    function shortDate(iso) {
+      var d = new Date(iso);
+      return isNaN(d.getTime()) ? '' : d.toLocaleDateString(ES ? 'es' : 'en-US', { month: 'short', day: 'numeric' });
+    }
+    // One banner per running LTO with items still to set up. One that was
+    // finished on this page gets a "set up" note until the page is left.
+    function renderLto() {
+      var CE = window.CatalogEdit;
+      var groups = CE && CE.ltoWaiting ? CE.ltoWaiting(S.items) : [], now = {};
+      groups.forEach(function (g) { now[g.id] = g.name; });
+      if (S.ltoPrev) Object.keys(S.ltoPrev).forEach(function (id) {
+        var stillOn = S.items.some(function (it) { return it.lto && it.lto.id === id && it.active; });
+        if (!now[id] && stillOn) S.ltoDone[id] = S.ltoPrev[id];
+      });
+      groups.forEach(function (g) { delete S.ltoDone[g.id]; });
+      S.ltoPrev = now; S.ltoGroups = groups;
+      var h = groups.map(function (g) {
+        var n = g.items.length, name = g.name || 'LTO', date = shortDate(g.sentAt);
+        return '<section class="lt-banner" aria-labelledby="lt-h-' + esc(g.id) + '"><span class="lt-icon">' + icon('tag') + '</span>' +
+          '<div class="lt-text"><h2 id="lt-h-' + esc(g.id) + '">' + esc(T('New from HQ: ', 'Nuevo de HQ: ') + name + ' · ' +
+            plural(n, 'item to set up', 'items to set up', 'artículo por configurar', 'artículos por configurar')) + '</h2>' +
+          '<p>' + esc((date ? T('HQ sent it on ' + date + '. ', 'HQ lo envió el ' + date + '. ') : '') +
+            (n === 1 ? T('Give it a par and a storage area so it shows up on the count list. When HQ ends the LTO, it goes inactive here, with your par and area kept.',
+                         'Dale un par y un área para que aparezca en la lista de conteo. Cuando HQ termine el LTO, quedará inactivo aquí, con tu par y tu área guardados.')
+                     : T('Give each one a par and a storage area so they show up on the count list. When HQ ends the LTO, they go inactive here, with your pars and areas kept.',
+                         'Dale a cada uno un par y un área para que aparezcan en la lista de conteo. Cuando HQ termine el LTO, quedarán inactivos aquí, con tus pares y áreas guardados.'))) + '</p></div>' +
+          '<button type="button" class="lt-btn" data-ltoopen="' + esc(g.items[0].id) + '">' + esc(n === 1 ? T('Set it up', 'Configurarlo') : T('Set them up', 'Configurarlos')) + '</button></section>';
+      }).join('');
+      h += Object.keys(S.ltoDone).map(function (id) {
+        var name = S.ltoDone[id] || 'LTO';
+        return '<section class="lt-done" role="status">' + icon('check') + '<span><b>' + esc(T(name + ' is set up.', name + ' está configurado.')) + '</b> ' +
+          esc(T('Its items are on their count lists from the next count. This note goes away when you leave the page.',
+                'Sus artículos están en sus listas de conteo desde el próximo conteo. Este aviso desaparece al salir de la página.')) + '</span></section>';
+      }).join('');
+      document.getElementById('it-ltos').innerHTML = h;
     }
 
     function renderToolbar() {
@@ -2118,8 +2201,26 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       return '<div class="it-par">' + h + '</div>';
     }
 
+    function rowHtml(it, pinned, openId) {
+      var cls = (S.selected[it.id] ? 'sel ' : '') + (openId === it.id ? 'open ' : '') + (it.active ? '' : 'inactive');
+      var name = '<span>' + esc(it.name) + '</span>' +
+        (it.lto ? '<span class="it-badge b-lto' + (pinned ? ' solid' : '') + '">' + esc('LTO · ' + (it.lto.name || '')) + '</span>' : '') +
+        (S.newIds[it.id] && !pinned ? '<span class="it-badge b-new">' + esc(T('New', 'Nuevo')) + '</span>' : '') +
+        (!it.active ? '<span class="it-badge b-muted">' + esc(T('Inactive', 'Inactivo')) + '</span>' : '');
+      var b = backupsOf(it).length;
+      var vendor = it.vendor ? esc(it.vendor) : '<span class="it-badge b-warn">' + esc(T('No vendor', 'Sin proveedor')) + '</span>';
+      if (b) vendor += ' <span class="it-badge b-muted">+' + b + ' ' + esc(b === 1 ? T('backup', 'respaldo') : T('backups', 'respaldos')) + '</span>';
+      var area = !it.active ? '<span class="it-unit">—</span>'
+        : it.storageArea ? '<span class="it-area" title="' + esc(it.storageArea) + '">' + esc(it.storageArea) + '</span>'
+        : '<span class="it-badge b-warn">' + esc(T('No storage area', 'Sin área')) + '</span>';
+      return '<tr class="' + cls + '" data-id="' + esc(it.id) + '">' +
+        '<td class="c-chk"><input type="checkbox" data-chk="' + esc(it.id) + '" aria-label="' + esc(T('Select ', 'Marcar ') + it.name) + '"' + (S.selected[it.id] ? ' checked' : '') + '></td>' +
+        '<td><div class="it-name">' + name + '</div><div class="it-sub">' + esc(it.pack || T('No pack yet', 'Sin empaque')) + '</div></td>' +
+        '<td>' + vendor + '</td><td>' + area + '</td><td>' + parCell(it) + '</td></tr>';
+    }
+
     function renderTable() {
-      var rows = visible();
+      var list = listed(), rows = list.all;
       renderHead(rows);
       var openId = S.panel && S.panel.mode === 'edit' ? S.panel.id : null;
       var tb = document.getElementById('it-tbody');
@@ -2128,23 +2229,13 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
           ? T('No items yet. Import them from MarginEdge, or add one with Add item.', 'Todavía no hay artículos. Impórtalos de MarginEdge, o agrega uno con Agregar artículo.')
           : T('No items match these filters.', 'Ningún artículo coincide con estos filtros.');
         tb.innerHTML = '<tr><td class="it-empty" colspan="5">' + esc(msg) + '</td></tr>';
+      } else if (!list.pin.length) {
+        tb.innerHTML = rows.map(function (it) { return rowHtml(it, false, openId); }).join('');
       } else {
-        tb.innerHTML = rows.map(function (it) {
-          var cls = (S.selected[it.id] ? 'sel ' : '') + (openId === it.id ? 'open ' : '') + (it.active ? '' : 'inactive');
-          var name = '<span>' + esc(it.name) + '</span>' +
-            (S.newIds[it.id] ? '<span class="it-badge b-new">' + esc(T('New', 'Nuevo')) + '</span>' : '') +
-            (!it.active ? '<span class="it-badge b-muted">' + esc(T('Inactive', 'Inactivo')) + '</span>' : '');
-          var b = backupsOf(it).length;
-          var vendor = it.vendor ? esc(it.vendor) : '<span class="it-badge b-warn">' + esc(T('No vendor', 'Sin proveedor')) + '</span>';
-          if (b) vendor += ' <span class="it-badge b-muted">+' + b + ' ' + esc(b === 1 ? T('backup', 'respaldo') : T('backups', 'respaldos')) + '</span>';
-          var area = !it.active ? '<span class="it-unit">—</span>'
-            : it.storageArea ? '<span class="it-area" title="' + esc(it.storageArea) + '">' + esc(it.storageArea) + '</span>'
-            : '<span class="it-badge b-warn">' + esc(T('No storage area', 'Sin área')) + '</span>';
-          return '<tr class="' + cls + '" data-id="' + esc(it.id) + '">' +
-            '<td class="c-chk"><input type="checkbox" data-chk="' + esc(it.id) + '" aria-label="' + esc(T('Select ', 'Marcar ') + it.name) + '"' + (S.selected[it.id] ? ' checked' : '') + '></td>' +
-            '<td><div class="it-name">' + name + '</div><div class="it-sub">' + esc(it.pack || T('No pack yet', 'Sin empaque')) + '</div></td>' +
-            '<td>' + vendor + '</td><td>' + area + '</td><td>' + parCell(it) + '</td></tr>';
-        }).join('');
+        tb.innerHTML = '<tr class="it-group pin"><td colspan="5">' + esc(T('New from LTOs · set these up first', 'Nuevo de LTOs · configura estos primero')) + '</td></tr>' +
+          list.pin.map(function (it) { return rowHtml(it, true, openId); }).join('') +
+          (list.rest.length ? '<tr class="it-group"><td colspan="5">' + esc(T('All items', 'Todos los artículos')) + '</td></tr>' : '') +
+          list.rest.map(function (it) { return rowHtml(it, false, openId); }).join('');
       }
       var active = S.items.filter(function (it) { return it.active; }).length;
       document.getElementById('it-foot').textContent = S.loaded
@@ -2236,6 +2327,30 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       mgeSetLeaveGuard_(S.dirty ? function (proceed) { guard(proceed); } : null);
       var save = document.getElementById('pn-save');
       if (save) save.disabled = S.busy || (S.panel.mode === 'edit' && !S.dirty);
+      refreshMissing();
+    }
+    // A running LTO's item: what it still needs to go on a count list.
+    function refreshMissing() {
+      var el = document.getElementById('pn-missing'); if (!el) return;
+      var it = S.panel && S.panel.mode === 'edit' ? byId(S.panel.id) : null, d = S.draft, miss = [];
+      if (it && it.lto && it.lto.status === 'running' && d && d.active) {
+        if (d.par === '') miss.push(T('a par', 'un par'));
+        if (!d.area) miss.push(T('a storage area', 'un área'));
+      }
+      el.hidden = !miss.length;
+      el.textContent = miss.length ? T('Still needs ' + miss.join(' and ') + ' to go on the count list.',
+                                       'Todavía necesita ' + miss.join(' y ') + ' para estar en la lista de conteo.') : '';
+    }
+    function ltoCallout(it) {
+      if (!it || !it.lto) return '';
+      var name = it.lto.name || 'LTO', date = shortDate(it.lto.sentAt);
+      var title = T('From HQ’s ' + name + ' LTO' + (date ? ' (' + date + ')' : ''), 'Del LTO ' + name + ' de HQ' + (date ? ' (' + date + ')' : ''));
+      var body = it.lto.status === 'ended'
+        ? T('HQ ended this LTO, so its items went inactive here, with their par and area kept.',
+            'HQ terminó este LTO, así que sus artículos quedaron inactivos aquí, con su par y su área guardados.')
+        : T('When HQ ends the LTO, this item goes inactive here, with its par and area kept. You can still change anything below.',
+            'Cuando HQ termine el LTO, este artículo quedará inactivo aquí, con su par y su área guardados. Puedes cambiar lo que quieras abajo.');
+      return '<div class="pn-callout lto"><b>' + esc(title) + '</b>' + esc(body) + '</div>';
     }
     // Unsaved edits ask first: Save, Don't save, or Cancel.
     function guard(proceed) {
@@ -2275,7 +2390,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       });
     }
     function step(delta) {
-      var rows = visible(), i = -1;
+      var rows = listed().all, i = -1;
       for (var k = 0; k < rows.length; k++) if (rows[k].id === S.panel.id) i = k;
       var next = rows[i + delta];
       if (next) openItem(next.id);
@@ -2352,7 +2467,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       if (!S.panel) { pn.hidden = true; pn.innerHTML = ''; return; }
       var d = S.draft, edit = S.panel.mode === 'edit', it = edit ? byId(S.panel.id) : null;
       if (edit && !it) { S.panel = null; pn.hidden = true; pn.innerHTML = ''; return; }
-      var rows = edit ? visible() : [], idx = -1;
+      var rows = edit ? listed().all : [], idx = -1;
       for (var k = 0; k < rows.length; k++) if (rows[k].id === S.panel.id) idx = k;
       var h = '<div class="pn-head"><div class="pn-top">' +
         '<span class="pn-id">' + esc(edit ? it.id : T('New item', 'Artículo nuevo')) + '</span>' +
@@ -2361,7 +2476,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
         '<button type="button" class="pn-icon plain" id="pn-close" aria-label="' + esc(T('Close', 'Cerrar')) + '">' + icon('close') + '</button></div>' +
         '<h2 class="pn-title">' + esc(edit ? it.name : T('Add an item', 'Agregar un artículo')) + '</h2></div>';
 
-      h += '<div class="pn-body">' + (edit ? reviewCallout(it) : '');
+      h += '<div class="pn-body">' + (edit ? ltoCallout(it) + reviewCallout(it) : '');
       h += '<div class="pn-grid">' +
         '<label class="pn-field wide">' + esc(T('Name', 'Nombre')) + '<input type="text" id="pn-name" value="' + esc(d.name) + '" placeholder="' + esc(T('e.g. Mango Syrup', 'ej. Jarabe de mango')) + '"></label>' +
         '<label class="pn-field">' + esc(T('Pack / unit', 'Empaque / unidad')) + '<input type="text" id="pn-pack" value="' + esc(d.pack) + '" placeholder="' + esc(T('e.g. Case (6 EA)', 'ej. Caja (6)')) + '"></label>' +
@@ -2389,7 +2504,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       }
       h += '</div>';
 
-      h += '<div class="pn-foot"><div class="pn-status" id="pn-status"></div>' +
+      h += '<div class="pn-foot"><span class="pn-missing" id="pn-missing" hidden></span><div class="pn-status" id="pn-status"></div>' +
         (edit ? '<button type="button" class="pn-danger" id="pn-delete">' + esc(T('Delete item…', 'Eliminar artículo…')) + '</button>'
               : '<label class="pn-another"><input type="checkbox" id="pn-another"' + (S.addAnother ? ' checked' : '') + '>' + esc(T('Add another after this', 'Agregar otro después')) + '</label>') +
         '<button type="button" class="pn-btn" id="pn-cancel">' + esc(T('Cancel', 'Cancelar')) + '</button>' +
@@ -2485,11 +2600,15 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       var tr = document.querySelector('#it-tbody tr[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
       if (tr && tr.scrollIntoView) tr.scrollIntoView({ block: 'center' });
     }
-    function render() { renderToolbar(); renderTable(); renderBulk(); renderPanel(); }
+    function render() { renderLto(); renderToolbar(); renderTable(); renderBulk(); renderPanel(); }
 
     // ---- Events (delegated, so re-renders keep them) ----
     function wire() {
       document.getElementById('it-add-btn').onclick = openAdd;
+      document.getElementById('it-ltos').addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-ltoopen]');
+        if (b) openItem(b.getAttribute('data-ltoopen'));
+      });
       var tb = document.getElementById('it-toolbar');
       tb.addEventListener('input', function (e) {
         if (e.target.id === 'it-q') { S.q = e.target.value; renderTable(); renderBulk(); }

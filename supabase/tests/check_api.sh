@@ -148,6 +148,10 @@ check "v14 helper: lto_after not exposed"           404 ''   -X POST "${J[@]}" -
 check "v14 hq_apply with an LTO: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_changes":[],"p_links":[],"p_libraries":[],"p_lto":{"action":"end","id":"lto_bogus000","version":1}}' "$(rpc mog_hq_apply)"
 check "v14 hq_apply, the v12 call: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_changes":[],"p_links":[],"p_libraries":[]}' "$(rpc mog_hq_apply)"
 
+# schema v15 (a vendor rename step; no new entry point, a bogus token only)
+check "v15 editor_apply with a vendor rename: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_label":"x","p_by":"x","p_ops":[{"rename":"vendors","from":"a","to":"b"}]}' "$(rpc mog_editor_apply)"
+check "v15 helper: editor_apply_ops still not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_ops":[]}' "$(rpc editor_apply_ops)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
