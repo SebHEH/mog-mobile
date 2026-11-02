@@ -39,4 +39,6 @@ A passing run ends with `run_all: ALL PASS (24 gates)`. Run it before any deploy
 
 Every gate carries planted-defect controls: each one breaks the code on purpose, and the gate must catch it. A control that doesn't bite fails the run. A control finds its spot by an exact line of code, which must appear once: new code that repeats an anchored line (a copied `const active = …`) crashes that control with "anchor not unique", so name new locals differently.
 
+**Not a gate: `preview_server.js`.** It serves the built app, editor and HQ against `fake_supabase.js` for clicking through in a browser (`preview_start` "mog-preview", or `node tests/preview_server.js`). `run_all.js` lists it as a helper and never runs it. How to use it: `docs/MOG_ProjectNotes.md`, Local previews.
+
 **Never put `.js` files under `apps-script/`.** clasp pushes every `.js` there to all stores as script code. Gates live here.
