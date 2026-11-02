@@ -17,7 +17,8 @@ const HELPERS = {
   'fake_apps_script.js': 'library: fake Sheets/services + loaders',
   'mog_fixture.js': 'library: seeded randomized stores',
   'fake_supabase.js': 'library: in-memory mog_sync_* + fake UrlFetchApp/ScriptApp',
-  'phone_harness.js': 'library: the phone (api() + the DIRECT CLIENT block) in its own context'
+  'phone_harness.js': 'library: the phone (api() + the DIRECT CLIENT block) in its own context',
+  'preview_server.js': 'tool: serves the built app, editor and HQ against fake_supabase.js (preview_start "mog-preview")'
 };
 
 const dir = __dirname;

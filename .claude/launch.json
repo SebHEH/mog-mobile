@@ -13,6 +13,14 @@
       "runtimeArgs": ["-m", "http.server", "8767", "--bind", "127.0.0.1"],
       "port": 8767,
       "autoPort": false
+    },
+    {
+      "name": "mog-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tests/preview_server.js", "--port", "8770"],
+      "port": 8770,
+      "autoPort": false,
+      "url": "http://127.0.0.1:8770"
     }
   ]
 }

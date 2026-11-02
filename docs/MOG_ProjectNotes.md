@@ -82,12 +82,15 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 ## Local previews and the browser pane
 
 - **Give local pages as full addresses:** `http://localhost:8765/...` (the `mog-static` entry in `.claude/launch.json`). A bare `/path` in chat opens the file viewer at the drive root. If another chat's server holds 8765, use `mog-static-alt` (port 8767).
-- **To click through the app or editor against a fake Supabase:**
-  1. `python build.py --preview rprfotest --like rprfo`.
-  2. A small scratch Node server serves `_preview/rprfotest/` with the Supabase URL, slug and `/exec` URL rewritten to localhost. It answers `/rest/v1/rpc/*` with `new FakeSupabase(spec.now).fetchFn()` over a `makeStore(seed, {realistic: true})` fixture, set up like `tests/pwa_direct.test.js` `makeSide`, with `phoneDirect` and `editorDirect` on. The editor's tables come from `buildCatalogTables_().tables`, which needs every `.gs` compiled.
-  3. Sign in with PIN `1111` (the fixture's).
-  4. Open it at `http://127.0.0.1:8770/`, not `localhost`, which hung (IPv6).
-  5. History and Recipients fail there: that's the harness, not the app.
+- **To click through the app, the editor, HQ or Happy Supply against a fake Supabase:** `preview_start` with `mog-preview`, or `node tests/preview_server.js` (committed 2026-11-02; don't build another in the scratchpad). It opens `http://127.0.0.1:8770/`, a page of links:
+  - **Store app:** `http://127.0.0.1:8770/rprfotest/`, PIN `1111`. The editor runs inside it on a computer, or at `/rprfotest/editor/`.
+  - **HQ:** `http://127.0.0.1:8770/__signin?who=both` signs in and opens `/hq/`. `who` is `both` (Sebastian), `hq` (Donny) or `warehouse` (Dan). `/__token?who=...` returns a fresh token as text; on `/hq/`'s own sign-in the passphrase is `preview passphrase`.
+  - **What's in it:** six fake stores, all on Supabase. The app's store is a `makeStore(10, {realistic: true})` Sheet moved the way a real store moves (`Sync.gs`, as `tests/history_app.test.js` does), with readable item names, four storage areas, today's cycle and its order log. HQ gets four more stores with items and one empty one. Happy Supply has the W1 mockup's sample: two freezers, Ruby Seas, three products, a delivery, transfers and open orders.
+  - **It rebuilds `_preview/rprfotest/` at every start** (`build.py --preview rprfotest --like rprfo`; `--no-build` skips it). `/hq/` is the built `hq/`, so after editing `template/hq/` run `python build.py`; the server says at start when `hq/` doesn't match `template/`.
+  - **Nothing reaches a real store.** Every page and script it serves has the real Supabase address swapped for its own, and it refuses one that still names a `supabase.co` address. `/exec` already leads nowhere in a preview build.
+  - **The data lives in memory:** a restart starts over, and a signed-in app signs in again by itself. Each RPC call is logged (`preview_logs`), with the error when one fails.
+  - **Manage in a hidden pane:** the phone layout has no Manage. `resize_window` to 1280×800, then `location.reload()`, brings the computer layout; each Manage page runs in `#manage-frame`.
+  - Use `127.0.0.1`, never `localhost`, which hung (IPv6). The Daily summary button still goes to `/exec` and fails there: that's the harness, not the app.
 - **When the session isn't open in a window, the browser pane is hidden at 0×0.**
   - Screenshots and clicks time out, but `find`, `form_input` and `javascript_tool` work.
   - The app shows its phone layout. Drive it by script and say the layout itself is unseen.
