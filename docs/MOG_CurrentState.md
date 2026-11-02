@@ -14,7 +14,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
 - **Each Sheet** is frozen for catalog edits. It still holds the Apps Script: the 3:30 AM close, the recap email, the onboarding moves. It also gets a nightly LOG_ORDERS backup.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v13.
+- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v13 live (v14, LTOs, written 2026-11-02 and not run yet).
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
 - **The three stores that moved empty:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.

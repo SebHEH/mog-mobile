@@ -86,10 +86,15 @@ function checkCatalogTables(t) {
     if (primary !== null && !vendorNames.has(primary)) throw new Error('items primary_vendor foreign key: ' + primary);
     const nm = e.name == null ? '' : String(e.name);
     if (nm.length > 300) throw new Error('items_name_check');
-    return { id: name(e.id, 100, 'item'), name: nm, primaryVendor: primary, pack: e.pack == null ? '' : String(e.pack),
-             par: num(e.par, 'par'), active: e.active == null ? true : e.active === true,
-             useMult: e.useMult == null ? true : e.useMult === true, notes: e.notes || '', sku: e.sku || '',
-             category: e.category || '', eligible: (e.eligible || []).slice(), seq: e.seq == null ? i + 1 : e.seq };
+    const it = { id: name(e.id, 100, 'item'), name: nm, primaryVendor: primary, pack: e.pack == null ? '' : String(e.pack),
+                 par: num(e.par, 'par'), active: e.active == null ? true : e.active === true,
+                 useMult: e.useMult == null ? true : e.useMult === true, notes: e.notes || '', sku: e.sku || '',
+                 category: e.category || '', eligible: (e.eligible || []).slice(), seq: e.seq == null ? i + 1 : e.seq };
+    if (e.lto != null && e.lto !== '') {   // v14: the LTO that made it, only when it has one (as mog.item_row_json)
+      if (typeof e.lto !== 'string') throw new Error('items lto: ' + JSON.stringify(e.lto));
+      it.lto = e.lto;
+    }
+    return it;
   });
   uniq(items, it => it.id, 'items_pkey');
   const itemIds = new Set(items.map(it => it.id));
@@ -390,6 +395,7 @@ class FakeSupabase {
         let next;
         try { next = checkCatalogTables(p.p_tables); } catch (e) { return err('SEED_REJECTED: ' + e.message); }
         for (const v of next.vendors) delete v.contact;   // replace_catalog_tables names its columns: no contact
+        for (const it of next.items) delete it.lto;       // nor an item's LTO (v14)
         const pr = (p.p_tables && p.p_tables.profile) || {};
         for (const k of ['timeZone', 'location', 'abbr', 'concept']) if (pr[k] != null) s.profile[k] = String(pr[k]);
         s.tables = next;
@@ -709,7 +715,7 @@ function recipientsCheck(stored, list, gmEdit) {
   return { ok: true, list: out };
 }
 const EDITOR_FIELDS = {
-  items: ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible'],
+  items: ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto'],
   pickRows: ['area', 'shelfOrder'], vendors: ['mults', 'cutoff', 'contact'], areas: ['ord']
 };
 const editorIdent = (t, r) => (t === 'items' ? r.id : t === 'pickRows' ? r.vendor + ' / ' + r.id : r.name);
@@ -722,8 +728,14 @@ function editorSame(t, cur, want) {
   return EDITOR_FIELDS[t].every(f => v(cur[f], f) === v(want[f], f));
 }
 // mog.editor_apply_ops: the tables after ops, or an Error (CONFLICT: ..., or
-// what the database would refuse: links, unique names, unlisted vendors).
-function editorApplyOps(tables, ops) {
+// what the database would refuse: links, unique names, unlisted vendors, and
+// (v14) an item naming an LTO that doesn't exist, when ltoIds is given).
+function editorApplyOps(tables, ops, ltoIds) {
+  const out = editorApplyOps1(tables, ops);
+  if (ltoIds) for (const it of out.items) if (it.lto && !ltoIds.has(it.lto)) throw new Error('items lto foreign key: ' + it.lto);
+  return out;
+}
+function editorApplyOps1(tables, ops) {
   const t = clone(tables);
   for (const op of ops) {
     if (!op || typeof op !== 'object') throw new Error('BAD_OP');
@@ -769,18 +781,28 @@ function editorApplyOps(tables, ops) {
   }
   return checkCatalogTables(t);
 }
-function editorTablesJson(t) {
+// mog.tables_json; ltos (v14) are the LTOs sent to the store, added only when
+// there is one, keys in jsonb's order.
+function editorTablesJson(t, ltos) {
   const c = clone(t);
   c.vendors.sort((x, y) => x.name.localeCompare(y.name));
   c.areas.sort((x, y) => (x.ord - y.ord) || (x.name < y.name ? -1 : 1));
   c.items.sort((x, y) => (x.seq - y.seq) || (x.id < y.id ? -1 : 1));
   c.pickRows.sort((x, y) => (x.seq - y.seq) || (x.vendor < y.vendor ? -1 : x.vendor > y.vendor ? 1 : 0) || (x.id < y.id ? -1 : 1));
+  if (ltos && ltos.length) c.ltos = ltos;
   return c;
 }
+// A store's LTOs as mog.tables_json lists them: sent order, then id.
+FakeSupabase.prototype.ltosFor = function (slug) {
+  const H = this.hqState();
+  return H.ltoStores.filter(r => r.slug === slug)
+    .sort((a, b) => (a.sentAt < b.sentAt ? -1 : a.sentAt > b.sentAt ? 1 : 0) || (a.ltoId < b.ltoId ? -1 : 1))
+    .map(r => { const l = H.ltos.get(r.ltoId); return { id: l.id, name: l.name, sentAt: r.sentAt, status: l.status }; });
+};
 
 FakeSupabase.prototype.editorData = function (slug, s) {
   return { store: { slug, location: s.profile.location || null, abbr: s.profile.abbr || null, concept: s.profile.concept || null },
-           tables: editorTablesJson(s.tables),
+           tables: editorTablesJson(s.tables, this.ltosFor(slug)),
            changes: (s.changeLog || []).slice(-100).reverse().map(l => ({ id: l.id, at: l.at, by: l.by, label: l.label,
                                                                           undoes: l.undoes, undoneBy: l.undoneBy })),
            reviews: (s.quickEdits || []).filter(e => e.review === 'open').slice(-200).reverse()
@@ -804,9 +826,82 @@ FakeSupabase.prototype.editorPublish = function (s) {
 // hq role (mog.hq_session), and signing in returns the roles.
 const HQ_FNS = { mog_hq_claim: 1, mog_hq_login: 1, mog_hq_data: 1, mog_hq_apply: 1 };
 FakeSupabase.prototype.hqState = function () {
-  if (!this.hq) this.hq = { users: new Map(), sessions: new Map(), links: [], tokenSeq: 0, libraries: new Map(), libraryLog: [] };
+  if (!this.hq) this.hq = { users: new Map(), sessions: new Map(), links: [], tokenSeq: 0, libraries: new Map(), libraryLog: [],
+                            ltos: new Map(), ltoStores: [] };
   return this.hq;
 };
+// mog.lto_before over copies (v14): the LTO's checks, before any store
+// changes; send creates it. Throws REJECTED: / CONFLICT: as the SQL raises
+// them. changes are mog_hq_apply's p_changes.
+function ltoBefore(ltos, ltoStores, stores, by, lto, changes, nowIso) {
+  if (lto == null) return;
+  const act = lto.action, id = lto.id;
+  if (['send', 'more', 'end', 'rollback', 'standard'].indexOf(act) < 0) throw new Error('REJECTED: an LTO\'s action is send, more, end, rollback or standard');
+  if (typeof id !== 'string' || !/^lto_[a-z0-9]{8,40}$/.test(id)) throw new Error('REJECTED: no LTO called ' + (id == null ? '(none)' : id));
+  const slugs = Array.from(new Set(changes.filter(c => !Array.isArray(c.ops) || c.ops.length).map(c => c.slug)));
+  let sent = [];
+  if (act === 'send' || act === 'more') {
+    if (!Array.isArray(lto.stores) || !lto.stores.length || lto.stores.length > 50) throw new Error('REJECTED: an LTO goes to 1 to 50 stores');
+    sent = lto.stores.map(x => x && x.slug);
+    const stray = slugs.find(x => sent.indexOf(x) < 0);
+    if (stray) throw new Error('REJECTED: a change at ' + stray + ', which the LTO isn\'t going to');
+  }
+  let concept;
+  if (act === 'send') {
+    concept = lto.concept;
+    const nm = String(lto.name == null ? '' : lto.name).trim();
+    if (typeof concept !== 'string' || !/^[a-z0-9-]{1,30}$/.test(concept)) throw new Error('REJECTED: no concept called ' + (concept == null ? '(none)' : concept));
+    if (!nm || nm.length > 80) throw new Error('REJECTED: an LTO needs a name of at most 80 characters');
+    if (!Array.isArray(lto.items) || lto.items.length > 200) throw new Error('REJECTED: an LTO\'s items are a list of at most 200');
+    if (ltos.has(id)) throw new Error('REJECTED: that LTO was already sent');
+    ltos.set(id, { id, concept, name: nm, items: clone(lto.items), status: 'running', version: 1, createdAt: nowIso, createdBy: by,
+                   statusAt: null, statusBy: null });
+  } else {
+    const row = ltos.get(id);
+    if (!row) throw new Error('REJECTED: no LTO called ' + id);
+    if (row.status !== 'running') {
+      throw new Error('REJECTED: LTO "' + row.name + '" is ' + ({ ended: 'ended', rolledback: 'rolled back' }[row.status] || 'standard') + ' already');
+    }
+    if (typeof lto.version !== 'number' || row.version !== lto.version) {
+      throw new Error('CONFLICT: LTO "' + row.name + '" was changed since HQ loaded it (by ' + (row.statusBy || row.createdBy) + ')');
+    }
+    concept = row.concept;
+    const has = x => ltoStores.some(r => r.ltoId === id && r.slug === x);
+    if (act === 'more') {
+      const again = sent.find(has);
+      if (again) throw new Error('REJECTED: LTO "' + row.name + '" already went to ' + again);
+    } else {
+      const never = slugs.find(x => !has(x));
+      if (never) throw new Error('REJECTED: LTO "' + row.name + '" never went to ' + never);
+    }
+  }
+  if (act === 'send' || act === 'more') {
+    const other = sent.find(x => { const s = stores.get(x); return !s || s.profile.concept !== concept; });
+    if (other !== undefined) throw new Error('REJECTED: ' + (other || '(no store)') + ' isn\'t a ' + concept + ' store');
+  }
+}
+// mog.lto_after over copies (v14): the stores it went to, or its new status.
+function ltoAfter(ltos, ltoStores, by, lto, out, nowIso) {
+  if (lto == null) return null;
+  const row = ltos.get(lto.id);
+  if (lto.action === 'send' || lto.action === 'more') {
+    for (const x of lto.stores) {
+      if (!x || typeof x !== 'object' || Array.isArray(x) || !Array.isArray(x.vendorsAdded || []) || !Array.isArray(x.backupsAdded || [])
+          || (x.backupsAdded || []).length > 2000) {
+        throw new Error('REJECTED: each store of an LTO is { slug, vendorsAdded, backupsAdded }');
+      }
+      if (ltoStores.some(r => r.ltoId === row.id && r.slug === x.slug)) throw new Error('REJECTED: duplicate key value violates unique constraint "lto_stores_pkey"');
+      const o = out.find(c => c.slug === x.slug);
+      ltoStores.push({ ltoId: row.id, slug: x.slug, sentAt: nowIso, sentBy: by, changeId: o ? o.changeId : null,
+                       vendorsAdded: (x.vendorsAdded || []).filter(v => typeof v === 'string'), backupsAdded: clone(x.backupsAdded || []) });
+    }
+    if (lto.action === 'more') row.version++;
+  } else {
+    row.status = { end: 'ended', rollback: 'rolledback' }[lto.action] || 'standard';
+    row.statusAt = nowIso; row.statusBy = by; row.version++;
+  }
+  return { id: row.id, status: row.status, version: row.version };
+}
 // mog.side_from_location
 function sideFromLocation(loc) {
   const s = String(loc == null ? '' : loc);
@@ -936,7 +1031,7 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
     const stores = Array.from(this.stores.entries()).map(([slug, s]) => ({
       slug, location: s.profile.location || null, abbr: s.profile.abbr || null, concept: s.profile.concept || '',
       isTest: !!s.isTest, editorDirect: !!s.editorDirect, side: s.side != null ? s.side : sideFromLocation(s.profile.location),
-      tables: s.editorDirect ? editorTablesJson(s.tables) : null }))
+      tables: s.editorDirect ? editorTablesJson(s.tables, this.ltosFor(slug)) : null }))
       .sort((a, b) => (a.concept < b.concept ? -1 : a.concept > b.concept ? 1 : 0) || (a.isTest - b.isTest) ||
                       String(a.location).localeCompare(String(b.location)) || (a.slug < b.slug ? -1 : 1));
     const recent = [];
@@ -948,18 +1043,35 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
     const libraries = Array.from(H.libraries.values()).map(l => Object.assign(clone(l), {
       items: l.items.map(it => ({ name: it.name, pack: it.pack, notes: it.notes, vendor: it.vendor, backups: clone(it.backups) })) }))
       .sort((a, b) => (a.concept < b.concept ? -1 : a.concept > b.concept ? 1 : 0) || (a.side < b.side ? -1 : 1));
+    // v14: every LTO with the stores it went to, newest first.
+    const ltos = Array.from(H.ltos.values()).sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0) || (a.id < b.id ? -1 : 1))
+      .map(l => Object.assign(clone(l), { stores: H.ltoStores.filter(r => r.ltoId === l.id)
+        .sort((a, b) => (a.sentAt < b.sentAt ? -1 : a.sentAt > b.sentAt ? 1 : 0) || (a.slug < b.slug ? -1 : 1))
+        .map(r => ({ slug: r.slug, sentAt: r.sentAt, sentBy: r.sentBy, changeId: r.changeId,
+                     vendorsAdded: clone(r.vendorsAdded), backupsAdded: clone(r.backupsAdded) })) }));
     return ok({ name, stores, links: clone(this.hqLinks()).sort((a, b) => (a.hqName < b.hqName ? -1 : a.hqName > b.hqName ? 1 : 0) || (a.slug < b.slug ? -1 : 1)),
-                libraries, recent: recent.slice(0, 50) });
+                libraries, ltos, recent: recent.slice(0, 50) });
   }
 
   // mog_hq_apply: work every store out first, write only when all of them took.
-  // p_libraries absent is the three-argument (v11) call.
+  // p_libraries absent is the three-argument (v11) call; p_lto (v14) the LTO.
   const changes = p.p_changes, links = p.p_links == null ? [] : p.p_links;
   const libList = p.p_libraries == null ? [] : p.p_libraries;
+  const lto = p.p_lto == null ? null : p.p_lto;
   if (!Array.isArray(changes) || changes.length > 50) return err('changes must be an array of at most 50 stores');
   if (!Array.isArray(links) || links.length > 1000) return err('links must be an array');
   if (!Array.isArray(libList) || libList.length > 20) return err('libraries must be an array of at most 20');
+  if (lto !== null && (typeof lto !== 'object' || Array.isArray(lto))) return err('lto must be an object');
   const by = ('HQ · ' + name).slice(0, 40);
+  const nowIso = new Date(now).toISOString();
+  const ltosNext = new Map(Array.from(H.ltos.entries()).map(([k, v]) => [k, clone(v)]));
+  const ltoStoresNext = clone(H.ltoStores);
+  const failed = e => {
+    const m = String(e.message);
+    return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: m.slice(10) }) : err(m.indexOf('REJECTED: ') === 0 ? m : 'REJECTED: ' + m);
+  };
+  try { ltoBefore(ltosNext, ltoStoresNext, this.stores, by, lto, changes, nowIso); } catch (e) { return failed(e); }
+  const ltoIds = new Set(ltosNext.keys());
   const next = new Map();
   for (const ch of changes.slice().sort((a, b) => (String(a.slug) < String(b.slug) ? -1 : 1))) {
     const s = this.stores.get(ch.slug);
@@ -967,7 +1079,7 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
     if (!Array.isArray(ch.ops)) return err('REJECTED: ' + ch.slug + ' ops must be an array');
     if (!ch.ops.length) continue;
     if (ch.ops.length > 5000) return err('REJECTED: too many changes at once for ' + ch.slug);
-    try { next.set(ch.slug, { s, ch, tables: editorApplyOps(s.tables, ch.ops) }); } catch (e) {
+    try { next.set(ch.slug, { s, ch, tables: editorApplyOps(s.tables, ch.ops, ltoIds) }); } catch (e) {
       const m = String(e.message);
       return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: ch.slug + ' ' + m.slice(10) }) : err('REJECTED: ' + ch.slug + ' ' + m);
     }
@@ -988,8 +1100,17 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
       return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: m.slice(10) }) : err(m.indexOf('REJECTED: ') === 0 ? m : 'REJECTED: ' + m);
     }
   }
+  // The change ids editorLog gives below (one counter, stores in this order),
+  // so the LTO's record names them before anything is written, as the
+  // SQL's one transaction does.
+  let seq = this.changeSeq || 0;
+  const outIds = Array.from(next.keys()).map(slug => ({ slug, changeId: ++seq }));
+  let ltoOut;
+  try { ltoOut = ltoAfter(ltosNext, ltoStoresNext, by, lto, outIds, nowIso); } catch (e) { return failed(e); }
   H.libraries = libsNext;
   H.libraryLog = H.libraryLog.concat(logNext);
+  H.ltos = ltosNext;
+  H.ltoStores = ltoStoresNext;
   const out = [];
   for (const [slug, x] of next) {
     x.s.tables = x.tables;
@@ -1001,7 +1122,7 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
     H.links = H.links.filter(k => !(k.slug === l.slug && k.hqName.toLowerCase() === hq.toLowerCase()));
     if (l.vendor) H.links.push({ slug: l.slug, hqName: hq, vendor: l.vendor });
   }
-  return ok({ by, changes: out, libraries: libsOut });
+  return ok({ by, changes: out, libraries: libsOut, lto: ltoOut });
 };
 
 // ---- The warehouse, Happy Supply W1 (schema_v13.sql) -----------------------
@@ -1450,7 +1571,7 @@ FakeSupabase.prototype.handleEditor = function (fn, p) {
   }
 
   const tryApply = ops => {
-    try { s.tables = editorApplyOps(s.tables, ops); return null; } catch (e) {
+    try { s.tables = editorApplyOps(s.tables, ops, new Set(this.hqState().ltos.keys())); return null; } catch (e) {
       const m = String(e.message);
       return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: m.slice(10) }) : err('REJECTED: ' + m);
     }

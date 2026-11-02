@@ -26,8 +26,11 @@
 //                                                            when it has one)
 //            areas:    [{ name, ord }],
 //            items:    [{ id, name, primaryVendor, pack, par, active, useMult,
-//                         notes, sku, category, eligible, seq }],
-//            pickRows: [{ vendor, id, area, shelfOrder, seq }] }
+//                         notes, sku, category, eligible, seq, lto? }],   (lto: the
+//                                                            LTO that made it, schema v14)
+//            pickRows: [{ vendor, id, area, shelfOrder, seq }],
+//            ltos?:    [{ id, name, sentAt, status }] }      (the LTOs sent to the
+//                                                            store, only when there is one)
 // The shape Sync.gs buildCatalogTables_ builds and mog_editor_get returns.
 // items and pickRows are in seq order, which is the Sheet's row order:
 // MASTER_ITEMS for items, SETUP K:P for pick rows.
@@ -140,9 +143,10 @@
       if (id && area && !areaById.has(id)) areaById.set(id, area);
     }
     const map = vendorMap(t);
+    const ltos = new Map((t.ltos || []).map(l => [l.id, l]));
     return t.items.filter(it => s_(it.id) && s_(it.name)).map(it => {
       const id = s_(it.id), vendor = s_(it.primaryVendor);
-      return {
+      const row = {
         id: id,
         name: s_(it.name),
         vendor: vendor,
@@ -154,6 +158,12 @@
         hasArea: areaById.has(id),
         storageArea: areaById.get(id) || ''
       };
+      // The LTO it came from (schema v14), only when it has one.
+      if (s_(it.lto)) {
+        const l = ltos.get(s_(it.lto)) || {};
+        row.lto = { id: s_(it.lto), name: s_(l.name), status: s_(l.status), sentAt: l.sentAt || '' };
+      }
+      return row;
     });
   }
 
@@ -950,13 +960,16 @@
 
   // HQ's change at one store (hq/; schema v11 applies every store's together).
   // p = { label, vendors: [{ name, mults, cutoff, contact }]   vendors to add here
-  //       items:   [{ name, pack, notes, vendor, backups }] } this store's vendor names
+  //       items:   [{ name, pack, notes, vendor, backups }]   this store's vendor names
+  //       lto }                                               an LTO's id (schema v14), or none
   // Each piece is the editor's own save: a vendor as the Vendors page adds
   // it; a new item as Import from MarginEdge adds one (no par, no storage
   // area, so it waits in the store's Needs setup and on no count list yet);
   // an item the store already has (same name) keeps its main vendor, par and
   // area, and any of the rollout's vendors it doesn't list yet is added the
-  // way the Items page's "Add to a vendor" does.
+  // way the Items page's "Add to a vendor" does. With an LTO, each new item
+  // carries its id; an item the store already had never does, so ending the
+  // LTO can't touch the store's own item.
   function hqRollout(w, p) {
     p = p || {};
     const vendorsAdded = [];
@@ -986,13 +999,82 @@
         if (res.changed) { added.push(v); listed.add(v.toLowerCase()); }
         else if (res.skipped.length) { skipped.push({ name: s_(have.name), reason: res.skipped[0].reason }); break; }
       }
-      if (added.length) backupsAdded.push({ name: s_(have.name), vendors: added });
+      if (added.length) backupsAdded.push({ id: s_(have.id), name: s_(have.name), vendors: added });
       else if (!skipped.some(x => x.name === s_(have.name))) skipped.push({ name: s_(have.name), reason: 'already here' });
     }
+    const had = new Set(w.items.map(it => it));
     const imported = fresh.length ? importItems(w, { items: fresh }) : { itemsAdded: 0, skipped: [] };
     const itemsAdded = fresh.map(r => r.name).filter(n => !imported.skipped.some(x => x.name === n));
+    const lto = s_(p.lto);
+    if (lto) for (const it of w.items) if (!had.has(it)) it.lto = lto;
     return { ok: true, label: s_(p.label), vendorsAdded: vendorsAdded, itemsAdded: itemsAdded, backupsAdded: backupsAdded,
              skipped: skipped.concat(imported.skipped) };
+  }
+
+  // ---- An LTO at one store (hq/, schema v14) --------------------------------
+  // p = { action: 'end' | 'rollback' | 'standard', lto: id,
+  //       vendorsAdded, backupsAdded }   what sending it added here (mog.lto_stores)
+  // Its items are the ones that carry its id.
+  //   end       each active one made inactive, as the Items page's bulk bar
+  //             does (off every count list, par and area kept);
+  //   rollback  each one deleted, the backups it added to the store's own
+  //             items taken off again (when still there), and each vendor it
+  //             added removed when no item names it any more: as if never sent;
+  //   standard  each one keeps everything but the link, so it's the store's own.
+  function hqLto(w, p) {
+    p = p || {};
+    const id = s_(p.lto);
+    if (!id) throw new Error('Which LTO?');
+    const mine = w.items.filter(it => s_(it.lto) === id);
+    const names = mine.map(it => s_(it.name));
+    if (p.action === 'end') {
+      const live = mine.filter(it => it.active === true).map(it => s_(it.id));
+      if (live.length) setItemsActive(w, live, false);
+      return { ok: true, action: 'end', items: names, changed: live.length };
+    }
+    if (p.action === 'standard') {
+      for (const it of mine) delete it.lto;
+      return { ok: true, action: 'standard', items: names, changed: mine.length };
+    }
+    if (p.action !== 'rollback') throw new Error('An LTO is ended, rolled back or made standard.');
+    for (const it of mine) deleteItem(w, s_(it.id));
+    const backupsRemoved = [];
+    for (const b of (Array.isArray(p.backupsAdded) ? p.backupsAdded : [])) {
+      const it = w.items.find(x => s_(x.id) === s_(b && b.id));
+      if (!it) continue;
+      const took = [];
+      for (const v of (Array.isArray(b.vendors) ? b.vendors : [])) {
+        const vl = s_(v).toLowerCase();
+        if (!vl || s_(it.primaryVendor).toLowerCase() === vl || !(it.eligible || []).some(x => s_(x).toLowerCase() === vl)) continue;
+        if (setItemsVendor(w, [s_(it.id)], v, false).changed) took.push(s_(v));
+      }
+      if (took.length) backupsRemoved.push({ name: s_(it.name), vendors: took });
+    }
+    const vendorsRemoved = [];
+    for (const v of (Array.isArray(p.vendorsAdded) ? p.vendorsAdded : [])) {
+      const vend = findVendor(w, s_(v));
+      if (!vend) continue;
+      const low = s_(vend.name).toLowerCase();
+      const used = w.items.some(it => s_(it.primaryVendor).toLowerCase() === low || (it.eligible || []).some(x => s_(x).toLowerCase() === low));
+      if (!used) { removeVendor(w, vend.name); vendorsRemoved.push(vend.name); }
+    }
+    return { ok: true, action: 'rollback', items: names, changed: mine.length, backupsRemoved: backupsRemoved, vendorsRemoved: vendorsRemoved };
+  }
+
+  // Where an LTO stands at one store, from its tables: each of its items
+  // there, set up (active, a par and a storage area), needing setup (active,
+  // a par or an area missing) or inactive. An item the store deleted is
+  // simply not listed.
+  function ltoStoreState(t, ltoId) {
+    const id = s_(ltoId);
+    const areaOf = new Set(t.pickRows.filter(r => s_(r.area)).map(r => s_(r.id)));
+    const items = t.items.filter(it => id && s_(it.lto) === id).map(it => {
+      const ready = it.par !== null && it.par !== undefined && it.par !== '' && areaOf.has(s_(it.id));
+      return { id: s_(it.id), name: s_(it.name), state: it.active !== true ? 'inactive' : ready ? 'ready' : 'setup',
+               par: it.par === null || it.par === undefined ? '' : Number(it.par), area: firstArea(t, s_(it.id)) };
+    });
+    const count = st => items.filter(x => x.state === st).length;
+    return { items: items, ready: count('ready'), setup: count('setup'), inactive: count('inactive') };
   }
 
   // ---- The concept library (hq/, schema v12) ---------------------------------
@@ -1356,7 +1438,7 @@
   const USER_FIELDS = {
     vendors:  ['mults', 'cutoff', 'contact'],
     areas:    ['ord'],
-    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible'],
+    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto'],
     pickRows: ['area', 'shelfOrder']
   };
   function matches(t, row, want) {
@@ -1458,6 +1540,17 @@
       const v = findVendor(base, s_(args[0]));
       return 'Removed vendor "' + (v ? v.name : s_(args[0])) + '"';
     }
+    if (fn === 'commitHqLto') {
+      const few = names => (names.length <= 6 ? ' (' + names.join(', ') + ')' : '');
+      const lto = 'LTO "' + s_(args[0].name) + '"';
+      if (result.action === 'end') return 'HQ ended ' + lto + ': made ' + plural(result.changed, 'item') + ' inactive' + few(result.items);
+      if (result.action === 'standard') return 'HQ made ' + lto + ' standard: ' + plural(result.changed, 'item') + few(result.items);
+      const parts = [];
+      if (result.changed) parts.push('deleted ' + plural(result.changed, 'item') + few(result.items));
+      for (const b of result.backupsRemoved) parts.push(b.name + ' no longer from ' + b.vendors.join(', '));
+      if (result.vendorsRemoved.length) parts.push('removed vendor' + (result.vendorsRemoved.length === 1 ? ' ' : 's ') + result.vendorsRemoved.join(', '));
+      return 'HQ rolled back ' + lto + (parts.length ? ': ' + parts.join('; ') : '');
+    }
     if (fn === 'commitHqRollout') {
       const parts = [];
       const few = names => (names.length <= 6 ? ' (' + names.join(', ') + ')' : '');
@@ -1528,6 +1621,7 @@
     commitRemoveVendor: (w, args) => removeVendor(w, args[0]),
     commitSaveVendor: (w, args) => saveVendor(w, args[0]),
     commitHqRollout: (w, args) => hqRollout(w, args[0]),
+    commitHqLto: (w, args) => hqLto(w, args[0]),
     commitStorageAreasDraft: (w, args, shifts, renames) => storageAreasDraft(w, args[0], renames),
     commitReorderPickPath: (w, args) => reorderPickPath(w, args[0], args[1]),
     commitPlaceBackupVendors: w => placeBackupVendors(w)
@@ -1548,7 +1642,8 @@
   const api = { call: call, applyOps: applyOps, inverseOps: inverseOps, reads: Object.keys(READS),
                 writes: Object.keys(WRITES), vendorList: vendorList, parseCsv: parseCsv,
                 multsFromDays: multsFromDays, daysFromMults: daysFromMults, matchVendor: matchVendor,
-                cleanLibrary: cleanLibrary, librarySeed: librarySeed, libraryAdd: libraryAdd, libraryLabel: libraryLabel };
+                cleanLibrary: cleanLibrary, librarySeed: librarySeed, libraryAdd: libraryAdd, libraryLabel: libraryLabel,
+                ltoStoreState: ltoStoreState };
   root.CatalogEdit = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : this);

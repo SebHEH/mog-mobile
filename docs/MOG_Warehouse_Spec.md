@@ -48,7 +48,7 @@ Until step 4, Chasin' Tails and NUE keep ordering through Daniel's artifact.
 - **Starting a library from a store** (`librarySeed`): its active items with a vendor, in list order; a name listed twice (one row per vendor) becomes one item with the other vendors as backups. Then cleaned in HQ. A save is the whole list, refused (CONFLICT) if someone saved it since; every save is logged with the list before it.
 - **Seeds (Sebastian, 2026-11-01):** Roll Play BOH from Rosslyn BOH (rpr), Roll Play FOH from Rosslyn FOH (rprfo), Teas'n You BOH from Tysons BOH (tnyt; 71 of its 208 items had no vendor yet and are left out), Teas'n You FOH from Rockville FOH (tnyrf).
 - **Setting up a store** sends the saved library through the HQ rollout (`commitHqRollout`): items arrive with no par and **no area**, in the store's Needs setup, like an LTO (Sebastian's pick over placing them in the library's areas).
-- **An HQ LTO rollout can add its items to the library** in the same save (a checkbox per concept and side of the ticked stores).
+- **An HQ LTO rollout can add its items to the library** in the same save (a checkbox per concept and side of the ticked stores). *Replaced 2026-11-02 (`docs/MOG_LTO_Spec.md`, not built yet): LTO items go to the LTO list only, and "Make it standard" on an LTO moves them into the library.*
 - **A store's side** is `mog.stores.side`, read from its location's name now and for new stores.
 - **Not built:** proposing a store's own additions back to the library (still open).
 

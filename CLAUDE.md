@@ -190,8 +190,10 @@ mog-mobile/
 │   │                            publishes it at hq/ with catalogEdit.js beside it; sign-in is a person's own HQ passphrase.
 │   │                            Libraries (schema v12): each concept's standard items per side, started from a store,
 │   │                            edited item by item, and sent to stores like an LTO ("Set up stores from it"). The page is
-│   │                            the order guide's computer look with the HEH brand (sidebar: Roll out, Libraries, Vendors,
+│   │                            the order guide's computer look with the HEH brand (sidebar: New LTO, LTOs, Libraries, Vendors,
 │   │                            Vendor names); heh-logo.svg and the concept marks beside it come from the HEH brand kit.
+│   │                            hq/ltos.js (schema v14): each concept's LTOs, where each stands at each store, and Send to
+│   │                            more stores, Make it standard, End and Roll back (rules in catalogEdit.js commitHqLto).
 │   │                            hq/warehouse.js (schema v13): Happy Supply's Inventory (with a count), Incoming (vendor
 │   │                            orders in, transfers), Products and prices and Stock history, for the warehouse role. Each
 │   │                            person sees the sections their roles (hq, warehouse) open.
@@ -250,9 +252,10 @@ mog-mobile/
 │   ├── schema_v11.sql           HQ control: HQ people (invite, own passphrase and lockout), remembered vendor names, mog_hq_data / mog_hq_apply (all stores or none) (run after v10).
 │   ├── schema_v12.sql           Concept library: mog.stores.side (from the location), mog.libraries / library_items / library_log, mog_hq_apply with libraries (run after v11).
 │   ├── schema_v13.sql           Happy Supply W1: HQ roles (hq, warehouse), the warehouse tables (stock never below 0, every move kept), mog_wh_* (run after v12).
+│   ├── schema_v14.sql           LTOs: mog.ltos / lto_stores, an item's lto (part of its row), mog_hq_apply's fifth argument (send, more, end, rollback, standard) (run after v13).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v13.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
+│   └── tests/                   smoke.sql … smoke_v14.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
 │                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 │                                preview_server.js (not a gate): the built app, editor and HQ against the fake Supabase (preview_start "mog-preview").
@@ -262,6 +265,7 @@ mog-mobile/
 │   ├── MOG_SupabaseMigration.md Design record for the count-path move to Supabase (decisions, ownership, rollout).
 │   ├── MOG_OneApp_Spec.md       Agreed spec: the ordering app and the editor become one app per store (decisions A1-A7, P1-P4, phases).
 │   ├── MOG_Warehouse_Spec.md    Agreed spec (2026-11-01): the warehouse (Happy Supply), the concept library, stores without a Sheet, and their build order.
+│   ├── MOG_LTO_Spec.md          Agreed spec (2026-11-02): LTOs as records in HQ (End, Roll back, Make it standard; schema v14, HQ side built) and new LTO items at the top of a store's Items page (not built).
 │   └── MOG_SessionHandoff_*.md  Per-session handoffs (newest @-imported above).
 ├── .claude/
 │   └── skills/                  Repo-specific skills.

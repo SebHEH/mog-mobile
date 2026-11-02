@@ -140,6 +140,14 @@ check "v13 wh_transfer_send: bad token refused"    200 'SESSION_EXPIRED' -X POST
 check "v13 wh_transfer_receive: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_id":1}' "$(rpc mog_wh_transfer_receive)"
 check "v13 wh_count: bad token refused"            200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_count":{}}' "$(rpc mog_wh_count)"
 
+# schema v14 (LTOs; a bogus token only)
+check "v14 tables: ltos not reachable"              404 ''   "$URL/rest/v1/ltos"
+check "v14 tables: lto_stores not reachable"        404 ''   "$URL/rest/v1/lto_stores"
+check "v14 helper: lto_before not exposed"          404 ''   -X POST "${J[@]}" -d '{"p_by":"x","p_lto":{},"p_changes":[]}' "$(rpc lto_before)"
+check "v14 helper: lto_after not exposed"           404 ''   -X POST "${J[@]}" -d '{"p_by":"x","p_lto":{},"p_out":[]}' "$(rpc lto_after)"
+check "v14 hq_apply with an LTO: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_changes":[],"p_links":[],"p_libraries":[],"p_lto":{"action":"end","id":"lto_bogus000","version":1}}' "$(rpc mog_hq_apply)"
+check "v14 hq_apply, the v12 call: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_changes":[],"p_links":[],"p_libraries":[]}' "$(rpc mog_hq_apply)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

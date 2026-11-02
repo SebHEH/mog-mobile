@@ -11,7 +11,11 @@
        redesign", 2026-11-01). Built by build.py into hq/ with catalogEdit.js
        and the brand kit's logos beside it (the Supabase project and the
        concept names are injected below).
-         Roll out    LTO items to many stores at once
+         New LTO     LTO items to many stores at once, as one named LTO
+                     (schema v14; was Roll out)
+         LTOs        each concept's LTOs, where each stands at each store;
+                     send to more stores, make standard, end or roll back
+                     (ltos.js)
          Libraries   each concept's standard items per side (schema v12),
                      started from a store, edited item by item, and sent
                      to stores like an LTO ("Set up stores from it")
@@ -26,6 +30,7 @@
   <script>window.MOG_HQ = /*__MOG_HQ__*/null;</script>
   <script src="catalogEdit.js"></script>
   <script src="warehouse.js"></script>
+  <script src="ltos.js"></script>
   <style>
     * { box-sizing: border-box; }
     :root { --ink: #1a1a1a; --ink2: #3d3d3a; --muted: #5f5e5a; --label: #64635e; --line: rgba(0,0,0,0.08); --line2: rgba(0,0,0,0.18);
@@ -197,6 +202,19 @@
     .crumb { font-size: 13px; color: var(--muted); }
     .crumb button { border: 0; background: none; padding: 0; color: var(--ink2); font-weight: 600; text-decoration: underline; cursor: pointer; }
 
+    /* LTOs (ltos.js) */
+    .tag.blue { background: #e1ebfa; color: #1d4a85; }
+    .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 700; }
+    .btn.danger-line { color: var(--bad); border-color: #e3b5ae; }
+    .lt-list { flex: 1 1 300px; }
+    .lt-list .lrow .s { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .lt-detail { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+    .lt-h3 { margin: 0 0 8px; font-family: inherit; font-size: 15px; font-weight: 700; }
+    .confirm { display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; border-radius: 12px; background: var(--ground); border: 1px solid var(--line); }
+    .confirm p { margin: 0; line-height: 1.5; }
+    .confirm-title { font-size: 16px; font-weight: 700; }
+    .warnbox { padding: 10px 12px; border-radius: 10px; background: var(--warn-bg); color: #5c3b00; }
+
     /* Happy Supply (warehouse.js) */
     .nav .badge { margin-left: auto; font-size: 12px; font-weight: 700; color: #fff; background: var(--ink); border-radius: 999px; padding: 2px 8px; }
     .nav .dotw { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: #c08a1a; }
@@ -257,7 +275,8 @@
       </div>
       <div id="nav-hq">
       <div class="eyebrow">CATALOG</div>
-      <button type="button" class="nav" data-nav="rollout"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>Roll out</button>
+      <button type="button" class="nav" data-nav="rollout"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>New LTO</button>
+      <button type="button" class="nav" data-nav="ltos"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M3 6v5.17a2 2 0 0 0 .59 1.42l7.71 7.71a2.41 2.41 0 0 0 3.41 0l5.59 -5.59a2.41 2.41 0 0 0 0 -3.41l-7.71 -7.71a2 2 0 0 0 -1.42 -.59h-5.17a3 3 0 0 0 -3 3z"/></svg>LTOs<span class="badge" id="lt-badge" hidden></span></button>
       <button type="button" class="nav" data-nav="libraries"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M9 5a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 8h4"/><path d="M9 16h4"/><path d="M13.8 4.56l2.18 -.53c.56 -.13 1.13 .19 1.28 .73l3.7 13.42a1.02 1.02 0 0 1 -.64 1.22l-2.31 .57c-.56 .13 -1.13 -.19 -1.28 -.73l-3.7 -13.42a1.02 1.02 0 0 1 .77 -1.26z"/></svg>Libraries</button>
       <button type="button" class="nav" data-nav="vendor"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-11a1 1 0 0 1 1 -1h9v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5"/></svg>Vendors</button>
       <button type="button" class="nav" data-nav="links"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 15l6 -6"/><path d="M11 6l.46 -.54a5 5 0 0 1 7.07 7.07l-.53 .47"/><path d="M13 18l-.4 .53a5.07 5.07 0 0 1 -7.12 0a4.97 4.97 0 0 1 0 -7.07l.52 -.46"/></svg>Vendor names</button>
@@ -277,24 +296,24 @@
     <main class="main" id="main">
       <div class="wrap">
 
-        <!-- Roll out -->
+        <!-- New LTO (was Roll out) -->
         <section class="view" id="v-rollout" aria-labelledby="ro-h">
           <div class="page-head">
-            <div><h1 id="ro-h">Roll out LTO items</h1>
-              <p>New items for many stores at once. Each store gets them with no par and no storage area, in its Items page under Needs setup, and can undo the change in its own Changes.</p></div>
+            <div><h1 id="ro-h">New LTO</h1>
+              <p>New items for many stores at once, kept as one named LTO you can end or roll back later from LTOs. Each store gets them with no par and no storage area, at the top of its Items page, and can undo the change in its own Changes.</p></div>
             <button type="button" class="btn" data-nav="libraries">Start from a library instead</button>
           </div>
           <section class="card" id="ro-stores" aria-label="Stores"></section>
           <section class="card" aria-labelledby="ro-it-h">
             <div class="card-head">
               <div class="step-title"><span class="step">2</span><h2 id="ro-it-h">Items</h2></div>
-              <label class="field" style="flex-direction:row;align-items:center;gap:10px">Name of this rollout
-                <input id="ro-label" class="text" maxlength="80" placeholder="e.g. Spring LTO" style="width:260px;height:40px;font-size:14px"></label>
+              <label class="field" style="flex-direction:row;align-items:center;gap:10px">Name of this LTO
+                <input id="ro-label" class="text" maxlength="80" placeholder="e.g. Fall Chicken Pho" style="width:260px;height:40px;font-size:14px"></label>
             </div>
             <div class="items" id="ro-items"></div>
             <div class="row-between">
               <button type="button" class="btn" id="ro-add"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>Add an item</button>
-              <div id="ro-libs" class="actions"></div>
+              <span class="help" style="margin:0">To add its items to the concept library, use Make it standard on the LTO later.</span>
             </div>
           </section>
           <section class="card" aria-labelledby="ro-vs-h">
@@ -307,6 +326,18 @@
             <div id="ro-preview" style="margin-top:8px"></div>
           </section>
           <div class="bar" id="ro-bar"></div>
+        </section>
+
+        <!-- LTOs (ltos.js) -->
+        <section class="view" id="v-ltos" aria-labelledby="lt-h" hidden>
+          <div class="page-head">
+            <div><h1 id="lt-h">LTOs</h1>
+              <p>Every LTO HQ sent to this concept's stores. End one when it comes off the menu; roll one back when it was a mistake or a test.</p></div>
+            <button type="button" class="btn primary" data-nav="rollout">New LTO</button>
+          </div>
+          <div class="card toolbar"><div class="actions" id="lt-concept" style="align-items:center"></div><div class="actions" id="lt-filters" role="group" aria-label="Show"></div></div>
+          <div class="status" id="lt-status" role="status"></div>
+          <div class="cols" id="lt-cols"></div>
         </section>
 
         <!-- Libraries -->
@@ -418,7 +449,7 @@
 
     const S = { token: null, name: '', data: null, view: 'rollout', busy: false, invite: false,
                 pick: { rollout: {}, setup: {}, vendor: {} }, concept: { rollout: null, setup: null, vendor: null },
-                rows: [], map: {}, newDays: {}, daysFrom: {}, ltoLibs: {},
+                rows: [], map: {}, newDays: {}, daysFrom: {},
                 lib: null, libQ: '', libFilter: 'all', libSel: 0, panel: null, seed: null, setupLib: null,
                 vDays: blankDays(), vAddAnyway: {}, roles: null };
     try { S.token = sessionStorage.getItem('mog_hq_token'); S.roles = JSON.parse(sessionStorage.getItem('mog_hq_roles') || 'null'); } catch (e) { S.token = null; S.roles = null; }
@@ -447,6 +478,12 @@
     const has = role => !S.roles || S.roles.indexOf(role) >= 0;
     const WH = window.HQWarehouse ? window.HQWarehouse.create({ rpc, token: () => S.token, view: () => S.view, go: v => go(v),
       signedOut: msg => { keepToken(null); S.data = null; showSignin(msg); } }) : null;
+    // The LTOs page (schema v14), given the helpers it shares with this page;
+    // functions declared further down are hoisted.
+    const LT = window.HQLtos ? window.HQLtos.create({ S, CE, $, esc, plural, few, lc, CHEV, TICK, storeBy, storesOf, conceptKeys, conceptName,
+      markHtml, shortName, usable, vendorRowsHtml, previewHtml, libraryOf, libName,
+      libKey: (c, s) => libKey(c, s), rolloutPlan: (items, label, stores, lto) => rolloutPlan(items, label, stores, lto),
+      save: (plan, statusId, reset, libraries, lto) => save(plan, statusId, reset, libraries, lto) }) : null;
 
     // ---- Sign in ----
     function showSignin(msg) {
@@ -674,7 +711,8 @@
     }
 
     // Each store's share, worked out the way the editor works out a save.
-    function rolloutPlan(items, label, stores) {
+    // lto: the LTO's id (schema v14), which the new items carry.
+    function rolloutPlan(items, label, stores, lto) {
       if (!items.length || !stores.length || items.some(it => !it.vendor)) return null;
       const used = hqVendorsUsed(items);
       return stores.map(st => {
@@ -687,9 +725,9 @@
           } else names[lc(v)] = c.value;
           links.push({ slug: st.slug, hqName: v, vendor: names[lc(v)] });
         }
-        const share = { label: label, vendors: adds,
+        const share = { label: label, vendors: adds, lto: lto || '',
           items: items.map(it => ({ name: it.name, pack: it.pack, notes: it.notes, vendor: names[lc(it.vendor)],
-                                    backups: it.backups.map(b => names[lc(b)]) })) };
+                                    backups: (it.backups || []).map(b => names[lc(b)]) })) };
         try { return { st, links, out: CE.call(st.tables, 'commitHqRollout', [share]) }; }
         catch (err) { return { st, links, error: err.message }; }
       });
@@ -720,12 +758,14 @@
         const v = b.getAttribute('data-nav');
         if (v === S.view || (v === 'libraries' && S.view === 'setup')) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
       });
-      for (const v of ['rollout', 'libraries', 'setup', 'vendor', 'links', 'recent'].concat(WH ? WH.views : [])) $('v-' + v).hidden = S.view !== v;
+      for (const v of ['rollout', 'libraries', 'setup', 'vendor', 'links', 'recent'].concat(WH ? WH.views : [], LT ? LT.views : [])) $('v-' + v).hidden = S.view !== v;
       if (WH) WH.badges();
+      if (LT && S.data) LT.badge();
     }
     function renderAll() {
       renderNav();
       if (S.view.indexOf('wh-') === 0) { if (WH) WH.render(S.view); return; }
+      if (S.view === 'ltos' && LT) LT.render();
       if (S.view === 'rollout') renderRollout();
       if (S.view === 'libraries') renderLibraries();
       if (S.view === 'setup') renderSetup();
@@ -759,43 +799,22 @@
         '<div role="group" aria-label="Backup vendors for item ' + (i + 1) + '"><div class="chips-label">Backup vendors <span>· tap to add or remove · ' +
         (r.backups.length ? r.backups.length + ' picked' : 'none yet') + '</span></div>' + chipsHtml('data-chip="' + i + '"', r.vendor, r.backups, choices) + '</div></div>').join('');
     }
-    // The libraries an LTO can land in too: the concept and side of each
-    // ticked store (the TEST store aside). Ticked ones get the items they
-    // don't have, at the end, in the same save.
-    function ltoLibPlan(items, stores) {
-      const keys = [];
-      for (const st of stores) if (!st.isTest && st.concept && st.side && keys.indexOf(libKey(st.concept, st.side)) < 0) keys.push(libKey(st.concept, st.side));
-      const label = $('ro-label').value.trim();
-      return keys.map(key => {
-        if (!S.ltoLibs[key] || !items.length) return { key };
-        const lib = libraryOf(key);
-        try {
-          const r = CE.libraryAdd(lib.items, items);
-          return { key, r, payload: r.added.length ? { concept: lib.concept, side: lib.side, version: lib.version, items: r.items,
-            label: 'LTO' + (label ? ' "' + label + '"' : '') + ': added ' + plural(r.added.length, 'item') } : null };
-        } catch (err) { return { key, error: err.message }; }
-      });
-    }
+    // The LTO's id is made once per draft, so the preview and the save agree.
     function renderRolloutWork() {
       const items = ltoItems(), stores = pickedStores('rollout');
       const label = $('ro-label').value.trim();
+      if (!S.ltoId && LT) S.ltoId = LT.newId();
       const missing = items.filter(it => !it.vendor).map(it => it.name);
       $('ro-vendors').innerHTML = (missing.length ? '<p class="bad" style="margin:14px 0 0">Give every item a main vendor: ' + esc(missing.join(', ')) + '.</p>' : '') +
         vendorRowsHtml(items.filter(it => it.vendor), stores);
-      const plan = rolloutPlan(items, label, stores);
+      const plan = rolloutPlan(items, label, stores, S.ltoId);
       S.ltoPlan = plan;
       $('ro-preview').innerHTML = previewHtml(plan, !stores.length ? 'Pick stores in step 1.' : !items.length ? 'Name an item in step 2.' : 'Give every item a main vendor.');
-      const libs = ltoLibPlan(plan ? items : [], stores);
-      S.ltoLibPayloads = libs.filter(x => x.payload).map(x => x.payload);
-      $('ro-libs').innerHTML = libs.map(x => '<label class="check"><input type="checkbox" data-ltolib="' + esc(x.key) + '"' + (S.ltoLibs[x.key] ? ' checked' : '') + '>' +
-        'Also add to the ' + esc(libName(x.key)) + ' library' + (x.error ? ' <span class="bad">(' + esc(x.error) + ')</span>'
-          : x.r ? ' <span class="muted">(' + (x.r.added.length ? 'adds ' + x.r.added.length : 'nothing new') + ')</span>' : '') + '</label>').join('');
       const newV = hqVendorsUsed(items.filter(it => it.vendor)).filter(v => stores.some(st => choiceFor(st.slug, v).value === NEW));
-      const ok = plan && !plan.some(p => p.error) && !libs.some(x => x.error) && (plan.some(p => p.out.ops.length) || S.ltoLibPayloads.length);
+      const ok = !!label && plan && !plan.some(p => p.error) && plan.some(p => p.out.ops.length);
       $('ro-bar').innerHTML = barHtml(plural(items.length, 'item') + ' to ' + plural(stores.length, 'store'),
-        (newV.length ? newV.join(', ') + ' added where missing. ' : '') +
-        (S.ltoLibPayloads.length ? 'Also added to the ' + S.ltoLibPayloads.map(p => libName(libKey(p.concept, p.side))).join(' and ') + ' library. ' : '') + 'Every store or none.',
-        'ro-save', stores.length ? 'Add to ' + plural(stores.length, 'store') : 'Pick stores first', ok && !S.busy, 'ro-status');
+        (label ? '' : 'Name the LTO in step 2. ') + (newV.length ? newV.join(', ') + ' added where missing. ' : '') + 'Every store or none.',
+        'ro-save', stores.length ? 'Send to ' + plural(stores.length, 'store') : 'Pick stores first', ok && !S.busy, 'ro-status');
     }
 
     // ---- Libraries (schema v12) ----
@@ -993,12 +1012,14 @@
     // ---- Saving: every store (and library) or none ----
     // libraries: whole libraries saved in the same save (schema v12); sent
     // only when there are some, so the other saves work on v11 too.
-    async function save(plan, statusId, reset, libraries) {
+    // lto: the LTO's action (schema v14), its record kept in the same save.
+    async function save(plan, statusId, reset, libraries, lto) {
       if (!plan || S.busy) return false;
       const changes = plan.filter(p => p.out && p.out.ops.length).map(p => ({ slug: p.st.slug, label: p.out.label, ops: p.out.ops }));
       const links = [].concat.apply([], plan.map(p => p.links || []));
       const params = { p_token: S.token, p_changes: changes, p_links: links };
-      if (libraries && libraries.length) params.p_libraries = libraries;
+      if ((libraries && libraries.length) || lto) params.p_libraries = libraries || [];
+      if (lto) params.p_lto = lto;
       const say = (cls, text) => { const el = $(statusId); if (el) { el.className = 'status' + (cls ? ' ' + cls : ''); el.textContent = text; } };
       S.busy = true; say('', 'Saving…');
       try {
@@ -1055,6 +1076,7 @@
       const nav = t.getAttribute('data-nav');
       if (nav && (S.data || nav.indexOf('wh-') === 0)) { go(nav); return; }
       if (!S.data) return;
+      if (LT && LT.click(t)) return;
       const quick = t.getAttribute('data-quick');
       if (quick) { const v = t.getAttribute('data-view'); quickPick(v, quick); return renderStoresChanged(v); }
       const tile = t.getAttribute('data-tile');
@@ -1068,8 +1090,14 @@
       const chip = t.getAttribute('data-chip');
       if (chip != null) { toggleIn(S.rows[Number(chip)].backups, t.getAttribute('data-v')); renderRolloutItems(); renderRolloutWork(); return; }
       if (t.id === 'ro-save') {
-        const payloads = S.ltoLibPayloads;
-        save(S.ltoPlan, 'ro-status', () => { S.rows = [blankRow()]; S.map = {}; S.newDays = {}; S.daysFrom = {}; S.ltoLibs = {}; $('ro-label').value = ''; }, payloads);
+        // Sent as one LTO: its record names the stores and what each got.
+        const plan = S.ltoPlan, id = S.ltoId, concept = S.concept.rollout, name = $('ro-label').value.trim(), items = ltoItems();
+        if (!plan || !name || !id) return;
+        const lto = { action: 'send', id, concept, name, items,
+          stores: plan.map(p => ({ slug: p.st.slug, vendorsAdded: p.out.result.vendorsAdded, backupsAdded: p.out.result.backupsAdded })) };
+        const sent = await save(plan, 'lt-status', () => { S.rows = [blankRow()]; S.map = {}; S.newDays = {}; S.daysFrom = {}; S.ltoId = null; $('ro-label').value = ''; }, null, lto);
+        if (sent && LT) { LT.show(id, concept); go('ltos'); }
+        else if (!sent) { const el = $('ro-status'), from = $('lt-status'); if (el && from) { el.className = from.className; el.textContent = from.textContent; } }
         return;
       }
       // Libraries
@@ -1160,8 +1188,7 @@
       if (mp) { S.map[mp] = t.value; return renderWork(); }
       const main = t.getAttribute('data-main');
       if (main != null) { const r = S.rows[Number(main)]; r.vendor = t.value; r.backups = r.backups.filter(b => lc(b) !== lc(t.value)); renderRolloutItems(); return renderRolloutWork(); }
-      const ll = t.getAttribute('data-ltolib');
-      if (ll) { S.ltoLibs[ll] = t.checked; return renderRolloutWork(); }
+      if (LT && LT.change(t)) return;
       if (t.id === 'lib-concept') { S.lib = libKey(t.value, S.lib.split('|')[1]); resetLibView(); return renderLibraries(); }
       if (t.id === 'pn-main') { S.panel.vendor = t.value; S.panel.backups = S.panel.backups.filter(b => lc(b) !== lc(t.value)); return renderPanel(); }
       const any = t.getAttribute('data-anyway');
@@ -1189,6 +1216,7 @@
     function renderWork() {
       if (S.view === 'rollout') renderRolloutWork();
       if (S.view === 'setup') renderSetupWork();
+      if (S.view === 'ltos' && LT) LT.render();
     }
 
     // ---- Start ----
