@@ -74,6 +74,9 @@ file is run once, in order. Re-running any of them must stay harmless.
   (schema v10). The same holds for a jsonb list read back (v12's library items come as `name, pack,
   notes, vendor, backups`): the fake sends jsonb's key order, and the client compares through its
   cleaner (`cleanLibrary`), never as raw JSON, or an untouched draft looks changed.
+- **A newer schema that accepts what an older smoke row says is refused** (v15 renaming vendors vs
+  smoke_v8's "only areas rename", 2026-11-02): point that probe at something no version accepts. A
+  runner skip isn't enough: the probe now really writes, and later rows of that file fail.
 - **A value a gate or smoke pins against the SQL** (an average, a price) comes from running the SQL
   in PGlite, never from working it out by hand: a hand-worked 77.5926 was wrong (Postgres: 77.5968),
   2026-11-02.
@@ -99,7 +102,9 @@ file is run once, in order. Re-running any of them must stay harmless.
      - **An error running the file is not a catch:** it means the plant broke the SQL, not the
        rule, so re-plant until a named smoke row says FAIL. A plant script that counts any `FAIL`
        line reads a broken plant as caught (2026-11-02: a plant leaving two assignments to one
-       column).
+       column). Nor is a plant that makes the call itself throw (a key clash, a bad statement in
+       the body): every row after it fails. It counts only when the rows that fail are about the
+       rule you planted (2026-11-02, v15's count plant).
      - The runner skips what PGlite can't pass and says why: `smoke.sql` and `smoke_v2` (v1
        assertions that v3 changed), `smoke_v4` (no ICU; `und-x-icu` faked as "C") and two rows of
        `smoke_v7`.
