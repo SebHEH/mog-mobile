@@ -68,6 +68,13 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - A wrong save is put back in the SQL Editor from `mog.library_log.items_before` (there's no Restore button).
   - A library item's keys come back from Postgres in jsonb's order (`name, pack, notes, vendor, backups`), so compare lists through `cleanLibrary`, never as raw JSON (the fake sends the same order).
 
+## LTOs (schema v14)
+
+- **HQ's New LTO sends one named LTO** (it replaced Roll out, 2026-11-02); HQ's LTOs page ends it, rolls it back, makes it standard or sends it to more stores. The rules are in `catalogEdit.js` (`commitHqLto`), the record in `mog.ltos` / `mog.lto_stores` (`docs/MOG_LTO_Spec.md`, Blueprint R31).
+- **An item knows its LTO through `mog.items.lto`, part of its row.** Every compare site checks it (SQL `editor_fields_match`, `catalogEdit.js` `matches`, the fake's `editorSame`), so a page that reads a row without it gets a CONFLICT instead of unlinking it.
+- **Rollouts sent before v14 aren't LTOs.** They have no record and their items no link; a store undoes them in its own Changes (decided 2026-11-02: no backfill).
+- **Try an LTO on the TEST store first** (Rosslyn FOH (TEST)), then Roll back. Sebastian's first rollouts went to Rosslyn, Founders and Tysons BOH and were deleted by hand at each store.
+
 ## Happy Supply, the warehouse (schema v13)
 
 - **Roles:** every HQ person has `hq`, `warehouse` or both (`mog.hq_users.roles`). Everyone invited before v13 has both. HQ's catalog pages answer only `hq`; the Happy Supply pages only `warehouse`. The HQ page shows each person the sections their roles open.
@@ -96,6 +103,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - The app shows its phone layout. Drive it by script and say the layout itself is unseen.
 - **A screenshot can show the page as it was before a click that worked** (2026-11-02: a saved count looked unsaved). Read the state with `javascript_tool` or `read_page` before deciding a click failed, and never click again on a screenshot's word alone: a second Save can write twice.
 - **After a rebuild, use `location.reload()`.** Navigating to the same page with only a new `#hash` keeps the old build. `sessionStorage.clear()` shows the sign-in screen again.
+- **Driving HQ by script: query the element again after every click.** A click on a store tile redraws the whole picker, so the second button of a list found before the first click is detached and its click does nothing (2026-11-02: two BOH tiles "clicked", one store picked).
 
 ## CI and tests
 

@@ -14,7 +14,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
 - **Each Sheet** is frozen for catalog edits. It still holds the Apps Script: the 3:30 AM close, the recap email, the onboarding moves. It also gets a nightly LOG_ORDERS backup.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v13 live (v14, LTOs, written 2026-11-02 and not run yet).
+- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v14 (LTOs, live 2026-11-02: smoke_v14 26/26, probe 94/94; HQ side shipped in `6fee3a1`, the store's Items banner is next).
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
 - **The three stores that moved empty:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
@@ -24,7 +24,14 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - rpr and rprfo had orders, and their recaps went to their Supabase recipients;
   - the other stores had nothing ordered, so no email (by design).
 
-**2026-11-02 (later, 2): the local preview server** (`docs/MOG_SessionHandoff_2026_11_02.md`, the last "Later session").
+**2026-11-02 (later, 3): LTOs, the HQ side, are live** (`docs/MOG_SessionHandoff_2026_11_02.md`, "Later session 3"; spec `docs/MOG_LTO_Spec.md`).
+- **Schema v14:** an HQ rollout is a named LTO (`mog.ltos`, `mog.lto_stores`); each item it creates carries it in `mog.items.lto`, part of the item's row (a store's Undo brings it back, a reused item number never gets it).
+- **HQ:** Roll out became **New LTO** (name required, the library box gone). The new **LTOs** page (`template/hq/ltos.js`) shows each LTO at each store and can Send to more stores, Make it standard (into the library), End (items inactive) or Roll back (as if never sent), every store or none.
+- **Live checks:** smoke_v14 26/26 in the SQL Editor; `check_api.sh` 94 passed, 0 failed; commit `6fee3a1`, CI green, Pages live on HQ and all 10 stores. 29 gates. Nobody has used the live LTOs page yet.
+- **Not tracked:** the rollouts sent before v14 (Horse Pho, Horse Meat, Fall Chicken Pho): undone by hand in each store's Changes.
+- **Next:** session 2, the store's Items page (new LTO items at the top until set up, the LTO chip).
+
+**2026-11-02 (later, 2): the local preview server** (`docs/MOG_SessionHandoff_2026_11_02.md`, "Later session 2").
 - **`preview_start` "mog-preview"** (`tests/preview_server.js`) serves the app, the editor, HQ and Happy Supply against the fake Supabase at `http://127.0.0.1:8770/`: PIN 1111, HQ through `/__signin?who=`. Use it instead of building one.
 - **`node tests/run_all.js` passes in a fresh Windows worktree** now (the slicer self-test's anchors were LF-only). PR 6, merged.
 
@@ -79,23 +86,27 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
 
 ### Next-session candidates
 
-1. **Use the concept library** (schema v12, HQ's Libraries page; `docs/MOG_Warehouse_Spec.md` §1). Sebastian's steps:
-   - undo the TEST rollout "Horse Pho" in rprfotest's Changes;
-   - start the four libraries (Rosslyn BOH and FOH, Tysons BOH, Rockville FOH) and clean them;
+1. **LTOs, session 2** (`docs/MOG_LTO_Spec.md`): the store's Items page shows each new LTO's items at the very top until they have a par and an area (banner, pinned rows, "LTO · name" chip, panel note), from the approved "Store · Items" board. First, Sebastian's steps:
+   - undo the old test rollouts in each store's Manage → Changes: "Horse Pho" (Rosslyn FOH (TEST)), "Fall Chicken Pho LTO" (Rosslyn, Founders, Tysons BOH), and the empty Happy Supply vendor there if it was a test;
+   - a first live LTO on the TEST store, then Roll back.
+
+   Later, its own spec: line up each concept's stores with its library, and items a store can't remove.
+2. **Use the concept library** (schema v12, HQ's Libraries page; `docs/MOG_Warehouse_Spec.md` §1). Checked live 11-02 (later): Teas'n You BOH started (137 items from Tysons BOH); Roll Play BOH holds only Horse Meat (remove it there to start it from Rosslyn BOH); the FOH libraries aren't started. Sebastian's steps:
+   - start and clean the rest (Rosslyn BOH and FOH, Rockville FOH);
    - set up a store from one.
-2. **Start the warehouse** (W1 live; `docs/MOG_Warehouse_Spec.md` §2):
-   - Sebastian tells Donny that schema v13 is taken;
+3. **Start the warehouse** (W1 live; `docs/MOG_Warehouse_Spec.md` §2):
+   - Sebastian tells Donny that schemas v13 and v14 are taken;
    - invites Chef Dan with the warehouse role only (SQL Editor: `select mog.hq_invite('Dan', '{warehouse}');`);
    - Dan adds the locations, suppliers and products, then a first count per location.
 
    Then W2 (store orders): Dan confirms no store orders crab or shrimp by the pound, and Sebastian decides whether a store order needs an Approve step (the mockup has one, the spec doesn't). Happy Supply goes to the Roll Play stores with W2's first products.
-3. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
+4. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
    - Sebastian's steps: GitHub collaborator on both repos, branch protection on `main`, the Supabase Developer invite, Editor on the 11 Sheets, PINs.
    - Then Donny consents in each store and runs `python deploy.py --redeploy --target rprfo`.
    - Record the result in `docs/MOG_ProjectNotes.md` and CLAUDE.md rule 5.
-4. **Confirm the 2026-10-20 fixes held:** each store's recap goes out once, and nothing new shows up in the nightly run's log (not checked since 10-20).
-5. **Check the Items and Vendors pages, and the phone's Contact sheet, live** (all were checked by script only). Small follow-up: the Overview's "Give each item a storage area and a par" step could open Items on Needs setup.
-6. **Logic findings held back on 2026-10-20** (edge cases; decide before fixing):
+5. **Confirm the 2026-10-20 fixes held:** each store's recap goes out once, and nothing new shows up in the nightly run's log (not checked since 10-20).
+6. **Check the Items and Vendors pages, and the phone's Contact sheet, live** (all were checked by script only). Small follow-up: the Overview's "Give each item a storage area and a par" step could open Items on Needs setup.
+7. **Logic findings held back on 2026-10-20** (edge cases; decide before fixing):
    - A same-day manual close from the Sheet, followed by that night's close of the same day, replaces the day's order log with an empty one.
    - Turning Emergency Override off before 3:30 AM drops the vendors ordered under it from that night's log and email.
    - A per-vendor day pick can be saved while Override is off.
@@ -106,7 +117,7 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
      - R27's wording;
      - R16's evidence.
    - `audit_modals.py` (the `mog-modal-ux-sweep` skill) still looks for `google.script.host.close()`, so it flags Manage Items and Vendors, whose Close moved into EditorShell in July.
-7. **Redundancy items held back on 2026-10-20:**
+8. **Redundancy items held back on 2026-10-20:**
    - `VENDOR_META` is empty, but the equivalence gate compiles an older revision against the same constant list.
    - The nightly recipients copy is a no-op on all 10 stores; the `recipients_people` gate is built around it.
    - The old `/exec` editor still serves its pages for moved stores; it should send them to the app.
@@ -116,7 +127,7 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - The v1 Supabase fallback (`mog_snapshot` / `mog_save_counts`) can go once old app versions are gone.
    - `template/sw.js` `FORCE_CLIENT_RELOAD`: never change `FORCE_RELOAD_ID`.
    - Stale repo skills: `mog-apps-script-caching`, `mog-rpc-consolidation`, `mog-editor-web-reskin`, `mog-sheet-formula-verify`, `mog-health-check-extend`.
-8. **Small open items:**
+9. **Small open items:**
    - Confirm this repo's origin in the desktop app (Help → Troubleshooting → Review Pinned Git Origins), so worktree sessions can merge `main` when it changed a skill.
    - No GitHub CLI on Sebastian's computer: pull requests are opened by hand and the app can't watch their CI (optional: install `gh`, then `gh auth login`).
    - `mog-deploy-workflow`'s HTML-modal row still says modals run in Rhino ES5 (CLAUDE.md invariant #4 says otherwise).
@@ -125,7 +136,7 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - `supabase_move`'s `provisionProblems` counts a commented-out SQL row.
    - Lei'd has no circular logo.
    - On the first real onboarding, record whether a copied Sheet keeps its Script Properties.
-9. **Later:**
+10. **Later:**
    - keep visited Manage pages alive;
    - send the recap email from Supabase;
    - retire the last `/exec` uses (Daily summary button, reset fallback);
@@ -226,6 +237,7 @@ Most recent first. Keep about five; older rows move to the archive.
 
 | Date | Session | Outcome |
 |---|---|---|
+| 2026-11-02 (later, 3) | LTOs, the HQ side | Spec `docs/MOG_LTO_Spec.md` and two mockup boards approved. Schema v14: `mog.ltos` / `lto_stores`, `mog.items.lto` in the item's row, `mog_hq_apply`'s fifth argument. `catalogEdit.js` `commitHqLto` (end, rollback, standard), `ltoStoreState`; HQ's New LTO and LTOs page (`template/hq/ltos.js`). Live: smoke_v14 26/26, probe 94/94, CI green, Pages live. Gate `lto` (29 total). Blueprint R31. Handoffs now commit and push. Commit `6fee3a1`. Detail: `docs/MOG_SessionHandoff_2026_11_02.md` (Later session 3). |
 | 2026-11-02 (later, 2) | Local preview server, the slicer on Windows | `tests/preview_server.js` and the launch entry "mog-preview": the built app, editor and HQ against the fake Supabase (six stores, three HQ people, the Happy Supply sample), refusing any page that names a real Supabase address; checked in the browser pane. `slice_js_selftest` takes the file's line ending, so the gates pass in new Windows worktrees (28). PR 6: `8ea3603`, `94d496d`, merge `35cb81c`; nothing the stores run changed. Detail: `docs/MOG_SessionHandoff_2026_11_02.md` (the last Later session). |
 | 2026-11-02 (later) | Happy Supply W1, the warehouse | Design for W1 with W2's data approved (stock never below 0), its screens mocked up and approved. Schema v13: HQ roles (hq, warehouse), the warehouse tables (stock per location, every move kept, vendor orders in, transfers, counts), nine `mog_wh_*` calls; HQ's Happy Supply pages (`template/hq/warehouse.js`). Live: smoke_v13 44/44, probe 88/88, CI green, Sebastian saw it on the live page. CI now runs the real SQL in PGlite (`supabase/tests/run_pglite.mjs`); gate `warehouse` (28 total). Blueprint R30. Commits `f7352c3`, `aa48f85`. Detail: `docs/MOG_SessionHandoff_2026_11_02.md` (Later session). |
 | 2026-11-02 | Concept library, HQ redesign | Schema v12: `mog.stores.side`, the concept libraries (one per concept and side, versioned whole-list saves with a log), set up a store from one like an LTO, add an LTO's items to the library in the same save; smoke 21/21, probe 74/74, gate `concept_library` (27 total). HQ redesigned from an approved mockup: the order guide's computer look with the HEH brand, concept then stores, pick-only vendors. Blueprint R29. Commits `67cccb0`, `84ac2cb`. Detail: `docs/MOG_SessionHandoff_2026_11_02.md`. |

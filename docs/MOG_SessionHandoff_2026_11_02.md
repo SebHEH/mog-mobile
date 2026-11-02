@@ -14,7 +14,8 @@
 
 **Next session focus:** start and clean the four libraries in HQ, then set up a store from one (Rockville BOH is empty).
 **Later session (same day, Sebastian):** Happy Supply W1 built and live (schema v13). See "Later session" at the end.
-**Later session 2 (same day, Sebastian):** the local preview server and the slicer on Windows (PR 6). See the last section.
+**Later session 2 (same day, Sebastian):** the local preview server and the slicer on Windows (PR 6). See "Later session — the local preview server".
+**Later session 3 (same day, Sebastian):** LTOs, the HQ side (schema v14, live). See the last section.
 
 ---
 
@@ -370,4 +371,145 @@ tell Donny v13 is taken. Ask first whether Chef Dan is invited (warehouse role o
 entered a first count. Then either help with that, or start W2 (store orders,
 docs/MOG_Warehouse_Spec.md §2) with an architectural walkthrough: it needs Dan's answer on
 pound-ordered items and Sebastian's call on an Approve step.
+```
+
+---
+
+## Later session 3 — LTOs, the HQ side
+
+**Author:** Sebastian
+**Session focus:** workshop Sebastian's LTO asks (label LTO items, flag new ones at the stores, roll back and remove, a list of each concept's LTOs, line up the concepts with the library), then build the first part.
+**Outcome:** the HQ side is live.
+- **Schema v14:** Sebastian ran it in the SQL Editor. smoke_v14: 26/26 PASS. `check_api.sh`: "94 passed, 0 failed".
+- **Code:** commit `6fee3a1`, CI `gates` "completed success", Pages live on HQ and all 10 stores after about 80 s.
+- **Sitewide:** nothing changed at a store yet. The store's side (Items banner, chip) is session 2.
+
+**STILL OUTSTANDING (since 2026-11-02, the first session above):**
+- **Horse Pho** (rprfotest, change 237) is still not undone. It's now part of the hand cleanup below.
+- **Libraries:** two of the four are started.
+  - Teas'n You BOH: 137 items from Tysons BOH (1:50 PM).
+  - Roll Play BOH: holds only Horse Meat, put there by a rollout's library box (removed this session).
+  - The two FOH libraries aren't started.
+- **Donny:** not told yet that v13 and now v14 are taken.
+
+**Next session focus:** the store's Items page (session 2 of `docs/MOG_LTO_Spec.md`): new LTO items at the very top until they have a par and an area, the LTO chip, the panel note.
+
+### Sebastian's asks and decisions
+
+- **Checked live first (read-only):**
+  - Chef Dan isn't invited (HQ has only Sebastian), and the warehouse is empty.
+  - Earlier today Sebastian tested HQ on real stores:
+    - "Horse Meat" went to Rosslyn, Founders and Tysons BOH and was deleted by hand at each one (three sign-ins);
+    - "Fall Chicken Pho LTO" and an empty Happy Supply vendor are still at those three stores.
+- **Spec** (`docs/MOG_LTO_Spec.md`, spec-first), all four picks as recommended:
+  - LTOs first. The line-up with the libraries gets its own spec once the libraries hold items.
+  - End makes an LTO's items inactive.
+  - Roll back deletes them even when a store set them up, naming those stores.
+  - "Make it standard" replaces the rollout's library box.
+- **Mockup** (two boards on the "MOG HQ redesign" canvas, https://claude.ai/artifact/3pJWHSWbMxVUyaRjmXkXqg: "HQ · LTOs" and "Store · Items"): Sebastian approved it.
+- **Walkthrough:**
+  - The link lives on the item row (`mog.items.lto`), not in a list beside it, because item numbers are reused (highest + 1).
+  - The three rollouts from before v14 are cleaned up by hand, not backfilled.
+  - HQ side first.
+  - Roll back takes off the backup vendors it gave items a store already had; End leaves those items alone. Sebastian didn't follow the abstract question, so the default stands.
+- **Standing rule (new):** every session handoff commits and pushes as part of it (`mog-session-handoff`, CLAUDE.md convention 6).
+
+### What shipped (`6fee3a1`)
+
+- **`supabase/schema_v14.sql`:**
+  - New tables `mog.ltos` and `mog.lto_stores`; the second keeps, per store, the change, the vendors added and the backups added.
+  - `mog.items.lto` is part of the item's row: compared and written by the editor's saves, so a store's Undo brings it back.
+  - `tables_json` gains the store's `ltos` only when it has one. `mog_hq_data` gains every LTO with its stores.
+  - `mog_hq_apply` gains a 5th argument (send, more, end, rollback, standard): CONFLICT on a moved version; refused for an LTO that isn't running, a store of another concept, or a change at a store the action isn't about. The long functions are generated from v10 and v12 with asserted one-match replacements.
+- **`template/editor/catalogEdit.js`:**
+  - `hqRollout` stamps the LTO on the items it creates, and only those; `backupsAdded` now carries the item id.
+  - New `commitHqLto`: end, rollback, standard.
+  - New `ltoStoreState`.
+  - `getAllItemsForView` adds an item's LTO only when it has one.
+- **HQ:**
+  - Roll out is now New LTO: the name is required, the library box is gone, and a send opens the LTO.
+  - New `template/hq/ltos.js`: the LTOs page per concept (Running / Finished / All), where each LTO stands at each store, and Send to more stores, Make it standard, End and Roll back, each with a confirmation.
+- **Checks:**
+  - `smoke_v14.sql` (26 rows), a v14 block in `check_api.sh` (6 probes).
+  - `tests/fake_supabase.js` mirrors v14, including the item's link to an existing LTO.
+  - New gate `tests/lto.test.js`: one store, 200 random stores, the fake; 7 planted-defect controls; 29 gates in all.
+- **Docs:** `docs/MOG_LTO_Spec.md` (new); `docs/MOG_Warehouse_Spec.md` (§1's library box replaced); Migration §7 rows; Blueprint R31, the LTO entity and the growth seam (`current_as_of 6fee3a1`); CLAUDE.md.
+
+### Validation
+
+- **PGlite:** "PASS  smoke_v14.sql: 26/26 PASS", "ok    schema_v14.sql (again), no row changed", "run_pglite: ALL PASS".
+  - 9 planted SQL defects all turned a smoke row to FAIL. One plant first broke with a SQL error instead; it was re-planted until a row failed.
+- **Gates:** "run_all: ALL PASS (29 gates)"; "lto: ALL PASS", all 7 controls biting.
+- **Browser, against the fake (`mog-preview`):**
+  - sent to 2 stores, then to 1 more;
+  - rolled back at 3 stores, logged "HQ rolled back LTO "Fall Chicken Pho": deleted 1 item";
+  - ended one LTO; made one standard, which landed in the Roll Play BOH library;
+  - no console or server errors, no sideways scroll at 375 px.
+  - Two fixes came out of this: plural wording in the confirmations, and an LTO vanishing from the Running list right after an action.
+- **Live:**
+  - smoke_v14 26/26 (Sebastian's paste);
+  - `check_api.sh` "94 passed, 0 failed";
+  - read-only: the 5-argument `mog_hq_apply`, both helpers, both tables, `items.lto`, no smoke rows left;
+  - CI "completed success"; Pages live everywhere.
+  - Nobody has used the live LTOs page yet.
+
+### Outstanding (carry forward)
+
+1. **Sebastian, in each store's Manage → Changes,** undo the rollouts from before v14:
+   - "Horse Pho" at Rosslyn FOH (TEST);
+   - "Fall Chicken Pho LTO" at Rosslyn BOH, Founders BOH and Tysons BOH;
+   - "added vendor Happy Supply" at those three stores, if it was a test (asked, not answered).
+
+   Then in **HQ** (https://sebheh.github.io/mog-mobile/hq/): Libraries → Roll Play → BOH → Horse Meat → Remove, so "Start from a store" comes back.
+2. **Sebastian, in HQ:** a first live LTO on the TEST store. New LTO → Rosslyn FOH (TEST) → Send, then Roll back.
+3. **Session 2** (`docs/MOG_LTO_Spec.md`): the store's Items page.
+   - A banner at the very top per LTO.
+   - Its items pinned first until each has a par and an area.
+   - The "LTO · name" chip, and the panel note.
+   - `catalogEdit.js` already gives each Items row its LTO (`row.lto`).
+   - Bilingual (`T(en, es)`), and a gate for the pinned order.
+4. **Later, its own spec:** line up each concept's stores with its library, and items a store can't remove. It needs the libraries started and cleaned first.
+5. **From the sessions above, unchanged:** Chef Dan's invite and first count; W2's two questions; confirm the repo's origin in the desktop app; `gh`.
+
+### Files touched (this session)
+
+- **Supabase:** `supabase/schema_v14.sql` (new), `supabase/tests/smoke_v14.sql` (new), `supabase/tests/check_api.sh` (v14 block).
+- **Editor rules:** `template/editor/catalogEdit.js`.
+- **HQ:** `template/hq/index.html`, `template/hq/ltos.js` (new).
+- **Tests:** `tests/fake_supabase.js`, `tests/lto.test.js` (new).
+- **Generated** (`build.py`): `hq/index.html`, `hq/catalogEdit.js`, `hq/ltos.js`, every store's `editor/catalogEdit.js`.
+- **Docs:** `docs/MOG_LTO_Spec.md` (new), `docs/MOG_Warehouse_Spec.md`, `docs/MOG_SupabaseMigration.md`, `docs/MOG_LogicBlueprint.md` and `.html`, `docs/MOG_CurrentState.md`, `docs/MOG_ProjectNotes.md`, `CLAUDE.md`, this handoff.
+- **Skills:** `.claude/skills/mog-session-handoff/SKILL.md` (commit and push).
+- **Outside the repo:**
+  - the canvas's two LTO boards;
+  - scratchpad: `gen_v14.py` and `v14_hand.sql` (they generated v14; the file is the record) and `plant_v14.sh` (one-off).
+
+### Process lessons
+
+- Checking the live database read-only before asking turned "is Dan invited, are the libraries started, is Horse Pho undone" into facts. It also found the real-store test (Horse Meat deleted by hand at three stores) behind the request. [→ docs/MOG_ProjectNotes.md]
+- An edge-case question asked as a mechanism ("backups added to items a store already had") came back "not sure what the issue is". Named from the data (Rosslyn's own Chicken Breast gains Organic Butcher), it needed no question. [→ proposal architectural-walkthrough-2026-11-02-b]
+- A planted SQL defect that broke the file (two assignments to one column) was counted as caught by a script that matched any FAIL line. It was re-planted until a smoke row failed. [→ mog-supabase-schema]
+- A spec default (backfill the old rollouts) became a data-writing schema step at the walkthrough and was asked again as a CONFIRM; Sebastian chose the hand cleanup. [→ architectural-walkthrough]
+- Driving HQ by script: a click redraws the picker, so element references found before it go stale. [→ docs/MOG_ProjectNotes.md]
+- In a Design canvas board, `sc-if` and `sc-for` inside a `<table>` get moved out by the HTML parser. The existing boards use `role="table"` div grids, and the new one does too. [→ one-off]
+- An action that changed an LTO's status hid it from the Running list ("Pick an LTO"). The page now keeps it shown. [→ one-off]
+- Sebastian's rule: every handoff commits and pushes, with no separate step. [→ mog-session-handoff, CLAUDE.md]
+
+**Skill gate:** one picker round, three questions: the push rule, MOG only (the `mog-session-handoff` skill and CLAUDE.md, no global proposal); the plant rule into `mog-supabase-schema`, Apply; the edge-case rule as proposal `architectural-walkthrough-2026-11-02-b`, Apply. Not asked: the read-only check and the CONFIRM on a spec default (already in the project notes and the skill), the HQ script fact (project notes), the canvas tables and the hidden LTO (one-off). Checked: Sebastian's corrections this session (the backup question, the push rule), every picker answer (all as recommended until this round's "MOG only"), and no rejected tool uses.
+
+### Commits landed (this session)
+
+```
+6fee3a1 LTOs, HQ side (schema v14): New LTO, the LTOs page, End and Roll back
+```
+
+Plus this handoff's commits (skills, then docs).
+
+### Opening prompt for next session
+
+```
+Read docs/MOG_CurrentState.md, docs/MOG_LTO_Spec.md and the last "Later session" of docs/MOG_SessionHandoff_2026_11_02.md first, and run git pull.
+LTOs' HQ side is live (schema v14, commit 6fee3a1): New LTO, the LTOs page, End / Roll back / Make it standard; items carry their LTO in mog.items.lto; 29 gates.
+STILL OUTSTANDING: undo the old test rollouts by hand (Horse Pho on rprfotest; Fall Chicken Pho at rpr, rpfr, rpt), remove Horse Meat from the Roll Play BOH library, tell Donny v14 is taken.
+Ask first whether Sebastian sent a live TEST LTO and rolled it back. Then build session 2: the store's Items page shows each new LTO's items at the very top until they have a par and a storage area (banner, pinned rows, "LTO · name" chip, panel note), from the approved "Store · Items" board on the MOG HQ redesign canvas; getAllItemsForView already gives each row its lto. Walk through it first; use preview_start "mog-preview" to check it.
 ```

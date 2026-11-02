@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: f7352c3 (2026-11-02) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: 6fee3a1 (2026-11-02) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -350,7 +350,7 @@ naive rebuild silently loses.*
   - An empty library starts from one store's active items. An item name listed twice there becomes one item, its other vendors as backups. HQ then cleans it. Seeds: Rosslyn BOH and FOH for Roll Play, Tysons BOH and Rockville FOH for Teas'n You.
   - Every save is the whole list and bumps a version. A save made from an older version is refused, and every save keeps the list it replaced.
   - Names are unique ignoring case, every item needs a main vendor, and a backup is never the main vendor.
-  - Setting up a store from its library works like an LTO rollout (R28): items arrive with no par and no area, and an item the store already has keeps its own settings. An LTO rollout can add its items to the library in the same save; both happen or neither does.
+  - Setting up a store from its library works like an LTO rollout (R28): items arrive with no par and no area, and an item the store already has keeps its own settings. An LTO's items reach the library only when HQ makes the LTO standard (R31); both happen in one save or neither does.
   - A library never changes a store's catalog or the phones by itself.
   - Why: the standard list of R22 needs one place to live, and a new store should start from it instead of typing its items. *(Confirmed: owner 2026-11-01, `docs/MOG_Warehouse_Spec.md` §1. The owner picked "no area, like an LTO" over carrying the library's storage areas into the store.)*
 - **R30. HEH's warehouse (Happy Supply) keeps its own stock, apart from every store's catalog.**
@@ -364,6 +364,16 @@ naive rebuild silently loses.*
   - A count at a location changes only the products given a number; a difference needs a reason, and a match changes nothing.
   - A store's price per case will be the average cost plus the product's handling fee, plus the markup (0 to start), fixed when its order ships; stores never see the fee. *(W2, designed, not built.)*
   - Why: the warehouse's stock, costs and chargebacks need one honest record that matches a physical count, and its admin must not be able to touch the stores. *(Confirmed: owner 2026-11-01 and 2026-11-02, `docs/MOG_Warehouse_Spec.md` §2. The owner picked "refuse below zero" over allowing a negative balance until a count.)*
+- **R31. An LTO is a named record HQ can end or take back at every store at once.**
+  - Sending new items to stores (R28) makes one LTO: a name (required), one concept, the items as sent, the stores it went to, and a status: running, ended, rolled back or made standard.
+  - Each item the LTO creates at a store carries the LTO's id as part of the item itself, so a store's edit keeps it and a store's Undo brings it back with the item. An item the store already had (same name) is never linked, and an item the store adds later never is, even when it takes a deleted item's number.
+  - While it runs, HQ can send it to more stores, or do one of three things at every store it went to, every store or none, each store seeing one change it can undo:
+    - **End** (it came off the menu): its items become inactive, off every count list, with par, storage area and order history kept, so they come back set up if it returns.
+    - **Roll back** (a mistake or a test): its items are deleted even if a store set them up, the backup vendors it gave items a store already had come off again, and a vendor it added is removed when no item uses it, so the store is as it was before.
+    - **Make it standard** (it stays on the menu): its items go into the concept library for each side it reached (R29) and stop being LTO items at the stores.
+  - Where an LTO stands at each store (needs setup, set up, inactive, removed) is read from that store's own items, never stored apart, so a store's setup or Undo shows at once.
+  - An action made from an older view of the LTO is refused, as is any change to a store the action isn't about.
+  - Why: an LTO reaches many stores in one step (R28) and has to leave them the same way, without a sign-in at each store. *(Confirmed: owner 2026-11-02, `docs/MOG_LTO_Spec.md`. The owner picked "inactive" for End over deleting, "delete anyway, name the stores" for Roll back, and "Make it standard" over the rollout's library box.)*
 
 ---
 
@@ -417,6 +427,16 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | seeded from | store ref | The store the list started from. |
 | items | ordered list of {name, pack, main vendor, backup vendors, notes} | Names unique ignoring case; vendors by HQ's names. No par, area or stock. |
 | log | list of {who, when, label, list before} | Every save keeps the list it replaced. |
+
+#### Entity: LTO (R31)
+| Field | Type (conceptual) | Notes |
+|---|---|---|
+| id | identifier | Made when it's sent; each item it creates carries it. |
+| concept, name | concept ref, text | Name required. |
+| items | list of {name, pack, main vendor, backup vendors, notes} | As sent, with HQ's vendor names. |
+| status | running, ended, rolled back, made standard | Only a running LTO can change. |
+| version | integer | An action made from an older version is refused. |
+| stores | list of {store, when, the change it made there, vendors it added, backups it added} | What Roll back takes off again. |
 
 #### Entity: Warehouse product (Happy Supply, R30)
 | Field | Type (conceptual) | Notes |
@@ -591,6 +611,9 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
   warehouse products, and a KM sends that vendor's order to the warehouse from the review screen.
   Built so far (W1, 2026-11-02): the warehouse's own stock, vendor orders in, transfers, counts and
   history, and the warehouse role (R30). Next: store orders (W2) and monthly chargebacks (W3).
+- **LTOs as records.** Built 2026-11-02 (R31, `docs/MOG_LTO_Spec.md`): HQ ends, rolls back or makes
+  standard what it sent. Next: the store's Items page shows new LTO items first until set up; then
+  lining up each concept's stores with its library, and items a store can't remove (its own spec).
 - **Cost and sales integration.** Pull cost from MarginEdge and sales/usage from Toast so pars can be
   informed by real data and the recap can carry cost. The count engine is where these land; the Item
   and Order-history entities are where cost/usage fields attach. The goal is a plug-and-play system
