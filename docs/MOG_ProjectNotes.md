@@ -91,6 +91,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **When the session isn't open in a window, the browser pane is hidden at 0×0.**
   - Screenshots and clicks time out, but `find`, `form_input` and `javascript_tool` work.
   - The app shows its phone layout. Drive it by script and say the layout itself is unseen.
+- **A screenshot can show the page as it was before a click that worked** (2026-11-02: a saved count looked unsaved). Read the state with `javascript_tool` or `read_page` before deciding a click failed, and never click again on a screenshot's word alone: a second Save can write twice.
 - **After a rebuild, use `location.reload()`.** Navigating to the same page with only a new `#hash` keeps the old build. `sessionStorage.clear()` shows the sign-in screen again.
 
 ## CI and tests

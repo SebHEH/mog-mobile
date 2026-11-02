@@ -1,7 +1,7 @@
 # MOG — Warehouse (Happy Supply), concept library and new stores: spec
 
 **Agreed:** 2026-11-01, Sebastian (spec-first, decisions below).
-**Status:** approved. §1 (concept library) built as schema v12 on 2026-11-01; §2's W1 built as schema v13 on 2026-11-02 (not yet run on Supabase); the rest isn't built. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
+**Status:** approved. §1 (concept library) built as schema v12 on 2026-11-01; §2's W1 built as schema v13 and live on 2026-11-02; the rest isn't built. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
 **Reference, not ported:** Chef Daniel's Happy Supply artifact (a claude.ai page) and "Happy Supply: System Overview for IT" (2026-10-26). They show what people already want; MOG rebuilds it from scratch on Supabase. Daniel's data isn't moved (it isn't really in use); the warehouse starts with a first count.
 
 ---
@@ -112,7 +112,7 @@ A store orders from Happy Supply in its order guide like any vendor, and the ord
 
 ### Design: W1, with W2's data (walkthrough 2026-11-02)
 
-**Status:** approved by Sebastian 2026-11-02, and so were W1's screens (mocked up on the HQ canvas: Inventory and count, Incoming, Products and prices, https://claude.ai/artifact/3pJWHSWbMxVUyaRjmXkXqg). **W1 is built (schema v13, 2026-11-02), not yet run on Supabase or deployed**; W2's tables below are designed, not built.
+**Status:** approved by Sebastian 2026-11-02, and so were W1's screens (mocked up on the HQ canvas: Inventory and count, Incoming, Products and prices, https://claude.ai/artifact/3pJWHSWbMxVUyaRjmXkXqg). **W1 is built and live (schema v13, 2026-11-02; smoke_v13 44/44 in the SQL Editor)**; W2's tables below are designed, not built.
 
 **Built for W1 (schema v13):**
 - `supabase/schema_v13.sql`: the roles, the W1 tables and the nine `mog_wh_*` calls below; `smoke_v13.sql` (44 checks); a `check_api.sh` block.

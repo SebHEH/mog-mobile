@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: 84ac2cb (2026-11-02) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: f7352c3 (2026-11-02) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -339,7 +339,7 @@ naive rebuild silently loses.*
   - "From now on" changes the catalog par itself (logged, with Undo), and only where the database owns the catalog (R23); everywhere else a phone offers "just today" only. Nothing that deletes or deactivates happens on a phone.
   - Why: the person at the shelf sees a busy day or a stock-out coming and needs today's order right without a computer, while managers keep control of the standing catalog. *(Confirmed: `docs/MOG_OneApp_Spec.md` A2, Q1-Q4, owner 2026-10-18.)*
 - **R28. HQ adds to many stores at once; each store still owns its catalog.**
-  - HQ (the maintainers, each signed in as themselves) adds a vendor, with starting delivery days, cutoff and contact, or new items (an LTO) to any set of stores in one save. Every store gets it or none does.
+  - HQ (the maintainers, each signed in as themselves with the hq role, R30) adds a vendor, with starting delivery days, cutoff and contact, or new items (an LTO) to any set of stores in one save. Every store gets it or none does.
   - New items arrive with no par and no storage area: they wait in the store's Needs setup and are on no count list until the store sets them up. An item the store already has (same name) keeps its main vendor, par and area, and only gains the rollout's vendors it didn't list, as backups. A store that already has the vendor keeps it as it is.
   - HQ names a vendor once and remembers what each store calls it ("B&T" is "B&T Distributions" at Rosslyn BOH). Store vendor names are never renamed.
   - Each store sees HQ's change in its own change log, signed by the person, and can undo it there (R23).
@@ -353,6 +353,17 @@ naive rebuild silently loses.*
   - Setting up a store from its library works like an LTO rollout (R28): items arrive with no par and no area, and an item the store already has keeps its own settings. An LTO rollout can add its items to the library in the same save; both happen or neither does.
   - A library never changes a store's catalog or the phones by itself.
   - Why: the standard list of R22 needs one place to live, and a new store should start from it instead of typing its items. *(Confirmed: owner 2026-11-01, `docs/MOG_Warehouse_Spec.md` §1. The owner picked "no area, like an LTO" over carrying the library's storage areas into the store.)*
+- **R30. HEH's warehouse (Happy Supply) keeps its own stock, apart from every store's catalog.**
+  - The warehouse holds only what HEH stocks itself (king crab, shrimp), in its own storage locations (Berliner cold storage, a store's freezer). It is not the master item list: a store's other vendors never reach it.
+  - Each person who signs in to HQ has a role: hq (the stores' catalogs, R28, R29), warehouse (only the warehouse), or both. The warehouse admin (Chef Dan) has warehouse only, so he can't change any store.
+  - Stock is counted in cases per product and location and never goes below 0: a transfer that would take more than a location holds is refused, and the admin counts first.
+  - Every change to stock is kept, never edited: what, where, how many, who, when, and why (a delivery's order number and cost, a transfer's number, a count's reason).
+  - A vendor order in is numbered (PO-0001), edited or cancelled while ordered, and received once: what actually came in and what it cost, per line. Receiving moves the average cost; nothing else does.
+  - The average cost per case covers every location and what's in transit: c cases in at cost k, with o owned at average a, make (o x a + c x k) / (o + c), kept to 4 decimals.
+  - A transfer between locations is numbered (TR-0001); its cases leave on send, are in transit, and arrive when received.
+  - A count at a location changes only the products given a number; a difference needs a reason, and a match changes nothing.
+  - A store's price per case will be the average cost plus the product's handling fee, plus the markup (0 to start), fixed when its order ships; stores never see the fee. *(W2, designed, not built.)*
+  - Why: the warehouse's stock, costs and chargebacks need one honest record that matches a physical count, and its admin must not be able to touch the stores. *(Confirmed: owner 2026-11-01 and 2026-11-02, `docs/MOG_Warehouse_Spec.md` §2. The owner picked "refuse below zero" over allowing a negative balance until a count.)*
 
 ---
 
@@ -406,6 +417,17 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | seeded from | store ref | The store the list started from. |
 | items | ordered list of {name, pack, main vendor, backup vendors, notes} | Names unique ignoring case; vendors by HQ's names. No par, area or stock. |
 | log | list of {who, when, label, list before} | Every save keeps the list it replaced. |
+
+#### Entity: Warehouse product (Happy Supply, R30)
+| Field | Type (conceptual) | Notes |
+|---|---|---|
+| name, pack | text | Names unique ignoring case. |
+| par | cases | Over every location. |
+| average cost | money per case, 4 decimals | Set and moved only by deliveries received. |
+| handling fee | money per case | Never shown to a store. |
+| stores | list of store refs | The stores that may order it; none = every store. |
+| stock | cases per location | Never below 0. |
+| moves | list of {when, who, location, cases (+/-), kind, order or transfer number, cost, reason, cases after, average after} | Every change to stock; never edited. Kinds: received, transfer out, transfer in, count, shipped (W2). |
 
 #### Entity: Count line (per item, per vendor, per day)
 | Field | Type (conceptual) | Notes |
@@ -567,6 +589,8 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
   2026-11-01 (`docs/MOG_Warehouse_Spec.md` §2): the warehouse is one vendor among a store's vendors,
   with its own stock, costs and admin role behind it; only a store's items from that vendor link to
   warehouse products, and a KM sends that vendor's order to the warehouse from the review screen.
+  Built so far (W1, 2026-11-02): the warehouse's own stock, vendor orders in, transfers, counts and
+  history, and the warehouse role (R30). Next: store orders (W2) and monthly chargebacks (W3).
 - **Cost and sales integration.** Pull cost from MarginEdge and sales/usage from Toast so pars can be
   informed by real data and the recap can carry cost. The count engine is where these land; the Item
   and Order-history entities are where cost/usage fields attach. The goal is a plug-and-play system

@@ -13,6 +13,7 @@
   - No library is started yet.
 
 **Next session focus:** start and clean the four libraries in HQ, then set up a store from one (Rockville BOH is empty).
+**Later session (same day, Sebastian):** Happy Supply W1 built and live (schema v13). See "Later session" at the end.
 
 ---
 
@@ -140,4 +141,151 @@ Sebastian is signed up in HQ and ran one TEST rollout ("Horse Pho" on rprfotest)
 no library is started. Ask first what he saw on the new HQ page and whether the four libraries are
 started. Then either fix what the page needs, or add Happy Supply to the Roll Play stores through
 HQ and begin the warehouse (docs/MOG_Warehouse_Spec.md §2) with an architectural walkthrough.
+```
+
+---
+
+## Later session — Happy Supply W1, the warehouse
+
+**Author:** Sebastian
+**Session focus:** record Sebastian's answers on the new HQ page and the libraries, then design the warehouse (`docs/MOG_Warehouse_Spec.md` §2) and build its first phase, W1.
+**Outcome:** W1 is live.
+- Schema v13 adds HQ roles, the warehouse tables and nine `mog_wh_*` calls; HQ has Happy Supply pages.
+- Sebastian ran v13 and smoke_v13 in the SQL Editor: 44/44 PASS. `check_api.sh`: "88 passed, 0 failed".
+- Commits `f7352c3` and `aa48f85` are pushed; CI `gates` passed, including the new SQL step; Pages published `hq/warehouse.js`.
+- Sebastian saw Happy Supply on the live page: "It shows, looks right". The warehouse holds no data yet.
+
+**STILL OUTSTANDING (since 2026-11-02, the session above):**
+- Undo the TEST rollout "Horse Pho" (rprfotest, change 237): still not undone, checked live this afternoon.
+- Start the four libraries: none started (no rows in `mog.libraries`).
+- Tell Donny which schema number is taken: now v13.
+
+**Next session focus:** invite Chef Dan with the warehouse role and enter the first count; then W2 (store orders).
+
+### Sebastian's answers and decisions
+
+- **The redesigned HQ page:** seen on a screen, looks right, no changes.
+- **Libraries:** none started (read-only check, not asked).
+- **Walkthrough scope:** W1 and W2's data in one design, build W1 first.
+- **Happy Supply at the Roll Play stores:** with W2's first products, in one HQ rollout per store (vendor and items in one change, one Undo), not now.
+- **In the walkthrough (all four picks):**
+  - approve the design, mockup next;
+  - stock never below 0: a ship or transfer that would is refused until Dan counts;
+  - commit the PGlite runner, so CI runs the real SQL;
+  - schema numbers aren't held for a person: "either one of us can do it". Whoever writes the next schema file first takes the next number.
+- **The W1 mockup** (three boards on the "MOG HQ redesign" canvas): approved, "build W1".
+
+### What shipped
+
+- **The design**, in `docs/MOG_Warehouse_Spec.md` §2 "Design: W1, with W2's data":
+  - W1's tables and calls;
+  - W2's tables designed (the store's Happy Supply vendor, an item's link to a product, store orders with the price locked at ship);
+  - the rules live in the SQL, not the page: the handling fee never reaches a store, and two tabs can't take the same stock twice.
+- **Schema v13** (`supabase/schema_v13.sql`):
+  - **Roles:** `mog.hq_users.roles` (`hq`, `warehouse`). It is added once, with both roles for everyone already invited, so a re-run never widens anyone. `mog.hq_invite(name, roles)` and `mog.hq_set_roles` are for the SQL Editor only.
+  - **The catalog calls answer only the hq role:** `mog.hq_session`, which `mog_hq_data` and `mog_hq_apply` call first, now checks it. No HQ function body was regenerated. Signing in returns the roles.
+  - **Tables:** `wh_locations`, `wh_suppliers`, `wh_products`, `wh_stock` (never below 0), `wh_moves` (every change, never edited), `wh_pos` / `wh_po_lines`, `wh_transfers` / `wh_transfer_lines`, `wh_settings`.
+  - **Calls:** `mog_wh_data`, `_history`, `_save`, `_po_save`, `_po_cancel`, `_po_receive`, `_transfer_send`, `_transfer_receive` and `_count`. Each write answers with the whole warehouse.
+  - **The average cost** covers every location and what's in transit, to 4 decimals (`mog.wh_avg_after`).
+  - **Numbers** (PO-0001, TR-0001) come from the rows there, not a sequence, so the smoke runs on the live database without using one up.
+- **HQ page:**
+  - `template/hq/warehouse.js`: Inventory with Count a location, Incoming, Products and prices, Stock history.
+  - `template/hq/index.html` signs in with roles and shows each person their sections; a sign-in from before v13 asks for both.
+  - `build.py` copies `template/hq/*.js` into `hq/`.
+  - Two changes from the mockup: "Shipments" became "Incoming", and Orders and Chargebacks wait for W2 and W3.
+- **Checks:**
+  - `smoke_v13.sql` (44 rows) and a v13 block in `check_api.sh` (14 probes);
+  - `tests/fake_supabase.js` mirrors v13;
+  - new gate `warehouse` (the page's sums and payloads against the fake, 6 planted-defect controls; 28 gates).
+- **The real SQL in CI:**
+  - `supabase/tests/run_pglite.mjs`, with `package.json` and its lockfile (PGlite 0.3.16 pinned).
+  - It runs the schema chain and every smoke file, then the newest schema again, and fails if any row changed.
+  - It skips what PGlite can't pass, with the reason: `smoke.sql`, `smoke_v2`, `smoke_v4` and two rows of `smoke_v7`.
+- **Blueprint:** R30 (the warehouse), the Warehouse product entity, R28's hq role and the growth seam; `current_as_of f7352c3`.
+
+### Validation
+
+- **PGlite, local and CI:** "PASS  smoke_v13.sql: 44/44 PASS", "ok    schema_v13.sql (again), no row changed", "run_pglite: ALL PASS". CI run 41469727917: every step success, including "Run node supabase/tests/run_pglite.mjs".
+- **Planted SQL defects** (in a scratch copy), each caught:
+  - below zero allowed;
+  - the average leaving out what's in transit;
+  - `hq_session` ignoring the role;
+  - a count with no reason;
+  - a re-run widening roles ("changed rows in: hq_users").
+- **Gates:** "run_all: ALL PASS (28 gates)"; "warehouse: ALL PASS", all 6 controls biting.
+- **Live:**
+  - smoke_v13 44/44 PASS (Sebastian's paste);
+  - `check_api.sh`: "88 passed, 0 failed";
+  - read-only: 9 `mog_wh_*` calls, Sebastian `["hq","warehouse"]`, no smoke rows left, the public key can't read `mog.wh_stock`.
+- **Browser, against the fake:**
+  - as Dan and as Sebastian: a count, a receipt with a short line, a refused transfer, a transfer sent and received, a product, a supplier, the settings, the history;
+  - no console errors, no sideways scroll at 375 px.
+  - On the live page Sebastian saw the section; nobody has entered data there.
+
+### Outstanding (carry forward)
+
+1. **Sebastian:** tell Donny v13 is taken.
+2. **Sebastian:** invite Chef Dan when ready.
+   - **Supabase SQL Editor:** `select mog.hq_invite('Dan', '{warehouse}');`, then give him the code.
+   - He adds the locations (Berliner, Tysons freezer), suppliers and products, then a first count per location.
+   - Never give Dan the hq role: an HQ sign-in can change every store.
+3. **Before W2 (store orders):**
+   - Dan confirms that no store orders crab or shrimp by the pound (a linked item orders in the product's case).
+   - Sebastian decides whether a store order needs an Approve step (the mockup has New, Approved, Shipped; the spec has sent, shipped, received).
+   - Price detail: a store's price uses the average to 4 decimals, so it can differ by a cent from the 2-decimal figures shown.
+4. **W1 has no Undo.** A wrong delivery cost needs a maintainer in the SQL Editor; `mog.wh_moves` keeps each cost, so the average can be replayed.
+5. **The fake-Supabase preview** was rebuilt a fourth time, for the warehouse, and is still not committed (CurrentState candidate 3).
+6. **From the session above:** the Horse Pho undo and the four libraries (STILL OUTSTANDING, top of this section).
+
+### Files touched (later session)
+
+- **Supabase:** `supabase/schema_v13.sql` (new), `supabase/tests/smoke_v13.sql` (new), `supabase/tests/check_api.sh` (v13 block), `supabase/tests/run_pglite.mjs` (new).
+- **HQ:** `template/hq/warehouse.js` (new), `template/hq/index.html` (roles, the Happy Supply section, styles).
+- **Build and CI:** `build.py` (copies `template/hq/*.js`), `.github/workflows/gates.yml` (the SQL step), `package.json` and `package-lock.json` (new).
+- **Tests:** `tests/fake_supabase.js` (roles, the warehouse), `tests/warehouse.test.js` (new).
+- **Docs:**
+  - `docs/MOG_Warehouse_Spec.md` (the design, decisions, W1 built and live);
+  - `docs/MOG_SupabaseMigration.md` (§7 rows);
+  - `docs/MOG_ProjectNotes.md` (Happy Supply, PGlite in CI, a stale screenshot);
+  - `docs/MOG_LogicBlueprint.md` and `.html` (R30);
+  - `docs/MOG_CurrentState.md`, `CLAUDE.md`.
+- **Skills:** `.claude/skills/mog-supabase-schema/SKILL.md` (the committed PGlite check; numbers from rows).
+- **Generated:** `hq/index.html`, `hq/warehouse.js`.
+- **Outside the repo:**
+  - the "MOG HQ redesign" canvas: three W1 boards (https://claude.ai/artifact/3pJWHSWbMxVUyaRjmXkXqg);
+  - scratchpad: the warehouse preview server and the planted-defect script.
+
+### Process lessons
+
+- Checking the live database read-only before asking turned "are the libraries started?" into a stated fact, so the picker asked only what a person sees. [→ docs/MOG_ProjectNotes.md]
+- A bash heredoc stripped the backslashes of an escaped quote in a Python edit to `tests/fake_supabase.js` (a parse error, fixed with the Edit tool): the Windows rule in the project notes was missed again. [→ docs/MOG_ProjectNotes.md]
+- Every smoke file cleans up its own rows, so no smoke can see a re-run that rewrites data. A per-table row digest around the re-run caught the planted "re-run widens roles". [→ supabase/tests/run_pglite.mjs, mog-supabase-schema]
+- Numbers a person sees come from the rows there, not a sequence, so a smoke on the live database uses none up. [→ mog-supabase-schema]
+- A browser screenshot showed the page before a click that had worked; reading it with `javascript_tool` told the truth. [→ docs/MOG_ProjectNotes.md]
+- Two `smoke_v7` rows can't pass in PGlite: a check reads what its own call wrote in the same statement. The runner skips them by name, with the reason. [→ supabase/tests/run_pglite.mjs]
+- Schema numbers aren't held for a person (Sebastian: "either one of us can do it"): whoever writes the next file first takes the next number and tells the other. [→ mog-supabase-schema]
+- A gate's pinned value worked out by hand was wrong (77.5926; Postgres says 77.5968). A number a gate pins against the SQL comes from running the SQL. [→ mog-supabase-schema]
+
+**Skill gate:** one picker round, two questions, both Apply: schema numbers aren't held for a person, and a pinned value comes from running the SQL, both into `mog-supabase-schema` (with its stale "schema v9" line fixed). Not asked: the PGlite runner's re-run digest, numbers from rows and the smoke_v7 skip (already in `aa48f85`), and the project facts that went to the project notes (live check before asking, heredoc backslashes, a stale screenshot).
+
+### Commits landed (later session)
+
+```
+aa48f85 skills: mog-supabase-schema runs the committed PGlite check
+f7352c3 Happy Supply W1 (schema v13): the warehouse in HQ, with roles
+```
+
+Plus this handoff's commit, and `0cf9aee` (the session before, pushed with these).
+
+### Opening prompt for next session
+
+```
+Read docs/MOG_CurrentState.md and the "Later session" of docs/MOG_SessionHandoff_2026_11_02.md first, and run git pull.
+Happy Supply W1 (schema v13) is live and empty: HQ roles (hq, warehouse), the warehouse's stock,
+vendor orders in, transfers, counts; CI now runs the real SQL in PGlite; 28 gates.
+STILL OUTSTANDING: undo the TEST rollout "Horse Pho" on rprfotest, start the four libraries,
+tell Donny v13 is taken. Ask first whether Chef Dan is invited (warehouse role only) and has
+entered a first count. Then either help with that, or start W2 (store orders,
+docs/MOG_Warehouse_Spec.md §2) with an architectural walkthrough: it needs Dan's answer on
+pound-ordered items and Sebastian's call on an Approve step.
 ```
