@@ -22,12 +22,15 @@ Design records, read the relevant one before designing a change:
 
 ## A change is the next version
 
-The current version is in `docs/MOG_CurrentState.md` ("schema v9" as of 2026-10-20). A change ships
-as a new `schema_vN.sql`, never as an edit to a file already run: each file is run once, in order.
-Re-running any of them must stay harmless.
+The current version is the newest `supabase/schema_vN.sql` (and "schema vN" in `docs/MOG_CurrentState.md`'s
+Versions line). A change ships as a new `schema_vN.sql`, never as an edit to a file already run: each
+file is run once, in order. Re-running any of them must stay harmless.
 
 **Two maintainers run SQL** (CLAUDE.md, Two maintainers): `git pull` before writing the next
 `schema_vN.sql`, and tell the other person which number you're taking, so you never both write v10.
+- A number isn't held for a person: whoever writes the next schema file first takes the next number
+  (pull, check `supabase/`) and tells the other. A number in a work order is a guess, not a booking
+  (Sebastian, 2026-11-02).
 
 ## Every file, every time
 
@@ -71,6 +74,9 @@ Re-running any of them must stay harmless.
   (schema v10). The same holds for a jsonb list read back (v12's library items come as `name, pack,
   notes, vendor, backups`): the fake sends jsonb's key order, and the client compares through its
   cleaner (`cleanLibrary`), never as raw JSON, or an untouched draft looks changed.
+- **A value a gate or smoke pins against the SQL** (an average, a price) comes from running the SQL
+  in PGlite, never from working it out by hand: a hand-worked 77.5926 was wrong (Postgres: 77.5968),
+  2026-11-02.
 - **A long function redefined from an earlier version is generated, not retyped:** a scratch script
   copies the old definition from its `schema_vN.sql` and applies asserted one-match replacements
   (schema v10's `editor_apply_ops` from v8, `catalog_from_tables` from v4). Nothing else in the
