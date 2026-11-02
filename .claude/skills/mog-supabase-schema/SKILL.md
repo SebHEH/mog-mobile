@@ -85,14 +85,19 @@ Re-running any of them must stay harmless.
 ## Ship order
 
 1. **Claude writes every file above**, and `node tests/run_all.js` passes.
-   - **Then runs the SQL locally in PGlite** (Postgres in Node, `@electric-sql/pglite`): the chain
-     `schema.sql` through `schema_vN.sql`, then `smoke_v6` through `smoke_vN`; then `schema_vN.sql`
-     a second time (re-run safe); then one planted defect, which must turn smoke rows to FAIL.
-     - Expected local FAILs: `smoke.sql` and `smoke_v2` (v1 assertions that v3 changed), and
-       `smoke_v4` (PGlite has no ICU and fakes `und-x-icu` as "C").
-     - The runner lives in the scratchpad until it's committed (`docs/MOG_CurrentState.md`'s test-tools
-       candidate).
+   - **Then runs the SQL locally in PGlite** (Postgres in Node): `npm ci` once, then
+     `node supabase/tests/run_pglite.mjs`. It runs the chain `schema.sql` through `schema_vN.sql`,
+     every smoke file, then `schema_vN.sql` again, which must change no row; CI runs the same on
+     every push. Then plant a defect or two in a scratch copy of `supabase/` (with `node_modules`
+     beside it): each must turn a smoke row to FAIL.
+     - The runner skips what PGlite can't pass and says why: `smoke.sql` and `smoke_v2` (v1
+       assertions that v3 changed), `smoke_v4` (no ICU; `und-x-icu` faked as "C") and two rows of
+       `smoke_v7`.
+     - A new schema file that rewrites data on a re-run shows up as "changed rows in: <table>". Its
+       one-time steps go in a `do` block that runs only when the column or table is new (v13's roles).
      - Schema v12 went live 21/21 on its first run after this check.
+     - Numbers a person sees (v13's PO-0001) come from the rows there, not a sequence, so a smoke
+       file can run on the live database and clean up after itself without using one up.
 2. **The maintainer (Sebastian or Donny) runs, in the Supabase SQL Editor, in this order** (link each file in the final
    message, CLAUDE.md convention #9):
    1. `supabase/schema_vN.sql`;
