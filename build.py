@@ -441,6 +441,12 @@ def generate_hq(supabase, dry_run):
     files = {'index.html': page.replace(HQ_PLACEHOLDER, js_json(cfg))}
     with open(os.path.join(EDITOR_SRC, 'catalogEdit.js'), 'r', encoding='utf-8') as f:
         files['catalogEdit.js'] = f.read()
+    # The HEH logo and the concept marks, from the HEH brand kit.
+    hq_src = os.path.dirname(HQ_TEMPLATE)
+    for name in sorted(os.listdir(hq_src)):
+        if name.endswith('.svg'):
+            with open(os.path.join(hq_src, name), 'r', encoding='utf-8') as f:
+                files[name] = f.read()
     for name, body in files.items():
         if dry_run:
             print(f"  [dry-run] write hq/{name} ({len(body):,} bytes)")

@@ -187,8 +187,10 @@ mog-mobile/
 │   ├── sw.js                    (6.9 KB — store SW).
 │   ├── hq/index.html            HQ control (schema v11): add a vendor or a concept's LTO items to many stores at once. build.py
 │   │                            publishes it at hq/ with catalogEdit.js beside it; sign-in is a person's own HQ passphrase.
-│   │                            Libraries tab (schema v12): each concept's standard items per side, started from a store,
-│   │                            cleaned there, and sent to a store like an LTO ("Set up stores from this library").
+│   │                            Libraries (schema v12): each concept's standard items per side, started from a store,
+│   │                            edited item by item, and sent to stores like an LTO ("Set up stores from it"). The page is
+│   │                            the order guide's computer look with the HEH brand (sidebar: Roll out, Libraries, Vendors,
+│   │                            Vendor names); heh-logo.svg and the concept marks beside it come from the HEH brand kit.
 │   └── editor/                  The editor on Supabase (one-app Phases 2 and 4): catalogEdit.js (Manage Items, Manage Vendors,
 │                                Storage Areas and Shelf to Sheet over the catalog tables, gated against Items.gs / Vendors.gs /
 │                                PickPath.gs) + host.js (runs those Apps Script pages and Editor Home as static pages) + meImport.js

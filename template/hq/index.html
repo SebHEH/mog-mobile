@@ -4,200 +4,360 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex">
-  <title>HQ control · MOG</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <!-- HQ control (schema v11): add a vendor, or a concept's LTO items, to many
-       stores at once. Built by build.py into hq/ (the Supabase project and
-       the concept names are injected below). Each store's change is worked
-       out by catalogEdit.js, the editor's own code (commitHqRollout), and
-       mog_hq_apply writes every store or none, one logged change per store
-       that the store can undo in its own Changes. Libraries (schema v12):
-       each concept's standard items per side, started from a store
-       (librarySeed), cleaned here, saved whole in that same save, and sent
-       to a store like an LTO ("Set up stores from this library"). -->
+  <title>HQ · MOG</title>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- HQ (schema v11, v12): catalog work across many stores, in the order
+       guide's computer look with the HEH brand (approved mockup "MOG HQ
+       redesign", 2026-11-01). Built by build.py into hq/ with catalogEdit.js
+       and the brand kit's logos beside it (the Supabase project and the
+       concept names are injected below).
+         Roll out    LTO items to many stores at once
+         Libraries   each concept's standard items per side (schema v12),
+                     started from a store, edited item by item, and sent
+                     to stores like an LTO ("Set up stores from it")
+         Vendors     one vendor to many stores
+       Each store's change is worked out by catalogEdit.js, the editor's own
+       code (commitHqRollout), and mog_hq_apply writes every store (and
+       library) or none, one logged change per store that the store can undo
+       in its own Changes. -->
   <script>window.MOG_HQ = /*__MOG_HQ__*/null;</script>
   <script src="catalogEdit.js"></script>
   <style>
     * { box-sizing: border-box; }
-    :root { --ink: #1f1e1b; --muted: #5f5e5a; --line: #e6e4dd; --soft: #faf9f5; --accent: #2d8c6b; --accent-soft: #e9f4ef;
-            --warn-bg: #fbefd6; --warn-ink: #7a4d00; --bad: #a3261a; --ok: #1a6b48; }
-    body { margin: 0; font-family: 'Inter', Arial, Helvetica, sans-serif; font-size: 14px; color: var(--ink); background: #f5f4ed; }
+    :root { --ink: #1a1a1a; --ink2: #3d3d3a; --muted: #5f5e5a; --label: #64635e; --line: rgba(0,0,0,0.08); --line2: rgba(0,0,0,0.18);
+            --hair: #efeee9; --ground: #f5f4ed; --soft: #f2f1ec; --heh: #FF0000;
+            --ok-bg: #e9f4ef; --ok: #1a6b48; --warn-bg: #fbefd6; --warn: #7a4d00; --grey-bg: #ebe9e0; --grey: #4a4945; --bad: #a3261a;
+            --head: 'Archivo Black', 'Helvetica Neue', Arial, sans-serif; }
+    body { margin: 0; font-family: Inter, -apple-system, 'Segoe UI', Arial, sans-serif; font-size: 14px; color: var(--ink); background: var(--ground); }
     button, input, select, textarea { font: inherit; color: inherit; }
-    a { color: var(--ink); }
     [hidden] { display: none !important; }
-    .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 24px 48px; }
-    header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 24px; background: #fff; border-bottom: 1px solid var(--line); }
-    header.top h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
-    header.top .who { margin-left: auto; color: var(--muted); font-size: 13px; }
-    .btn { height: 40px; padding: 0 16px; border: 1px solid rgba(0,0,0,0.18); border-radius: 10px; background: #fff; font-weight: 600; cursor: pointer; }
-    .btn.primary { border: 0; background: var(--accent); color: #fff; font-weight: 700; }
-    .btn.small { height: 32px; padding: 0 12px; font-size: 13px; }
-    .btn:disabled { opacity: 0.5; cursor: default; }
-    .link { border: 0; background: none; padding: 0; font-weight: 600; text-decoration: underline; cursor: pointer; }
-    .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
-    .card + .card { margin-top: 14px; }
-    h2 { margin: 0 0 4px; font-size: 17px; }
-    .help { color: var(--muted); font-size: 13px; line-height: 1.45; margin: 0 0 12px; }
-    .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 16px; }
-    .tabs button { height: 36px; padding: 0 14px; border: 1px solid rgba(0,0,0,0.16); border-radius: 999px; background: #fff; font-weight: 500; cursor: pointer; }
-    .tabs button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; min-width: 0; }
-    .field.wide { grid-column: 1 / -1; }
-    .field input, .field textarea, .field select, td input, td select { height: 38px; padding: 0 10px; border: 1px solid rgba(0,0,0,0.18); border-radius: 9px; background: #fff; font-weight: 400; width: 100%; }
-    .field textarea { height: 64px; padding: 8px 10px; resize: vertical; }
-    .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; max-width: 520px; }
-    .week button { height: 40px; border-radius: 9px; border: 1px solid rgba(0,0,0,0.16); background: #fff; font-weight: 700; cursor: pointer; padding: 0; }
-    .week button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-    .check { display: inline-flex; align-items: center; gap: 8px; font-weight: 400; cursor: pointer; }
-    .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--ink); }
-    .stores { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-    .concept { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--soft); }
-    .concept h3 { margin: 0 0 6px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-    .concept h3 .link { font-size: 12px; margin-left: auto; }
-    .concept label { display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer; }
-    .concept label.off { color: #9a9993; cursor: default; }
-    .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 700;
-           background: #ebe9e0; color: #4a4945; }
-    .tag.warn { background: var(--warn-bg); color: var(--warn-ink); }
-    .tag.ok { background: var(--accent-soft); color: var(--ok); }
-    table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-    td { padding: 8px; border-top: 1px solid #f0efea; vertical-align: top; }
-    tr:first-child td { border-top: 0; }
-    .scroll { overflow-x: auto; }
-    .items td input { min-width: 120px; }
+    h1, h2, h3 { font-family: var(--head); font-weight: 400; margin: 0; }
+    h1 { font-size: 30px; letter-spacing: -0.01em; }
+    h2 { font-size: 19px; }
+    a { color: inherit; }
     .muted { color: var(--muted); }
     .bad { color: var(--bad); }
     .good { color: var(--ok); }
-    .status { min-height: 20px; margin-top: 10px; font-size: 13px; }
-    .newv { border: 1px dashed rgba(0,0,0,0.2); border-radius: 12px; padding: 12px; margin-top: 10px; }
-    .tabs button .count { margin-left: 4px; font-size: 12px; opacity: 0.7; }
-    .search { height: 38px; padding: 0 10px; border: 1px solid rgba(0,0,0,0.18); border-radius: 9px; width: 260px; max-width: 100%; }
-    .sub { margin: 22px 0 4px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 15px; }
-    #signin { max-width: 420px; margin: 60px auto; }
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+    /* Shell */
+    .shell { display: flex; flex-wrap: wrap; min-height: 100vh; }
+    .side { flex: 1 1 248px; display: flex; flex-direction: column; gap: 2px; padding: 22px 14px; background: #fff; border-right: 1px solid rgba(0,0,0,0.10); }
+    .brand { padding: 2px 10px 20px; }
+    .brand img { display: block; height: 30px; width: auto; }
+    .brand .who { margin-top: 12px; display: flex; align-items: baseline; gap: 8px; }
+    .brand .who b { font-family: var(--head); font-weight: 400; font-size: 16px; }
+    .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--label); padding: 8px 12px 6px; }
+    .nav { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: none; color: var(--ink2); font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; }
+    .nav:hover { background: var(--soft); }
+    .nav[aria-current="page"] { background: var(--hair); color: var(--ink); font-weight: 700; }
+    .nav svg { flex-shrink: 0; }
+    .nav[aria-current="page"] svg { stroke: var(--heh); }
+    .spacer { flex: 1; min-height: 24px; }
+    .main { flex: 999 1 560px; min-width: 0; padding: 32px 40px 0; }
+    .wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; padding-bottom: 40px; }
+    .view { display: flex; flex-direction: column; gap: 20px; }
+    .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; }
+    .page-head p { margin: 6px 0 0; color: var(--muted); max-width: 660px; line-height: 1.45; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+    /* Cards and steps */
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px 24px; }
+    .card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+    .step-title { display: flex; align-items: center; gap: 12px; }
+    .step { width: 28px; height: 28px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+    .help { margin: 8px 0 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+    .strong { font-weight: 600; }
+    .empty { margin: 16px 0 0; padding: 16px; border-radius: 12px; background: var(--ground); color: var(--muted); }
+
+    /* Controls */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 16px; border: 1px solid var(--line2); border-radius: 10px; background: #fff; color: var(--ink); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 700; }
+    .btn.big { height: 48px; padding: 0 22px; font-size: 15px; }
+    .btn.small { height: 36px; padding: 0 12px; font-size: 13px; }
+    .btn:disabled { opacity: 0.45; cursor: default; }
+    .linkbtn { border: 0; background: none; padding: 6px 2px; color: var(--ink2); font-size: 13px; font-weight: 600; text-decoration: underline; cursor: pointer; }
+    .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink2); min-width: 0; }
+    .field input, .field textarea, .text { height: 44px; padding: 0 12px; border: 1px solid var(--line2); border-radius: 10px; background: #fff; font-size: 15px; font-weight: 400; color: var(--ink); width: 100%; }
+    .field textarea { height: 72px; padding: 10px 12px; resize: vertical; }
+    .select { position: relative; display: block; }
+    .select select { width: 100%; height: 44px; padding: 0 38px 0 12px; appearance: none; -webkit-appearance: none; border: 1px solid var(--line2); border-radius: 10px; background: #fff; font-size: 15px; font-weight: 600; color: var(--ink); cursor: pointer; }
+    .select svg { position: absolute; right: 12px; top: 13px; pointer-events: none; }
+    .select.small select { height: 40px; font-size: 14px; font-weight: 500; }
+    .select.small svg { top: 11px; }
+    .pill { height: 36px; padding: 0 14px; border: 1px solid var(--line2); border-radius: 999px; background: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .pill[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border: 1px solid var(--line2); border-radius: 999px; background: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .chip .ck { display: none; }
+    .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; padding-left: 10px; }
+    .chip[aria-pressed="true"] .ck { display: inline; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .week { display: flex; flex-wrap: wrap; gap: 6px; }
+    .day { width: 52px; height: 40px; border: 1px solid var(--line2); border-radius: 9px; background: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .day[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .seg { display: flex; padding: 3px; background: var(--soft); border-radius: 12px; }
+    .seg button { height: 38px; padding: 0 18px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; }
+    .seg button[aria-pressed="true"] { background: #fff; color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
+    .check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+    .check input { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); }
+    .tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--grey-bg); color: var(--grey); white-space: nowrap; }
+    .tag.ok { background: var(--ok-bg); color: var(--ok); }
+    .tag.warn { background: var(--warn-bg); color: var(--warn); }
+
+    /* Store picker */
+    .picker-row { margin-top: 18px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; }
+    .concept { display: flex; align-items: center; gap: 12px; }
+    .mark { width: 44px; height: 44px; border-radius: 50%; background: var(--soft); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .mark img { width: 34px; height: 34px; object-fit: contain; }
+    .mark .dot { width: 16px; height: 16px; border-radius: 50%; }
+    .concept .select { min-width: 280px; }
+    .quick { display: flex; flex-wrap: wrap; gap: 8px; }
+    .group { margin-top: 18px; }
+    .group .eyebrow { padding: 0; }
+    .tiles { margin-top: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+    .tile { display: flex; align-items: center; gap: 12px; min-height: 66px; padding: 12px 14px; border: 1px solid rgba(0,0,0,0.16); border-radius: 12px; background: #fff; text-align: left; cursor: pointer; }
+    .tile[aria-pressed="true"] { border: 2px solid var(--ink); padding: 11px 13px; }
+    .tile:disabled { cursor: default; opacity: 0.55; }
+    .tile .box { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #b9b8b1; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .tile .box svg { display: none; }
+    .tile[aria-pressed="true"] .box { background: var(--ink); border-color: var(--ink); }
+    .tile[aria-pressed="true"] .box svg { display: block; }
+    .tile-text { flex: 1; min-width: 0; }
+    .tile-name { display: block; font-size: 15px; font-weight: 600; }
+    .tile[aria-pressed="true"] .tile-name { font-weight: 700; }
+    .tile-meta { display: block; margin-top: 2px; font-size: 13px; color: var(--muted); }
+
+    /* Roll out items */
+    .items { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .item { border: 1px solid rgba(0,0,0,0.10); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+    .item-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .item-top span { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--label); }
+    .grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+    .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .wide { grid-column: 1 / -1; }
+    .chips-label { font-size: 13px; font-weight: 600; color: var(--ink2); }
+    .chips-label span { font-weight: 400; color: var(--muted); }
+    .row-between { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+
+    /* Vendor at each store */
+    .vrow { padding: 16px 0; border-bottom: 1px solid var(--hair); }
+    .vrow:last-child { border-bottom: 0; }
+    .vrow-head { display: flex; align-items: baseline; gap: 10px; font-size: 15px; }
+    .vcells { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 14px; }
+    .vcell { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; font-size: 13px; font-weight: 600; color: var(--ink2); }
+    .vcell .select { width: 100%; }
+    .vdays { margin-top: 12px; padding: 14px 16px; border-radius: 12px; background: var(--ground); display: flex; flex-direction: column; gap: 10px; }
+
+    /* Preview, tables */
+    .prow { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 12px 0; border-bottom: 1px solid var(--hair); }
+    .prow:last-child { border-bottom: 0; }
+    .prow b { flex: 0 0 210px; }
+    .prow span { flex: 1 1 320px; }
+    .scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 12px; font-weight: 700; color: var(--label); padding: 0 10px 8px; border-bottom: 1px solid #e6e4dd; white-space: nowrap; }
+    td { padding: 12px 10px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+    tr:last-child td { border-bottom: 0; }
+
+    /* Save bar */
+    .bar { position: sticky; bottom: 0; margin: 0 -40px; padding: 16px 40px; background: #fff; border-top: 1px solid rgba(0,0,0,0.10); z-index: 2; }
+    .bar-in { max-width: 1120px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+    .bar-title { font-size: 15px; font-weight: 700; }
+    .status { min-height: 18px; margin-top: 2px; font-size: 13px; color: var(--muted); }
+
+    /* Libraries */
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 16px 20px; }
+    .toolbar .select { min-width: 210px; }
+    .toolbar .meta { flex: 1 1 300px; font-size: 13px; color: var(--muted); }
+    .cols { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+    .list-card { flex: 1 1 520px; min-width: 0; padding: 0; overflow: hidden; }
+    .list-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--hair); }
+    .search { position: relative; flex: 1 1 220px; display: block; }
+    .search input { width: 100%; height: 40px; padding: 0 12px 0 38px; border: 1px solid var(--line2); border-radius: 10px; font-size: 14px; }
+    .search svg { position: absolute; left: 12px; top: 11px; }
+    .lrow { width: 100%; display: flex; align-items: center; gap: 14px; padding: 12px 18px; border: 0; border-bottom: 1px solid var(--hair); background: #fff; text-align: left; cursor: pointer; }
+    .lrow:hover { background: #faf9f5; }
+    .lrow[aria-current="true"] { background: var(--hair); }
+    .lrow .t { flex: 1; min-width: 0; }
+    .lrow .n { display: block; font-size: 15px; font-weight: 600; }
+    .lrow[aria-current="true"] .n { font-weight: 700; }
+    .lrow .s { display: block; margin-top: 2px; font-size: 13px; color: var(--muted); }
+    .lrow .at { font-size: 13px; color: var(--muted); white-space: nowrap; }
+    .list-foot { padding: 12px 18px; font-size: 13px; color: var(--muted); }
+    .panel { flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+    .where { padding: 14px 16px; border-radius: 12px; background: var(--ground); }
+    .where .chips span { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+    .where .has { background: var(--ok-bg); color: var(--ok); }
+    .where .not { background: #fff; border: 1px dashed #b9b8b1; color: var(--muted); }
+    .crumb { font-size: 13px; color: var(--muted); }
+    .crumb button { border: 0; background: none; padding: 0; color: var(--ink2); font-weight: 600; text-decoration: underline; cursor: pointer; }
+
+    /* Sign in */
+    .signin { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+    .signin .card { width: 100%; max-width: 420px; padding: 28px; }
+    .signin img { display: block; height: 34px; width: auto; }
+    .signin h1 { margin-top: 18px; font-size: 26px; }
+    .signin form { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+
     @media (max-width: 760px) {
-      .grid, .grid.three { grid-template-columns: minmax(0, 1fr); }
-      .wrap { padding: 14px 12px 40px; }
+      .main { padding: 20px 16px 0; }
+      .bar { margin: 0 -16px; padding: 14px 16px; }
+      .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); }
+      .concept .select { min-width: 0; flex: 1; }
+      .prow b { flex-basis: 100%; }
     }
   </style>
 </head>
 <body>
-  <header class="top">
-    <h1>HQ control</h1>
-    <span class="who" id="who"></span>
-    <button type="button" class="btn small" id="signout" hidden>Sign out</button>
-  </header>
-
   <!-- Sign in, or use an invite -->
-  <div class="card" id="signin" hidden>
-    <h2 id="si-title">Sign in</h2>
-    <p class="help" id="si-help">Your own HQ passphrase. Five wrong tries lock you out for 15 minutes (only you, never a store).</p>
-    <form id="si-form" autocomplete="on">
-      <div class="field"><label for="si-name">Name</label><input id="si-name" autocomplete="username" required></div>
-      <div class="field" id="si-code-f" hidden style="margin-top:10px"><label for="si-code">Invite code</label><input id="si-code" autocomplete="one-time-code"></div>
-      <div class="field" style="margin-top:10px"><label for="si-pass" id="si-pass-l">Passphrase</label><input id="si-pass" type="password" autocomplete="current-password" required></div>
-      <div class="field" id="si-pass2-f" hidden style="margin-top:10px"><label for="si-pass2">The new passphrase again</label><input id="si-pass2" type="password" autocomplete="new-password"></div>
-      <div class="row" style="margin-top:14px"><button class="btn primary" id="si-go" type="submit">Sign in</button>
-        <button type="button" class="link" id="si-toggle">I have an invite code</button></div>
-      <div class="status bad" id="si-status" role="status"></div>
-    </form>
+  <div class="signin" id="signin" hidden>
+    <div class="card">
+      <img src="heh-logo.svg" alt="Happy Endings Hospitality">
+      <h1 id="si-title">HQ sign in</h1>
+      <p class="help" id="si-help">Your own HQ passphrase. Five wrong tries lock you out for 15 minutes (only you, never a store).</p>
+      <form id="si-form" autocomplete="on">
+        <label class="field" for="si-name">Name<input id="si-name" autocomplete="username" required></label>
+        <label class="field" id="si-code-f" hidden for="si-code">Invite code<input id="si-code" autocomplete="one-time-code"></label>
+        <label class="field" for="si-pass"><span id="si-pass-l">Passphrase</span><input id="si-pass" type="password" autocomplete="current-password" required></label>
+        <label class="field" id="si-pass2-f" hidden for="si-pass2">The new passphrase again<input id="si-pass2" type="password" autocomplete="new-password"></label>
+        <div class="actions" style="align-items:center"><button class="btn primary" id="si-go" type="submit">Sign in</button>
+          <button type="button" class="linkbtn" id="si-toggle">I have an invite code</button></div>
+        <div class="status bad" id="si-status" role="status"></div>
+      </form>
+    </div>
   </div>
 
-  <main class="wrap" id="app" hidden>
-    <div class="tabs" role="toolbar" aria-label="HQ">
-      <button type="button" data-tab="items" aria-pressed="true">Add LTO items</button>
-      <button type="button" data-tab="vendor" aria-pressed="false">Add a vendor</button>
-      <button type="button" data-tab="library" aria-pressed="false">Libraries</button>
-      <button type="button" data-tab="links" aria-pressed="false">Vendor names</button>
-      <button type="button" data-tab="recent" aria-pressed="false">Recent</button>
-    </div>
-
-    <section id="stores-card" class="card">
-      <h2>Stores</h2>
-      <p class="help">Tick the stores this goes to. Try a rollout on the TEST store first if you like; it's a copy no one orders from.</p>
-      <div class="stores" id="stores"></div>
-    </section>
-
-    <!-- Add LTO items -->
-    <section id="tab-items" class="card">
-      <h2>Add LTO items</h2>
-      <p class="help">Each store gets the items with no par and no storage area: they wait in its Items page under <b>Needs setup</b>, on no count list, until the store sets them up. An item a store already has keeps its own vendor, par and area, and only gains the vendors below that it doesn't list yet.</p>
-      <div class="grid"><div class="field"><label for="lto-label">What this is (shows in each store's Changes)</label>
-        <input id="lto-label" maxlength="80" placeholder="e.g. Spring LTO: Crab roll"></div></div>
-      <div class="scroll" style="margin-top:12px"><table class="items">
-        <thead><tr><th>Item name</th><th>Pack</th><th>Main vendor</th><th>Backup vendors</th><th>Notes</th><th></th></tr></thead>
-        <tbody id="lto-rows"></tbody></table></div>
-      <datalist id="hq-vendor-names"></datalist>
-      <div class="row" style="margin-top:8px"><button type="button" class="btn small" id="lto-add">Add another item</button>
-        <span class="muted" style="font-size:12.5px">Backups: several names, separated by commas.</span></div>
-      <div id="lto-map"></div>
-      <div id="lto-preview"></div>
-      <div id="lto-libs"></div>
-      <div class="row" style="margin-top:14px"><button type="button" class="btn primary" id="lto-save" disabled>Add to the stores</button></div>
-      <div class="status" id="lto-status" role="status"></div>
-    </section>
-
-    <!-- Libraries -->
-    <section id="tab-library" class="card" hidden>
-      <h2>Libraries</h2>
-      <p class="help">Each concept's standard items for one side, with HQ's vendor names. No pars and no storage areas: those are each store's. A store set up from a library gets the items the way it gets an LTO: they wait in its Items page under <b>Needs setup</b>.</p>
-      <div class="tabs" id="lib-pick" role="toolbar" aria-label="Library"></div>
-      <p class="help" id="lib-meta"></p>
-      <div id="lib-start"></div>
-      <div class="row" style="margin-top:6px"><input class="search" id="lib-search" type="search" placeholder="Search this library" aria-label="Search this library">
-        <span class="muted" id="lib-count" style="font-size:12.5px"></span></div>
-      <div class="scroll" style="margin-top:8px"><table class="items">
-        <thead><tr><th>Item name</th><th>Pack</th><th>Main vendor</th><th>Backup vendors</th><th>Notes</th><th></th></tr></thead>
-        <tbody id="lib-rows"></tbody></table></div>
-      <div class="row" style="margin-top:8px"><button type="button" class="btn small" id="lib-add">Add an item</button>
-        <span class="muted" style="font-size:12.5px">Backups: several names, separated by commas.</span></div>
-      <div class="row" style="margin-top:14px"><button type="button" class="btn primary" id="lib-save" disabled>Save the library</button>
-        <button type="button" class="link" id="lib-discard" hidden>Discard changes</button></div>
-      <div class="status" id="lib-status" role="status"></div>
-
-      <div id="lib-setup-box">
-        <h3 class="sub">Set up stores from this library</h3>
-        <p class="help">Tick the stores above. Each gets every item it doesn't have yet, with no par and no area; an item it already has keeps its own setup and only gains the vendors it lacks. Check the vendor at each store, as for an LTO.</p>
-        <div id="lib-map"></div>
-        <div id="lib-preview"></div>
-        <div class="row" style="margin-top:14px"><button type="button" class="btn primary" id="lib-setup" disabled>Set up the ticked stores</button></div>
-        <div class="status" id="lib-setup-status" role="status"></div>
+  <div class="shell" id="app" hidden>
+    <nav class="side" aria-label="HQ">
+      <div class="brand">
+        <img src="heh-logo.svg" alt="Happy Endings Hospitality">
+        <div class="who"><b>HQ</b><span class="muted" id="who"></span></div>
       </div>
-    </section>
+      <div class="eyebrow">CATALOG</div>
+      <button type="button" class="nav" data-nav="rollout"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></svg>Roll out</button>
+      <button type="button" class="nav" data-nav="libraries"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M9 5a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 8h4"/><path d="M9 16h4"/><path d="M13.8 4.56l2.18 -.53c.56 -.13 1.13 .19 1.28 .73l3.7 13.42a1.02 1.02 0 0 1 -.64 1.22l-2.31 .57c-.56 .13 -1.13 -.19 -1.28 -.73l-3.7 -13.42a1.02 1.02 0 0 1 .77 -1.26z"/></svg>Libraries</button>
+      <button type="button" class="nav" data-nav="vendor"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-11a1 1 0 0 1 1 -1h9v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5"/></svg>Vendors</button>
+      <button type="button" class="nav" data-nav="links"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 15l6 -6"/><path d="M11 6l.46 -.54a5 5 0 0 1 7.07 7.07l-.53 .47"/><path d="M13 18l-.4 .53a5.07 5.07 0 0 1 -7.12 0a4.97 4.97 0 0 1 0 -7.07l.52 -.46"/></svg>Vendor names</button>
+      <div class="spacer"></div>
+      <button type="button" class="nav" data-nav="recent"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8l0 4l2 2"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></svg>Recent changes</button>
+      <button type="button" class="nav" id="signout"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2"/><path d="M9 12h12l-3 -3"/><path d="M18 15l3 -3"/></svg>Sign out</button>
+    </nav>
 
-    <!-- Add a vendor -->
-    <section id="tab-vendor" class="card" hidden>
-      <h2>Add a vendor</h2>
-      <p class="help">Each ticked store that doesn't have it yet gets it, with these days, cutoff and contact as a start; the store can change them on its Vendors page. A store that already has it is left as it is.</p>
-      <div class="grid"><div class="field"><label for="v-name">Vendor name</label><input id="v-name" maxlength="100" placeholder="e.g. Happy Supply"></div></div>
-      <div class="field" style="margin-top:12px"><span>Delivery days</span><div class="week" id="v-week"></div><span class="help" id="v-explain" style="margin:4px 0 0"></span></div>
-      <div class="row" style="margin-top:6px"><div class="field"><label for="v-cutoff">Order due by</label><input id="v-cutoff" type="time" style="width:150px" disabled></div>
-        <label class="check" style="margin-top:22px"><input type="checkbox" id="v-nocut" checked>No cutoff</label></div>
-      <h3 style="margin:16px 0 6px;font-size:14px">Contact</h3>
-      <div class="grid three" id="v-contact"></div>
-      <div id="v-preview"></div>
-      <div class="row" style="margin-top:14px"><button type="button" class="btn primary" id="v-save" disabled>Add to the stores</button></div>
-      <div class="status" id="v-status" role="status"></div>
-    </section>
+    <main class="main" id="main">
+      <div class="wrap">
 
-    <!-- Vendor names -->
-    <section id="tab-links" class="card" hidden>
-      <h2>Vendor names</h2>
-      <p class="help">What each store calls a vendor HQ names, remembered when you confirm a match in a rollout. Forget one to be asked again next time.</p>
-      <div class="scroll" id="links"></div>
-      <div class="status" id="links-status" role="status"></div>
-    </section>
+        <!-- Roll out -->
+        <section class="view" id="v-rollout" aria-labelledby="ro-h">
+          <div class="page-head">
+            <div><h1 id="ro-h">Roll out LTO items</h1>
+              <p>New items for many stores at once. Each store gets them with no par and no storage area, in its Items page under Needs setup, and can undo the change in its own Changes.</p></div>
+            <button type="button" class="btn" data-nav="libraries">Start from a library instead</button>
+          </div>
+          <section class="card" id="ro-stores" aria-label="Stores"></section>
+          <section class="card" aria-labelledby="ro-it-h">
+            <div class="card-head">
+              <div class="step-title"><span class="step">2</span><h2 id="ro-it-h">Items</h2></div>
+              <label class="field" style="flex-direction:row;align-items:center;gap:10px">Name of this rollout
+                <input id="ro-label" class="text" maxlength="80" placeholder="e.g. Spring LTO" style="width:260px;height:40px;font-size:14px"></label>
+            </div>
+            <div class="items" id="ro-items"></div>
+            <div class="row-between">
+              <button type="button" class="btn" id="ro-add"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>Add an item</button>
+              <div id="ro-libs" class="actions"></div>
+            </div>
+          </section>
+          <section class="card" aria-labelledby="ro-vs-h">
+            <div class="step-title"><span class="step">3</span><h2 id="ro-vs-h">Vendor at each store</h2></div>
+            <p class="help">Each store's own name for the vendors above. Green is the same name or one HQ remembers; amber is a guess to check; grey means the store gets the vendor added.</p>
+            <div id="ro-vendors"></div>
+          </section>
+          <section class="card" aria-labelledby="ro-pv-h">
+            <div class="step-title"><span class="step">4</span><h2 id="ro-pv-h">What each store gets</h2></div>
+            <div id="ro-preview" style="margin-top:8px"></div>
+          </section>
+          <div class="bar" id="ro-bar"></div>
+        </section>
 
-    <!-- Recent -->
-    <section id="tab-recent" class="card" hidden>
-      <h2>Recent</h2>
-      <p class="help">The last 50 HQ changes. A store undoes one in its own Manage → Changes.</p>
-      <div class="scroll" id="recent"></div>
-    </section>
-  </main>
+        <!-- Libraries -->
+        <section class="view" id="v-libraries" aria-labelledby="lib-h" hidden>
+          <div class="page-head">
+            <div><h1 id="lib-h">Libraries</h1>
+              <p>Each concept's standard items for one side, with HQ's vendor names. No pars and no storage areas: those stay with each store.</p></div>
+            <div class="actions">
+              <button type="button" class="btn" id="lib-add"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>Add an item</button>
+              <button type="button" class="btn primary" id="lib-setup-btn">Set up stores from it</button>
+            </div>
+          </div>
+          <div class="card toolbar" id="lib-bar"></div>
+          <div class="status" id="lib-status" role="status"></div>
+          <div id="lib-body"></div>
+        </section>
+
+        <!-- Set up stores from a library -->
+        <section class="view" id="v-setup" aria-labelledby="su-h" hidden>
+          <div>
+            <nav class="crumb" aria-label="Breadcrumb"><button type="button" data-nav="libraries">Libraries</button> › <span id="su-crumb"></span></nav>
+            <h1 id="su-h" style="margin-top:8px"></h1>
+            <p class="help" id="su-sub" style="font-size:14px"></p>
+          </div>
+          <section class="card" id="su-stores" aria-label="Stores"></section>
+          <section class="card" aria-labelledby="su-vs-h">
+            <div class="step-title"><span class="step">2</span><h2 id="su-vs-h">Vendors and days</h2></div>
+            <p class="help">Each store's own name for the library's vendors. A vendor a store lacks is added; pick its delivery days now or leave them for the store's Vendors page.</p>
+            <div id="su-vendors"></div>
+          </section>
+          <section class="card" aria-labelledby="su-pv-h">
+            <div class="step-title"><span class="step">3</span><h2 id="su-pv-h">What each store gets</h2></div>
+            <div id="su-preview" style="margin-top:8px"></div>
+          </section>
+          <div class="bar" id="su-bar"></div>
+        </section>
+
+        <!-- Add a vendor -->
+        <section class="view" id="v-vendor" aria-labelledby="vd-h" hidden>
+          <div class="page-head">
+            <div><h1 id="vd-h">Add a vendor</h1>
+              <p>One vendor for many stores. Each ticked store that doesn't have it gets it with these days, cutoff and contact as a start; a store that already has it is left as it is.</p></div>
+          </div>
+          <section class="card" id="vd-stores" aria-label="Stores"></section>
+          <section class="card" aria-labelledby="vd-v-h">
+            <div class="step-title"><span class="step">2</span><h2 id="vd-v-h">The vendor</h2></div>
+            <div class="grid2" style="margin-top:16px">
+              <label class="field">Vendor name<input id="v-name" maxlength="100" placeholder="e.g. Happy Supply"></label>
+              <div class="field"><span>Order due by</span>
+                <div class="actions" style="align-items:center"><input id="v-cutoff" class="text" type="time" style="width:150px" disabled>
+                  <label class="check"><input type="checkbox" id="v-nocut" checked>No cutoff</label></div></div>
+            </div>
+            <div class="field" style="margin-top:14px"><span>Delivery days</span><div class="week" id="v-week" role="group" aria-label="Delivery days"></div>
+              <span class="help" id="v-explain" style="margin:0"></span></div>
+            <h3 style="margin:20px 0 4px;font-size:15px">Contact</h3>
+            <div class="grid3" id="v-contact"></div>
+          </section>
+          <section class="card" aria-labelledby="vd-pv-h">
+            <div class="step-title"><span class="step">3</span><h2 id="vd-pv-h">What each store gets</h2></div>
+            <div id="vd-preview" style="margin-top:8px"></div>
+          </section>
+          <div class="bar" id="vd-bar"></div>
+        </section>
+
+        <!-- Vendor names -->
+        <section class="view" id="v-links" aria-labelledby="ln-h" hidden>
+          <div class="page-head"><div><h1 id="ln-h">Vendor names</h1>
+            <p>What each store calls a vendor HQ names, remembered when you confirm a match in a rollout. Forget one to be asked again next time.</p></div></div>
+          <section class="card"><div class="scroll" id="links"></div><div class="status" id="links-status" role="status"></div></section>
+        </section>
+
+        <!-- Recent -->
+        <section class="view" id="v-recent" aria-labelledby="rc-h" hidden>
+          <div class="page-head"><div><h1 id="rc-h">Recent changes</h1>
+            <p>The last 50 HQ changes at stores. A store undoes one in its own Manage → Changes.</p></div></div>
+          <section class="card"><div class="scroll" id="recent"></div></section>
+        </section>
+
+      </div>
+    </main>
+  </div>
 
   <script>
   (function () {
@@ -205,18 +365,32 @@
     const CFG = window.MOG_HQ || {};
     const CE = window.CatalogEdit;
     const CONCEPTS = CFG.concepts || {};
+    // The brand kit's concept marks; the others get their identity colour.
+    const MARK = { 'roll-play': 'rp-mark.svg', teasnyou: 'tny-mark.svg' };
+    const DOT = { 'roll-play': '#53D3A5', teasnyou: '#D1AA5D', leid: '#E81383', an: '#EB8534' };
+    const SIDES = ['BOH', 'FOH'];
     const DAY = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     const DAY3 = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const CONTACT = [['person', 'Contact name'], ['phone', 'Phone'], ['email', 'Email'], ['orderVia', 'How to order'],
                      ['orderEmail', 'Send orders to'], ['website', 'Website or app link'], ['account', 'Account #'], ['notes', 'Notes']];
+    const NEW = '__new__';
+    const CHECK = '<svg class="ck" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10"/></svg>';
+    const CHEV = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5f5e5a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6l6 -6"/></svg>';
+    const TICK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10"/></svg>';
+    const SEARCH = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5f5e5a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>';
     const $ = id => document.getElementById(id);
     const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const lc = s => String(s == null ? '' : s).trim().toLowerCase();
-    const NEW = '__new__';
+    const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+    const few = names => (names.length <= 6 ? names.join(', ') : names.slice(0, 5).join(', ') + ' and ' + (names.length - 5) + ' more');
+    const blankDays = () => [false, false, false, false, false, false, false];
 
-    const S = { token: null, name: '', data: null, tab: 'items', picked: {}, rows: [], map: {}, newDays: {}, vDays: [false, false, false, false, false, false, false],
-                vAddAnyway: {}, busy: false, invite: false, lib: null, libDrafts: {}, ltoLibs: {} };
+    const S = { token: null, name: '', data: null, view: 'rollout', busy: false, invite: false,
+                pick: { rollout: {}, setup: {}, vendor: {} }, concept: { rollout: null, setup: null, vendor: null },
+                rows: [], map: {}, newDays: {}, daysFrom: {}, ltoLibs: {},
+                lib: null, libQ: '', libFilter: 'all', libSel: 0, panel: null, seed: null, setupLib: null,
+                vDays: blankDays(), vAddAnyway: {} };
     try { S.token = sessionStorage.getItem('mog_hq_token'); } catch (e) { S.token = null; }
 
     // ---- Supabase ----
@@ -240,10 +414,9 @@
 
     // ---- Sign in ----
     function showSignin(msg) {
-      $('app').hidden = true; $('signout').hidden = true; $('who').textContent = '';
-      $('signin').hidden = false; $('si-status').textContent = msg || '';
+      $('app').hidden = true; $('signin').hidden = false; $('si-status').textContent = msg || '';
       $('si-code-f').hidden = !S.invite; $('si-pass2-f').hidden = !S.invite;
-      $('si-title').textContent = S.invite ? 'Use your invite' : 'Sign in';
+      $('si-title').textContent = S.invite ? 'Use your HQ invite' : 'HQ sign in';
       $('si-pass-l').textContent = S.invite ? 'Choose a passphrase (12 characters or more)' : 'Passphrase';
       $('si-pass').setAttribute('autocomplete', S.invite ? 'new-password' : 'current-password');
       $('si-help').textContent = S.invite
@@ -280,115 +453,102 @@
       if (!r.ok) { keepToken(null); showSignin(r.error === 'SESSION_EXPIRED' ? 'Your sign-in ran out. Sign in again.' : r.error); return false; }
       S.data = r.data; S.name = r.data.name;
       S.data.libraries = S.data.libraries || [];   // none before schema v12
-      $('signin').hidden = true; $('app').hidden = false; $('signout').hidden = false;
-      $('who').textContent = 'Signed in as ' + S.name;
-      if (!S.rows.length) S.rows = [blankRow(), blankRow()];
+      $('signin').hidden = true; $('app').hidden = false;
+      $('who').textContent = S.name;
+      if (!S.rows.length) S.rows = [blankRow()];
+      const first = conceptKeys().find(k => storesOf(k).length) || conceptKeys()[0];
+      for (const v of ['rollout', 'vendor']) if (!S.concept[v]) S.concept[v] = first;
       renderAll();
       return true;
     }
 
-    // ---- Shared bits ----
+    // ---- Stores and concepts ----
     function storeBy(slug) { return S.data.stores.find(s => s.slug === slug); }
-    function pickedStores() { return S.data.stores.filter(s => S.picked[s.slug] && s.editorDirect && s.tables); }
+    function conceptKeys() {
+      const keys = Object.keys(CONCEPTS);
+      for (const s of S.data.stores) if (s.concept && keys.indexOf(s.concept) < 0) keys.push(s.concept);
+      return keys;
+    }
+    function conceptName(k) { return CONCEPTS[k] || k || 'No concept'; }
+    function storesOf(concept) { return S.data.stores.filter(s => (s.concept || '') === (concept || '')); }
+    function markHtml(k) {
+      return MARK[k] ? '<img src="' + MARK[k] + '" alt="">' : '<span class="dot" style="background:' + (DOT[k] || '#b9b8b1') + '"></span>';
+    }
+    const plain = s => String(s || '').replace(/[’‘]/g, "'");
+    // "Roll Play Rosslyn BOH" is "Rosslyn BOH" under its concept.
+    function shortName(s) {
+      let n = String(s.location || s.slug);
+      const cn = plain(conceptName(s.concept));
+      if (plain(n).toLowerCase().indexOf(cn.toLowerCase() + ' ') === 0) n = n.slice(cn.length + 1);
+      return n;
+    }
     function storeName(s) { return (s.location || s.slug) + (s.isTest && !/\(TEST\)\s*$/.test(s.location || '') ? ' (TEST)' : ''); }
+    function usable(s) { return s.editorDirect && !!s.tables; }
+    function pickedStores(view) { return storesOf(S.concept[view]).filter(s => S.pick[view][s.slug] && usable(s)); }
     function linkFor(slug, hqName) { const l = S.data.links.find(x => x.slug === slug && lc(x.hqName) === lc(hqName)); return l ? l.vendor : null; }
     function vendorNames(st) { return st.tables.vendors.map(v => v.name); }
-    function allHqNames() {
+
+    // One store picker for every view: a concept, then that concept's stores.
+    function pickerHtml(view, fixed) {
+      const c = S.concept[view], list = storesOf(c);
+      const groups = [['BOH', 'BACK OF HOUSE'], ['FOH', 'FRONT OF HOUSE']].map(g => [g[1], list.filter(s => !s.isTest && s.side === g[0])])
+        .concat([['OTHER', list.filter(s => !s.isTest && s.side !== 'BOH' && s.side !== 'FOH')],
+                 ['TEST STORE (A COPY NO ONE ORDERS FROM)', list.filter(s => s.isTest)]]).filter(g => g[1].length);
+      const n = list.filter(s => S.pick[view][s.slug] && usable(s)).length;
+      const choose = fixed
+        ? '<div><div class="eyebrow" style="padding:0 0 4px">CONCEPT</div><b style="font-size:16px">' + esc(conceptName(c)) + '</b></div>'
+        : '<label class="field">Concept<span class="select"><select data-concept="' + view + '">' +
+          conceptKeys().map(k => { const m = storesOf(k).length; return '<option value="' + esc(k) + '"' + (k === c ? ' selected' : '') + '>' +
+            esc(conceptName(k)) + (m ? ' · ' + plural(m, 'store') : ' · no stores yet') + '</option>'; }).join('') +
+          '</select>' + CHEV + '</span></label>';
+      return '<div class="card-head"><div class="step-title"><span class="step">1</span><h2>Stores</h2></div>' +
+        '<span class="muted strong">' + n + ' of ' + list.length + ' picked</span></div>' +
+        '<div class="picker-row"><div class="concept"><span class="mark">' + markHtml(c) + '</span>' + choose + '</div>' +
+        '<div class="quick" role="group" aria-label="Quick pick">' +
+        [['all', 'All'], ['BOH', 'BOH only'], ['FOH', 'FOH only'], ['none', 'Clear']].map(q =>
+          '<button type="button" class="pill" data-quick="' + q[0] + '" data-view="' + view + '">' + q[1] + '</button>').join('') + '</div></div>' +
+        (list.length ? '' : '<p class="empty">No ' + esc(conceptName(c)) + ' stores are on MOG yet.</p>') +
+        groups.map(g => '<div class="group"><div class="eyebrow">' + g[0] + '</div><div class="tiles">' + g[1].map(s => tileHtml(view, s)).join('') + '</div></div>').join('');
+    }
+    function tileHtml(view, s) {
+      const on = !!S.pick[view][s.slug] && usable(s);
+      const meta = !usable(s) ? 'Still on the Sheet' : s.tables.items.length ? plural(s.tables.items.length, 'item') : 'Empty, ready to set up';
+      return '<button type="button" class="tile" data-tile="' + esc(s.slug) + '" data-view="' + view + '" aria-pressed="' + on + '"' + (usable(s) ? '' : ' disabled') + '>' +
+        '<span class="box">' + TICK + '</span><span class="tile-text"><span class="tile-name">' + esc(shortName(s)) + '</span>' +
+        '<span class="tile-meta">' + esc(meta) + '</span></span></button>';
+    }
+    function quickPick(view, how) {
+      const p = {};
+      if (how !== 'none') for (const s of storesOf(S.concept[view])) if (usable(s) && !s.isTest && (how === 'all' || s.side === how)) p[s.slug] = true;
+      S.pick[view] = p;
+    }
+
+    // HQ's vendor names for a concept: remembered names, its libraries'
+    // vendors and its stores' vendors (a store's name HQ already knows by
+    // another one is left out), plus any given.
+    function vendorChoices(concept, extra) {
       const seen = new Map();
-      for (const l of S.data.links) seen.set(lc(l.hqName), l.hqName);
-      for (const st of S.data.stores) if (st.tables) for (const v of st.tables.vendors) if (!seen.has(lc(v.name))) seen.set(lc(v.name), v.name);
-      for (const lib of S.data.libraries) for (const it of lib.items) for (const v of [it.vendor].concat(it.backups)) if (!seen.has(lc(v))) seen.set(lc(v), v);
+      const add = n => { n = String(n || '').trim(); if (n && !seen.has(lc(n))) seen.set(lc(n), n); };
+      const stores = storesOf(concept).filter(s => s.tables && !s.isTest);
+      const known = new Set(S.data.links.map(l => l.slug + '|' + lc(l.vendor)));
+      for (const l of S.data.links) if (stores.some(s => s.slug === l.slug)) add(l.hqName);
+      for (const lib of S.data.libraries) if (lib.concept === concept) for (const it of lib.items) [it.vendor].concat(it.backups).forEach(add);
+      for (const s of stores) for (const v of s.tables.vendors) if (!known.has(s.slug + '|' + lc(v.name))) add(v.name);
+      (extra || []).forEach(add);
+      if (!seen.size) for (const s of S.data.stores) if (s.tables) for (const v of s.tables.vendors) add(v.name);
       return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
     }
-    function explain(mults) {
-      const lines = [];
-      for (let i = 0; i < 7; i++) if (mults[i] > 0) lines.push(DAY[i] + '’s order arrives ' + DAY[(i + 1) % 7] + ' and covers ' + mults[i] + (mults[i] === 1 ? ' day' : ' days'));
-      return lines.length ? lines.join('. ') + '.' : 'No delivery days yet: the vendor won’t show on Today until a store sets them.';
+    function vendorSelectHtml(attr, value, choices) {
+      return '<span class="select"><select ' + attr + '>' + (value ? '' : '<option value="" selected disabled>Choose a vendor</option>') +
+        choices.map(v => '<option value="' + esc(v) + '"' + (v === value ? ' selected' : '') + '>' + esc(v) + '</option>').join('') + '</select>' + CHEV + '</span>';
     }
-    function weekHtml(days, attr) {
-      return DAY3.map((d, i) => '<button type="button" ' + attr + '="' + i + '" aria-pressed="' + (days[i] ? 'true' : 'false') + '" aria-label="' + DAY[i] + '">' + d + '</button>').join('');
-    }
-
-    function renderStores() {
-      const groups = new Map();
-      for (const s of S.data.stores) {
-        const key = s.isTest ? '~test' : (s.concept || '');
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(s);
-      }
-      $('stores').innerHTML = Array.from(groups.entries()).map(([key, list]) => {
-        const title = key === '~test' ? 'Test store' : (CONCEPTS[key] || key || 'No concept');
-        return '<div class="concept"><h3>' + esc(title) + (key === '~test' ? '' : '<button type="button" class="link" data-all="' + esc(key) + '">All</button>') + '</h3>' +
-          list.map(s => '<label class="' + (s.editorDirect ? '' : 'off') + '"><input type="checkbox" data-store="' + esc(s.slug) + '"' +
-            (S.picked[s.slug] ? ' checked' : '') + (s.editorDirect ? '' : ' disabled') + '>' + esc(s.location || s.slug) +
-            (s.isTest ? ' <span class="tag">TEST</span>' : '') + (s.editorDirect ? '' : ' <span class="tag warn">still on the Sheet</span>') +
-            (s.tables && !s.tables.items.length ? ' <span class="tag">empty</span>' : '') + '</label>').join('') + '</div>';
-      }).join('');
-    }
-    $('stores').addEventListener('change', e => {
-      const slug = e.target.getAttribute('data-store');
-      if (slug) { S.picked[slug] = e.target.checked; renderWork(); }
-    });
-    $('stores').addEventListener('click', e => {
-      const key = e.target.getAttribute && e.target.getAttribute('data-all');
-      if (key == null) return;
-      const list = S.data.stores.filter(s => !s.isTest && (s.concept || '') === key && s.editorDirect);
-      const on = !list.every(s => S.picked[s.slug]);
-      for (const s of list) S.picked[s.slug] = on;
-      renderStores(); renderWork();
-    });
-
-    function renderTabs() {
-      document.querySelectorAll('.tabs button[data-tab]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-tab') === S.tab ? 'true' : 'false'));
-      $('tab-items').hidden = S.tab !== 'items'; $('tab-vendor').hidden = S.tab !== 'vendor'; $('tab-library').hidden = S.tab !== 'library';
-      $('tab-links').hidden = S.tab !== 'links'; $('tab-recent').hidden = S.tab !== 'recent';
-      $('stores-card').hidden = S.tab === 'links' || S.tab === 'recent';
-    }
-    document.querySelector('.tabs').addEventListener('click', e => {
-      const t = e.target.getAttribute('data-tab'); if (!t) return;
-      S.tab = t; renderTabs(); renderWork();
-    });
-
-    function renderAll() {
-      $('hq-vendor-names').innerHTML = allHqNames().map(n => '<option value="' + esc(n) + '">').join('');
-      if (!S.formReady) { renderVendorForm(); S.formReady = true; }   // once: a reload keeps what's typed
-      renderStores(); renderTabs(); renderRows(); renderLibrary(); renderWork(); renderLinks(); renderRecent();
-    }
-    function renderWork() {
-      if (S.tab === 'items') renderLtoMap();
-      if (S.tab === 'vendor') renderVendorPreview();
-      if (S.tab === 'library') { updateLibButtons(); renderLibSetup(); }
+    function chipsHtml(attr, main, backups, choices) {
+      const on = new Set(backups.map(lc));
+      return '<div class="chips">' + choices.filter(v => lc(v) !== lc(main)).map(v =>
+        '<button type="button" class="chip" ' + attr + ' data-v="' + esc(v) + '" aria-pressed="' + on.has(lc(v)) + '">' + CHECK + esc(v) + '</button>').join('') + '</div>';
     }
 
-    // ---- Add LTO items ----
-    function blankRow() { return { name: '', pack: '', vendor: '', backups: '', notes: '' }; }
-    function renderRows() {
-      $('lto-rows').innerHTML = S.rows.map((r, i) =>
-        '<tr><td><input data-row="' + i + '" data-k="name" value="' + esc(r.name) + '" maxlength="300" aria-label="Item name"></td>' +
-        '<td><input data-row="' + i + '" data-k="pack" value="' + esc(r.pack) + '" placeholder="e.g. CS (4 x 5 LB)" aria-label="Pack"></td>' +
-        '<td><input data-row="' + i + '" data-k="vendor" value="' + esc(r.vendor) + '" list="hq-vendor-names" aria-label="Main vendor"></td>' +
-        '<td><input data-row="' + i + '" data-k="backups" value="' + esc(r.backups) + '" list="hq-vendor-names" aria-label="Backup vendors"></td>' +
-        '<td><input data-row="' + i + '" data-k="notes" value="' + esc(r.notes) + '" aria-label="Notes"></td>' +
-        '<td><button type="button" class="link" data-drop="' + i + '" aria-label="Remove this row">Remove</button></td></tr>').join('');
-    }
-    $('lto-rows').addEventListener('input', e => {
-      const i = e.target.getAttribute('data-row'); if (i == null) return;
-      S.rows[Number(i)][e.target.getAttribute('data-k')] = e.target.value;
-    });
-    $('lto-rows').addEventListener('change', () => renderLtoMap());
-    $('lto-rows').addEventListener('click', e => {
-      const i = e.target.getAttribute && e.target.getAttribute('data-drop'); if (i == null) return;
-      S.rows.splice(Number(i), 1); if (!S.rows.length) S.rows.push(blankRow());
-      renderRows(); renderLtoMap();
-    });
-    $('lto-add').onclick = () => { S.rows.push(blankRow()); renderRows(); };
-    $('lto-label').addEventListener('change', () => renderLtoMap());
-
-    const splitNames = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
-    function ltoItems() {
-      return S.rows.filter(r => r.name.trim()).map(r => ({ name: r.name.trim(), pack: r.pack.trim(), notes: r.notes.trim(),
-        vendor: r.vendor.trim(), backups: splitNames(r.backups) }));
-    }
+    // ---- Vendor at each store (Roll out and Set up) ----
     function hqVendorsUsed(items) {
       const seen = new Map();
       for (const it of items) for (const v of [it.vendor].concat(it.backups)) if (v && !seen.has(lc(v))) seen.set(lc(v), v);
@@ -405,54 +565,61 @@
       const m = CE.matchVendor(names, hqName);
       return m ? { value: m.name, how: m.how } : { value: NEW, how: 'none' };
     }
-    // The vendor at each ticked store for each HQ vendor the items use, and
-    // the days of a vendor a store gets new (an LTO, or a library setup).
-    function mapHtml(items) {
-      const stores = pickedStores(), used = hqVendorsUsed(items);
-      let h = '';
-      if (used.length && stores.length) {
-        h += '<h3 style="margin:18px 0 4px;font-size:14px">Vendor at each store</h3><p class="help">Check each one. A green tag is a name HQ remembers; amber is a guess.</p>' +
-          '<div class="scroll"><table><thead><tr><th>Store</th>' + used.map(v => '<th>' + esc(v) + '</th>').join('') + '</tr></thead><tbody>' +
-          stores.map(st => '<tr><td>' + esc(storeName(st)) + '</td>' + used.map(v => {
-            const c = choiceFor(st.slug, v);
-            const tag = c.how === 'remembered' || c.how === 'same' ? '<span class="tag ok">' + (c.how === 'same' ? 'same name' : 'remembered') + '</span>'
-              : c.how === 'close' ? '<span class="tag warn">guess</span>' : c.how === 'none' ? '<span class="tag warn">not there</span>' : '';
-            return '<td><select data-map="' + esc(st.slug + '|' + lc(v)) + '" aria-label="' + esc(v + ' at ' + storeName(st)) + '">' +
-              '<option value="' + NEW + '"' + (c.value === NEW ? ' selected' : '') + '>Add "' + esc(v) + '" here</option>' +
-              vendorNames(st).map(n => '<option value="' + esc(n) + '"' + (n === c.value ? ' selected' : '') + '>' + esc(n) + '</option>').join('') +
-              '</select> ' + tag + '</td>';
-          }).join('') + '</tr>').join('') + '</tbody></table></div>';
-        const toAdd = used.filter(v => stores.some(st => choiceFor(st.slug, v).value === NEW));
-        h += toAdd.map(v => {
-          const days = S.newDays[lc(v)] || (S.newDays[lc(v)] = [false, false, false, false, false, false, false]);
-          return '<div class="newv"><b>New vendor "' + esc(v) + '"</b> at ' + esc(stores.filter(st => choiceFor(st.slug, v).value === NEW).map(storeName).join(', ')) +
-            '<div class="help" style="margin:4px 0 8px">Its delivery days as a start; each store can change them, and add a contact, on its Vendors page.</div>' +
-            '<div class="week">' + weekHtml(days, 'data-newday="' + esc(lc(v)) + '" data-i') + '</div></div>';
-        }).join('');
+    const placeKey = s => plain(shortName(s)).replace(/\s*\(TEST\)\s*$/i, '').replace(/\s+(BOH|FOH)$/i, '').trim().toLowerCase();
+    // A new vendor's days, first time round: the days the store's other
+    // side (Rockville FOH for Rockville BOH) already has for it, if any.
+    function daysFor(v, newAt) {
+      const k = lc(v);
+      if (S.newDays[k]) return S.newDays[k];
+      S.newDays[k] = blankDays();
+      for (const st of newAt) {
+        for (const o of S.data.stores) {
+          if (o.slug === st.slug || o.isTest || !o.tables || o.concept !== st.concept || placeKey(o) !== placeKey(st)) continue;
+          const name = linkFor(o.slug, v) || ((CE.matchVendor(vendorNames(o), v) || {}).name);
+          const row = name && o.tables.vendors.find(x => x.name === name);
+          if (row && row.mults.some(m => Number(m) > 0)) { S.newDays[k] = CE.daysFromMults(row.mults); S.daysFrom[k] = shortName(o); return S.newDays[k]; }
+        }
       }
-      return h;
+      return S.newDays[k];
     }
-    function renderLtoMap() {
-      const items = ltoItems();
-      const missing = items.filter(it => !it.vendor).map(it => it.name);
-      $('lto-map').innerHTML = (missing.length ? '<p class="bad">Give every item a main vendor: ' + esc(missing.join(', ')) + '.</p>' : '') + mapHtml(items);
-      renderLtoPreview();
+    function explainDays(days) {
+      const on = DAY.filter((d, i) => days[i]);
+      const list = on.length > 1 ? on.slice(0, -1).join(', ') + ' and ' + on[on.length - 1] : on[0];
+      return on.length ? 'Delivers ' + list + '.' : 'No delivery days yet: it stays off Today until the store sets them.';
     }
-    ['lto-map', 'lib-map'].forEach(id => {
-      $(id).addEventListener('change', e => {
-        const k = e.target.getAttribute('data-map'); if (!k) return;
-        S.map[k] = e.target.value; renderWork();
-      });
-      $(id).addEventListener('click', e => {
-        const b = e.target.closest && e.target.closest('button[data-newday]'); if (!b) return;
-        const days = S.newDays[b.getAttribute('data-newday')]; const i = Number(b.getAttribute('data-i'));
-        days[i] = !days[i]; renderWork();
-      });
-    });
+    function vendorRowsHtml(items, stores) {
+      const used = hqVendorsUsed(items);
+      if (!stores.length) return '<p class="empty">Pick stores in step 1 to see their vendors.</p>';
+      if (!used.length) return '<p class="empty">Give the items a main vendor first.</p>';
+      return used.map(v => {
+        const n = items.filter(it => lc(it.vendor) === lc(v) || it.backups.some(b => lc(b) === lc(v))).length;
+        const cells = stores.map(st => {
+          const c = choiceFor(st.slug, v);
+          const tag = c.value === NEW ? '<span class="tag">Will be added</span>'
+            : c.how === 'close' ? '<span class="tag warn">Guess: check it</span>'
+            : '<span class="tag ok">' + (c.how === 'same' ? 'Same name' : c.how === 'remembered' ? 'Remembered' : 'Your pick') + '</span>';
+          return '<label class="vcell">' + esc(shortName(st)) + '<span class="select small"><select data-map="' + esc(st.slug + '|' + lc(v)) + '">' +
+            '<option value="' + NEW + '"' + (c.value === NEW ? ' selected' : '') + '>Add “' + esc(v) + '” here</option>' +
+            vendorNames(st).map(nm => '<option value="' + esc(nm) + '"' + (nm === c.value ? ' selected' : '') + '>' + esc(nm) + '</option>').join('') +
+            '</select>' + CHEV + '</span>' + tag + '</label>';
+        }).join('');
+        const newAt = stores.filter(st => choiceFor(st.slug, v).value === NEW);
+        let days = '';
+        if (newAt.length) {
+          const d = daysFor(v, newAt), from = S.daysFrom[lc(v)];
+          days = '<div class="vdays"><div>New at ' + esc(newAt.map(shortName).join(', ')) + '. Delivery days, as a start:</div>' +
+            '<div class="week" role="group" aria-label="Delivery days for ' + esc(v) + '">' + DAY3.map((nm, i) =>
+              '<button type="button" class="day" data-newday="' + esc(lc(v)) + '" data-i="' + i + '" aria-pressed="' + !!d[i] + '" aria-label="' + DAY[i] + '">' + nm + '</button>').join('') + '</div>' +
+            '<div class="help" style="margin:0">' + explainDays(d) + ' Each store can change them, and add its own contact, on its Vendors page.' +
+            (from ? ' <span class="tag ok">Same days as ' + esc(from) + '</span>' : '') + '</div></div>';
+        }
+        return '<div class="vrow"><div class="vrow-head"><b>' + esc(v) + '</b><span class="muted">' + plural(n, 'item') + '</span></div>' +
+          '<div class="vcells">' + cells + '</div>' + days + '</div>';
+      }).join('');
+    }
 
     // Each store's share, worked out the way the editor works out a save.
-    function rolloutPlan(items, label) {
-      const stores = pickedStores();
+    function rolloutPlan(items, label, stores) {
       if (!items.length || !stores.length || items.some(it => !it.vendor)) return null;
       const used = hqVendorsUsed(items);
       return stores.map(st => {
@@ -461,7 +628,7 @@
           const c = choiceFor(st.slug, v);
           if (c.value === NEW) {
             names[lc(v)] = v;
-            adds.push({ name: v, mults: CE.multsFromDays(S.newDays[lc(v)] || []), cutoff: '', contact: {} });
+            adds.push({ name: v, mults: CE.multsFromDays(daysFor(v, [st])), cutoff: '', contact: {} });
           } else names[lc(v)] = c.value;
           links.push({ slug: st.slug, hqName: v, vendor: names[lc(v)] });
         }
@@ -472,91 +639,276 @@
         catch (err) { return { st, links, error: err.message }; }
       });
     }
-    // A long list in a preview cell: the first five, then how many more.
-    const few = names => (names.length <= 6 ? names.join(', ') : names.slice(0, 5).join(', ') + ' and ' + (names.length - 5) + ' more');
     function shareText(r) {
       const parts = [];
-      if (r.vendorsAdded.length) parts.push('adds vendor ' + few(r.vendorsAdded));
-      if (r.itemsAdded.length) parts.push('adds ' + (r.itemsAdded.length > 6 ? r.itemsAdded.length + ' items' : r.itemsAdded.join(', ')));
+      if (r.vendorsAdded.length) parts.push('Adds vendor ' + few(r.vendorsAdded));
+      if (r.itemsAdded.length) parts.push((parts.length ? 'adds ' : 'Adds ') + (r.itemsAdded.length > 6 ? plural(r.itemsAdded.length, 'item') : r.itemsAdded.join(', ')) + ', with no par and no area');
       if (r.backupsAdded.length > 6) parts.push(r.backupsAdded.length + ' items it has gain vendors');
       else for (const b of r.backupsAdded) parts.push(b.name + ' also from ' + b.vendors.join(', '));
-      return parts.join('; ') || 'nothing to add';
+      return (parts.join('; ') || 'Nothing to add') + '.';
     }
-    // note(st): a word next to a store's name in the preview, or ''.
-    function previewHtml(plan, note) {
-      return '<h3 style="margin:18px 0 6px;font-size:14px">What each store gets</h3><div class="scroll"><table><thead><tr><th>Store</th><th>Change</th><th>Skipped</th></tr></thead><tbody>' +
-        plan.map(p => '<tr><td>' + esc(storeName(p.st)) + (note ? note(p.st) : '') + '</td>' + (p.error ? '<td class="bad" colspan="2">' + esc(p.error) + '</td>'
-          : '<td>' + esc(shareText(p.out.result)) + '</td><td class="muted">' +
-            esc(few(p.out.result.skipped.map(s => s.name + ' (' + s.reason + ')'))) + '</td>') + '</tr>').join('') + '</tbody></table></div>';
+    function previewHtml(plan, empty, note) {
+      if (!plan) return '<p class="empty">' + empty + '</p>';
+      return plan.map(p => '<div class="prow"><b>' + esc(shortName(p.st)) + (note ? note(p.st) : '') + '</b>' +
+        (p.error ? '<span class="bad">' + esc(p.error) + '</span>'
+          : '<span>' + esc(shareText(p.out.result)) + (p.out.result.skipped.length
+            ? '<br><span class="muted">Skipped: ' + esc(few(p.out.result.skipped.map(s => s.name + ' (' + s.reason + ')'))) + '</span>' : '') + '</span>') + '</div>').join('');
     }
-    function renderLtoPreview() {
-      const items = ltoItems();
-      const plan = rolloutPlan(items, $('lto-label').value.trim());
-      S.ltoPlan = plan;
-      $('lto-preview').innerHTML = plan ? previewHtml(plan) : '';
-      const libs = renderLtoLibs(plan ? items : []);
-      $('lto-save').disabled = !plan || S.busy || plan.some(p => p.error) || libs.some(x => x.error) ||
-        !(plan.some(p => p.out.ops.length) || libs.some(x => x.payload));
+    function barHtml(title, detail, btnId, btnText, enabled, statusId) {
+      return '<div class="bar-in"><div><div class="bar-title">' + esc(title) + '</div><div class="status" id="' + statusId + '" role="status">' + esc(detail) + '</div></div>' +
+        '<button type="button" class="btn primary big" id="' + btnId + '"' + (enabled ? '' : ' disabled') + '>' + esc(btnText) + '</button></div>';
     }
-    $('lto-save').onclick = () => save(S.ltoPlan, 'lto-status', () => {
-      S.rows = [blankRow(), blankRow()]; S.map = {}; S.newDays = {}; S.ltoLibs = {}; $('lto-label').value = ''; renderRows();
-    }, ltoLibPlan(ltoItems()).filter(x => x.payload).map(x => x.payload));
 
+    // ---- Views ----
+    function renderNav() {
+      document.querySelectorAll('.nav[data-nav]').forEach(b => {
+        const v = b.getAttribute('data-nav');
+        if (v === S.view || (v === 'libraries' && S.view === 'setup')) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+      });
+      for (const v of ['rollout', 'libraries', 'setup', 'vendor', 'links', 'recent']) $('v-' + v).hidden = S.view !== v;
+    }
+    function renderAll() {
+      renderNav();
+      if (S.view === 'rollout') renderRollout();
+      if (S.view === 'libraries') renderLibraries();
+      if (S.view === 'setup') renderSetup();
+      if (S.view === 'vendor') renderVendorView();
+      if (S.view === 'links') renderLinks();
+      if (S.view === 'recent') renderRecent();
+    }
+    function go(view) { S.view = view; renderAll(); window.scrollTo(0, 0); }
+
+    // ---- Roll out ----
+    function blankRow() { return { name: '', pack: '', vendor: '', backups: [], notes: '' }; }
+    function ltoItems() {
+      return S.rows.filter(r => r.name.trim()).map(r => ({ name: r.name.trim(), pack: r.pack.trim(), notes: r.notes.trim(),
+        vendor: r.vendor, backups: r.backups.slice() }));
+    }
+    function renderRollout() {
+      $('ro-stores').innerHTML = pickerHtml('rollout');
+      renderRolloutItems();
+      renderRolloutWork();
+    }
+    function renderRolloutItems() {
+      const extra = [].concat.apply([], S.rows.map(r => [r.vendor].concat(r.backups)));
+      const choices = vendorChoices(S.concept.rollout, extra);
+      $('ro-items').innerHTML = S.rows.map((r, i) => '<div class="item">' +
+        '<div class="item-top"><span>ITEM ' + (i + 1) + '</span><button type="button" class="linkbtn" data-drop="' + i + '">Remove</button></div>' +
+        '<div class="grid4">' +
+        '<label class="field">Item name<input data-row="' + i + '" data-k="name" value="' + esc(r.name) + '" maxlength="300"></label>' +
+        '<label class="field">Pack<input data-row="' + i + '" data-k="pack" value="' + esc(r.pack) + '" maxlength="300" placeholder="e.g. CS (4 x 5 LB)"></label>' +
+        '<label class="field">Main vendor' + vendorSelectHtml('data-main="' + i + '"', r.vendor, choices) + '</label>' +
+        '<label class="field">Notes<input data-row="' + i + '" data-k="notes" value="' + esc(r.notes) + '" maxlength="1000"></label></div>' +
+        '<div role="group" aria-label="Backup vendors for item ' + (i + 1) + '"><div class="chips-label">Backup vendors <span>· tap to add or remove · ' +
+        (r.backups.length ? r.backups.length + ' picked' : 'none yet') + '</span></div>' + chipsHtml('data-chip="' + i + '"', r.vendor, r.backups, choices) + '</div></div>').join('');
+    }
     // The libraries an LTO can land in too: the concept and side of each
     // ticked store (the TEST store aside). Ticked ones get the items they
     // don't have, at the end, in the same save.
-    function ltoLibPlan(items) {
+    function ltoLibPlan(items, stores) {
       const keys = [];
-      for (const st of pickedStores()) if (!st.isTest && st.concept && st.side && keys.indexOf(libKey(st.concept, st.side)) < 0) keys.push(libKey(st.concept, st.side));
-      const label = $('lto-label').value.trim();
+      for (const st of stores) if (!st.isTest && st.concept && st.side && keys.indexOf(libKey(st.concept, st.side)) < 0) keys.push(libKey(st.concept, st.side));
+      const label = $('ro-label').value.trim();
       return keys.map(key => {
         if (!S.ltoLibs[key] || !items.length) return { key };
         const lib = libraryOf(key);
         try {
           const r = CE.libraryAdd(lib.items, items);
           return { key, r, payload: r.added.length ? { concept: lib.concept, side: lib.side, version: lib.version, items: r.items,
-            label: 'LTO' + (label ? ' "' + label + '"' : '') + ': added ' + r.added.length + (r.added.length === 1 ? ' item' : ' items') } : null };
+            label: 'LTO' + (label ? ' "' + label + '"' : '') + ': added ' + plural(r.added.length, 'item') } : null };
         } catch (err) { return { key, error: err.message }; }
       });
     }
-    function renderLtoLibs(items) {
-      const plan = ltoLibPlan(items);
-      $('lto-libs').innerHTML = !plan.length ? '' :
-        '<div class="row" style="margin-top:14px"><span>Also add these items to the library:</span>' +
-        plan.map(x => '<label class="check"><input type="checkbox" data-ltolib="' + esc(x.key) + '"' + (S.ltoLibs[x.key] ? ' checked' : '') + '>' + esc(libName(x.key)) + '</label>').join('') + '</div>' +
-        plan.filter(x => S.ltoLibs[x.key] && (x.r || x.error)).map(x => '<p class="help" style="margin:6px 0 0">' + esc(libName(x.key)) + ' library: ' +
-          (x.error ? '<span class="bad">' + esc(x.error) + '</span>'
-            : esc((x.r.added.length ? 'adds ' + few(x.r.added) : 'nothing new') + (x.r.kept.length ? '; already there: ' + few(x.r.kept) : ''))) + '</p>').join('');
-      return plan;
+    function renderRolloutWork() {
+      const items = ltoItems(), stores = pickedStores('rollout');
+      const label = $('ro-label').value.trim();
+      const missing = items.filter(it => !it.vendor).map(it => it.name);
+      $('ro-vendors').innerHTML = (missing.length ? '<p class="bad" style="margin:14px 0 0">Give every item a main vendor: ' + esc(missing.join(', ')) + '.</p>' : '') +
+        vendorRowsHtml(items.filter(it => it.vendor), stores);
+      const plan = rolloutPlan(items, label, stores);
+      S.ltoPlan = plan;
+      $('ro-preview').innerHTML = previewHtml(plan, !stores.length ? 'Pick stores in step 1.' : !items.length ? 'Name an item in step 2.' : 'Give every item a main vendor.');
+      const libs = ltoLibPlan(plan ? items : [], stores);
+      S.ltoLibPayloads = libs.filter(x => x.payload).map(x => x.payload);
+      $('ro-libs').innerHTML = libs.map(x => '<label class="check"><input type="checkbox" data-ltolib="' + esc(x.key) + '"' + (S.ltoLibs[x.key] ? ' checked' : '') + '>' +
+        'Also add to the ' + esc(libName(x.key)) + ' library' + (x.error ? ' <span class="bad">(' + esc(x.error) + ')</span>'
+          : x.r ? ' <span class="muted">(' + (x.r.added.length ? 'adds ' + x.r.added.length : 'nothing new') + ')</span>' : '') + '</label>').join('');
+      const newV = hqVendorsUsed(items.filter(it => it.vendor)).filter(v => stores.some(st => choiceFor(st.slug, v).value === NEW));
+      const ok = plan && !plan.some(p => p.error) && !libs.some(x => x.error) && (plan.some(p => p.out.ops.length) || S.ltoLibPayloads.length);
+      $('ro-bar').innerHTML = barHtml(plural(items.length, 'item') + ' to ' + plural(stores.length, 'store'),
+        (newV.length ? newV.join(', ') + ' added where missing. ' : '') +
+        (S.ltoLibPayloads.length ? 'Also added to the ' + S.ltoLibPayloads.map(p => libName(libKey(p.concept, p.side))).join(' and ') + ' library. ' : '') + 'Every store or none.',
+        'ro-save', stores.length ? 'Add to ' + plural(stores.length, 'store') : 'Pick stores first', ok && !S.busy, 'ro-status');
     }
-    $('lto-libs').addEventListener('change', e => {
-      const key = e.target.getAttribute('data-ltolib'); if (!key) return;
-      S.ltoLibs[key] = e.target.checked; renderLtoPreview();
-    });
+
+    // ---- Libraries (schema v12) ----
+    const libKey = (concept, side) => concept + '|' + side;
+    function libraryOf(key) {
+      const [concept, side] = key.split('|');
+      return S.data.libraries.find(l => l.concept === concept && l.side === side) ||
+        { concept, side, version: 0, seededFrom: null, updatedAt: null, updatedBy: null, items: [] };
+    }
+    function libName(key) { const [c, s] = key.split('|'); return conceptName(c) + ' ' + s; }
+    function libItems(key) { try { return CE.cleanLibrary(libraryOf(key).items); } catch (e) { return libraryOf(key).items; } }
+    // The concept's stores of that side that carry an item of this name.
+    function libStores(key) { const [c, s] = key.split('|'); return storesOf(c).filter(st => !st.isTest && st.side === s && usable(st)); }
+    function carriedAt(key, name) { return libStores(key).map(st => ({ st, has: st.tables.items.some(x => lc(x.name) === lc(name)) })); }
+    function libStatus(cls, text) { $('lib-status').className = 'status' + (cls ? ' ' + cls : ''); $('lib-status').textContent = text; }
+
+    function renderLibraries() {
+      if (!S.lib) S.lib = conceptKeys().map(k => libKey(k, 'BOH')).find(k => libraryOf(k).items.length) || libKey(conceptKeys()[0], 'BOH');
+      const [concept, side] = S.lib.split('|'), lib = libraryOf(S.lib);
+      $('lib-bar').innerHTML = '<span class="mark">' + markHtml(concept) + '</span>' +
+        '<label class="select"><span class="sr">Concept</span><select id="lib-concept">' + conceptKeys().map(k =>
+          '<option value="' + esc(k) + '"' + (k === concept ? ' selected' : '') + '>' + esc(conceptName(k)) + '</option>').join('') + '</select>' + CHEV + '</label>' +
+        '<div class="seg" role="group" aria-label="Side">' + SIDES.map(sd => { const n = libraryOf(libKey(concept, sd)).items.length;
+          return '<button type="button" data-libside="' + sd + '" aria-pressed="' + (sd === side) + '">' + sd + ' · ' + (n || 'empty') + '</button>'; }).join('') + '</div>' +
+        '<div class="meta">' + esc(lib.version
+          ? plural(lib.items.length, 'item') + ' · version ' + lib.version + ' · saved by ' + String(lib.updatedBy || '').replace(/^HQ · /, '') + ', ' +
+            new Date(lib.updatedAt).toLocaleDateString() + (lib.seededFrom ? ' · started from ' + lib.seededFrom : '')
+          : 'Nothing saved yet.') + '</div>';
+      $('lib-add').disabled = !!(S.seed && S.seed.key === S.lib);
+      $('lib-setup-btn').disabled = !lib.items.length || !!(S.seed && S.seed.key === S.lib);
+      if (S.seed && S.seed.key === S.lib) return renderSeed();
+      if (!lib.items.length && S.libSel !== 'new') return renderStart();
+      $('lib-body').innerHTML = '<div class="cols"><section class="card list-card" aria-label="Library items">' +
+        '<div class="list-tools"><label class="search"><span class="sr">Search this library</span>' + SEARCH +
+        '<input id="lib-q" value="' + esc(S.libQ) + '" placeholder="Search items or vendors"></label><div id="lib-filters" class="actions" style="gap:6px"></div></div>' +
+        '<div role="list" id="lib-list"></div><div class="list-foot" id="lib-foot"></div></section>' +
+        '<section class="card panel" id="lib-panel" aria-label="Item"></section></div>';
+      renderLibList();
+      renderPanel();
+    }
+    function renderLibList() {
+      const items = libItems(S.lib), q = lc(S.libQ);
+      // "One store only" means something only when the side has two or more.
+      const several = libStores(S.lib).length > 1;
+      if (!several) S.libFilter = 'all';
+      const lonely = it => several && carriedAt(S.lib, it.name).filter(x => x.has).length === 1;
+      $('lib-filters').innerHTML = !several ? '' : [['all', 'All items'], ['lonely', 'At one store only · ' + items.filter(lonely).length]].map(f =>
+        '<button type="button" class="pill" data-libfilter="' + f[0] + '" aria-pressed="' + (S.libFilter === f[0]) + '">' + esc(f[1]) + '</button>').join('');
+      const shown = items.map((it, i) => ({ it, i })).filter(x =>
+        (S.libFilter !== 'lonely' || lonely(x.it)) && (!q || lc(x.it.name + ' ' + x.it.vendor + ' ' + x.it.backups.join(' ')).indexOf(q) >= 0));
+      $('lib-list').innerHTML = shown.map(x => {
+        const at = carriedAt(S.lib, x.it.name), n = at.filter(a => a.has).length;
+        return '<button type="button" class="lrow" role="listitem" data-libsel="' + x.i + '" aria-current="' + (S.libSel === x.i) + '">' +
+          '<span class="t"><span class="n">' + esc(x.it.name) + '</span><span class="s">' + esc((x.it.pack ? x.it.pack + ' · ' : '') + x.it.vendor +
+          (x.it.backups.length ? ' + ' + x.it.backups.join(', ') : '')) + '</span></span>' +
+          (at.length > 1 && n === 1 ? '<span class="tag warn">One store only</span>' : '') +
+          '<span class="at">' + n + ' of ' + at.length + ' stores</span></button>';
+      }).join('') || '<p class="empty" style="margin:16px 18px">No item matches.</p>';
+      $('lib-foot').textContent = 'Showing ' + shown.length + ' of ' + plural(items.length, 'item');
+    }
+    function panelItem() {
+      const items = libItems(S.lib);
+      if (S.libSel === 'new') return { name: '', pack: '', vendor: '', backups: [], notes: '' };
+      return items[S.libSel] || items[0] || null;
+    }
+    function renderPanel() {
+      const base = panelItem();
+      if (!base) { $('lib-panel').innerHTML = ''; return; }
+      if (!S.panel) S.panel = JSON.parse(JSON.stringify(base));
+      const p = S.panel, isNew = S.libSel === 'new', items = libItems(S.lib);
+      const choices = vendorChoices(S.lib.split('|')[0], [p.vendor].concat(p.backups));
+      const at = isNew ? [] : carriedAt(S.lib, base.name);
+      $('lib-panel').innerHTML = '<div class="card-head"><h2>' + esc(isNew ? 'New item' : base.name) + '</h2>' +
+        '<span class="muted">' + (isNew ? 'Added at the end' : 'Item ' + (S.libSel + 1) + ' of ' + items.length) + '</span></div>' +
+        '<label class="field">Item name<input data-pk="name" value="' + esc(p.name) + '" maxlength="300"></label>' +
+        '<div class="grid2"><label class="field">Pack<input data-pk="pack" value="' + esc(p.pack) + '" maxlength="300"></label>' +
+        '<label class="field">Main vendor' + vendorSelectHtml('id="pn-main"', p.vendor, choices) + '</label></div>' +
+        '<div role="group" aria-label="Backup vendors"><div class="chips-label">Backup vendors <span>· tap to add or remove</span></div>' +
+        chipsHtml('data-pchip="1"', p.vendor, p.backups, choices) + '</div>' +
+        '<label class="field">Notes<input data-pk="notes" value="' + esc(p.notes) + '" maxlength="1000"></label>' +
+        (at.length ? '<div class="where"><div class="chips-label">At the ' + esc(libName(S.lib)) + ' stores today</div><div class="chips">' +
+          at.map(a => a.has ? '<span class="has">' + CHECK.replace('class="ck" ', '') + esc(shortName(a.st)) + '</span>'
+                            : '<span class="not">Not at ' + esc(shortName(a.st)) + '</span>').join('') + '</div></div>' : '') +
+        '<div class="row-between" style="margin-top:4px">' +
+        (isNew ? '<button type="button" class="linkbtn" id="pn-cancel">Cancel</button>' : '<button type="button" class="linkbtn" id="pn-remove">Remove from the library</button>') +
+        '<button type="button" class="btn primary" id="pn-save">' + (isNew ? 'Add to the library' : 'Save') + '</button></div>';
+      updatePanelSave();
+    }
+    function panelChanged() {
+      const base = panelItem();
+      if (S.libSel === 'new') return !!S.panel.name.trim();
+      try { return JSON.stringify(CE.cleanLibrary([S.panel])[0]) !== JSON.stringify(CE.cleanLibrary([base])[0]); } catch (e) { return true; }
+    }
+    function updatePanelSave() { const b = $('pn-save'); if (b) b.disabled = S.busy || !panelChanged(); }
+    // true = saved; null = refused here (fix it and save again: the edit
+    // stays); false = not saved by the server (HQ reloaded the libraries).
+    async function saveLibrary(key, items, label, extra) {
+      const lib = libraryOf(key);
+      let clean;
+      try { clean = CE.cleanLibrary(items); } catch (err) { libStatus('bad', err.message); return null; }
+      const payload = Object.assign({ concept: lib.concept, side: lib.side, version: lib.version, label, items: clean }, extra || {});
+      return save([], 'lib-status', () => {}, [payload]);
+    }
+
+    // An empty library starts from one store's order guide.
+    function renderStart() {
+      const [concept, side] = S.lib.split('|');
+      const rank = st => (st.concept === concept ? 2 : 0) + (st.side === side ? 1 : 0) - (st.isTest ? 4 : 0);
+      const stores = S.data.stores.filter(st => st.tables && st.tables.items.length)
+        .sort((a, b) => rank(b) - rank(a) || storeName(a).localeCompare(storeName(b)));
+      $('lib-body').innerHTML = '<section class="card" aria-labelledby="start-h"><h2 id="start-h">The ' + esc(libName(S.lib)) + ' library is empty</h2>' +
+        '<p class="help" style="max-width:640px">Start it from one store\'s order guide: its active items that have a vendor come in, in its list order. ' +
+        'An item it lists twice (once per vendor) becomes one item, with the other vendor as a backup. Then clean it here, item by item.</p>' +
+        (stores.length ? '<div class="actions" style="margin-top:16px;align-items:flex-end"><label class="field">Start from<span class="select"><select id="lib-from">' +
+          stores.map(st => '<option value="' + esc(st.slug) + '">' + esc(storeName(st)) + ' (' + plural(st.tables.items.length, 'item') + ')</option>').join('') +
+          '</select>' + CHEV + '</span></label><button type="button" class="btn primary" id="lib-load">Load its items</button></div>'
+          : '<p class="empty">No store has items to start from.</p>') +
+        '<p class="help">Or add items one at a time with <b>Add an item</b>.</p></section>';
+    }
+    function renderSeed() {
+      const sd = S.seed;
+      $('lib-body').innerHTML = '<section class="card" aria-labelledby="seed-h"><h2 id="seed-h">' + plural(sd.items.length, 'item') + ' from ' + esc(sd.from) + ', not saved yet</h2>' +
+        '<p class="help">' + esc(sd.note) + ' Save them as the ' + esc(libName(S.lib)) + ' library, then clean it item by item.</p>' +
+        '<div class="actions" style="margin-top:14px"><button type="button" class="btn primary" id="seed-save">Save as the library</button>' +
+        '<button type="button" class="btn" id="seed-discard">Discard</button></div>' +
+        '<div style="margin-top:16px">' + sd.items.slice(0, 400).map(it => '<div class="prow"><b>' + esc(it.name) + '</b><span class="muted">' +
+          esc((it.pack ? it.pack + ' · ' : '') + it.vendor + (it.backups.length ? ' + ' + it.backups.join(', ') : '')) + '</span></div>').join('') + '</div></section>';
+    }
+
+    // ---- Set up stores from a library ----
+    function renderSetup() {
+      const key = S.setupLib, items = libItems(key);
+      $('su-crumb').textContent = libName(key) + ' › Set up stores';
+      $('su-h').textContent = 'Set up stores from the ' + libName(key) + ' library';
+      $('su-sub').textContent = plural(items.length, 'item') + '. They arrive with no par and no storage area, and wait in each store\'s Items page under Needs setup. ' +
+        'An item a store already has keeps its own setup and only gains the vendors it lacks.';
+      $('su-stores').innerHTML = pickerHtml('setup', true);
+      renderSetupWork();
+    }
+    function renderSetupWork() {
+      const key = S.setupLib, items = libItems(key), stores = pickedStores('setup');
+      const [, side] = key.split('|');
+      $('su-vendors').innerHTML = vendorRowsHtml(items, stores);
+      const plan = rolloutPlan(items, 'Set up from the ' + libName(key) + ' library', stores);
+      S.setupPlan = plan;
+      $('su-preview').innerHTML = previewHtml(plan, 'Pick the stores to set up in step 1.',
+        st => (st.side && st.side !== side ? ' <span class="tag warn">' + esc(st.side) + '</span>' : ''));
+      const ok = plan && !plan.some(p => p.error) && plan.some(p => p.out.ops.length);
+      $('su-bar').innerHTML = barHtml(plural(items.length, 'item') + ' to ' + plural(stores.length, 'store'), 'Every store or none. Each store sees one change it can undo.',
+        'su-save', stores.length ? 'Set up ' + plural(stores.length, 'store') : 'Pick stores first', ok && !S.busy, 'su-status');
+    }
 
     // ---- Add a vendor ----
-    function renderVendorForm() {
-      $('v-week').innerHTML = weekHtml(S.vDays, 'data-vday');
-      $('v-explain').textContent = explain(CE.multsFromDays(S.vDays));
-      $('v-contact').innerHTML = CONTACT.map(([k, label]) => '<div class="field' + (k === 'notes' ? ' wide' : '') + '"><label for="v-c-' + k + '">' + label + '</label>' +
-        (k === 'notes' ? '<textarea id="v-c-' + k + '" maxlength="500"></textarea>' : '<input id="v-c-' + k + '" maxlength="200">') + '</div>').join('');
+    function renderVendorView() {
+      $('vd-stores').innerHTML = pickerHtml('vendor');
+      if (!S.vendorFormReady) {
+        $('v-contact').innerHTML = CONTACT.map(([k, label]) => '<label class="field' + (k === 'notes' ? ' wide' : '') + '">' + label +
+          (k === 'notes' ? '<textarea data-contact="' + k + '" maxlength="500"></textarea>' : '<input data-contact="' + k + '" maxlength="200">') + '</label>').join('');
+        S.vendorFormReady = true;
+      }
+      $('v-week').innerHTML = DAY3.map((d, i) => '<button type="button" class="day" data-vday="' + i + '" aria-pressed="' + !!S.vDays[i] + '" aria-label="' + DAY[i] + '">' + d + '</button>').join('');
+      $('v-explain').textContent = explainDays(S.vDays);
+      renderVendorWork();
     }
-    $('v-week').addEventListener('click', e => {
-      const i = e.target.getAttribute && e.target.getAttribute('data-vday'); if (i == null) return;
-      S.vDays[Number(i)] = !S.vDays[Number(i)];
-      e.target.setAttribute('aria-pressed', S.vDays[Number(i)] ? 'true' : 'false');
-      $('v-explain').textContent = explain(CE.multsFromDays(S.vDays));
-      renderVendorPreview();
-    });
-    $('v-nocut').onchange = () => { $('v-cutoff').disabled = $('v-nocut').checked; renderVendorPreview(); };
-    $('v-name').addEventListener('input', () => renderVendorPreview());
-    $('v-cutoff').addEventListener('input', () => renderVendorPreview());
     function vendorPlan() {
-      const name = $('v-name').value.trim(), stores = pickedStores();
+      const name = $('v-name').value.trim(), stores = pickedStores('vendor');
       if (!name || !stores.length) return null;
       if (!$('v-nocut').checked && !$('v-cutoff').value) return { needCutoff: true };
       const contact = {};
-      for (const [k] of CONTACT) contact[k] = $('v-c-' + k).value.trim();
+      document.querySelectorAll('[data-contact]').forEach(el => { contact[el.getAttribute('data-contact')] = el.value.trim(); });
       const vendor = { name, mults: CE.multsFromDays(S.vDays), cutoff: $('v-nocut').checked ? '' : $('v-cutoff').value, contact };
       return stores.map(st => {
         const m = CE.matchVendor(vendorNames(st), name);
@@ -567,256 +919,218 @@
         catch (err) { return { st, links, error: err.message }; }
       });
     }
-    function renderVendorPreview() {
-      const plan = vendorPlan();
-      S.vPlan = plan;
-      if (!plan || plan.needCutoff) {
-        $('v-preview').innerHTML = plan && plan.needCutoff ? '<p class="bad">Set the time the order is due, or tick No cutoff.</p>' : '';
-        $('v-save').disabled = true; return;
-      }
-      $('v-preview').innerHTML = '<h3 style="margin:18px 0 6px;font-size:14px">What each store gets</h3><div class="scroll"><table><thead><tr><th>Store</th><th>Change</th></tr></thead><tbody>' +
-        plan.map(p => '<tr><td>' + esc(storeName(p.st)) + '</td><td>' + (p.error ? '<span class="bad">' + esc(p.error) + '</span>'
-          : p.have ? (p.have.how === 'same' ? '<span class="muted">Already has it</span>'
-            : 'Has <b>' + esc(p.have.name) + '</b>, likely the same: left as it is. <label class="check"><input type="checkbox" data-anyway="' + esc(p.st.slug) + '">Add "' + esc($('v-name').value.trim()) + '" anyway</label>')
-          : esc('Adds ' + $('v-name').value.trim()) + (S.vAddAnyway[p.st.slug] ? ' <label class="check"><input type="checkbox" data-anyway="' + esc(p.st.slug) + '" checked>Add anyway</label>' : '')) + '</td></tr>').join('') +
-        '</tbody></table></div>';
-      $('v-save').disabled = S.busy || plan.some(p => p.error) || !plan.some(p => p.out.ops.length || p.links.length);
+    function renderVendorWork() {
+      const plan = vendorPlan(), name = $('v-name').value.trim();
+      S.vPlan = plan && !plan.needCutoff ? plan : null;
+      $('vd-preview').innerHTML = !plan ? '<p class="empty">' + (name ? 'Pick stores in step 1.' : 'Name the vendor in step 2.') + '</p>'
+        : plan.needCutoff ? '<p class="bad">Set the time the order is due, or tick No cutoff.</p>'
+        : plan.map(p => '<div class="prow"><b>' + esc(shortName(p.st)) + '</b><span>' + (p.error ? '<span class="bad">' + esc(p.error) + '</span>'
+          : p.have ? (p.have.how === 'same' ? '<span class="muted">Already has it.</span>'
+            : 'Has <b>' + esc(p.have.name) + '</b>, likely the same: left as it is. <label class="check"><input type="checkbox" data-anyway="' + esc(p.st.slug) + '">Add “' + esc(name) + '” anyway</label>')
+          : 'Adds ' + esc(name) + '.' + (S.vAddAnyway[p.st.slug] ? ' <label class="check"><input type="checkbox" data-anyway="' + esc(p.st.slug) + '" checked>Add anyway</label>' : '')) + '</span></div>').join('');
+      const n = S.vPlan ? S.vPlan.filter(p => p.out && p.out.ops.length).length : 0;
+      $('vd-bar').innerHTML = barHtml(name ? name + ' to ' + plural(n, 'store') : 'A vendor to many stores', 'Every store or none.',
+        'v-save', n ? 'Add to ' + plural(n, 'store') : 'Add the vendor', !!S.vPlan && !S.busy && !S.vPlan.some(p => p.error) && S.vPlan.some(p => p.out.ops.length || p.links.length), 'vd-status');
     }
-    $('v-preview').addEventListener('change', e => {
-      const slug = e.target.getAttribute('data-anyway'); if (!slug) return;
-      S.vAddAnyway[slug] = e.target.checked; renderVendorPreview();
-    });
-    $('v-save').onclick = () => save(S.vPlan, 'v-status', () => {
-      $('v-name').value = ''; S.vDays = [false, false, false, false, false, false, false]; S.vAddAnyway = {};
-      $('v-nocut').checked = true; $('v-cutoff').value = ''; $('v-cutoff').disabled = true; renderVendorForm();
-    });
 
-    // ---- Saving: every store or none ----
+    // ---- Saving: every store (and library) or none ----
     // libraries: whole libraries saved in the same save (schema v12); sent
     // only when there are some, so the other saves work on v11 too.
     async function save(plan, statusId, reset, libraries) {
-      if (!plan || S.busy) return;
+      if (!plan || S.busy) return false;
       const changes = plan.filter(p => p.out && p.out.ops.length).map(p => ({ slug: p.st.slug, label: p.out.label, ops: p.out.ops }));
       const links = [].concat.apply([], plan.map(p => p.links || []));
       const params = { p_token: S.token, p_changes: changes, p_links: links };
       if (libraries && libraries.length) params.p_libraries = libraries;
-      S.busy = true; $(statusId).className = 'status'; $(statusId).textContent = 'Saving…';
+      const say = (cls, text) => { const el = $(statusId); if (el) { el.className = 'status' + (cls ? ' ' + cls : ''); el.textContent = text; } };
+      S.busy = true; say('', 'Saving…');
       try {
         const r = await rpc('mog_hq_apply', params);
         if (!r.ok) {
-          if (r.error === 'SESSION_EXPIRED') { keepToken(null); showSignin('Your sign-in ran out. Sign in again; nothing was saved.'); return; }
+          if (r.error === 'SESSION_EXPIRED') { keepToken(null); showSignin('Your sign-in ran out. Sign in again; nothing was saved.'); return false; }
+          S.busy = false;
           await load();
-          $(statusId).className = 'status bad';
-          $(statusId).textContent = r.error === 'CONFLICT'
+          say('bad', r.error === 'CONFLICT'
             ? 'Something changed since HQ loaded it (' + (r.detail || '') + '). Nothing was saved anywhere. HQ reloaded: check and save again.'
-            : 'Nothing was saved anywhere: ' + r.error;
-          return;
+            : 'Nothing was saved anywhere: ' + r.error);
+          return false;
         }
         reset();
+        S.busy = false;
         await load();
-        $(statusId).className = 'status good';
         const n = r.data.changes.length, libs = r.data.libraries || [];
         const parts = [];
-        if (n) parts.push('Saved at ' + n + (n === 1 ? ' store' : ' stores') + '. Each store sees it in Manage → Changes, by ' + r.data.by + '.');
+        if (n) parts.push('Saved at ' + plural(n, 'store') + '. Each store sees it in Manage → Changes, by ' + r.data.by + '.');
         if (libs.length) parts.push('Saved the ' + libs.map(l => libName(libKey(l.concept, l.side))).join(' and ') + (libs.length === 1 ? ' library.' : ' libraries.'));
-        $(statusId).textContent = parts.join(' ') || 'Saved the vendor names. No store needed a change.';
+        say('good', parts.join(' ') || 'Saved the vendor names. No store needed a change.');
+        return true;
       } catch (err) {
-        $(statusId).className = 'status bad'; $(statusId).textContent = 'Not saved: ' + err.message;
-      } finally { S.busy = false; renderWork(); }
+        say('bad', 'Not saved: ' + err.message);
+        return false;
+      } finally { S.busy = false; }
     }
-
-    // ---- Libraries (schema v12) ----
-    const SIDES = ['BOH', 'FOH'];
-    const LIB_FIELDS = ['name', 'pack', 'vendor', 'backups', 'notes'];
-    const libKey = (concept, side) => concept + '|' + side;
-    function libraryOf(key) {
-      const [concept, side] = key.split('|');
-      return S.data.libraries.find(l => l.concept === concept && l.side === side) ||
-        { concept, side, version: 0, seededFrom: null, updatedAt: null, updatedBy: null, items: [] };
-    }
-    function libName(key) { const [c, s] = key.split('|'); return (CONCEPTS[c] || c) + ' ' + s; }
-    function libKeys() {
-      const keys = [];
-      for (const c of Object.keys(CONCEPTS)) for (const s of SIDES) keys.push(libKey(c, s));
-      for (const l of S.data.libraries) if (keys.indexOf(libKey(l.concept, l.side)) < 0) keys.push(libKey(l.concept, l.side));
-      return keys;
-    }
-    const toRow = it => ({ name: it.name, pack: it.pack, vendor: it.vendor, backups: it.backups.join(', '), notes: it.notes });
-    const blankLibRow = () => ({ name: '', pack: '', vendor: '', backups: '', notes: '' });
-    const emptyRow = r => !LIB_FIELDS.some(k => String(r[k]).trim());
-    const draftItems = d => CE.cleanLibrary(d.rows.filter(r => !emptyRow(r)));
-    // The saved list in cleanLibrary's shape (the database sends each item's
-    // keys in jsonb's order), so an untouched draft compares equal.
-    function cleanOr(items) { try { return CE.cleanLibrary(items); } catch (e) { return items; } }
-    function rowsChanged(d) {
-      if (d.seededFrom !== null) return true;
-      try { return JSON.stringify(draftItems(d)) !== JSON.stringify(d.base); } catch (e) { return true; }
-    }
-    // What's being edited: the saved list until someone changes it. A changed
-    // draft whose library was saved meanwhile stays, marked stale, until it's
-    // discarded (saving it would be a CONFLICT).
-    function draftOf(key) {
-      const lib = libraryOf(key);
-      let d = S.libDrafts[key];
-      if (d && d.version !== lib.version && !rowsChanged(d)) d = null;
-      if (!d) d = S.libDrafts[key] = { version: lib.version, base: cleanOr(lib.items), rows: lib.items.map(toRow), seededFrom: null };
-      d.stale = d.version !== lib.version;
-      return d;
-    }
-    function libStatus(cls, text) { $('lib-status').className = 'status' + (cls ? ' ' + cls : ''); $('lib-status').textContent = text; }
-
-    function renderLibrary() {
-      const keys = libKeys();
-      if (!S.lib || keys.indexOf(S.lib) < 0) S.lib = keys.find(k => libraryOf(k).items.length) || keys[0];
-      $('lib-pick').innerHTML = keys.map(k => '<button type="button" data-lib="' + esc(k) + '" aria-pressed="' + (k === S.lib ? 'true' : 'false') + '">' +
-        esc(libName(k)) + '<span class="count">' + libraryOf(k).items.length + '</span></button>').join('');
-      const lib = libraryOf(S.lib);
-      $('lib-meta').textContent = lib.version
-        ? 'Saved by ' + String(lib.updatedBy || '').replace(/^HQ · /, '') + ', ' + new Date(lib.updatedAt).toLocaleString() +
-          (lib.seededFrom ? '. Started from ' + lib.seededFrom + '.' : '.')
-        : 'Empty. Start it from a store\'s order guide, then clean it here: fix names, drop what only that store uses.';
-      renderLibStart(); renderLibRows(); updateLibButtons(); renderLibSetup();
-    }
-    $('lib-pick').addEventListener('click', e => {
-      const b = e.target.closest && e.target.closest('button[data-lib]'); if (!b) return;
-      S.lib = b.getAttribute('data-lib'); $('lib-search').value = ''; libStatus('', ''); renderLibrary();
-    });
-
-    // An empty library starts from a store: the stores of its concept and side first.
-    function renderLibStart() {
-      if (libraryOf(S.lib).items.length || draftOf(S.lib).rows.some(r => !emptyRow(r))) { $('lib-start').innerHTML = ''; return; }
-      const [concept, side] = S.lib.split('|');
-      const rank = st => (st.concept === concept ? 2 : 0) + (st.side === side ? 1 : 0) - (st.isTest ? 4 : 0);
-      const stores = S.data.stores.filter(st => st.tables && st.tables.items.length)
-        .sort((a, b) => rank(b) - rank(a) || storeName(a).localeCompare(storeName(b)));
-      $('lib-start').innerHTML = !stores.length ? '' : '<div class="row" style="margin:4px 0 10px"><label for="lib-from" style="font-weight:600">Start from a store</label>' +
-        '<select id="lib-from" class="search">' + stores.map(st => '<option value="' + esc(st.slug) + '">' + esc(storeName(st)) + ' (' + st.tables.items.length + ' items)</option>').join('') +
-        '</select><button type="button" class="btn small" id="lib-load">Load its items</button></div>';
-    }
-    $('lib-start').addEventListener('click', e => {
-      if (e.target.id !== 'lib-load') return;
-      const st = storeBy($('lib-from').value); if (!st) return;
-      let seed;
-      try { seed = CE.librarySeed(st.tables); } catch (err) { libStatus('bad', err.message); return; }
-      const d = draftOf(S.lib);
-      d.rows = seed.items.map(toRow); d.seededFrom = st.location || st.slug;
-      const left = [];
-      if (seed.inactive) left.push(seed.inactive + ' inactive');
-      if (seed.noVendor) left.push(seed.noVendor + ' with no vendor yet');
-      libStatus('', seed.items.length + ' items from ' + storeName(st) + '.' + (left.length ? ' Left out: ' + left.join(', ') + '.' : '') +
-        (seed.merged.length ? ' Listed twice there (once per vendor), now one item with the other vendor as a backup: ' + few(seed.merged) + '.' : '') +
-        ' Clean them up, then save the library.');
-      renderLibrary();
-    });
-
-    function renderLibRows() {
-      const d = draftOf(S.lib);
-      const cell = (i, r, k, extra) => '<td><input data-lrow="' + i + '" data-k="' + k + '" value="' + esc(r[k]) + '"' + extra + '></td>';
-      $('lib-rows').innerHTML = d.rows.map((r, i) => '<tr data-i="' + i + '">' +
-        cell(i, r, 'name', ' maxlength="300" aria-label="Item name"') + cell(i, r, 'pack', ' maxlength="300" aria-label="Pack"') +
-        cell(i, r, 'vendor', ' maxlength="100" list="hq-vendor-names" aria-label="Main vendor"') +
-        cell(i, r, 'backups', ' list="hq-vendor-names" aria-label="Backup vendors"') + cell(i, r, 'notes', ' maxlength="1000" aria-label="Notes"') +
-        '<td><button type="button" class="link" data-ldrop="' + i + '" aria-label="Remove this item">Remove</button></td></tr>').join('');
-      filterLibRows();
-    }
-    function filterLibRows() {
-      const q = lc($('lib-search').value), d = draftOf(S.lib);
-      let shown = 0;
-      $('lib-rows').querySelectorAll('tr').forEach(tr => {
-        const r = d.rows[Number(tr.getAttribute('data-i'))];
-        const hit = !q || emptyRow(r) || LIB_FIELDS.some(k => lc(r[k]).indexOf(q) >= 0);
-        tr.hidden = !hit;
-        if (hit && !emptyRow(r)) shown++;
-      });
-      const total = d.rows.filter(r => !emptyRow(r)).length;
-      $('lib-count').textContent = q ? shown + ' of ' + total + ' items' : total + (total === 1 ? ' item' : ' items');
-    }
-    $('lib-search').addEventListener('input', filterLibRows);
-    $('lib-rows').addEventListener('input', e => {
-      const i = e.target.getAttribute('data-lrow'); if (i == null) return;
-      draftOf(S.lib).rows[Number(i)][e.target.getAttribute('data-k')] = e.target.value;
-      updateLibButtons();
-    });
-    $('lib-rows').addEventListener('click', e => {
-      const i = e.target.getAttribute && e.target.getAttribute('data-ldrop'); if (i == null) return;
-      draftOf(S.lib).rows.splice(Number(i), 1);
-      renderLibStart(); renderLibRows(); updateLibButtons();
-    });
-    $('lib-add').onclick = () => {
-      draftOf(S.lib).rows.push(blankLibRow()); $('lib-search').value = '';
-      renderLibRows();
-      const names = $('lib-rows').querySelectorAll('input[data-k="name"]');
-      names[names.length - 1].focus();
-    };
-    $('lib-discard').onclick = () => { delete S.libDrafts[S.lib]; libStatus('', ''); renderLibrary(); };
-
-    function updateLibButtons() {
-      const d = draftOf(S.lib), changed = rowsChanged(d);
-      $('lib-discard').hidden = !changed;
-      $('lib-save').disabled = S.busy || !changed || d.stale;
-      if (d.stale) libStatus('bad', 'This library was saved elsewhere since you started editing. Discard your changes to see it, then make them again.');
-      if (changed !== S.libWasChanged) { S.libWasChanged = changed; renderLibSetup(); }
-    }
-    $('lib-save').onclick = () => {
-      const key = S.lib, lib = libraryOf(key), d = draftOf(key);
-      let items;
-      try { items = draftItems(d); } catch (err) { libStatus('bad', err.message); return; }
-      const label = d.seededFrom !== null && !lib.items.length ? 'Started from ' + d.seededFrom + ' (' + items.length + (items.length === 1 ? ' item)' : ' items)')
-        : CE.libraryLabel(lib.items, items);
-      const payload = { concept: lib.concept, side: lib.side, version: lib.version, label, items };
-      if (d.seededFrom !== null) payload.seededFrom = d.seededFrom;
-      save([], 'lib-status', () => { delete S.libDrafts[key]; }, [payload]);
-    };
-
-    // Setting stores up: the saved library, rolled out like an LTO.
-    function renderLibSetup() {
-      const key = S.lib, lib = libraryOf(key);
-      $('lib-setup-box').hidden = !lib.items.length;
-      S.libPlan = null;
-      if (!lib.items.length) return;
-      if (rowsChanged(draftOf(key))) {
-        $('lib-map').innerHTML = '<p class="muted">Save the library first: a store gets the saved list.</p>';
-        $('lib-preview').innerHTML = ''; $('lib-setup').disabled = true; return;
-      }
-      $('lib-map').innerHTML = mapHtml(lib.items);
-      const plan = rolloutPlan(lib.items, 'Set up from the ' + libName(key) + ' library');
-      S.libPlan = plan;
-      const note = st => (st.concept !== lib.concept ? ' <span class="tag warn">other concept</span>'
-        : st.side && st.side !== lib.side ? ' <span class="tag warn">' + esc(st.side) + '</span>' : '');
-      $('lib-preview').innerHTML = plan ? previewHtml(plan, note) : '<p class="muted" style="margin-top:12px">Tick the stores to set up, above.</p>';
-      $('lib-setup').disabled = !plan || S.busy || plan.some(p => p.error) || !plan.some(p => p.out.ops.length);
-    }
-    $('lib-setup').onclick = () => save(S.libPlan, 'lib-setup-status', () => {}, null);
 
     // ---- Vendor names ----
     function renderLinks() {
-      if (!S.data.links.length) { $('links').innerHTML = '<p class="muted">None yet. They\'re remembered the first time you confirm a match in a rollout.</p>'; return; }
+      if (!S.data.links.length) { $('links').innerHTML = '<p class="muted" style="margin:0">None yet. They\'re remembered the first time you confirm a match in a rollout.</p>'; return; }
       $('links').innerHTML = '<table><thead><tr><th>HQ name</th><th>Store</th><th>That store\'s vendor</th><th></th></tr></thead><tbody>' +
         S.data.links.map(l => { const st = storeBy(l.slug);
-          return '<tr><td>' + esc(l.hqName) + '</td><td>' + esc(st ? storeName(st) : l.slug) + '</td><td>' + esc(l.vendor) + '</td>' +
-            '<td><button type="button" class="link" data-forget="' + esc(l.slug) + '" data-hq="' + esc(l.hqName) + '">Forget</button></td></tr>'; }).join('') +
+          return '<tr><td><b>' + esc(l.hqName) + '</b></td><td>' + esc(st ? storeName(st) : l.slug) + '</td><td>' + esc(l.vendor) + '</td>' +
+            '<td style="text-align:right"><button type="button" class="linkbtn" data-forget="' + esc(l.slug) + '" data-hq="' + esc(l.hqName) + '">Forget</button></td></tr>'; }).join('') +
         '</tbody></table>';
     }
-    $('links').addEventListener('click', async e => {
-      const slug = e.target.getAttribute && e.target.getAttribute('data-forget'); if (!slug || S.busy) return;
-      S.busy = true;
-      try {
-        const r = await rpc('mog_hq_apply', { p_token: S.token, p_changes: [], p_links: [{ slug, hqName: e.target.getAttribute('data-hq'), vendor: null }] });
-        $('links-status').textContent = r.ok ? 'Forgotten.' : r.error;
-        await load();
-      } catch (err) { $('links-status').textContent = err.message; }
-      finally { S.busy = false; }
-    });
 
     // ---- Recent ----
     function renderRecent() {
       const list = S.data.recent;
-      $('recent').innerHTML = !list.length ? '<p class="muted">Nothing yet.</p>' :
+      $('recent').innerHTML = !list.length ? '<p class="muted" style="margin:0">Nothing yet.</p>' :
         '<table><thead><tr><th>When</th><th>Store</th><th>By</th><th>What</th></tr></thead><tbody>' +
         list.map(x => { const st = storeBy(x.slug);
           return '<tr><td style="white-space:nowrap">' + esc(new Date(x.at).toLocaleString()) + '</td><td>' + esc(st ? storeName(st) : x.slug) + '</td>' +
-            '<td>' + esc(String(x.by || '').replace(/^HQ · /, '')) + '</td><td>' + esc(x.label) + (x.undoneBy ? ' <span class="tag">undone at the store</span>' : '') + '</td></tr>'; }).join('') +
+            '<td>' + esc(String(x.by || '').replace(/^HQ · /, '')) + '</td><td>' + esc(x.label) + (x.undoneBy ? ' <span class="tag">Undone at the store</span>' : '') + '</td></tr>'; }).join('') +
         '</tbody></table>';
+    }
+
+    // ---- Events ----
+    document.addEventListener('click', async e => {
+      const t = e.target.closest ? e.target.closest('button') : null;
+      if (!t || !S.data || t.disabled) return;
+      const nav = t.getAttribute('data-nav');
+      if (nav) { go(nav); return; }
+      const quick = t.getAttribute('data-quick');
+      if (quick) { const v = t.getAttribute('data-view'); quickPick(v, quick); return renderStoresChanged(v); }
+      const tile = t.getAttribute('data-tile');
+      if (tile) { const v = t.getAttribute('data-view'); S.pick[v][tile] = !S.pick[v][tile]; return renderStoresChanged(v); }
+      const day = t.getAttribute('data-newday');
+      if (day != null) { const i = Number(t.getAttribute('data-i')); S.newDays[day][i] = !S.newDays[day][i]; delete S.daysFrom[day]; return renderWork(); }
+      // Roll out
+      if (t.id === 'ro-add') { S.rows.push(blankRow()); renderRolloutItems(); renderRolloutWork(); return; }
+      const drop = t.getAttribute('data-drop');
+      if (drop != null) { S.rows.splice(Number(drop), 1); if (!S.rows.length) S.rows.push(blankRow()); renderRolloutItems(); renderRolloutWork(); return; }
+      const chip = t.getAttribute('data-chip');
+      if (chip != null) { toggleIn(S.rows[Number(chip)].backups, t.getAttribute('data-v')); renderRolloutItems(); renderRolloutWork(); return; }
+      if (t.id === 'ro-save') {
+        const payloads = S.ltoLibPayloads;
+        save(S.ltoPlan, 'ro-status', () => { S.rows = [blankRow()]; S.map = {}; S.newDays = {}; S.daysFrom = {}; S.ltoLibs = {}; $('ro-label').value = ''; }, payloads);
+        return;
+      }
+      // Libraries
+      const side = t.getAttribute('data-libside');
+      if (side) { S.lib = libKey(S.lib.split('|')[0], side); resetLibView(); return renderLibraries(); }
+      const lf = t.getAttribute('data-libfilter');
+      if (lf) { S.libFilter = lf; return renderLibList(); }
+      const sel = t.getAttribute('data-libsel');
+      if (sel != null) { S.libSel = Number(sel); S.panel = null; renderLibList(); renderPanel(); return; }
+      if (t.getAttribute('data-pchip')) { toggleIn(S.panel.backups, t.getAttribute('data-v')); return renderPanel(); }
+      if (t.id === 'lib-add') { S.libSel = 'new'; S.panel = null; S.libFilter = 'all'; libStatus('', ''); return renderLibraries(); }
+      if (t.id === 'pn-cancel') { S.libSel = 0; S.panel = null; return renderLibraries(); }
+      if (t.id === 'pn-save') {
+        const items = libItems(S.lib).slice(), isNew = S.libSel === 'new', p = S.panel;
+        const before = isNew ? null : items[S.libSel];
+        if (isNew) items.push(p); else items[S.libSel] = p;
+        const label = isNew ? 'Added "' + p.name.trim() + '"' : 'Edited "' + before.name + '"' + (lc(before.name) !== lc(p.name) ? ' (now "' + p.name.trim() + '")' : '');
+        const after = items.length - 1;
+        const done = await saveLibrary(S.lib, items, label);
+        if (done === null) return;
+        // Saved: show it. Not saved: the list may have moved under this
+        // edit, so start again from what's saved now.
+        if (done) S.libSel = isNew ? after : S.libSel; else if (isNew) S.libSel = 0;
+        S.panel = null; renderLibraries();
+        return;
+      }
+      if (t.id === 'pn-remove') {
+        const items = libItems(S.lib), it = items[S.libSel];
+        if (!it || !window.confirm('Remove "' + it.name + '" from the ' + libName(S.lib) + ' library? Stores keep their own copy.')) return;
+        if (await saveLibrary(S.lib, items.filter((x, i) => i !== S.libSel), 'Removed "' + it.name + '"')) { S.libSel = Math.max(0, S.libSel - 1); S.panel = null; renderLibraries(); }
+        return;
+      }
+      if (t.id === 'lib-load') {
+        const st = storeBy($('lib-from').value); if (!st) return;
+        let seed;
+        try { seed = CE.librarySeed(st.tables); } catch (err) { return libStatus('bad', err.message); }
+        const left = [];
+        if (seed.inactive) left.push(seed.inactive + ' inactive');
+        if (seed.noVendor) left.push(seed.noVendor + ' with no vendor yet');
+        S.seed = { key: S.lib, items: seed.items, from: st.location || st.slug,
+          note: (left.length ? 'Left out: ' + left.join(', ') + '. ' : '') +
+            (seed.merged.length ? 'Listed twice there (once per vendor), now one item with the other vendor as a backup: ' + few(seed.merged) + '.' : '') };
+        libStatus('', '');
+        return renderLibraries();
+      }
+      if (t.id === 'seed-discard') { S.seed = null; return renderLibraries(); }
+      if (t.id === 'seed-save') {
+        const sd = S.seed;
+        if (await saveLibrary(sd.key, sd.items, 'Started from ' + sd.from + ' (' + plural(sd.items.length, 'item') + ')', { seededFrom: sd.from })) { S.seed = null; resetLibView(true); renderLibraries(); }
+        return;
+      }
+      if (t.id === 'lib-setup-btn') {
+        S.setupLib = S.lib; S.concept.setup = S.lib.split('|')[0]; S.pick.setup = {};
+        $('su-status') && ($('su-status').textContent = '');
+        go('setup'); return;
+      }
+      // Set up
+      if (t.id === 'su-save') { save(S.setupPlan, 'su-status', () => { S.pick.setup = {}; }, null); return; }
+      // Add a vendor
+      const vday = t.getAttribute('data-vday');
+      if (vday != null) { S.vDays[Number(vday)] = !S.vDays[Number(vday)]; t.setAttribute('aria-pressed', S.vDays[Number(vday)]); $('v-explain').textContent = explainDays(S.vDays); return renderVendorWork(); }
+      if (t.id === 'v-save') {
+        save(S.vPlan, 'vd-status', () => {
+          $('v-name').value = ''; S.vDays = blankDays(); S.vAddAnyway = {}; $('v-nocut').checked = true; $('v-cutoff').value = ''; $('v-cutoff').disabled = true;
+          document.querySelectorAll('[data-contact]').forEach(el => { el.value = ''; });
+        }, null);
+        return;
+      }
+      // Vendor names
+      const forget = t.getAttribute('data-forget');
+      if (forget && !S.busy) {
+        S.busy = true;
+        try {
+          const r = await rpc('mog_hq_apply', { p_token: S.token, p_changes: [], p_links: [{ slug: forget, hqName: t.getAttribute('data-hq'), vendor: null }] });
+          S.busy = false;
+          await load();
+          $('links-status').textContent = r.ok ? 'Forgotten.' : r.error;
+        } catch (err) { $('links-status').textContent = err.message; }
+        finally { S.busy = false; }
+      }
+    });
+    document.addEventListener('change', e => {
+      const t = e.target;
+      if (!S.data) return;
+      const cv = t.getAttribute('data-concept');
+      if (cv) { S.concept[cv] = t.value; S.pick[cv] = {}; return renderStoresChanged(cv); }
+      const mp = t.getAttribute('data-map');
+      if (mp) { S.map[mp] = t.value; return renderWork(); }
+      const main = t.getAttribute('data-main');
+      if (main != null) { const r = S.rows[Number(main)]; r.vendor = t.value; r.backups = r.backups.filter(b => lc(b) !== lc(t.value)); renderRolloutItems(); return renderRolloutWork(); }
+      const ll = t.getAttribute('data-ltolib');
+      if (ll) { S.ltoLibs[ll] = t.checked; return renderRolloutWork(); }
+      if (t.id === 'lib-concept') { S.lib = libKey(t.value, S.lib.split('|')[1]); resetLibView(); return renderLibraries(); }
+      if (t.id === 'pn-main') { S.panel.vendor = t.value; S.panel.backups = S.panel.backups.filter(b => lc(b) !== lc(t.value)); return renderPanel(); }
+      const any = t.getAttribute('data-anyway');
+      if (any) { S.vAddAnyway[any] = t.checked; return renderVendorWork(); }
+      if (t.id === 'v-nocut') { $('v-cutoff').disabled = t.checked; return renderVendorWork(); }
+    });
+    document.addEventListener('input', e => {
+      const t = e.target;
+      if (!S.data) return;
+      const row = t.getAttribute('data-row');
+      if (row != null) { S.rows[Number(row)][t.getAttribute('data-k')] = t.value; return renderRolloutWork(); }
+      if (t.id === 'ro-label') return renderRolloutWork();
+      const pk = t.getAttribute('data-pk');
+      if (pk) { S.panel[pk] = t.value; return updatePanelSave(); }
+      if (t.id === 'lib-q') { S.libQ = t.value; return renderLibList(); }
+      if (t.id === 'v-name' || t.id === 'v-cutoff' || t.getAttribute('data-contact')) return renderVendorWork();
+    });
+    function toggleIn(list, v) { const i = list.findIndex(x => lc(x) === lc(v)); if (i >= 0) list.splice(i, 1); else list.push(v); }
+    function resetLibView(keepStatus) { S.libSel = 0; S.panel = null; S.libQ = ''; S.libFilter = 'all'; if (!keepStatus) libStatus('', ''); }
+    function renderStoresChanged(view) {
+      if (view === 'rollout') { $('ro-stores').innerHTML = pickerHtml('rollout'); renderRolloutItems(); return renderRolloutWork(); }
+      if (view === 'setup') { $('su-stores').innerHTML = pickerHtml('setup', true); return renderSetupWork(); }
+      if (view === 'vendor') { $('vd-stores').innerHTML = pickerHtml('vendor'); return renderVendorWork(); }
+    }
+    function renderWork() {
+      if (S.view === 'rollout') renderRolloutWork();
+      if (S.view === 'setup') renderSetupWork();
     }
 
     // ---- Start ----

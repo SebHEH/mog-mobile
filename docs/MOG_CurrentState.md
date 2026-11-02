@@ -63,7 +63,7 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
 
 ### Next-session candidates
 
-1. **Use the concept library** (schema v12, HQ's Libraries tab; `docs/MOG_Warehouse_Spec.md` §1, built 2026-11-01): Sebastian's TEST-store rollout first (none run yet), then start the four libraries (Rosslyn BOH and FOH, Tysons BOH, Rockville FOH), clean them, and set up a store. Then Happy Supply to the Roll Play stores through HQ, and the warehouse (§2).
+1. **Use the concept library** (schema v12, HQ's Libraries page, in the redesigned HQ of 2026-11-01; `docs/MOG_Warehouse_Spec.md` §1, built 2026-11-01): Sebastian's TEST-store rollout first (none run yet), then start the four libraries (Rosslyn BOH and FOH, Tysons BOH, Rockville FOH), clean them, and set up a store. Then Happy Supply to the Roll Play stores through HQ, and the warehouse (§2).
 2. **Commit the fake-Supabase preview as a tool** (Sebastian, 2026-11-01): a script plus a `.claude/launch.json` entry that serves the app, the editor and `/hq/` against `tests/fake_supabase.js` with a fixture store and PIN, replacing the scratch server every session rebuilds from `docs/MOG_ProjectNotes.md` (built twice on 2026-11-01).
 3. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
    - Sebastian's steps: GitHub collaborator on both repos, branch protection on `main`, the Supabase Developer invite, Editor on the 11 Sheets, PINs.
