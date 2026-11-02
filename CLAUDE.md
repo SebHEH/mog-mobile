@@ -255,6 +255,7 @@ mog-mobile/
 │   └── tests/                   smoke.sql … smoke_v13.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
 │                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
+│                                preview_server.js (not a gate): the built app, editor and HQ against the fake Supabase (preview_start "mog-preview").
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.
 │   ├── MOG_ProjectNotes.md      Project facts and gotchas (moved from Claude's per-computer memory, 2026-10-29).

@@ -24,6 +24,10 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - rpr and rprfo had orders, and their recaps went to their Supabase recipients;
   - the other stores had nothing ordered, so no email (by design).
 
+**2026-11-02 (later, 2): the local preview server** (`docs/MOG_SessionHandoff_2026_11_02.md`, the last "Later session").
+- **`preview_start` "mog-preview"** (`tests/preview_server.js`) serves the app, the editor, HQ and Happy Supply against the fake Supabase at `http://127.0.0.1:8770/`: PIN 1111, HQ through `/__signin?who=`. Use it instead of building one.
+- **`node tests/run_all.js` passes in a fresh Windows worktree** now (the slicer self-test's anchors were LF-only). PR 6, merged.
+
 **2026-11-02 (later): Happy Supply W1, the warehouse, is live** (`docs/MOG_SessionHandoff_2026_11_02.md`, "Later session").
 - **Schema v13:** HQ people have roles (`hq`, `warehouse` or both; Sebastian has both). The warehouse keeps its own stock per location (never below 0), vendor orders in (PO-0001), transfers (TR-0001), counts with reasons, and every change kept. The rules live in the SQL (`mog_wh_*`).
 - **HQ's Happy Supply pages** (`template/hq/warehouse.js`): Inventory with Count a location, Incoming, Products and prices, Stock history, shown to the warehouse role.
@@ -85,14 +89,13 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - Dan adds the locations, suppliers and products, then a first count per location.
 
    Then W2 (store orders): Dan confirms no store orders crab or shrimp by the pound, and Sebastian decides whether a store order needs an Approve step (the mockup has one, the spec doesn't). Happy Supply goes to the Roll Play stores with W2's first products.
-3. **Commit the local test tools** (Sebastian, 2026-11-01): a script plus a `.claude/launch.json` entry that serves the app, the editor and `/hq/` against `tests/fake_supabase.js` with a fixture store and PIN, and the PGlite SQL runner that ran the schema chain and smoke files before hand-over. Both are rebuilt in the scratchpad every session: the preview three times by 11-02 (and a fourth for the warehouse). The PGlite runner is now `supabase/tests/run_pglite.mjs`, and CI runs it (Sebastian's pick, 11-02); the fake-Supabase preview is still left to commit.
-4. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
+3. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
    - Sebastian's steps: GitHub collaborator on both repos, branch protection on `main`, the Supabase Developer invite, Editor on the 11 Sheets, PINs.
    - Then Donny consents in each store and runs `python deploy.py --redeploy --target rprfo`.
    - Record the result in `docs/MOG_ProjectNotes.md` and CLAUDE.md rule 5.
-5. **Confirm the 2026-10-20 fixes held:** each store's recap goes out once, and nothing new shows up in the nightly run's log (not checked since 10-20).
-6. **Check the Items and Vendors pages, and the phone's Contact sheet, live** (all were checked by script only). Small follow-up: the Overview's "Give each item a storage area and a par" step could open Items on Needs setup.
-7. **Logic findings held back on 2026-10-20** (edge cases; decide before fixing):
+4. **Confirm the 2026-10-20 fixes held:** each store's recap goes out once, and nothing new shows up in the nightly run's log (not checked since 10-20).
+5. **Check the Items and Vendors pages, and the phone's Contact sheet, live** (all were checked by script only). Small follow-up: the Overview's "Give each item a storage area and a par" step could open Items on Needs setup.
+6. **Logic findings held back on 2026-10-20** (edge cases; decide before fixing):
    - A same-day manual close from the Sheet, followed by that night's close of the same day, replaces the day's order log with an empty one.
    - Turning Emergency Override off before 3:30 AM drops the vendors ordered under it from that night's log and email.
    - A per-vendor day pick can be saved while Override is off.
@@ -103,7 +106,7 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
      - R27's wording;
      - R16's evidence.
    - `audit_modals.py` (the `mog-modal-ux-sweep` skill) still looks for `google.script.host.close()`, so it flags Manage Items and Vendors, whose Close moved into EditorShell in July.
-8. **Redundancy items held back on 2026-10-20:**
+7. **Redundancy items held back on 2026-10-20:**
    - `VENDOR_META` is empty, but the equivalence gate compiles an older revision against the same constant list.
    - The nightly recipients copy is a no-op on all 10 stores; the `recipients_people` gate is built around it.
    - The old `/exec` editor still serves its pages for moved stores; it should send them to the app.
@@ -113,14 +116,16 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - The v1 Supabase fallback (`mog_snapshot` / `mog_save_counts`) can go once old app versions are gone.
    - `template/sw.js` `FORCE_CLIENT_RELOAD`: never change `FORCE_RELOAD_ID`.
    - Stale repo skills: `mog-apps-script-caching`, `mog-rpc-consolidation`, `mog-editor-web-reskin`, `mog-sheet-formula-verify`, `mog-health-check-extend`.
-9. **Small open items:**
+8. **Small open items:**
+   - Confirm this repo's origin in the desktop app (Help → Troubleshooting → Review Pinned Git Origins), so worktree sessions can merge `main` when it changed a skill.
+   - No GitHub CLI on Sebastian's computer: pull requests are opened by hand and the app can't watch their CI (optional: install `gh`, then `gh auth login`).
    - `mog-deploy-workflow`'s HTML-modal row still says modals run in Rhino ES5 (CLAUDE.md invariant #4 says otherwise).
    - GitHub Actions warns that `checkout@v4`, `setup-node@v4` and `setup-python@v5` target the deprecated Node 20, and that `ubuntu-latest` moves to Ubuntu 26. Bump the actions when newer majors exist, and watch the first run on Ubuntu 26.
    - Clear Config doesn't clear the four Supabase keys (`Admin.gs`; walk through first).
    - `supabase_move`'s `provisionProblems` counts a commented-out SQL row.
    - Lei'd has no circular logo.
    - On the first real onboarding, record whether a copied Sheet keeps its Script Properties.
-10. **Later:**
+9. **Later:**
    - keep visited Manage pages alive;
    - send the recap email from Supabase;
    - retire the last `/exec` uses (Daily summary button, reset fallback);
@@ -221,8 +226,8 @@ Most recent first. Keep about five; older rows move to the archive.
 
 | Date | Session | Outcome |
 |---|---|---|
+| 2026-11-02 (later, 2) | Local preview server, the slicer on Windows | `tests/preview_server.js` and the launch entry "mog-preview": the built app, editor and HQ against the fake Supabase (six stores, three HQ people, the Happy Supply sample), refusing any page that names a real Supabase address; checked in the browser pane. `slice_js_selftest` takes the file's line ending, so the gates pass in new Windows worktrees (28). PR 6: `8ea3603`, `94d496d`, merge `35cb81c`; nothing the stores run changed. Detail: `docs/MOG_SessionHandoff_2026_11_02.md` (the last Later session). |
 | 2026-11-02 (later) | Happy Supply W1, the warehouse | Design for W1 with W2's data approved (stock never below 0), its screens mocked up and approved. Schema v13: HQ roles (hq, warehouse), the warehouse tables (stock per location, every move kept, vendor orders in, transfers, counts), nine `mog_wh_*` calls; HQ's Happy Supply pages (`template/hq/warehouse.js`). Live: smoke_v13 44/44, probe 88/88, CI green, Sebastian saw it on the live page. CI now runs the real SQL in PGlite (`supabase/tests/run_pglite.mjs`); gate `warehouse` (28 total). Blueprint R30. Commits `f7352c3`, `aa48f85`. Detail: `docs/MOG_SessionHandoff_2026_11_02.md` (Later session). |
 | 2026-11-02 | Concept library, HQ redesign | Schema v12: `mog.stores.side`, the concept libraries (one per concept and side, versioned whole-list saves with a log), set up a store from one like an LTO, add an LTO's items to the library in the same save; smoke 21/21, probe 74/74, gate `concept_library` (27 total). HQ redesigned from an approved mockup: the order guide's computer look with the HEH brand, concept then stores, pick-only vendors. Blueprint R29. Commits `67cccb0`, `84ac2cb`. Detail: `docs/MOG_SessionHandoff_2026_11_02.md`. |
 | 2026-11-01 | Vendor contacts, HQ control, warehouse spec | Schema v10: vendor contacts, the app-only Vendors page, a Contact sheet on the phone (app v0.27.0 / cache v68); contacts loaded at Rosslyn BOH and Founders BOH, no passwords. Schema v11: HQ control at `/hq/` (per-person invite and passphrase, every store or none, remembered vendor names); gates `vendor_contacts`, `hq_rollout` (26 total); smoke 15/15 and 27/27, probe 68/68. `docs/MOG_Warehouse_Spec.md` approved. Blueprint R28. Commits `1893926`, `39afc44`. Detail: `docs/MOG_SessionHandoff_2026_11_01.md`. |
 | 2026-10-20 → 10-29 | Supabase skills audit, a second maintainer (Donny) | Skills: two global Supabase skills (`supabase-schema-change`, `appsscript-to-supabase-migration`, applied by Claude-SKills) and repo skill `mog-supabase-schema`; `route.py` routes `supabase/`; `check_api.sh` stopped sending a wrong PIN to rprfo. Two maintainers: a CLAUDE.md section, ONBOARDING.md, a git check in `deploy.py`, CI on GitHub (first run failed on CRLF test anchors, fixed in `plant()`, then green), Claude's memory moved to `docs/MOG_ProjectNotes.md`. Commits `eb907a0`, `2dd9264`, `1dbe516`; nothing the stores run changed. Detail: `docs/MOG_SessionHandoff_2026_10_29.md`. |
-| 2026-10-20 | Night check, logic check, cleanup, Manage Items redesign | First all-Supabase night checked clean. Logic check: all gates pass, 4 fixes (recap duplicate check, late offline counts, phone rounding on the shared math, negative counts). Cleanup: Import Vendor and 3 Sheet-only tools removed, dead code removed, this doc trimmed (archive kept). Commit `ffc816b`: Apps Script on all 11 targets, app v0.26.1 / cache v67. Manage Items redesign (app-only `Items.html`, bulk bar with 3 new one-change saves, gate `items_bulk`), commit `a4e6e98`, live on all 10. Blueprint R5, R12, R14 bumped. Detail: `docs/MOG_SessionHandoff_2026_10_20.md`. |

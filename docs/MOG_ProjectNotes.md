@@ -112,6 +112,15 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - That list holds the Pages deploy run too, so a wait loop matches the run named `gates`; one that took the first "completed" stopped on Pages (2026-11-01).
 - **Testing an edited tracked file inside a scratch clone:** `git reset --hard` there quietly puts the old file back, so copy it in under an untracked name. `deploy.py`'s git check was tested this way.
 
+## Worktree sessions and pull requests
+
+- **A new desktop-app worktree checks files out with CRLF** (`core.autocrlf` is on), unlike the main checkout, whose older files are LF. A gate that compares anchor text must take the file's own line ending: `plant()` does, and since 2026-11-02 so does `slice_js_selftest.js`, which had failed in every new worktree.
+- **The app won't merge `main` into a worktree when `main` changed a file under `.claude/skills/` or `.claude/hooks/`** until the repo's origin is confirmed (Help → Troubleshooting → Review Pinned Git Origins; not done as of 2026-11-02). A docs-only change can still go on top of `main` from a sparse worktree that never writes `.claude/`:
+  1. `git worktree add --no-checkout --detach <scratch dir> origin/main`, then `git -C <scratch dir> reset -q`.
+  2. `MSYS_NO_PATHCONV=1 git -C <scratch dir> sparse-checkout set --no-cone '/docs/' '/CLAUDE.md'`. Without the variable, Git Bash turns `/docs/` into `C:/Program Files/Git/docs/` and nothing is checked out.
+  3. Edit and commit there, push (to `main` for Sebastian, a branch for Donny), then `git worktree remove <scratch dir>`.
+- **Sebastian's computer has no GitHub CLI** (2026-11-02). A pull request is opened by hand from `https://github.com/SebHEH/mog-mobile/compare/main...<branch>?expand=1`; the app can't bind it or watch its CI, so read CI through the runs API (CI and tests).
+
 ## Google Drive connector
 
 - It returns a Sheet's tabs with a couple of sample rows, not the data, and a download is one huge base64 blob.

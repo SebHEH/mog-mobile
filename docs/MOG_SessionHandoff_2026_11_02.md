@@ -14,6 +14,7 @@
 
 **Next session focus:** start and clean the four libraries in HQ, then set up a store from one (Rockville BOH is empty).
 **Later session (same day, Sebastian):** Happy Supply W1 built and live (schema v13). See "Later session" at the end.
+**Later session 2 (same day, Sebastian):** the local preview server and the slicer on Windows (PR 6). See the last section.
 
 ---
 
@@ -234,7 +235,7 @@ HQ and begin the warehouse (docs/MOG_Warehouse_Spec.md §2) with an architectura
    - Sebastian decides whether a store order needs an Approve step (the mockup has New, Approved, Shipped; the spec has sent, shipped, received).
    - Price detail: a store's price uses the average to 4 decimals, so it can differ by a cent from the 2-decimal figures shown.
 4. **W1 has no Undo.** A wrong delivery cost needs a maintainer in the SQL Editor; `mog.wh_moves` keeps each cost, so the average can be replayed.
-5. **The fake-Supabase preview** was rebuilt a fourth time, for the warehouse, and is still not committed (CurrentState candidate 3).
+5. **The fake-Supabase preview** was rebuilt a fourth time, for the warehouse, and is still not committed (CurrentState candidate 3). Done later the same day: PR 6, the last section.
 6. **From the session above:** the Horse Pho undo and the four libraries (STILL OUTSTANDING, top of this section).
 
 ### Files touched (later session)
@@ -283,6 +284,87 @@ Plus this handoff's commit, and `0cf9aee` (the session before, pushed with these
 Read docs/MOG_CurrentState.md and the "Later session" of docs/MOG_SessionHandoff_2026_11_02.md first, and run git pull.
 Happy Supply W1 (schema v13) is live and empty: HQ roles (hq, warehouse), the warehouse's stock,
 vendor orders in, transfers, counts; CI now runs the real SQL in PGlite; 28 gates.
+STILL OUTSTANDING: undo the TEST rollout "Horse Pho" on rprfotest, start the four libraries,
+tell Donny v13 is taken. Ask first whether Chef Dan is invited (warehouse role only) and has
+entered a first count. Then either help with that, or start W2 (store orders,
+docs/MOG_Warehouse_Spec.md §2) with an architectural walkthrough: it needs Dan's answer on
+pound-ordered items and Sebastian's call on an Approve step.
+```
+
+---
+
+## Later session — the local preview server, the slicer on Windows
+
+**Author:** Sebastian (a side session started from the session above)
+**Session focus:** commit the fake-Supabase preview that sessions kept rebuilding in the scratchpad (CurrentState candidate 3).
+**Outcome:** PR 6 is merged (`35cb81c`).
+- `tests/preview_server.js` serves the built app, editor and HQ against the fake Supabase; `preview_start` "mog-preview" starts it.
+- The slicer self-test now passes on Windows worktrees, so `node tests/run_all.js` passes in a fresh one: 28 gates.
+- CI `gates` passed on the branch push and on the pull request.
+
+**Next session focus:** unchanged from the session above (Chef Dan and the first count, then W2), now with the preview to click through it.
+
+### What shipped
+
+- **The preview server** (`tests/preview_server.js`, commit `8ea3603`):
+  - `http://127.0.0.1:8770/` lists everything: the store app at `/rprfotest/` (PIN 1111) with the editor inside it, and HQ at `/__signin?who=both|hq|warehouse` (Sebastian, Donny, Dan). `/__token?who=` returns a token.
+  - Six fake stores. The app's store is a `makeStore(10, {realistic: true})` Sheet moved through `Sync.gs`, as `history_app` does: readable item names, four storage areas, today's cycle and an order log. HQ has four more stores with items and an empty one; Happy Supply has the W1 mockup's sample.
+  - It rebuilds `_preview/rprfotest/` at every start and serves the built `hq/`, saying when `hq/` no longer matches `template/hq/`.
+  - Nothing reaches a real store: the `Sync.gs` Supabase address is swapped for the server's in every page served, and a page still naming a `supabase.co` address is refused.
+  - `.claude/launch.json` "mog-preview" (127.0.0.1, never localhost); `tests/run_all.js` lists it as a helper; `docs/MOG_ProjectNotes.md` (Local previews) replaces the hand-built recipe.
+- **The slicer self-test on Windows** (`tests/slice_js_selftest.js`, commit `94d496d`): a new desktop-app worktree checks `tests/slice_js.js` out with CRLF, and the three controls whose anchors span lines found nothing, so `run_all` failed in every new worktree (CI and the main checkout have LF). The controls now take the file's own line ending, as `plant()` does.
+
+### Validation
+
+- **Browser pane, against the fake** (hidden pane, driven by script at 1280×800):
+  - the app's sign-in and a vendor's count;
+  - all seven Manage pages, a storage-area save and its entry in Changes, Settings → Recipients;
+  - HQ as each of the three people, and Happy Supply's four pages.
+
+  No console errors from the pages.
+- **The guard:** a planted file naming another `supabase.co` address got a 500; a path outside the served folders got a 404. After a restart, a signed-in app signs in again by itself.
+- **Gates:** "run_all: ALL PASS (28 gates)" in a CRLF worktree. The slicer self-test passes 35 checks and 9 controls on CRLF and on LF; a missing anchor and a control that plants nothing still fail on both.
+- **CI:** `gates` success on the branch push and on PR 6.
+
+### Outstanding (carry forward)
+
+1. **Sebastian, in the desktop app:** confirm this repo's origin (Help → Troubleshooting → Review Pinned Git Origins). Until then the app won't merge `main` into a worktree when `main` changed a skill; this handoff was written in a docs-only worktree from `main` for that reason.
+2. **Optional:** this computer has no GitHub CLI, so a pull request is opened by hand from the compare link and the app can't follow its CI. Installing `gh` and running `gh auth login` lets sessions open the PR and the app watch it.
+3. **From the sessions above:** everything in their lists, unchanged.
+
+### Files touched (this session)
+
+- **New:** `tests/preview_server.js`.
+- **Changed:** `tests/run_all.js` (HELPERS), `tests/slice_js_selftest.js` (line endings), `tests/README.md`, `.claude/launch.json`.
+- **Docs:** `docs/MOG_ProjectNotes.md` (Local previews; Worktree sessions and pull requests), `docs/MOG_CurrentState.md`, `CLAUDE.md` (the `tests/` line), this handoff.
+
+### Process lessons
+
+- Four sessions rebuilt the same throwaway preview server before it was committed; it's in the repo now, and the project notes say to use it. [→ tests/preview_server.js, docs/MOG_ProjectNotes.md]
+- A control that compares anchor text itself (not through `plant()`) failed in every new Windows worktree: anchors must take the file's own line ending. [→ tests/slice_js_selftest.js, tests/README.md]
+- A worktree session's branch predates the day's handoff, and the app won't merge `main` in while the origin is unconfirmed; this handoff went on top of `main` in a docs-only sparse worktree. [→ docs/MOG_ProjectNotes.md, proposal session-handoff-2026-11-02]
+- With no `gh`, the pull request was opened by hand and the app couldn't bind it; CI was read through the public runs API. [→ docs/MOG_ProjectNotes.md]
+- The hidden browser pane shows the phone layout, which has no Manage; `resize_window` 1280×800 and a reload bring the computer layout. [→ docs/MOG_ProjectNotes.md]
+
+**Skill gate:** one picker round, one question, Apply: a worktree session checks where the docs stand on `origin/main` and writes the handoff on top of it (proposal `session-handoff-2026-11-02` to the global `session-handoff`). Not asked: the preview server and the line-ending rule (now in code and `tests/README.md`), no `gh` and the hidden pane's layout (project facts, in the project notes). Checked: the lessons above and Sebastian's picks this session; no corrections or rejected tool uses.
+
+### Commits landed (this session)
+
+```
+35cb81c Merge pull request #6 from SebHEH/claude/zen-kepler-2339e3
+94d496d tests: slice_js_selftest's controls take the file's line ending
+8ea3603 tests: the local preview server, committed (fake Supabase, app, editor, HQ)
+```
+
+Plus this handoff's commit.
+
+### Opening prompt for next session
+
+```
+Read docs/MOG_CurrentState.md and the two "Later session" blocks of docs/MOG_SessionHandoff_2026_11_02.md first, and run git pull.
+Happy Supply W1 (schema v13) is live and empty; CI runs the real SQL in PGlite; 28 gates.
+To click through the app, the editor, HQ or Happy Supply, use preview_start "mog-preview"
+(tests/preview_server.js, fake Supabase, PIN 1111); never build another preview in the scratchpad.
 STILL OUTSTANDING: undo the TEST rollout "Horse Pho" on rprfotest, start the four libraries,
 tell Donny v13 is taken. Ask first whether Chef Dan is invited (warehouse role only) and has
 entered a first count. Then either help with that, or start W2 (store orders,

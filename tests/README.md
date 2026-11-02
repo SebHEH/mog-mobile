@@ -6,7 +6,7 @@ Node gates that run the real Apps Script code locally. No dependencies; Node 18+
 node tests/run_all.js
 ```
 
-A passing run ends with `run_all: ALL PASS (24 gates)`. Run it before any deploy.
+A passing run ends with `run_all: ALL PASS (28 gates)`. Run it before any deploy.
 
 | Gate | What it proves |
 |---|---|
@@ -37,7 +37,7 @@ A passing run ends with `run_all: ALL PASS (24 gates)`. Run it before any deploy
 
 **Testing any server function at runtime:** every `apps-script/*.gs` file holds only declarations, so the WHOLE codebase loads into one vm context with the fakes. `editor_fixes.test.js` does it in a few lines (`compileAll`); no slicing needed. Add any missing fake method to `fake_apps_script.js`. A fake's reads must never create data (`FakeSupabase.countsIn`).
 
-Every gate carries planted-defect controls: each one breaks the code on purpose, and the gate must catch it. A control that doesn't bite fails the run. A control finds its spot by an exact line of code, which must appear once: new code that repeats an anchored line (a copied `const active = …`) crashes that control with "anchor not unique", so name new locals differently.
+Every gate carries planted-defect controls: each one breaks the code on purpose, and the gate must catch it. A control that doesn't bite fails the run. A control finds its spot by an exact line of code, which must appear once: new code that repeats an anchored line (a copied `const active = …`) crashes that control with "anchor not unique", so name new locals differently. Anchors are written with `\n`; `plant()` (`fake_apps_script.js`) matches them to the file's own line ending, because a new Windows worktree has CRLF. A control loop of its own must do the same, as `slice_js_selftest.js` does.
 
 **Not a gate: `preview_server.js`.** It serves the built app, editor and HQ against `fake_supabase.js` for clicking through in a browser (`preview_start` "mog-preview", or `node tests/preview_server.js`). `run_all.js` lists it as a helper and never runs it. How to use it: `docs/MOG_ProjectNotes.md`, Local previews.
 
