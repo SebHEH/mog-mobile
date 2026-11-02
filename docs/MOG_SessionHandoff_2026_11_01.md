@@ -140,6 +140,14 @@
 
 - The repo is public: a one-off data load holding people's phone numbers or emails stays out of it, and a password never goes into MOG (a vendor login keeps the username). [→ docs/MOG_ProjectNotes.md]
 - Gates plant defects by exact text: changing a line in `catalogEdit.js` moved `me_import`'s par-control anchor. Grep `tests/` for a line before changing it. [→ docs/MOG_ProjectNotes.md]
+- The handoff's lessons picker round was skipped silently (both lessons went to the project notes); Sebastian caught it. The step now always runs or says why not, records a Skill gate line, and the wrapper's `--check-lessons` refuses a handoff without one. [→ mog-session-handoff, .claude/skills/mog-session-handoff/scripts/handoff_facts.py, proposal session-handoff-2026-11-01]
+- After a handoff, the next piece starts in a new session from the opening prompt; starting the library's walkthrough in the same chat was rejected. [→ proposal session-handoff-2026-11-01]
+- A spec with several overlapping lists needs them drawn apart (with their one link) before build-order questions; the warehouse spec's order question was answered with confusion until a diagram showed the three lists. [→ proposal spec-first-2026-11-01]
+- Schema v10 techniques: a new payload field appears only when filled; a nested jsonb field compared clean in all three compare sites, keys in jsonb order; a redefined long function generated from its earlier version. [→ mog-supabase-schema]
+- The fake-Supabase preview server was rebuilt twice this session from the project notes' recipe; it should be a committed tool. [→ docs/MOG_CurrentState.md]
+- The push of the docs commit was blocked by Claude Code's auto-mode check while two earlier pushes passed; Sebastian pushed by hand. [→ one-off]
+
+**Skill gate:** one picker round, four questions, all Apply: the three schema rules into `mog-supabase-schema`; proposal `session-handoff-2026-11-01` (offer the next piece as a new session, plus the Skill gate line and check); proposal `spec-first-2026-11-01` (draw overlapping lists apart first); the preview tool as a next-session candidate. Made directly on Sebastian's request: `mog-session-handoff`'s lessons step and its wrapper check.
 
 ## Commits landed this session
 

@@ -64,13 +64,14 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
 ### Next-session candidates
 
 1. **The concept library** (`docs/MOG_Warehouse_Spec.md` §1), after Sebastian's first HQ sign-in and a test rollout on the TEST store. Then Happy Supply to the Roll Play stores through HQ, and the warehouse (§2).
-2. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
+2. **Commit the fake-Supabase preview as a tool** (Sebastian, 2026-11-01): a script plus a `.claude/launch.json` entry that serves the app, the editor and `/hq/` against `tests/fake_supabase.js` with a fixture store and PIN, replacing the scratch server every session rebuilds from `docs/MOG_ProjectNotes.md` (built twice on 2026-11-01).
+3. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
    - Sebastian's steps: GitHub collaborator on both repos, branch protection on `main`, the Supabase Developer invite, Editor on the 11 Sheets, PINs.
    - Then Donny consents in each store and runs `python deploy.py --redeploy --target rprfo`.
    - Record the result in `docs/MOG_ProjectNotes.md` and CLAUDE.md rule 5.
-3. **Confirm the 2026-10-20 fixes held:** each store's recap goes out once, and nothing new shows up in the nightly run's log (not checked since 10-20).
-4. **Check the Items and Vendors pages, and the phone's Contact sheet, live** (all were checked by script only). Small follow-up: the Overview's "Give each item a storage area and a par" step could open Items on Needs setup.
-5. **Logic findings held back on 2026-10-20** (edge cases; decide before fixing):
+4. **Confirm the 2026-10-20 fixes held:** each store's recap goes out once, and nothing new shows up in the nightly run's log (not checked since 10-20).
+5. **Check the Items and Vendors pages, and the phone's Contact sheet, live** (all were checked by script only). Small follow-up: the Overview's "Give each item a storage area and a par" step could open Items on Needs setup.
+6. **Logic findings held back on 2026-10-20** (edge cases; decide before fixing):
    - A same-day manual close from the Sheet, followed by that night's close of the same day, replaces the day's order log with an empty one.
    - Turning Emergency Override off before 3:30 AM drops the vendors ordered under it from that night's log and email.
    - A per-vendor day pick can be saved while Override is off.
@@ -81,7 +82,7 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
      - R27's wording;
      - R16's evidence.
    - `audit_modals.py` (the `mog-modal-ux-sweep` skill) still looks for `google.script.host.close()`, so it flags Manage Items and Vendors, whose Close moved into EditorShell in July.
-6. **Redundancy items held back on 2026-10-20:**
+7. **Redundancy items held back on 2026-10-20:**
    - `VENDOR_META` is empty, but the equivalence gate compiles an older revision against the same constant list.
    - The nightly recipients copy is a no-op on all 10 stores; the `recipients_people` gate is built around it.
    - The old `/exec` editor still serves its pages for moved stores; it should send them to the app.
@@ -91,14 +92,14 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - The v1 Supabase fallback (`mog_snapshot` / `mog_save_counts`) can go once old app versions are gone.
    - `template/sw.js` `FORCE_CLIENT_RELOAD`: never change `FORCE_RELOAD_ID`.
    - Stale repo skills: `mog-apps-script-caching`, `mog-rpc-consolidation`, `mog-editor-web-reskin`, `mog-sheet-formula-verify`, `mog-health-check-extend`.
-7. **Small open items:**
+8. **Small open items:**
    - `mog-deploy-workflow`'s HTML-modal row still says modals run in Rhino ES5 (CLAUDE.md invariant #4 says otherwise).
    - GitHub Actions warns that `checkout@v4`, `setup-node@v4` and `setup-python@v5` target the deprecated Node 20, and that `ubuntu-latest` moves to Ubuntu 26. Bump the actions when newer majors exist, and watch the first run on Ubuntu 26.
    - Clear Config doesn't clear the four Supabase keys (`Admin.gs`; walk through first).
    - `supabase_move`'s `provisionProblems` counts a commented-out SQL row.
    - Lei'd has no circular logo.
    - On the first real onboarding, record whether a copied Sheet keeps its Script Properties.
-8. **Later:**
+9. **Later:**
    - keep visited Manage pages alive;
    - send the recap email from Supabase;
    - retire the last `/exec` uses (Daily summary button, reset fallback);
