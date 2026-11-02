@@ -144,7 +144,12 @@ for (const r of results) {
 }
 
 console.log('\nCONTROLS (each must make at least one check fail)');
-for (const [label, find, repl] of CONTROLS) {
+// The anchors are written with \n, and only a Windows checkout has \r\n (git
+// stores LF; CI checks out LF), so both sides take the file's own line ending,
+// as fake_apps_script.js plant() does.
+const EOL = SRC.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
+for (const [label, findText, replText] of CONTROLS) {
+  const find = findText.replace(/\r?\n/g, EOL), repl = replText.replace(/\r?\n/g, EOL);
   const n = SRC.split(find).length - 1;
   if (n !== 1) { failed++; console.log('FAIL  control "' + label + '": anchor found ' + n + ' times (re-anchor it; never delete a control)'); continue; }
   let planted;
