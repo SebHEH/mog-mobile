@@ -259,9 +259,11 @@ mog-mobile/
 │   ├── schema_v15.sql           A vendor renamed at a store: the editor's rename step takes vendors (items, lists, counts, today's edits, HQ's names follow) (run after v14).
 │   ├── schema_v16.sql           Happy Supply W2a, store orders: mog.items.wh_product (an item's product link, in its row), mog.wh_orders / wh_order_lines (HS-0001), mog_wh_send / mog_wh_received (phone), mog_wh_ship / mog_wh_order_cancel (warehouse), happySupply in the 10-second read (run after v15).
 │   ├── schema_v17.sql           Happy Supply W2b, HEH's stock held at Elpis: a location held by a vendor (held_by), a product's via, the 3:30 AM close recording each store's Elpis delivery (EL-0001, guarded), Mark received at the store or by HQ (mog_wh_held_receive) dropping the stock, a receipt beyond the records logged as a count (run after v16).
+│   ├── schema_v18.sql           HQ remembers a device: mog_hq_remember (30 days from each open, the sign-in's "Remember this device" box) and mog_hq_signout (Sign out ends the sign-in on the server) (run after v17).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v17.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
+│   └── tests/                   smoke.sql … smoke_v18.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
+│                                + test_store_elpis.sql (SQL Editor: two Elpis deliveries on the TEST store, which never closes)
 │                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 │                                preview_server.js (not a gate): the built app, editor and HQ against the fake Supabase (preview_start "mog-preview").

@@ -264,12 +264,13 @@
     <div class="card">
       <img src="heh-logo.svg" alt="Happy Endings Hospitality">
       <h1 id="si-title">HQ sign in</h1>
-      <p class="help" id="si-help">Your own HQ passphrase. Five wrong tries lock you out for 15 minutes (only you, never a store).</p>
+      <p class="help" id="si-help">Your own HQ passphrase. Five wrong tries lock you out for 15 minutes (only you, never a store). Remember this device only on a computer nobody else uses.</p>
       <form id="si-form" autocomplete="on">
         <label class="field" for="si-name">Name<input id="si-name" autocomplete="username" required></label>
         <label class="field" id="si-code-f" hidden for="si-code">Invite code<input id="si-code" autocomplete="one-time-code"></label>
         <label class="field" for="si-pass"><span id="si-pass-l">Passphrase</span><input id="si-pass" type="password" autocomplete="current-password" required></label>
         <label class="field" id="si-pass2-f" hidden for="si-pass2">The new passphrase again<input id="si-pass2" type="password" autocomplete="new-password"></label>
+        <label class="check" for="si-remember"><input type="checkbox" id="si-remember">Remember this device for 30 days</label>
         <div class="actions" style="align-items:center"><button class="btn primary" id="si-go" type="submit">Sign in</button>
           <button type="button" class="linkbtn" id="si-toggle">I have an invite code</button></div>
         <div class="status bad" id="si-status" role="status"></div>
@@ -465,8 +466,8 @@
                 rows: [], map: {}, newDays: {}, daysFrom: {},
                 lib: null, libQ: '', libFilter: 'all', libSel: 0, panel: null, seed: null, setupLib: null,
                 libTick: {}, setupOnly: null,
-                vDays: blankDays(), vAddAnyway: {}, roles: null };
-    try { S.token = sessionStorage.getItem('mog_hq_token'); S.roles = JSON.parse(sessionStorage.getItem('mog_hq_roles') || 'null'); } catch (e) { S.token = null; S.roles = null; }
+                vDays: blankDays(), vAddAnyway: {}, roles: null, remember: false };
+    readKept();
 
     // ---- Supabase ----
     async function rpc(fn, params) {
@@ -485,10 +486,53 @@
         throw e;
       } finally { clearTimeout(timer); }
     }
-    function keepToken(t) { S.token = t; try { if (t) sessionStorage.setItem('mog_hq_token', t); else sessionStorage.removeItem('mog_hq_token'); } catch (e) { /* signs in again next time */ } if (!t) keepRoles(null); }
+    // The sign-in is kept in sessionStorage, gone when the browser closes, or
+    // on a remembered device (schema v18) in localStorage, where it lasts.
+    function readKept() {
+      try {
+        S.remember = !!localStorage.getItem('mog_hq_token');
+        const st = S.remember ? localStorage : sessionStorage;
+        S.token = st.getItem('mog_hq_token'); S.roles = JSON.parse(st.getItem('mog_hq_roles') || 'null');
+      } catch (e) { S.token = null; S.roles = null; S.remember = false; }
+    }
+    function keep(key, v) {
+      try {
+        localStorage.removeItem(key); sessionStorage.removeItem(key);
+        if (v != null) (S.remember ? localStorage : sessionStorage).setItem(key, v);
+      } catch (e) { /* signs in again next time */ }
+    }
+    function keepToken(t) { S.token = t; keep('mog_hq_token', t || null); if (!t) { keepRoles(null); S.remember = false; } }
     // hq, warehouse or both, from the sign-in (schema v13); null = not known
     // (a sign-in from before it), and load() asks for both.
-    function keepRoles(r) { S.roles = Array.isArray(r) ? r : null; try { if (S.roles) sessionStorage.setItem('mog_hq_roles', JSON.stringify(S.roles)); else sessionStorage.removeItem('mog_hq_roles'); } catch (e) { /* asks for both next time */ } }
+    function keepRoles(r) { S.roles = Array.isArray(r) ? r : null; keep('mog_hq_roles', S.roles ? JSON.stringify(S.roles) : null); }
+    // A remembered device's sign-in runs 30 days from now: asked at sign-in
+    // and each time HQ opens there, so a device used monthly never asks
+    // again. A sign-in that's over is load()'s to show; a server without v18
+    // leaves it at 12 hours.
+    async function remember() {
+      if (!S.remember || !S.token) return;
+      try { await rpc('mog_hq_remember', { p_token: S.token }); } catch (e) { /* the next open asks again */ }
+    }
+    // A new sign-in, kept for this browser or (the box ticked) remembered.
+    async function signedIn(d, rememberIt) {
+      S.remember = !!rememberIt;
+      keepToken(d.token);
+      keepRoles(d.roles);
+      await remember();
+      return load();
+    }
+    // A kept sign-in carries on, a remembered device's 30 days starting
+    // again; otherwise the sign-in screen.
+    function resume() {
+      if (S.token) { remember(); load().catch(err => showSignin(err.message)); } else showSignin('');
+    }
+    // Sign out ends the sign-in on the server too, so a remembered token left
+    // anywhere stops working.
+    function signOut() {
+      const t = S.token;
+      keepToken(null); S.data = null; if (WH) WH.clear(); showSignin('Signed out.');
+      if (t) rpc('mog_hq_signout', { p_token: t }).catch(() => { /* a server without v18: it runs out by itself */ });
+    }
     const has = role => !S.roles || S.roles.indexOf(role) >= 0;
     // Happy Supply's pages; Send to stores (schema v16) uses HQ's catalog, so
     // hq() answers only for someone with the hq role too.
@@ -512,7 +556,7 @@
       $('si-pass').setAttribute('autocomplete', S.invite ? 'new-password' : 'current-password');
       $('si-help').textContent = S.invite
         ? 'The code from Sebastian or Donny, used once. The passphrase is yours alone: a few words you will remember is good.'
-        : 'Your own HQ passphrase. Five wrong tries lock you out for 15 minutes (only you, never a store).';
+        : 'Your own HQ passphrase. Five wrong tries lock you out for 15 minutes (only you, never a store). Remember this device only on a computer nobody else uses.';
       $('si-go').textContent = S.invite ? 'Set it and sign in' : 'Sign in';
       $('si-toggle').textContent = S.invite ? 'I already have a passphrase' : 'I have an invite code';
     }
@@ -532,13 +576,11 @@
         }
         $('si-pass').value = ''; $('si-pass2').value = ''; $('si-code').value = '';
         S.invite = false;
-        keepToken(r.data.token);
-        keepRoles(r.data.roles);
-        await load();
+        await signedIn(r.data, $('si-remember').checked);
       } catch (err) { $('si-status').textContent = err.message; }
       finally { $('si-go').disabled = false; }
     };
-    $('signout').onclick = () => { keepToken(null); S.data = null; if (WH) WH.clear(); showSignin('Signed out.'); };
+    $('signout').onclick = signOut;
 
     // HQ's catalog (the hq role) and Happy Supply (the warehouse role): each
     // asked for only when the person has its role; with no roles known, both,
@@ -1291,7 +1333,7 @@
 
     // ---- Start ----
     if (!CE || !CFG.url) { document.body.innerHTML = '<p style="padding:24px">HQ isn\'t built right: run build.py.</p>'; return; }
-    if (S.token) load().catch(err => showSignin(err.message)); else showSignin('');
+    resume();
   })();
   </script>
 </body>

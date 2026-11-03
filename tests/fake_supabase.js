@@ -873,7 +873,7 @@ FakeSupabase.prototype.editorPublish = function (s) {
 // saved whole in that same save (mog.library_put: cleaned, versioned, logged).
 // v13: each person's roles (hq, warehouse); the catalog calls answer only the
 // hq role (mog.hq_session), and signing in returns the roles.
-const HQ_FNS = { mog_hq_claim: 1, mog_hq_login: 1, mog_hq_data: 1, mog_hq_apply: 1 };
+const HQ_FNS = { mog_hq_claim: 1, mog_hq_login: 1, mog_hq_data: 1, mog_hq_apply: 1, mog_hq_remember: 1, mog_hq_signout: 1 };
 FakeSupabase.prototype.hqState = function () {
   if (!this.hq) this.hq = { users: new Map(), sessions: new Map(), links: [], tokenSeq: 0, libraries: new Map(), libraryLog: [],
                             ltos: new Map(), ltoStores: [] };
@@ -1096,6 +1096,15 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
     if (f.u.lockedUntil) return locked(f.u);
     if (String(p.p_passphrase == null ? '' : p.p_passphrase) !== f.u.pass) return fail(f.u, 'Wrong name or passphrase');
     return session(f.key);
+  }
+  // v18: a remembered device runs 30 days from each call; sign out ends the
+  // sign-in. Either works for any HQ person, whatever their roles.
+  if (fn === 'mog_hq_remember' || fn === 'mog_hq_signout') {
+    const s = H.sessions.get(p.p_token), live = !!s && s.expires > now;
+    if (fn === 'mog_hq_signout') { H.sessions.delete(p.p_token); return live ? ok({ signedOut: true }) : err('SESSION_EXPIRED'); }
+    if (!live) return err('SESSION_EXPIRED');
+    s.expires = now + 30 * 86400000;
+    return ok({ expiresAt: new Date(s.expires).toISOString() });
   }
   const sess = H.sessions.get(p.p_token);
   if (!sess || sess.expires <= now || !H.users.has(sess.name)) return err('SESSION_EXPIRED');

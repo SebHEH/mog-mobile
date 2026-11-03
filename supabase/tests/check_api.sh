@@ -171,6 +171,11 @@ check "v17 helper: wh_held_vendor not exposed"      404 ''   -X POST "${J[@]}" -
 check "v17 wh_held_receive: bad token refused"      200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_receipt":{}}' "$(rpc mog_wh_held_receive)"
 check "v17 sync: bad key still can't close a cycle" 200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_key":"bogus","p_closing":"2026-11-03","p_new_cycle":"2026-11-04","p_new_dow":"Wed","p_rows":[],"p_todays_log":[]}' "$(rpc mog_sync_close_cycle)"
 
+# schema v18 (HQ remembers a device; a bogus token only)
+check "v18 hq_remember: bad token refused"          200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_hq_remember)"
+check "v18 hq_signout: bad token refused"           200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_hq_signout)"
+check "v18 tables: hq_sessions still not reachable" 404 ''   "$URL/rest/v1/hq_sessions"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

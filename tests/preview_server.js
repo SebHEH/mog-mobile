@@ -295,7 +295,10 @@ http.createServer((req, res) => {
     if (!auth) { send(res, 400, 'text/plain', 'who is one of: ' + Object.keys(PEOPLE).join(', ')); return; }
     if (p === '/__token') { send(res, 200, 'text/plain', auth.token); return; }
     const js = v => JSON.stringify(v).replace(/</g, '\\u003c');
+    // A device remembered in an earlier preview (schema v18) would win over
+    // this sign-in, so that's forgotten first.
     send(res, 200, 'text/html; charset=utf-8', '<!doctype html><meta charset="utf-8"><script>' +
+      "localStorage.removeItem('mog_hq_token');localStorage.removeItem('mog_hq_roles');" +
       "sessionStorage.setItem('mog_hq_token', " + js(auth.token) + ");sessionStorage.setItem('mog_hq_roles', " + js(JSON.stringify(auth.roles)) +
       ");location.replace('/hq/');</script>");
     return;
