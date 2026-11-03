@@ -163,6 +163,14 @@ check "v16 wh_received: bad token refused"          200 'SESSION_EXPIRED' -X POS
 check "v16 wh_ship: bad token refused"              200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_ship":{}}' "$(rpc mog_wh_ship)"
 check "v16 wh_order_cancel: bad token refused"      200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_id":1,"p_version":1}' "$(rpc mog_wh_order_cancel)"
 
+# schema v17 (HEH's stock held at Elpis; a bogus token or key only)
+check "v17 helper: wh_held_from_log not exposed"    404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_cycle":"2026-11-03"}' "$(rpc wh_held_from_log)"
+check "v17 helper: wh_held_receive not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_id":1,"p_by":"x","p_received_by":"x","p_lines":[]}' "$(rpc wh_held_receive)"
+check "v17 helper: wh_deliveries_json not exposed"  404 ''   -X POST "${J[@]}" -d '{}' "$(rpc wh_deliveries_json)"
+check "v17 helper: wh_held_vendor not exposed"      404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_hq_name":"x"}' "$(rpc wh_held_vendor)"
+check "v17 wh_held_receive: bad token refused"      200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_receipt":{}}' "$(rpc mog_wh_held_receive)"
+check "v17 sync: bad key still can't close a cycle" 200 'BAD_SYNC_KEY'    -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_key":"bogus","p_closing":"2026-11-03","p_new_cycle":"2026-11-04","p_new_dow":"Wed","p_rows":[],"p_todays_log":[]}' "$(rpc mog_sync_close_cycle)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

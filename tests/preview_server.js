@@ -198,6 +198,44 @@ function signIn(who) {
   wh('mog_wh_po_save', { p_po: { supplierId: S, locationId: B, lines: [{ productId: crab, cases: 4 }] } });
 }
 
+// W2b's sample (schema v17): Elpis, held by HQ's "Elpis Wholesale", with two
+// of HEH's own packaging products. The app's store and Rosslyn FOH order them
+// from their "Elpis", linked; a night's close recorded a delivery at each
+// (Rosslyn FOH's five days ago, not marked).
+{
+  const token = signIn('warehouse').token;
+  const wh = (fn, p) => {
+    const r = sb.handle(fn, Object.assign({ p_token: token }, p));
+    if (!r.ok) throw new Error(fn + ': ' + JSON.stringify(r));
+    return r.data.done;
+  };
+  const E = wh('mog_wh_save', { p_kind: 'location', p_row: { name: 'Elpis', heldBy: 'Elpis Wholesale' } }).id;
+  const bowls = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'RP Large Bowls', pack: 'CASE (300)', par: 30, handlingFee: 0, via: 'Elpis Wholesale' } }).id;
+  const lids = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'RP Large Bowl Lids', pack: 'CASE (300)', par: 30, handlingFee: 0, via: 'Elpis Wholesale' } }).id;
+  wh('mog_wh_count', { p_count: { locationId: E, lines: [{ productId: bowls, cases: 40, reason: 'Elpis report' }, { productId: lids, cases: 3, reason: 'Elpis report' }] } });
+  const day = n => new Date(sb.nowMs - n * 86400000).toISOString().slice(0, 10);
+  for (const [slug, ago] of [[APP, 1], ['zzrprfo', 5]]) {
+    const s = sb.stores.get(slug), t = s.tables;
+    t.vendors.push({ name: 'Elpis', mults: [1, 1, 1, 1, 1, 1, 1], cutoff: null });
+    let n = t.items.reduce((m, x) => Math.max(m, Number(String(x.id).replace(/\D/g, '')) || 0), 0);
+    let seq = t.items.reduce((m, x) => Math.max(m, x.seq), 0), rowSeq = t.pickRows.reduce((m, x) => Math.max(m, x.seq), 0);
+    const ids = [];
+    for (const [name, pid] of [['RP Large Bowls', bowls], ['RP Large Bowl Lids', lids]]) {
+      const id = 'ITEM-' + String(++n).padStart(4, '0');
+      ids.push(id);
+      t.items.push({ id, name, primaryVendor: 'Elpis', pack: 'CASE (300)', par: 3, active: true, useMult: true, notes: '', sku: '', category: '',
+                     eligible: ['Elpis'], seq: ++seq, whProduct: pid });
+      t.pickRows.push({ vendor: 'Elpis', id, area: t.areas[0].name, shelfOrder: 1000 + n, seq: ++rowSeq });
+    }
+    checkCatalogTables(t);
+    sb.hqState().links.push({ slug, hqName: 'Elpis Wholesale', vendor: 'Elpis' });
+    Object.assign(s, { catalog: catalogFromTables(s), version: Date.now() });
+    s.log.push({ cycleDate: day(ago), seq: 900, vendor: 'Elpis', id: ids[0], name: 'RP Large Bowls', pack: 'CASE (300)', area: '', onHandPrev: 1, qty: 2, loggedAt: null },
+               { cycleDate: day(ago), seq: 901, vendor: 'Elpis', id: ids[1], name: 'RP Large Bowl Lids', pack: 'CASE (300)', area: '', onHandPrev: 0, qty: slug === APP ? 4 : 1, loggedAt: null });
+    sb.whHeldFromLog(slug, s, day(ago), new Date(sb.nowMs - ago * 86400000 + 3600000).toISOString());
+  }
+}
+
 // ---- The server ------------------------------------------------------------------
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };

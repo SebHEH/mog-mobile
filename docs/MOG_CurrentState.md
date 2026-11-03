@@ -14,7 +14,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
 - **Each Sheet** is frozen for catalog edits. It still holds the Apps Script: the 3:30 AM close, the recap email, the onboarding moves. It also gets a nightly LOG_ORDERS backup.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions:** app v0.28.0 / store cache v69, hub cache v11, schema v14 (LTOs, live 2026-11-02: smoke_v14 26/26, probe 94/94; HQ side shipped in `6fee3a1`). Schema v15 (vendor rename) live 2026-11-02: smoke_v15 18/18, probe 96/96; the Vendors page's rename shipped with it, together with the Items page's new-LTO banner and HQ's library tick boxes (30 gates). Schema v16 (Happy Supply W2a, store orders) live 2026-11-02: smoke_v16 50/50, probe 105/105; the app (v0.28.0) and HQ shipped with it in `37588dd` (31 gates).
+- **Versions:** app v0.28.0 / store cache v69, hub cache v11, schema v14 (LTOs, live 2026-11-02: smoke_v14 26/26, probe 94/94; HQ side shipped in `6fee3a1`). Schema v15 (vendor rename) live 2026-11-02: smoke_v15 18/18, probe 96/96; the Vendors page's rename shipped with it, together with the Items page's new-LTO banner and HQ's library tick boxes (30 gates). Schema v16 (Happy Supply W2a, store orders) live 2026-11-02: smoke_v16 50/50, probe 105/105; the app (v0.28.0) and HQ shipped with it in `37588dd` (31 gates). Schema v17 (W2b, HEH's stock held at Elpis) live 2026-11-03: smoke_v17 47/47, probe 111/111; the app (v0.29.0, store cache v70) and HQ shipped with it (32 gates).
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
 - **The three stores that moved empty:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
@@ -23,6 +23,12 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - all 10 stores closed between 3:23 and 3:38 AM;
   - rpr and rprfo had orders, and their recaps went to their Supabase recipients;
   - the other stores had nothing ordered, so no email (by design).
+
+**2026-11-03: Happy Supply W2b, HEH's stock held at Elpis, live** (smoke_v17 47/47 in the SQL Editor, probe 111/111, pushed the same day). Not in use: no location is held by a vendor yet.
+- **Checked live first:** W2a not tried yet (no warehouse products, links or orders); Elpis still three spellings; Horse Pho not undone.
+- **Decided (walkthrough, all four as recommended):** recorded at the 3:30 AM close (not at Mark as reviewed); a receipt beyond the records goes through, logged as a count; HQ can mark an unmarked delivery received; the warehouse role sees Elpis. Three mockup boards approved ("Happy Supply W2b" row).
+- **Built:** schema v17 (`held_by`, `via`, deliveries EL-0001 in `mog.wh_orders`, the close's guarded step, `mog_wh_held_receive`), HQ's Elpis page, the phone's Elpis card, gate `wh_elpis` (32 gates). Detail: `docs/MOG_Warehouse_Spec.md` §2 "W2b design".
+- **Next:** check the next morning's close answered without `heldError` at every store; then first use on the TEST store (HQ → Locations: Elpis held by Elpis Wholesale, the RP bowls and lids as products, a count from Elpis's report, Send to stores).
 
 **2026-11-02 (later, 5): Happy Supply W2a, store orders, live** (`docs/MOG_SessionHandoff_2026_11_02.md`, "Later session 5").
 - **Spec and design:** the W2 spec, the W2a design and its three mockup boards are approved (`docs/MOG_Warehouse_Spec.md` §2).

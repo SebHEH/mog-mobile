@@ -385,7 +385,16 @@ naive rebuild silently loses.*
   - The warehouse ships each line from one location, at most what was ordered and never taking a location below 0. The Ship box starts with what's left after older sent orders (the number the store was told). Shipping drops the stock (a shipped move under the order's number) and fixes each line's price per case, (average cost + handling fee) x (1 + markup %) to the cent, and the order's delivery fee.
   - The store marks it received, each line at most what shipped; stock doesn't move then.
   - A phone never sees a price, a fee or a cost.
-  - Why: a store's Happy Supply order went through a Facebook chat; this puts it in the warehouse's queue, with the stock and the fixed prices the monthly chargebacks (W3) read. *(Confirmed: owner 2026-11-02, `docs/MOG_Warehouse_Spec.md` §2, "W2 spec" and "W2a design". The owner picked no Approve step, cases available as a number, an over-order sent with a warning, the link in the item's row, and Ship starting with what's left after older orders. HEH's own stock held at Elpis follows as W2b.)*
+  - Why: a store's Happy Supply order went through a Facebook chat; this puts it in the warehouse's queue, with the stock and the fixed prices the monthly chargebacks (W3) read. *(Confirmed: owner 2026-11-02, `docs/MOG_Warehouse_Spec.md` §2, "W2 spec" and "W2a design". The owner picked no Approve step, cases available as a number, an over-order sent with a warning, the link in the item's row, and Ship starting with what's left after older orders. HEH's own stock held at Elpis follows as W2b, R33.)*
+- **R33. HEH's own stock held at Elpis leaves the records when a store marks its Elpis delivery received.**
+  - Elpis is a location in the warehouse's records held by a vendor (HQ's "Elpis Wholesale"); a product says where stores order it, Happy Supply or that vendor. A product held at Elpis keeps its stock there; Happy Supply never ships from it, and Send to Happy Supply refuses it.
+  - KMs keep ordering it from their Elpis vendor as before (copy the order, email it). HQ links a store's own Elpis item to the product; Elpis stays its main vendor, and the store's Elpis is HQ's name for it there, picked the first time.
+  - The night's close turns the store's ordered Elpis lines for linked items into one open delivery (EL-0001). Lines ordered from another vendor, or for unlinked items, aren't in it. A same-day re-close replaces or removes an open one; a received one stays. Nothing in this step can stop the close.
+  - While counting, a KM sees each linked Elpis item's cases available at Elpis: the cases there, minus every open delivery (the store's own included, since its cycle has moved on). Another store's same-day order counts from the morning after its close.
+  - The store marks the delivery received on its Elpis card, each line starting at what was ordered and changeable either way; only then do the cases leave Elpis. A delivery nobody marks stays open and is listed for whoever keeps the Elpis stock, who can mark it received for the store.
+  - A receipt larger than the records goes through: the stock goes to 0, the difference is logged as a count with a reason naming the store and the delivery, and HQ flags it until the next real count at Elpis.
+  - Each received line keeps the average cost; a phone never sees a price, a fee or a cost.
+  - Why: HEH pays for its branded packaging up front and stores it at Elpis; the records have to match Elpis's own report without changing how KMs order. *(Confirmed: owner 2026-11-02 and 2026-11-03, `docs/MOG_Warehouse_Spec.md` §2, "W2 spec" and "W2b design". The owner picked recording at the close over at Mark as reviewed, a receipt beyond the records going through over refusing it, the keeper marking an unmarked delivery received, and the warehouse role over a separate Elpis role.)*
 
 ---
 
@@ -422,7 +431,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | use-multiplier | boolean | col M. Off = order flat to par, for bulk/batch items (R20). |
 | active | boolean | col L. |
 | notes | text | col N. |
-| warehouse product | product ref or none | The Happy Supply product it comes from (R32). Set by HQ; part of the item, so Undo brings it back. |
+| warehouse product | product ref or none | The Happy Supply product it comes from (R32), or HEH's product held at Elpis (R33). Set by HQ; part of the item, so Undo brings it back. |
 
 #### Entity: Vendor
 | Field | Type (conceptual) | Notes |
@@ -459,8 +468,9 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | average cost | money per case, 4 decimals | Set and moved only by deliveries received. |
 | handling fee | money per case | Never shown to a store. |
 | stores | list of store refs | The stores that may order it; none = every store. |
-| stock | cases per location | Never below 0. |
-| moves | list of {when, who, location, cases (+/-), kind, order or transfer number, cost, reason, cases after, average after} | Every change to stock; never edited. Kinds: received, transfer out, transfer in, count, shipped (R32). |
+| via | vendor name or none | Where stores order it: none = Happy Supply; else the vendor holding a location (Elpis Wholesale, R33), whose location keeps its stock. |
+| stock | cases per location | Never below 0. A location can be held by a vendor (Elpis), one per vendor; Happy Supply never ships from it. |
+| moves | list of {when, who, location, cases (+/-), kind, order or transfer number, cost, reason, cases after, average after} | Every change to stock; never edited. Kinds: received, transfer out, transfer in, count, shipped (R32; an Elpis receipt is a shipped move under its EL number, R33). |
 
 #### Entity: Store order (Happy Supply, R32)
 | Field | Type (conceptual) | Notes |
@@ -471,6 +481,14 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | status | sent, shipped, received, cancelled | Cancelled only while sent. |
 | lines | list of {store item and its name, product, cases ordered, shipped (and from where), received, price per case, average cost} | Price and average fixed at ship; the phone never sees them. |
 | delivery fee | money per order | Fixed at ship. |
+
+#### Entity: Elpis delivery (R33)
+| Field | Type (conceptual) | Notes |
+|---|---|---|
+| number | text | EL-0001 on, from the deliveries there. |
+| store, cycle, location | store ref, date, location ref | One per store, cycle and held location; made by the night's close. |
+| status | ordered, received | Received by the store, or by HQ for it. |
+| lines | list of {store item and its name, product, cases ordered, received, beyond the records, average cost} | Ordered from the order log; the average kept at receipt; the phone never sees it. |
 
 #### Entity: Count line (per item, per vendor, per day)
 | Field | Type (conceptual) | Notes |
@@ -633,8 +651,9 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
   with its own stock, costs and admin role behind it; only a store's items from that vendor link to
   warehouse products, and a KM sends that vendor's order to the warehouse from the review screen.
   Built so far (W1, 2026-11-02): the warehouse's own stock, vendor orders in, transfers, counts and
-  history, and the warehouse role (R30); store orders from Happy Supply (W2a, R32). Next: HEH's own
-  stock held at Elpis (W2b, KMs keep ordering it from Elpis) and monthly chargebacks (W3).
+  history, and the warehouse role (R30); store orders from Happy Supply (W2a, R32); HEH's own stock
+  held at Elpis, recorded at the close and marked received at the store (W2b, R33). Next: monthly
+  chargebacks (W3).
 - **LTOs as records.** Built 2026-11-02 (R31, `docs/MOG_LTO_Spec.md`): HQ ends, rolls back or makes
   standard what it sent, and the store's Items page shows new LTO items first until set up. Next:
   lining up each concept's stores with its library, and items a store can't remove (its own spec).

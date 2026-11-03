@@ -85,11 +85,17 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **The average cost** covers every location and what's in transit, kept to 4 decimals; only deliveries move it (transfers and counts don't).
 - **Stock never goes below 0:** a transfer that would is refused, and Dan counts first. A count's difference needs a reason.
 - **Numbers (PO-0001, TR-0001) come from what's there,** not a sequence, so `smoke_v13.sql` can run on the live database: it adds its own `zz smoke 13 ...` rows and deletes them, the settings' version aside.
-- **Store orders (schema v16, W2a; built 2026-11-02, not live yet):**
+- **Store orders (schema v16, W2a; live 2026-11-02):**
   - A store's Happy Supply is the vendor HQ's "Happy Supply" maps to (HQ → Vendor names, `mog.hq_vendor_links`). Add it to a store on HQ's Vendors page, with its delivery days, before Send to stores can link items there.
   - An item's product link is `mog.items.wh_product`, part of the item's row like `lto`. Every item compare site carries it: SQL `editor_fields_match`, `catalogEdit.js` `USER_FIELDS`, the fake's `EDITOR_FIELDS`. A new item field goes into all three, and `lto.test.js` / `wh_orders.test.js` plant at the `USER_FIELDS` line.
   - Prices, fees and costs never reach a phone (`mog.wh_order_phone_json`); smoke_v16 and the gate check every phone answer for them.
   - The front end needs v16 first: on v15, Send to stores would add an item without its link (v15's `editor_apply_ops` drops the field).
+- **HEH's stock held at Elpis (schema v17, W2b; live 2026-11-03):**
+  - A location can be held by a vendor (`mog.wh_locations.held_by`, an HQ vendor name, one location per holder), and a product says where stores order it (`mog.wh_products.via`: null for Happy Supply). Set the Elpis location's holder to "Elpis Wholesale" (one spelling, Sebastian 2026-11-02).
+  - A store's Elpis is HQ's name "Elpis Wholesale" mapped at that store (`mog.hq_vendor_links`, as for Happy Supply). Send to stores saves it the first time; until then the close records nothing for that store.
+  - **The 3:30 AM close records the deliveries** (`mog_sync_close_cycle` replaced in v17, same signature, no Apps Script change), in its own exception block: a failure there comes back as `heldError` in the close's answer and never stops a store's close. The live check after shipping: the next morning's close at every store answered without `heldError`.
+  - A delivery and a Happy Supply order share `mog.wh_orders` (`held_at` set for a delivery, status `ordered` then `received`). Every reader of the orders splits them: `wh_orders_json` (Dan's Orders) leaves deliveries out, `wh_deliveries_json` is HQ's Elpis page, and the phone's card picks by `held` and `heldVendor`.
+  - A receipt beyond the records logs a `count` move with the EL number as its ref; a real count has no ref. The Elpis page's "count it" flag reads that difference (`lastCount` is the newest count with no ref).
 - **No Undo in W1.** A wrong count is fixed by another count. A wrong cost on a delivery needs a maintainer in the SQL Editor; `mog.wh_moves` keeps each delivery's cost, so the average can be replayed.
 
 ## Local previews and the browser pane

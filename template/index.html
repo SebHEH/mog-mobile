@@ -2828,6 +2828,13 @@
       hsChangeShort:    { en: 'Change a line if fewer cases arrived.', es: 'Cambia una línea si llegaron menos cajas.' },
       hsOneLess:        { en: 'One less', es: 'Una menos' },
       hsOneMore:        { en: 'One more', es: 'Una más' },
+      hsAvailableAt:    { en: 'available at {v}', es: 'disponibles en {v}' },
+      hsOnlyAt:         { en: 'Only {n} available at {v}.', es: 'Solo {n} disponibles en {v}.' },
+      hsHeldHelp:       { en: "Order from {v} the way you do today. HEH's own items in it are recorded at tonight's close; mark them received when {v} delivers.", es: 'Pide a {v} como siempre. Los artículos propios de HEH se registran en el cierre de esta noche; márcalos como recibidos cuando {v} entregue.' },
+      hsLineOrdered:    { en: "HEH's items ordered {day} · {num}", es: 'Artículos de HEH pedidos el {day} · {num}' },
+      hsOrderedN:       { en: 'Ordered {a}', es: 'Pedidas {a}' },
+      hsHeldFrom:       { en: "HEH's items ordered from {v}", es: 'Artículos de HEH pedidos a {v}' },
+      hsChangeHeld:     { en: "Only HEH's own items are here. Change a line if {v} sent more or fewer cases.", es: 'Aquí solo están los artículos propios de HEH. Cambia una línea si {v} envió más o menos cajas.' },
       whoCounting:      { en: "Who's counting?", es: '¿Quién está contando?' },
       whoCountingHelp:  { en: 'Pick your name so others can see who is counting what.', es: 'Elige tu nombre para que los demás vean quién cuenta qué.' },
       someoneElse:      { en: 'Someone else…', es: 'Otra persona…' },
@@ -4887,12 +4894,13 @@
       : '';
 
     // Happy Supply (schema v16): where its order stands; a shipped one is
-    // marked received from the card.
+    // marked received from the card. Elpis (v17): its open delivery of HEH's
+    // items, marked received the same way.
     let hsHtml = '';
-    const hsOrder = hsIsVendor_(v.name) ? hsCardOrder_() : null;
+    const hsOrder = hsIsVendor_(v.name) ? hsCardOrder_() : hsHeld_(v.name) ? hsHeldCardOrder_(v.name) : null;
     if (hsOrder) {
       hsHtml = '<div class="vendor-meta hs-meta">' + escapeHtml(hsOrderLine_(hsOrder)) + '</div>';
-      if (hsOrder.status === 'shipped') {
+      if (hsOrder.status === 'shipped' || hsOrder.status === 'ordered') {
         pillHtml = '<button class="pill-mark" data-hs-receive="' + hsOrder.id + '"><i class="ti ti-package" aria-hidden="true"></i>' +
           '<span>' + escapeHtml(t('hsMarkReceived')) + '</span></button>';
       }
@@ -5762,8 +5770,16 @@
   function hsAvailable_(id) { const h = hs_(), x = h && h.items ? h.items[id] : null; return x ? Number(x.available) : null; }
   // The order a card shows: one waiting to be marked received first, else the newest.
   function hsCardOrder_() {
-    const h = hs_(), list = h && Array.isArray(h.orders) ? h.orders : [];
+    const h = hs_(), list = (h && Array.isArray(h.orders) ? h.orders : []).filter(o => !o.held);
     return list.find(o => o.status === 'shipped') || list[0] || null;
+  }
+  // A vendor holding HEH's own stock (schema v17: the store's Elpis). KMs
+  // order from it as today; the night's close records the delivery of HEH's
+  // items, which its card then shows until it's marked received.
+  function hsHeld_(vendor) { const h = hs_(); return !!(h && Array.isArray(h.heldVendors) && h.heldVendors.indexOf(vendor) >= 0); }
+  function hsHeldCardOrder_(vendor) {
+    const h = hs_(), list = (h && Array.isArray(h.orders) ? h.orders : []).filter(o => o.held && o.heldVendor === vendor);
+    return list.find(o => o.status === 'ordered') || list[0] || null;
   }
   function hsYmd_(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function hsDay_(ymd) {
@@ -5793,6 +5809,7 @@
     const sum = (f) => o.lines.reduce((acc, l) => acc + Number(l[f] || 0), 0);
     if (o.status === 'sent') return t('hsLineSent').replace('{num}', o.number) + (o.neededBy ? ' · ' + t('hsNeededBy') + ' ' + hsDay_(o.neededBy) : '');
     if (o.status === 'shipped') return t('hsLineShipped').replace('{a}', fmtQty_(sum('casesShipped'))).replace('{b}', fmtQty_(sum('cases'))) + (o.from ? ' · ' + t('hsFrom') + ' ' + o.from : '');
+    if (o.status === 'ordered') return t('hsLineOrdered').replace('{day}', hsDay_(o.cycleDate)).replace('{num}', o.number);
     if (o.status === 'received') return t('hsLineReceived').replace('{a}', fmtQty_(sum('casesReceived')));
     return t('hsLineCancelled').replace('{num}', o.number);
   }
@@ -5827,28 +5844,32 @@
     showToast(t('hsSent'), 'success');
     backToToday_();
   }
-  // Mark received: each shipped line starts at what shipped; a short one is changed.
+  // Mark received: each shipped line starts at what shipped; a short one is
+  // changed. An Elpis delivery (v17): each line starts at what was ordered,
+  // and can be more.
   function openHsReceive_(id) {
     const h = hs_(), o = h && (h.orders || []).find(x => x.id === id);
     if (!o) return;
+    const held = !!o.held;
     const rows = o.lines.map(l => {
-      const shipped = Number(l.casesShipped || 0);
-      const sub = (shipped < Number(l.cases) ? t('hsShippedOf').replace('{a}', fmtQty_(shipped)).replace('{b}', fmtQty_(l.cases))
-                                             : t('hsShippedN').replace('{a}', fmtQty_(shipped))) + (l.pack ? ' · ' + l.pack : '');
+      const start = held ? Number(l.cases) : Number(l.casesShipped || 0);
+      const sub = (held ? t('hsOrderedN').replace('{a}', fmtQty_(start))
+        : start < Number(l.cases) ? t('hsShippedOf').replace('{a}', fmtQty_(start)).replace('{b}', fmtQty_(l.cases))
+        : t('hsShippedN').replace('{a}', fmtQty_(start))) + (l.pack ? ' · ' + l.pack : '');
       return '<div class="hs-rline"><div class="hs-rinfo"><p class="item-name">' + escapeHtml(l.name) + '</p><p class="item-meta">' + escapeHtml(sub) + '</p></div>' +
-        (shipped > 0 ? '<div class="stepper"><button type="button" class="step-btn" data-hsstep="-1" data-ord="' + l.ord + '" aria-label="' + escapeHtml(t('hsOneLess') + ' ' + l.name) + '">&minus;</button>' +
-          '<input class="step-val" type="number" inputmode="decimal" step="any" min="0" data-hsord="' + l.ord + '" data-max="' + shipped + '" value="' + shipped + '" aria-label="' + escapeHtml(l.name + ' ' + t('hsReceived')) + '">' +
+        (start > 0 ? '<div class="stepper"><button type="button" class="step-btn" data-hsstep="-1" data-ord="' + l.ord + '" aria-label="' + escapeHtml(t('hsOneLess') + ' ' + l.name) + '">&minus;</button>' +
+          '<input class="step-val" type="number" inputmode="decimal" step="any" min="0" data-hsord="' + l.ord + '" data-start="' + start + '" data-max="' + (held ? '' : start) + '" value="' + start + '" aria-label="' + escapeHtml(l.name + ' ' + t('hsReceived')) + '">' +
           '<button type="button" class="step-btn" data-hsstep="1" data-ord="' + l.ord + '" aria-label="' + escapeHtml(t('hsOneMore') + ' ' + l.name) + '">+</button></div>' : '') + '</div>';
     }).join('');
     const wrap = openQeSheet_('<h3>' + escapeHtml(t('hsMarkReceived')) + '</h3>' +
-      '<p class="name-help">' + escapeHtml(o.number + (o.from ? ' · ' + t('hsShippedFrom') + ' ' + o.from : '')) + '</p>' + rows +
-      '<p class="hs-help">' + escapeHtml(t('hsChangeShort')) + '</p>' +
+      '<p class="name-help">' + escapeHtml(o.number + (held ? ' · ' + t('hsHeldFrom').replace('{v}', o.heldVendor || '') : o.from ? ' · ' + t('hsShippedFrom') + ' ' + o.from : '')) + '</p>' + rows +
+      '<p class="hs-help">' + escapeHtml(held ? t('hsChangeHeld').replace('{v}', o.heldVendor || '') : t('hsChangeShort')) + '</p>' +
       '<button type="button" class="cta" id="hs-recv-go">' + escapeHtml(t('hsReceived')) + '</button>' +
       '<button type="button" class="cta-secondary" id="hs-recv-no">' + escapeHtml(t('hsNotYet')) + '</button>');
     wrap.querySelector('.name-sheet').setAttribute('aria-label', t('hsMarkReceived'));
     const clamp = input => {
-      const max = Number(input.getAttribute('data-max')), v = Number(input.value);
-      input.value = String(isNaN(v) ? max : Math.max(0, Math.min(max, v)));
+      const m = input.getAttribute('data-max'), max = m === '' ? Infinity : Number(m), v = Number(input.value);
+      input.value = String(isNaN(v) ? Number(input.getAttribute('data-start')) : Math.max(0, Math.min(max, v)));
     };
     wrap.querySelectorAll('[data-hsstep]').forEach(b => b.addEventListener('click', () => {
       const input = wrap.querySelector('[data-hsord="' + b.getAttribute('data-ord') + '"]');
@@ -6065,7 +6086,8 @@
     // Group by storage area, preserving the API's order. Backup items (this
     // vendor isn't their primary) are fully orderable here — they just carry a
     // "Backup · <primary>" badge so the KM knows this isn't the default source.
-    const hsHere = hsIsVendor_(ctx.vendor);
+    const hsHere = hsIsVendor_(ctx.vendor) || hsHeld_(ctx.vendor);
+    const hsAvText = hsIsVendor_(ctx.vendor) ? t('hsAvailable') : t('hsAvailableAt').replace('{v}', ctx.vendor);
     let lastArea = null;
     for (const it of items) {
       if (it.storageArea !== lastArea) {
@@ -6092,11 +6114,12 @@
           : escapeHtml(t('qePar')) + ' ' + escapeHtml(fmtQty_(it.par));
         meta = (meta ? meta + ' &middot; ' : '') + parTxt;
       }
-      // Happy Supply (schema v16): what the warehouse can still send.
+      // Happy Supply (schema v16): what the warehouse can still send; Elpis
+      // (v17): what's left of HEH's own stock there.
       const hsAv = hsHere ? hsAvailable_(it.id) : null;
       if (hsAv !== null) {
         meta = (meta ? meta + ' &middot; ' : '') + '<span class="hs-avail' + (sug != null && sug > hsAv ? ' low' : '') + '">' +
-          escapeHtml(fmtQty_(hsAv) + ' ' + t('hsAvailable')) + '</span>';
+          escapeHtml(fmtQty_(hsAv) + ' ' + hsAvText) + '</span>';
       }
       html += '<div class="item" data-id="' + escapeHtml(it.id) + '">' +
         '<div class="item-info' + (qe ? ' qe-tap' : '') + '">' +
@@ -6650,6 +6673,8 @@
     // Happy Supply (schema v16): the order goes to Dan's queue with a
     // needed-by date and a note, instead of an email.
     const hs = hsIsVendor_(ctx.vendor) && toOrder.length > 0;
+    // Elpis (schema v17): ordered as today, with HEH's stock there shown.
+    const held = !hs && hsHeld_(ctx.vendor) && toOrder.some(it => hsLinked_(it.id));
     let hsUnlinked = [];
     if (hs) {
       const dates = hsDeliveryDates_(ctx.vendor, ctx.dateStr);
@@ -6671,8 +6696,10 @@
       for (const it of toOrder) {
         const sug = computeSuggested(it);
         const pack = it.pack || '';
-        const av = hs ? hsAvailable_(it.id) : null;
-        const hsLine = !hs ? ''
+        const av = hs || held ? hsAvailable_(it.id) : null;
+        const hsLine = held ? (av !== null && sug > av ? '<p class="hs-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i>' +
+                               escapeHtml(t('hsOnlyAt').replace('{n}', fmtQty_(av)).replace('{v}', ctx.vendor)) + '</p>' : '')
+          : !hs ? ''
           : !hsLinked_(it.id) ? '<p class="hs-warn"><i class="ti ti-link-off" aria-hidden="true"></i>' + escapeHtml(t('hsNotLinked')) + '</p>'
           : av !== null && sug > av ? '<p class="hs-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i>' + escapeHtml(t('hsOnly').replace('{n}', fmtQty_(av))) + '</p>' : '';
         html += '<div class="review-row">' +
@@ -6707,6 +6734,7 @@
                 '<span>' + escapeHtml(t('copyOrder')) + '</span></button>';
       }
       html += '<button class="cta" id="markreview-btn">' + escapeHtml(t('markReviewed')) + '</button>';
+      if (held) html += '<p class="hs-help">' + escapeHtml(t('hsHeldHelp').replace(/\{v\}/g, ctx.vendor)) + '</p>';
     }
     html += '<button class="cta-secondary" id="back-count-btn">' + escapeHtml(t('backToCount')) + '</button>';
 
@@ -8179,7 +8207,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.28.0';
+    const versionStr = '0.29.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =

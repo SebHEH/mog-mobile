@@ -1038,8 +1038,8 @@
 
   // ---- A Happy Supply product at one store (hq/, schema v16) ---------------
   // p = { vendor: { name, mults, cutoff } | null   the store's Happy Supply, added the way the Vendors page adds one, when it has none
-  //       vendorName                               the store's name for Happy Supply
-  //       product: { id, name, pack }              the warehouse product
+  //       vendorName                               the store's name for Happy Supply (v17: or for the product's via, its Elpis)
+  //       product: { id, name, pack, via? }        the warehouse product (via: HEH's stock held at that vendor, v17)
   //       link: item id | ''                       an item the store has: linked, Happy Supply its main vendor (the old main
   //                                                stays a backup), the product's pack
   //       item: { name, notes } }                  else a new item: no par, no storage area, so it waits in Needs setup
@@ -1070,7 +1070,7 @@
       }
       if (pack) it.pack = pack;
       it.whProduct = pid;
-      return { ok: true, mode: 'link', id: s_(it.id), name: s_(it.name), product: s_(prod.name), vendor: hs, vendorsAdded: vendorsAdded,
+      return { ok: true, mode: 'link', id: s_(it.id), name: s_(it.name), product: s_(prod.name), via: s_(prod.via), vendor: hs, vendorsAdded: vendorsAdded,
                oldMain: oldMain && oldMain.toLowerCase() !== hs.toLowerCase() ? oldMain : '',
                packFrom: oldPack !== s_(it.pack) ? oldPack : null, pack: s_(it.pack) };
     }
@@ -1081,7 +1081,7 @@
     importItems(w, { items: [{ name: name, primaryVendor: hs, pack: pack, notes: s_(p.item && p.item.notes) }] });
     const it = w.items.find(x => !had.has(x));
     it.whProduct = pid;
-    return { ok: true, mode: 'add', id: s_(it.id), name: name, product: s_(prod.name), vendor: hs, vendorsAdded: vendorsAdded };
+    return { ok: true, mode: 'add', id: s_(it.id), name: name, product: s_(prod.name), via: s_(prod.via), vendor: hs, vendorsAdded: vendorsAdded };
   }
 
   // The store's active items closest to a product's name, best first, for
@@ -1677,9 +1677,10 @@
     if (fn === 'commitHqProduct') {
       const parts = [];
       if (result.vendorsAdded.length) parts.push('added vendor ' + result.vendorsAdded.join(', '));
-      if (result.mode === 'add') parts.push('added "' + result.name + '" (' + result.id + ') from Happy Supply\'s ' + result.product);
+      const whose = result.via ? 'HEH\'s ' + result.product + ' at ' + result.via : 'Happy Supply\'s ' + result.product;
+      if (result.mode === 'add') parts.push('added "' + result.name + '" (' + result.id + ') from ' + whose);
       else {
-        parts.push('linked "' + result.name + '" to Happy Supply\'s ' + result.product);
+        parts.push('linked "' + result.name + '" to ' + whose);
         if (result.oldMain) parts.push(result.vendor + ' its main vendor, ' + result.oldMain + ' a backup');
         if (result.packFrom !== null) parts.push('pack ' + fmt(result.packFrom) + ' → ' + result.pack);
       }

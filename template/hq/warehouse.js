@@ -76,11 +76,12 @@
   // sent orders older than it (the number its store was told), at most what
   // it ordered and what the chosen location holds; From: the location with
   // the most of it. held: what the older orders take.
-  function shipPrefill(orders, products, o) {
+  function shipPrefill(orders, products, o, heldIds) {
     const older = orders.filter(x => x.status === 'sent' && x.id !== o.id && (x.sentAt < o.sentAt || (x.sentAt === o.sentAt && x.id < o.id)));
     return o.lines.map(l => {
       const p = products.find(x => x.id === l.productId);
-      const stock = p ? p.stock || {} : {};
+      const stock = Object.assign({}, p ? p.stock || {} : {});
+      for (const k of heldIds || []) delete stock[String(k)];   // v17: never ships from a held location
       const total = Object.keys(stock).reduce((t, k) => t + Number(stock[k]), 0);
       const held = round(older.reduce((t, x) => t + x.lines.filter(y => y.productId === l.productId).reduce((s, y) => s + Number(y.cases), 0), 0), 2);
       const left = Math.max(0, round(total - held, 2));
@@ -100,11 +101,46 @@
       return line;
     }) };
   }
+  // ---- HEH's stock held at Elpis (schema v17, W2b) ----
+  const lcs = v => String(v == null ? '' : v).toLowerCase();
+  // Does a product belong at a location: one held by a vendor takes the
+  // products ordered through that vendor (via), HEH's own the rest.
+  function fits(p, loc) { return !loc || lcs(p.via) === lcs(loc.heldBy); }
+  // A held location's stock: each product ordered through its holder (or with
+  // cases there): on hand, what open deliveries hold, and what's available,
+  // mog.wh_available's sum for a held product (never below 0).
+  function heldStock(products, deliveries, loc) {
+    return products.filter(p => fits(p, loc) || stockAt(p, loc.id) > 0).map(p => {
+      let open = 0;
+      for (const o of deliveries) if (o.status === 'ordered' && o.heldAt === loc.id) for (const l of o.lines) if (l.productId === p.id) open += Number(l.cases);
+      open = round(open, 2);
+      const onHand = stockAt(p, loc.id);
+      return { product: p, onHand: onHand, open: open, available: Math.max(0, round(onHand - open, 2)) };
+    });
+  }
+  // The receipts that went beyond the records since the location's last real
+  // count: what was received, and what the records held.
+  function beyondSinceCount(deliveries, loc) {
+    const out = [], since = loc.lastCount ? new Date(loc.lastCount).getTime() : -Infinity;
+    for (const o of deliveries) {
+      if (o.heldAt !== loc.id || o.status !== 'received' || !(new Date(o.receivedAt).getTime() > since)) continue;
+      for (const l of o.lines) if (Number(l.beyond) > 0) out.push({ order: o, line: l, held: round(Number(l.casesReceived) - Number(l.beyond), 2) });
+    }
+    return out;
+  }
+  // Mark a store's delivery received: every line, a blank one as ordered.
+  //   rows: { ord: text }
+  function heldPayload(o, rows) {
+    return { id: o.id, version: o.version, lines: o.lines.map(l => {
+      const n = num(rows[l.ord]);
+      return { ord: l.ord, cases: n === null ? Number(l.cases) : n };
+    }) };
+  }
   const logic = { round, avgAfter, storePrice, stockAt, owned, value, num, cs, money, countPayload, receivePayload, transferProblems,
-                  shipPrefill, shipPayload };
+                  shipPrefill, shipPayload, fits, heldStock, beyondSinceCount, heldPayload };
 
   // ---- The page ----
-  const VIEWS = ['wh-inventory', 'wh-incoming', 'wh-orders', 'wh-products', 'wh-history'];
+  const VIEWS = ['wh-inventory', 'wh-incoming', 'wh-orders', 'wh-elpis', 'wh-products', 'wh-history'];
   const PLUS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>';
   const CHECK = '<svg class="ck" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10"/></svg>';
   const CHEV = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5f5e5a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6l6 -6"/></svg>';
@@ -120,6 +156,9 @@
     '<section class="view" id="v-wh-orders" aria-labelledby="who-h" hidden>' +
       '<div class="page-head"><div><h1 id="who-h">Orders</h1><p>Store orders sent from each order guide\'s review screen, soonest needed first. Ship from a location: the stock drops and the store\'s price locks.</p></div></div>' +
       '<div class="status" id="who-status" role="status"></div><div id="who-body" class="view"></div></section>' +
+    '<section class="view" id="v-wh-elpis" aria-labelledby="whe-h" hidden>' +
+      '<div class="page-head"><div><h1 id="whe-h">Elpis</h1><p id="whe-sub"></p></div></div>' +
+      '<div class="status" id="whe-status" role="status"></div><div id="whe-body" class="view"></div></section>' +
     '<section class="view" id="v-wh-products" aria-labelledby="whp-h" hidden>' +
       '<div class="page-head"><div><h1 id="whp-h">Products and prices</h1><p>What Happy Supply stocks. A store pays the average cost plus the handling fee per case, fixed on each line when its order ships. Stores never see the fee.</p></div>' +
       '<div class="actions"><button type="button" class="btn" data-wh="prod-new">' + PLUS + 'Add a product</button></div></div>' +
@@ -140,6 +179,7 @@
                 inv: { filter: 'active', counting: false, loc: null, rows: {} },
                 inc: { filter: 'open', sel: null, rcv: {}, po: null, tr: null },
                 ord: { filter: 'sent', sel: null, rows: {} },
+                el: { filter: 'open', sel: null, rows: {} },
                 prod: { sel: null, draft: null, send: null },
                 hist: { product: '', location: '', moves: null, more: false, key: null } };
 
@@ -193,6 +233,10 @@
     // ---- Shared bits ----
     const D = () => W.data;
     const activeLocs = () => D().locations.filter(l => l.active);
+    // v17: a location held by a vendor (Elpis), and the deliveries from it.
+    const heldLocs = () => D().locations.filter(l => l.heldBy);
+    const ownLocs = () => activeLocs().filter(l => !l.heldBy);
+    const deliveries = () => D().deliveries || [];
     const locName = id => { const l = D().locations.find(x => x.id === id); return l ? l.name : '?'; };
     const prodBy = id => D().products.find(p => p.id === Number(id));
     const lowList = () => D().products.filter(p => p.active && Number(p.par) > 0 && owned(p) < Number(p.par));
@@ -241,8 +285,8 @@
       if (W.inv.counting) updateCount();
     }
     function countProducts() {
-      const loc = W.inv.loc;
-      return D().products.filter(p => p.active || stockAt(p, loc) > 0);
+      const loc = W.inv.loc, L = D().locations.find(l => l.id === loc);
+      return D().products.filter(p => (p.active && fits(p, L)) || stockAt(p, loc) > 0);
     }
     function countHtml() {
       const loc = W.inv.loc, rows = W.inv.rows;
@@ -421,7 +465,8 @@
     function poFormHtml() {
       const f = W.inc.po, d = D();
       const sups = d.suppliers.filter(s => s.active || s.id === f.supplierId), locs = d.locations.filter(l => l.active || l.id === f.locationId);
-      const prods = d.products.filter(p => p.active);
+      const to = d.locations.find(l => l.id === Number(f.locationId));
+      const prods = d.products.filter(p => p.active && (fits(p, to) || f.lines.some(l => Number(l.productId) === p.id)));
       if (!sups.length || !locs.length || !prods.length) {
         return '<h2>New vendor order</h2>' + emptyHtml('First add ' + [!sups.length && 'a supplier', !locs.length && 'a location', !prods.length && 'a product'].filter(Boolean).join(', ') +
           ' on <button type="button" class="linkbtn" data-nav="wh-products">Products and prices</button>.');
@@ -514,8 +559,8 @@
     // ---- Products and prices ----
     function draftOf(p) {
       return p ? { id: p.id, version: p.version, name: p.name, pack: p.pack, par: String(Number(p.par)), fee: Number(p.handlingFee).toFixed(2),
-                   limit: p.stores.length > 0, stores: p.stores.slice(), active: p.active }
-               : { id: null, version: null, name: '', pack: '', par: '0', fee: '0.00', limit: false, stores: [], active: true };
+                   limit: p.stores.length > 0, stores: p.stores.slice(), active: p.active, via: p.via || '' }
+               : { id: null, version: null, name: '', pack: '', par: '0', fee: '0.00', limit: false, stores: [], active: true, via: '' };
     }
     function renderProducts() {
       const d = D(), list = d.products;
@@ -525,12 +570,12 @@
       let html = '<div class="cols"><section class="card list-card" style="flex:1 1 420px" aria-label="Products">' +
         (list.length ? list.map(p => '<button type="button" class="lrow" data-whpsel="' + p.id + '"' + (p.id === W.prod.sel ? ' aria-current="true"' : '') + '>' +
           '<span class="t"><span class="n">' + esc(p.name) + (p.active ? '' : ' <span class="tag">Inactive</span>') + '</span><span class="s">' +
-          esc([p.pack, 'par ' + Number(p.par), p.stores.length ? plural(p.stores.length, 'store') : 'every store'].filter(Boolean).join(' · ')) + '</span></span>' +
+          esc([p.pack, 'par ' + Number(p.par), p.via ? 'from ' + p.via : '', p.stores.length ? plural(p.stores.length, 'store') : 'every store'].filter(Boolean).join(' · ')) + '</span></span>' +
           '<span class="at" style="text-align:right"><b style="color:var(--ink);font-size:15px">' + money(storePrice(p.avgCost, p.handlingFee, pct)) + '</b><br>store price / cs</span></button>').join('')
           : '<div class="list-foot">No products yet: add the first one.</div>') + '</section>';
       html += '<section class="card panel" style="flex:1 1 400px" aria-labelledby="whpp-h">' + productPanelHtml() + '</section></div>';
       html += '<div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">' + listCardHtml('supplier', 'Suppliers', 'Picked on a vendor order. Tap one to hide it from new orders or show it again.', d.suppliers) +
-        listCardHtml('location', 'Locations', 'Where stock sits. Tap one to close it (it has to be empty) or open it again.', d.locations) +
+        listCardHtml('location', 'Locations', 'Where stock sits. Tap one to close it (it has to be empty) or open it again. One held by a vendor (Elpis) holds HEH\'s stock that stores order from that vendor; Happy Supply never ships from it.', d.locations) +
         '<section class="card" aria-labelledby="whs-h" style="padding:18px 20px"><h2 id="whs-h" style="font-size:16px">For every store</h2>' +
         '<p class="help" style="margin-top:4px">Both 0 to start. A store\'s price per case is the average cost plus the handling fee, plus the markup.</p>' +
         '<div class="grid2" style="margin-top:10px"><label class="field">Markup %<input id="whs-pct" class="text" inputmode="decimal" value="' + esc(String(Number(d.settings.markupPct))) + '"></label>' +
@@ -547,9 +592,12 @@
     function listCardHtml(kind, title, help, rows) {
       return '<section class="card" style="padding:18px 20px" aria-label="' + title + '"><h2 style="font-size:16px">' + title + '</h2>' +
         '<p class="help" style="margin-top:4px">' + help + '</p>' +
-        '<div class="chips">' + (rows.length ? rows.map(r => '<button type="button" class="chip" data-whtoggle="' + kind + '" data-id="' + r.id + '" aria-pressed="' + r.active + '">' + CHECK + esc(r.name) + '</button>').join('')
+        '<div class="chips">' + (rows.length ? rows.map(r => '<button type="button" class="chip" data-whtoggle="' + kind + '" data-id="' + r.id + '" aria-pressed="' + r.active + '">' + CHECK + esc(r.name) +
+            (r.heldBy ? ' <span class="muted">· held by ' + esc(r.heldBy) + '</span>' : '') + '</button>').join('')
           : '<span class="muted">None yet.</span>') + '</div>' +
-        '<div style="margin-top:12px;display:flex;gap:8px"><input class="text" id="whadd-' + kind + '" maxlength="60" placeholder="' + (kind === 'supplier' ? 'Supplier name' : 'Location name') + '" aria-label="New ' + kind + ' name" style="height:40px;font-size:14px">' +
+        '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px"><input class="text" id="whadd-' + kind + '" maxlength="60" placeholder="' + (kind === 'supplier' ? 'Supplier name' : 'Location name') + '" aria-label="New ' + kind + ' name" style="height:40px;font-size:14px;flex:1 1 160px">' +
+        (kind === 'location' ? selectHtml('id="whadd-heldby" aria-label="Who holds the new location"', '',
+          [['', 'HEH\'s own']].concat((D().vendorNames || []).filter(n => lcs(n) !== 'happy supply' && !D().locations.some(l => lcs(l.heldBy) === lcs(n))).map(n => [n, 'Held by ' + n]))) : '') +
         '<button type="button" class="btn small" data-whadd="' + kind + '" style="height:40px">Add</button></div></section>';
     }
     function productPanelHtml() {
@@ -562,6 +610,11 @@
         '<label class="field">Par (cases)<input data-whpf="par" value="' + esc(f.par) + '" inputmode="decimal"></label>' +
         '<label class="field">Handling fee / cs<input data-whpf="fee" value="' + esc(f.fee) + '" inputmode="decimal"></label></div>' +
         '<div class="note-box" id="whpp-price"></div>' +
+        (heldLocs().length || f.via ? '<div role="group" aria-labelledby="whpp-via"><div class="chips-label" id="whpp-via">Stores order it from</div>' +
+          '<div class="seg" style="display:inline-flex;margin-top:8px">' +
+          [['', HS]].concat(heldLocs().map(l => [l.heldBy, l.heldBy])).map(o => '<button type="button" data-whvia="' + esc(o[0]) + '" aria-pressed="' + (lcs(f.via) === lcs(o[0])) + '">' + esc(o[1]) + '</button>').join('') + '</div>' +
+          '<p class="help" style="margin-top:6px">' + (f.via ? 'Its stock is kept at ' + esc((heldLocs().find(l => lcs(l.heldBy) === lcs(f.via)) || {}).name || f.via) + '. A store\'s delivery takes from it when marked received; Happy Supply never ships it.'
+            : 'Stores send their order to Happy Supply, and Dan ships it.') + '</p></div>' : '') +
         '<div role="group" aria-labelledby="whpp-who"><div class="chips-label" id="whpp-who">Which stores can order it</div>' +
         '<div class="seg" style="display:inline-flex;margin-top:8px"><button type="button" data-whlimit="0" aria-pressed="' + !f.limit + '">Every store</button>' +
         '<button type="button" data-whlimit="1" aria-pressed="' + f.limit + '">Only these</button></div>' +
@@ -581,8 +634,9 @@
         const avg = p ? Number(p.avgCost) : 0;
         box.innerHTML = '<div class="row-between" style="margin:0"><span>Average cost</span><b>' + (p && p.lastReceipt ? money(avg) + ' / cs' : 'No deliveries yet') + '</b></div>' +
           '<div class="muted" style="font-size:12px;margin-top:2px">' + (p && p.lastReceipt ? 'From deliveries; last one ' + esc(p.lastReceipt.ref) + ', ' + esc(day(p.lastReceipt.at)) + '. Not typed here.' : 'Set by the first delivery received. Not typed here.') + '</div>' +
+          (f.via ? '<div class="muted" style="font-size:12px;margin-top:8px">Stores order it from ' + esc(f.via) + ', not Happy Supply: each store\'s receipt keeps the average cost for the monthly chargebacks.</div>' :
           '<div class="row-between" style="margin:10px 0 0"><span>Store price</span><b>' + (fee === null || isNaN(fee) || fee < 0 ? '-' : money(storePrice(avg, round(fee, 2), pct)) + ' / cs') + '</b></div>' +
-          '<div class="muted" style="font-size:12px;margin-top:2px">Average ' + money(avg) + ' + fee ' + (fee === null || isNaN(fee) ? '-' : money(round(fee, 2))) + ', markup ' + pct + '%. Fixed on each line when it ships.</div>';
+          '<div class="muted" style="font-size:12px;margin-top:2px">Average ' + money(avg) + ' + fee ' + (fee === null || isNaN(fee) ? '-' : money(round(fee, 2))) + ', markup ' + pct + '%. Fixed on each line when it ships.</div>');
       }
       const problems = [];
       if (!String(f.name).trim()) problems.push('give it a name');
@@ -622,7 +676,7 @@
       W.ord.sel = id; W.ord.rows = {};
       const o = orders().find(x => x.id === id);
       if (o && o.status === 'sent') {
-        for (const r of shipPrefill(orders(), D().products, o)) W.ord.rows[r.ord] = { cases: String(r.cases), locationId: r.locationId == null ? '' : String(r.locationId) };
+        for (const r of shipPrefill(orders(), D().products, o, heldLocs().map(l => l.id))) W.ord.rows[r.ord] = { cases: String(r.cases), locationId: r.locationId == null ? '' : String(r.locationId) };
       }
     }
     function renderOrders() {
@@ -657,11 +711,11 @@
             ? '<div class="row-between"><span class="muted">' + (o.deliveryFee ? 'Delivery fee ' + money(o.deliveryFee) + '. ' : '') + 'Prices fixed when it shipped.</span><b>' +
               money(o.lines.reduce((t, l) => t + Number(l.casesShipped || 0) * Number(l.price || 0), 0) + Number(o.deliveryFee || 0)) + '</b></div>' : '');
       }
-      const pre = shipPrefill(orders(), D().products, o), pct = Number(D().settings.markupPct);
+      const pre = shipPrefill(orders(), D().products, o, heldLocs().map(l => l.id)), pct = Number(D().settings.markupPct);
       return head + '<div class="scroll"><table><thead><tr><th>Product</th><th>Ordered</th><th>Ship</th><th>From</th><th>Left after</th><th>Price / cs</th></tr></thead><tbody>' +
         o.lines.map((l, i) => {
           const p = prodBy(l.productId), r = W.ord.rows[l.ord] || {}, x = pre[i];
-          const locs = activeLocs().map(lc => [lc.id, lc.name + ' · ' + Number(p ? stockAt(p, lc.id) : 0) + ' cs']);
+          const locs = ownLocs().map(lc => [lc.id, lc.name + ' · ' + Number(p ? stockAt(p, lc.id) : 0) + ' cs']);
           const short = x.cases < Number(l.cases)
             ? '<tr class="sub"><td colspan="6"><p class="note-box warn" style="margin:0">Short: ' + Number(x.cases) + ' of ' + Number(l.cases) + '.' +
               (x.held ? ' ' + esc(x.olderOrders.join(', ')) + ' (older) take' + (x.olderOrders.length === 1 ? 's' : '') + ' ' + Number(x.held) + '. The store was told "Only ' + Number(x.left) + ' available". Ship more and the older order gets less.' : ' That\'s all there is.') + '</p></td></tr>' : '';
@@ -703,9 +757,9 @@
       if (go) go.disabled = problems.length > 0;
     }
     function stockCardHtml() {
-      const d = D(), locs = activeLocs(), held = {};
+      const d = D(), locs = ownLocs(), held = {};
       for (const o of orders()) if (o.status === 'sent') for (const l of o.lines) held[l.productId] = round((held[l.productId] || 0) + Number(l.cases), 2);
-      const prods = d.products.filter(p => p.active);
+      const prods = d.products.filter(p => p.active && !p.via);
       if (!prods.length) return '';
       return '<section class="card" aria-labelledby="whos-h"><div class="card-head"><h2 id="whos-h">Stock and open orders</h2>' +
         '<button type="button" class="linkbtn" data-nav="wh-inventory">Inventory</button></div>' +
@@ -716,13 +770,144 @@
         '</tbody></table></div><p class="help" style="margin-top:10px">Ordered: sent by stores, not shipped yet. Stores see what\'s left as "available".</p></section>';
     }
 
+    // ---- HEH's stock held at Elpis (schema v17) ----
+    // The location a vendor holds: its stock, the deliveries the night's close
+    // recorded (open until a store marks them received, or HQ does it for
+    // them), and the receipts that went beyond the records.
+    const OLD_DAYS = 2;
+    const elOld = o => Date.now() - new Date(o.sentAt).getTime() > OLD_DAYS * 86400000;
+    const daysOpen = o => Math.max(1, Math.floor((Date.now() - new Date(o.sentAt).getTime()) / 86400000));
+    function elList(loc) {
+      const all = deliveries().filter(o => o.heldAt === loc.id);
+      return W.el.filter === 'open' ? all.filter(o => o.status === 'ordered').sort((a, b) => (a.sentAt < b.sentAt ? -1 : a.sentAt > b.sentAt ? 1 : a.id - b.id))
+                                    : all.filter(o => o.status === 'received').sort((a, b) => b.id - a.id);
+    }
+    function elMeta(o) {
+      const n = plural(o.lines.length, 'line');
+      if (o.status === 'ordered') return 'Ordered ' + dayOf(o.cycleDate) + ' · ' + n + (elOld(o) ? ' · not marked for ' + plural(daysOpen(o), 'day') : ' · waiting for the store');
+      return 'Received ' + when(o.receivedAt) + (o.receivedBy ? ' by ' + o.receivedBy : '') + ' · ' + n;
+    }
+    function elTag(o) {
+      if (o.status === 'received') return o.lines.some(l => Number(l.beyond) > 0) ? '<span class="tag warn">Beyond the records</span>' : '<span class="tag ok">Received</span>';
+      return elOld(o) ? '<span class="tag warn">Not marked</span>' : '<span class="tag blue">Ordered</span>';
+    }
+    function selectDelivery(id) { W.el.sel = id; W.el.rows = {}; }
+    function renderElpis() {
+      const loc = heldLocs()[0];
+      if (!loc) {
+        $('whe-h').textContent = 'Elpis';
+        $('whe-sub').textContent = '';
+        $('whe-body').innerHTML = emptyHtml('No location is held by a vendor yet. Add one on <button type="button" class="linkbtn" data-nav="wh-products">Products and prices</button> (Locations, Held by).');
+        return;
+      }
+      $('whe-h').textContent = loc.name;
+      $('whe-sub').textContent = 'HEH\'s own stock held at ' + loc.name + ' (' + loc.heldBy + '). Stores keep ordering it from their ' + loc.heldBy +
+        ' vendor; it leaves these records when a store marks its delivery received. Shipments in and counts use Incoming and Inventory, with ' + loc.name + ' as the location.';
+      const list = elList(loc);
+      if (!list.some(o => o.id === W.el.sel)) selectDelivery(list.length ? list[0].id : null);
+      const nOpen = deliveries().filter(o => o.heldAt === loc.id && o.status === 'ordered').length;
+      let html = beyondSinceCount(deliveries(), loc).map(b =>
+        '<div class="note-box warn" role="alert" style="margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:12px"><span style="flex:1 1 380px"><b>' + esc(b.line.product) + ':</b> ' +
+          esc(storeShort(b.order)) + ' marked ' + esc(cs(b.line.casesReceived)) + ' received on ' + esc(b.order.number) + ' (' + esc(day(b.order.receivedAt)) + '), but the records held ' +
+          esc(String(b.held)) + '. The other ' + esc(String(Number(b.line.beyond))) + ' were logged as a count difference. Count ' + esc(loc.name) + ' from its next report.</span>' +
+          '<button type="button" class="btn small" data-wh="el-count">Count ' + esc(loc.name) + '</button></div>').join('');
+      html += '<div class="actions" role="group" aria-label="Show">' +
+        [['open', 'Open · ' + nOpen], ['received', 'Received']].map(f =>
+          '<button type="button" class="pill" data-whelf="' + f[0] + '" aria-pressed="' + (W.el.filter === f[0]) + '">' + f[1] + '</button>').join('') + '</div>';
+      html += '<div class="cols"><section class="card list-card" style="flex:1 1 320px" aria-label="Deliveries">' +
+        (list.length ? list.map(o => '<button type="button" class="lrow" data-whesel="' + o.id + '"' + (o.id === W.el.sel ? ' aria-current="true"' : '') + '>' +
+          '<span class="t"><span class="n">' + esc(storeShort(o) + ' · ' + o.number) + '</span><span class="s">' + esc(elMeta(o)) + '</span></span>' + elTag(o) + '</button>').join('')
+          : '<div class="list-foot">' + (W.el.filter === 'open' ? 'Nothing open. The night\'s close lists each store\'s ' + esc(loc.heldBy) + ' order of HEH\'s items here.' : 'None yet.') + '</div>') + '</section>';
+      html += '<section class="card panel focus" style="flex:2 1 560px" aria-label="Delivery">' + elPanelHtml(loc) + '</section></div>';
+      html += elStockHtml(loc);
+      $('whe-body').innerHTML = html;
+      updateElpis();
+    }
+    function elPanelHtml(loc) {
+      const o = deliveries().find(x => x.id === W.el.sel);
+      if (!o) return emptyHtml('Pick a delivery.');
+      const head = '<div class="card-head"><h2>' + esc(storeShort(o)) + '</h2><span class="muted">' + esc(o.number + ' · ' + elMeta(o)) + '</span></div>';
+      if (o.status !== 'ordered') {
+        return head + '<div class="scroll"><table><thead><tr><th>Product</th><th>Ordered</th><th>Received</th><th>Beyond the records</th></tr></thead><tbody>' +
+          o.lines.map(l => '<tr><td><b>' + esc(l.product) + '</b><div class="muted" style="font-size:13px">' + esc(lineSub(l)) + '</div></td>' +
+            '<td>' + esc(cs(l.cases)) + '</td><td>' + (l.casesReceived == null ? '<span class="muted">-</span>' : esc(cs(l.casesReceived))) + '</td>' +
+            '<td>' + (Number(l.beyond) > 0 ? '<span class="tag warn">' + esc(cs(l.beyond)) + '</span>' : '<span class="muted">-</span>') + '</td></tr>').join('') +
+          '</tbody></table></div>';
+      }
+      return head + '<div class="scroll"><table><thead><tr><th>Product</th><th>Ordered</th><th>Received</th><th>At ' + esc(loc.name) + ' after</th></tr></thead><tbody>' +
+        o.lines.map(l => '<tr><td><b>' + esc(l.product) + '</b><div class="muted" style="font-size:13px">' + esc(lineSub(l)) + '</div></td>' +
+          '<td><b>' + esc(cs(l.cases)) + '</b></td>' +
+          '<td style="min-width:90px">' + inputHtml('data-whel="' + l.ord + '" aria-label="' + esc(l.product) + ' cases received at ' + esc(storeShort(o)) + '"', W.el.rows[l.ord] == null ? String(Number(l.cases)) : W.el.rows[l.ord]) + '</td>' +
+          '<td id="whelafter-' + l.ord + '"></td></tr>').join('') + '</tbody></table></div>' +
+        '<div class="row-between"><span class="muted" id="whel-sum"></span><div class="actions" style="align-items:center">' +
+        '<button type="button" class="btn primary big" data-wh="el-receive" id="whel-go">Mark received for ' + esc(storeShort(o)) + '</button></div></div>';
+    }
+    // What's left at the location after this receipt, and whether it can go.
+    function updateElpis() {
+      const o = deliveries().find(x => x.id === W.el.sel), loc = heldLocs()[0];
+      if (!o || o.status !== 'ordered' || !loc) return;
+      const got = {}, problems = [];
+      for (const l of o.lines) {
+        const n = num(W.el.rows[l.ord] == null ? String(l.cases) : W.el.rows[l.ord]), box = document.querySelector('[data-whel="' + l.ord + '"]');
+        const bad = n === null || isNaN(n) || n < 0;
+        if (box) box.setAttribute('aria-invalid', String(bad));
+        if (bad) { problems.push(l.product + ': a number of cases, 0 or more'); continue; }
+        got[l.productId] = round((got[l.productId] || 0) + n, 2);
+      }
+      for (const l of o.lines) {
+        const cell = $('whelafter-' + l.ord), p = prodBy(l.productId);
+        if (!cell || !p || got[l.productId] == null) { if (cell) cell.innerHTML = '<span class="muted">-</span>'; continue; }
+        const after = round(stockAt(p, loc.id) - got[l.productId], 2);
+        cell.innerHTML = after >= 0 ? esc(cs(after)) : '0 <span class="tag warn">' + esc(String(-after)) + ' beyond the records</span>';
+      }
+      const sum = $('whel-sum'), go = $('whel-go');
+      if (sum) sum.textContent = problems.length ? upper(problems.join('; ')) + '.' : storeShort(o) + '\'s card will show it received by "HQ · ' + D().name + '".';
+      if (go) go.disabled = problems.length > 0;
+    }
+    function elStockHtml(loc) {
+      const rows = heldStock(D().products, deliveries(), loc), need = new Set(beyondSinceCount(deliveries(), loc).map(b => b.line.productId));
+      const pos = D().pos.filter(p => p.status === 'ordered' && p.locationId === loc.id);
+      return '<section class="card" aria-labelledby="whes-h"><div class="card-head"><h2 id="whes-h">Stock at ' + esc(loc.name) + '</h2>' +
+        '<button type="button" class="linkbtn" data-nav="wh-history">Stock history</button></div>' +
+        (!rows.length ? emptyHtml('No products ordered through ' + esc(loc.heldBy) + ' yet. On Products and prices, a product\'s "Stores order it from" puts it here.') :
+        '<div class="scroll"><table><thead><tr><th>Product</th><th>On hand</th><th>Open</th><th>Available</th><th>Par</th></tr></thead><tbody>' +
+        rows.map(x => '<tr><td><b>' + esc(x.product.name) + '</b>' + (x.open > x.onHand ? ' <span class="tag warn">' + round(x.open - x.onHand, 2) + ' short</span>' : '') +
+          (need.has(x.product.id) ? ' <span class="tag warn">Count</span>' : '') + '</td><td>' + x.onHand + '</td><td>' + x.open + '</td><td><b>' + x.available + '</b></td>' +
+          '<td class="muted">' + Number(x.product.par) + '</td></tr>').join('') + '</tbody></table></div>') +
+        '<p class="help" style="margin-top:10px">Open: ordered at a store\'s nightly close, not marked received yet. Stores see what\'s left as "available" on their ' + esc(loc.heldBy) + ' items.</p>' +
+        '<div class="note-box" style="margin:10px 0 0">' +
+          (pos.length ? pos.map(p => '<div><b>Coming in:</b> ' + esc(p.number + ' from ' + p.supplier + ', ' + p.lines.map(l => l.product + ' ' + cs(l.cases)).join(', ')) +
+            '. <button type="button" class="linkbtn" data-whgopo="' + p.id + '">Receive it</button></div>').join('') : '') +
+          '<div><b>Last counted:</b> ' + (loc.lastCount ? esc(when(loc.lastCount)) : 'not yet. Count it from ' + esc(loc.heldBy) + '\'s report on Inventory.') + '</div></div></section>';
+    }
+
     // ---- Send a product to stores (schema v16; HQ's catalog, so the hq role) ----
+    // A Happy Supply product goes to each store's Happy Supply. One ordered
+    // through a held location's holder (v17, Elpis) goes to the store's own
+    // vendor for it: remembered as HQ's name, or picked from the store's
+    // vendors the first time (pick-only) and remembered with the change.
     const HS = 'Happy Supply';
-    function storeHs(st) {
-      const linked = host.linkFor(st.slug, HS);
+    const sendHq = p => p.via || HS;
+    function storeHs(st, hq) {
+      hq = hq || HS;
+      const linked = host.linkFor(st.slug, hq);
       if (linked) return { name: linked, remembered: true };
-      const v = st.tables.vendors.find(x => x.name.toLowerCase() === HS.toLowerCase());
+      const v = st.tables.vendors.find(x => x.name.toLowerCase() === hq.toLowerCase());
       return v ? { name: v.name, remembered: false } : null;
+    }
+    // The store's vendor whose name shares the holder's first word ("Elpis"
+    // for "Elpis Wholesale", "ELPIS"), to start the pick with; else none.
+    function guessVendor(st, hq) {
+      const w = lcs(hq).split(/[^a-z0-9]+/).filter(Boolean)[0] || '';
+      const v = w ? st.tables.vendors.find(x => lcs(x.name).split(/[^a-z0-9]+/).indexOf(w) >= 0) : null;
+      return v ? v.name : '';
+    }
+    // The vendor a product goes to at a store: { name, remembered } or null.
+    function sendVendor(st, p) {
+      const v = storeHs(st, sendHq(p));
+      if (v || !p.via) return v;
+      const r = W.prod.send && W.prod.send.rows[st.slug];
+      return r && r.vend ? { name: r.vend, remembered: false, picked: true } : null;
     }
     function sendOpen(p) {
       const keys = host.conceptKeys().filter(k => host.storesOf(k).some(host.usable));
@@ -734,17 +919,18 @@
       s.concept = k; s.rows = {};
       for (const st of host.storesOf(k).filter(host.usable)) {
         const c = host.CE.productCandidates(st.tables, p.name);
-        s.rows[st.slug] = { on: false, mode: c.best ? 'link' : 'add', link: c.best || (c.items[0] ? c.items[0].id : '') };
+        s.rows[st.slug] = { on: false, mode: c.best ? 'link' : 'add', link: c.best || (c.items[0] ? c.items[0].id : ''),
+                            vend: p.via && !storeHs(st, p.via) ? guessVendor(st, p.via) : '' };
       }
     }
     function sendPlan() {
       const s = W.prod.send, p = prodBy(s.productId);
       if (!s || !p) return [];
       return host.storesOf(s.concept).filter(host.usable).filter(st => s.rows[st.slug] && s.rows[st.slug].on).map(st => {
-        const r = s.rows[st.slug], hs = storeHs(st);
-        if (!hs) return { st, links: [], error: 'Add ' + HS + ' to this store on Vendors first (with its delivery days).' };
-        const args = { vendor: null, vendorName: hs.name, product: { id: p.id, name: p.name, pack: p.pack }, link: r.mode === 'link' ? r.link : '', item: { name: p.name } };
-        const links = [{ slug: st.slug, hqName: HS, vendor: hs.name }];
+        const r = s.rows[st.slug], hs = sendVendor(st, p);
+        if (!hs) return { st, links: [], error: p.via ? 'Pick which vendor is ' + p.via + ' here.' : 'Add ' + HS + ' to this store on Vendors first (with its delivery days).' };
+        const args = { vendor: null, vendorName: hs.name, product: { id: p.id, name: p.name, pack: p.pack, via: p.via || '' }, link: r.mode === 'link' ? r.link : '', item: { name: p.name } };
+        const links = [{ slug: st.slug, hqName: sendHq(p), vendor: hs.name }];
         try { return { st, links, out: host.CE.call(st.tables, 'commitHqProduct', [args]) }; }
         catch (err) { return { st, links, error: err.message }; }
       });
@@ -752,51 +938,62 @@
     function sendHtml() {
       const s = W.prod.send, p = s && prodBy(s.productId);
       if (!s || !p) return '';
+      const hq = sendHq(p);
       const keys = host.conceptKeys().filter(k => host.storesOf(k).some(host.usable));
       const stores = host.storesOf(s.concept).filter(host.usable).sort((a, b) => (a.isTest - b.isTest) || String(a.side).localeCompare(String(b.side)) || host.shortName(a).localeCompare(host.shortName(b)));
       const rows = stores.map(st => {
-        const r = s.rows[st.slug], hs = storeHs(st), linked = st.tables.items.find(it => Number(it.whProduct) === p.id);
+        const r = s.rows[st.slug], known = storeHs(st, hq), hs = sendVendor(st, p), linked = st.tables.items.find(it => Number(it.whProduct) === p.id);
         const allowed = !p.stores.length || p.stores.indexOf(st.slug) >= 0;
         const name = esc(host.shortName(st)) + (st.isTest ? ' <span class="tag">TEST</span>' : '');
-        if (linked) return '<tr><td></td><td><b>' + name + '</b></td><td>' + esc(hs ? hs.name : HS) + '</td><td><span class="tag ok">Linked</span> ' + esc(linked.name) + ' (' + esc(linked.id) + ')</td></tr>';
-        if (!allowed) return '<tr><td></td><td><b>' + name + '</b></td><td colspan="2" class="muted">Happy Supply doesn\'t sell ' + esc(p.name) + ' to this store (Which stores can order it, above).</td></tr>';
-        if (!hs) return '<tr><td></td><td><b>' + name + '</b></td><td colspan="2" class="muted">No ' + HS + ' here yet. Add it on <button type="button" class="linkbtn" data-nav="vendor">Vendors</button> first, with its delivery days.</td></tr>';
+        if (linked) return '<tr><td></td><td><b>' + name + '</b></td><td>' + esc(hs ? hs.name : hq) + '</td><td><span class="tag ok">Linked</span> ' + esc(linked.name) + ' (' + esc(linked.id) + ')</td></tr>';
+        if (!allowed) return '<tr><td></td><td><b>' + name + '</b></td><td colspan="2" class="muted">' + esc(p.name) + ' isn\'t sold to this store (Which stores can order it, above).</td></tr>';
+        if (!p.via && !hs) return '<tr><td></td><td><b>' + name + '</b></td><td colspan="2" class="muted">No ' + HS + ' here yet. Add it on <button type="button" class="linkbtn" data-nav="vendor">Vendors</button> first, with its delivery days.</td></tr>';
+        if (p.via && !known && !guessVendor(st, hq)) return '<tr><td></td><td><b>' + name + '</b></td><td colspan="2" class="muted">No ' + esc(hq) + ' here (no vendor by that name). Add it on <button type="button" class="linkbtn" data-nav="vendor">Vendors</button> first.</td></tr>';
+        const vendCell = known ? 'Has it: "' + esc(known.name) + '"'
+          : '<div style="display:flex;flex-direction:column;gap:6px">' +
+              selectHtml('data-whsvend="' + esc(st.slug) + '" aria-label="' + esc(host.shortName(st)) + '\'s vendor for ' + esc(hq) + '"', r.vend,
+                st.tables.vendors.map(v => [v.name, v.name]), 'Pick its vendor') +
+              '<span class="muted" style="font-size:13px">Saved as HQ\'s "' + esc(hq) + '" here</span></div>';
         const c = host.CE.productCandidates(st.tables, p.name);
         const opts = c.items.filter(x => !x.linked).slice(0, 30).map(x => [x.id, x.name + (x.vendor ? ' (' + x.vendor + ', ' + x.id + ')' : ' (' + x.id + ')')]);
         const choose = '<div class="stack" style="display:flex;flex-direction:column;gap:8px">' +
           (opts.length ? '<label class="check"><input type="radio" name="whsm-' + esc(st.slug) + '" data-whsmode="' + esc(st.slug) + '" value="link"' + (r.mode === 'link' ? ' checked' : '') + '>Link an item it has</label>' +
             (r.mode === 'link' ? selectHtml('data-whslink="' + esc(st.slug) + '" aria-label="' + esc(host.shortName(st)) + ' item to link"', r.link, opts) +
-              '<span class="muted" style="font-size:13px">' + esc(linkNote(st, r.link, hs.name, p)) + '</span>' : '') : '') +
+              '<span class="muted" style="font-size:13px">' + esc(linkNote(st, r.link, hs ? hs.name : '', p)) + '</span>' : '') : '') +
           '<label class="check"><input type="radio" name="whsm-' + esc(st.slug) + '" data-whsmode="' + esc(st.slug) + '" value="add"' + (r.mode === 'add' || !opts.length ? ' checked' : '') + '>Add a new item: ' + esc(p.name) + '</label>' +
           (r.mode === 'add' || !opts.length ? '<span class="muted" style="font-size:13px">' + (c.items.some(x => x.close) ? 'It has a close match: link it instead, so its par and count history stay.' : 'It waits in Needs setup with no par and no storage area, like an LTO.') + '</span>' : '') + '</div>';
         return '<tr><td><input type="checkbox" data-whson="' + esc(st.slug) + '" aria-label="Send to ' + esc(host.shortName(st)) + '"' + (r.on ? ' checked' : '') + ' style="width:20px;height:20px"></td>' +
-          '<td><b>' + name + '</b></td><td>Has it: "' + esc(hs.name) + '"</td><td>' + choose + '</td></tr>';
+          '<td><b>' + name + '</b></td><td>' + vendCell + '</td><td>' + choose + '</td></tr>';
       }).join('');
       return '<section class="card focus" aria-labelledby="whsend-h"><div class="card-head"><h2 id="whsend-h">Send ' + esc(p.name) + ' to stores</h2>' +
         '<button type="button" class="linkbtn" data-wh="send-close">Close</button></div>' +
-        '<p class="help" style="margin:0">Each ticked store gets one change it can undo in its Changes: the item with no par and no storage area, and its link to this product. Or link an item the store already has, so its par and count history stay. Every store or none.</p>' +
+        '<p class="help" style="margin:0">' + (p.via
+          ? 'Each ticked store gets one change it can undo in its Changes: its own item linked to this product, ' + esc(p.via) + ' its main vendor, so KMs keep ordering it from ' + esc(p.via) + ' and its par and count history stay. Or a new item with no par and no storage area. Every store or none.'
+          : 'Each ticked store gets one change it can undo in its Changes: the item with no par and no storage area, and its link to this product. Or link an item the store already has, so its par and count history stay. Every store or none.') + '</p>' +
         '<label class="field" style="max-width:320px">Concept' + selectHtml('data-whsconcept="1"', s.concept, keys.map(k => [k, host.conceptName(k)])) + '</label>' +
-        (stores.length ? '<div class="scroll"><table><thead><tr><th><span class="sr">Send</span></th><th>Store</th><th>Happy Supply</th><th>The item</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+        (stores.length ? '<div class="scroll"><table><thead><tr><th><span class="sr">Send</span></th><th>Store</th><th>' + esc(p.via ? p.via + ' here' : HS) + '</th><th>The item</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
           : emptyHtml('No stores in this concept use the app\'s editor.')) +
         '<div class="row-between"><span class="muted" id="whsend-sum"></span><div class="actions" style="align-items:center">' +
         '<button type="button" class="btn primary big" data-wh="send-go" id="whsend-go">Send</button></div></div>' +
         '<div class="status" id="whsend-status" role="status"></div></section>';
     }
-    function linkNote(st, id, hs, p) {
+    function linkNote(st, id, vend, p) {
       const it = st.tables.items.find(x => x.id === id);
-      if (!it) return '';
+      if (!it || !vend) return '';
       const parts = [];
-      if (String(it.primaryVendor || '').toLowerCase() !== hs.toLowerCase()) parts.push(HS + ' becomes its main vendor' + (it.primaryVendor ? ', ' + it.primaryVendor + ' stays as a backup' : ''));
+      if (lcs(it.primaryVendor) !== lcs(vend)) parts.push(vend + ' becomes its main vendor' + (it.primaryVendor ? ', ' + it.primaryVendor + ' stays as a backup' : ''));
       if (p.pack && it.pack !== p.pack) parts.push('pack becomes ' + p.pack + (it.pack ? ' (was ' + it.pack + ')' : ''));
       return parts.length ? upper(parts.join('. ')) + '.' : 'Nothing else changes.';
     }
     function updateSend() {
       const plan = sendPlan(), go = $('whsend-go'), sum = $('whsend-sum');
       const bad = plan.filter(x => x.error);
+      const named = plan.filter(x => !x.error && x.links.some(l => !host.linkFor(l.slug, l.hqName))).length;
       if (sum) sum.textContent = !plan.length ? 'Tick the stores to send it to.'
         : bad.length ? bad.map(x => host.shortName(x.st) + ': ' + x.error).join(' ')
         : plural(plan.length, 'store') + ': ' + plural(plan.filter(x => x.out.result.mode === 'link').length, 'item') + ' linked, ' +
-          plural(plan.filter(x => x.out.result.mode === 'add').length, 'item') + ' added.';
+          plural(plan.filter(x => x.out.result.mode === 'add').length, 'item') + ' added' +
+          (named ? ', ' + plural(named, 'store') + ' naming ' + sendHq(prodBy(W.prod.send.productId)) : '') + '.';
       if (go) { go.disabled = !plan.length || bad.length > 0; go.textContent = plan.length ? 'Send to ' + plural(plan.length, 'store') : 'Send'; }
     }
 
@@ -814,8 +1011,8 @@
       if (m.kind === 'received') return 'Received on ' + m.ref + (m.unitCost != null ? ' at ' + money(m.unitCost) + ' / cs' : '');
       if (m.kind === 'transfer_out') return 'Sent on ' + m.ref;
       if (m.kind === 'transfer_in') return 'Arrived on ' + m.ref;
-      if (m.kind === 'count') return 'Count: ' + (m.reason || '');
-      if (m.kind === 'shipped') return 'Shipped on ' + m.ref;
+      if (m.kind === 'count') return 'Count: ' + (m.reason || '') + (m.ref ? ' (' + m.ref + ')' : '');
+      if (m.kind === 'shipped') return (/^EL-/.test(m.ref || '') ? 'Delivered to the store on ' : 'Shipped on ') + m.ref;
       return m.kind;
     }
     async function renderHistory() {
@@ -843,6 +1040,7 @@
       if (view === 'wh-inventory') renderInventory();
       if (view === 'wh-incoming') renderIncoming();
       if (view === 'wh-orders') renderOrders();
+      if (view === 'wh-elpis') renderElpis();
       if (view === 'wh-products') renderProducts();
       if (view === 'wh-history') renderHistory();
     }
@@ -853,6 +1051,11 @@
       if (dot) dot.hidden = !lowList().length;
       const ob = $('wh-badge-orders'), on = sentCount();
       if (ob) { ob.hidden = !on; ob.textContent = String(on); }
+      const loc = heldLocs()[0], nav = $('nav-wh-elpis'), eb = $('wh-badge-elpis'), lab = $('wh-elpis-label');
+      const en = loc ? deliveries().filter(o => o.heldAt === loc.id && o.status === 'ordered').length : 0;
+      if (nav) nav.hidden = !loc;
+      if (lab && loc) lab.textContent = loc.name;
+      if (eb) { eb.hidden = !en; eb.textContent = String(en); }
     }
     function rerender() { render(host.view()); badges(); }
 
@@ -946,6 +1149,26 @@
         if (done) { W.ord.filter = 'shipped'; selectOrder(o.id); } else if (W.conflict) selectOrder(o.id);
         return rerender();
       }
+      // Elpis (v17)
+      const elf = t.getAttribute('data-whelf');
+      if (elf) { W.el.filter = elf; W.el.sel = null; say('whe-status', '', ''); return renderElpis(); }
+      const esel = t.getAttribute('data-whesel');
+      if (esel) { selectDelivery(Number(esel)); say('whe-status', '', ''); return renderElpis(); }
+      if (a === 'el-count') {
+        const loc = heldLocs()[0];
+        W.inv.counting = true; W.inv.loc = loc.id; W.inv.rows = {}; say('whi-status', '', '');
+        return host.go('wh-inventory');
+      }
+      const gopo = t.getAttribute('data-whgopo');
+      if (gopo) { W.inc.filter = 'open'; setSel('po:' + gopo); return host.go('wh-incoming'); }
+      if (a === 'el-receive') {
+        const o = deliveries().find(x => x.id === W.el.sel);
+        if (!o) return;
+        const done = await write('mog_wh_held_receive', { p_receipt: heldPayload(o, W.el.rows) }, 'whe-status',
+          x => 'Marked ' + x.number + ' received for ' + storeShort(o) + '. The stock there dropped; it\'s in Stock history.');
+        if (done) { W.el.filter = 'received'; selectDelivery(o.id); } else if (W.conflict) selectDelivery(o.id);
+        return rerender();
+      }
       // Send a product to stores
       if (a === 'send-open') { const p = prodBy(W.prod.sel); if (p) sendOpen(p); say('whp-status', '', ''); return renderProducts(); }
       if (a === 'send-close') { W.prod.send = null; return renderProducts(); }
@@ -968,7 +1191,7 @@
       if (st) { const l = W.prod.draft.stores, i = l.indexOf(st); if (i >= 0) l.splice(i, 1); else l.push(st); return renderProducts(); }
       if (a === 'prod-save') {
         const f = W.prod.draft;
-        const row = { name: f.name, pack: f.pack, par: num(f.par), handlingFee: num(f.fee), stores: f.limit ? f.stores : [], active: f.active };
+        const row = { name: f.name, pack: f.pack, par: num(f.par), handlingFee: num(f.fee), stores: f.limit ? f.stores : [], active: f.active, via: f.via || null };
         if (f.id) { row.id = f.id; row.version = f.version; }
         const done = await write('mog_wh_save', { p_kind: 'product', p_row: row }, 'whp-status', x => 'Saved ' + x.name + '.');
         if (done) { W.prod.sel = done.id; W.prod.draft = null; } else if (W.conflict) W.prod.draft = null;
@@ -983,11 +1206,14 @@
       }
       const add = t.getAttribute('data-whadd');
       if (add) {
-        const box = $('whadd-' + add), name = box.value.trim();
+        const box = $('whadd-' + add), name = box.value.trim(), held = add === 'location' && $('whadd-heldby') ? $('whadd-heldby').value : '';
         if (!name) { box.focus(); return; }
-        await write('mog_wh_save', { p_kind: add, p_row: { name: name } }, 'whp-status', x => 'Added ' + x.name + '.');
+        await write('mog_wh_save', { p_kind: add, p_row: held ? { name: name, heldBy: held } : { name: name } }, 'whp-status',
+          x => 'Added ' + x.name + (held ? ', held by ' + held + '. Its page is in the sidebar.' : '.'));
         return rerender();
       }
+      const via = t.getAttribute('data-whvia');
+      if (via != null) { W.prod.draft.via = via; return renderProducts(); }
       if (a === 'settings-save') {
         const s = D().settings;
         await write('mog_wh_save', { p_kind: 'settings', p_row: { version: s.version, markupPct: num($('whs-pct').value), deliveryFee: num($('whs-fee').value) } },
@@ -1006,7 +1232,7 @@
       if (!W.data || !t.closest || !t.closest('[id^="v-wh-"]')) return;
       if (t.getAttribute('data-whcloc')) { W.inv.loc = Number(t.value); W.inv.rows = {}; return renderInventory(); }
       const po = t.getAttribute('data-whpo');
-      if (po && po !== 'note') { W.inc.po[po] = Number(t.value); return updatePoForm(); }
+      if (po && po !== 'note') { W.inc.po[po] = Number(t.value); return po === 'locationId' ? renderIncoming() : updatePoForm(); }
       const pol = t.getAttribute('data-whpol');
       if (pol != null && t.getAttribute('data-k') === 'productId') { W.inc.po.lines[Number(pol)].productId = Number(t.value); return updatePoForm(); }
       const tr = t.getAttribute('data-whtr');
@@ -1025,6 +1251,8 @@
       if (smode) { W.prod.send.rows[smode].mode = t.value; return renderProducts(); }
       const slink = t.getAttribute('data-whslink');
       if (slink) { W.prod.send.rows[slink].link = t.value; return renderProducts(); }
+      const svend = t.getAttribute('data-whsvend');
+      if (svend) { W.prod.send.rows[svend].vend = t.value; return renderProducts(); }
     });
     document.addEventListener('input', e => {
       const t = e.target;
@@ -1043,6 +1271,8 @@
       if (pf && pf !== 'active') { W.prod.draft[pf] = t.value; return updateProductPanel(); }
       const sh = t.getAttribute('data-whship');
       if (sh) { W.ord.rows[sh] = W.ord.rows[sh] || {}; W.ord.rows[sh].cases = t.value; return updateShip(); }
+      const el = t.getAttribute('data-whel');
+      if (el) { W.el.rows[el] = t.value; return updateElpis(); }
     });
 
     return { views: VIEWS, fetch: fetchData, take, render, badges, clear: () => { W.data = null; } };

@@ -371,10 +371,18 @@ class FakeSupabase {
                        onHandPrev: toOnHand(e.onHandPrev), qty, loggedAt: p.p_logged_at });
           n++;
         }
+        // v17: the deliveries of HEH's stock held at Elpis, from the log just
+        // written; a failure there never stops the close (heldError).
+        let heldError = null;
+        if (this.hq && this.hq.wh && this.hq.wh.locations.some(l => l.heldBy != null)) {
+          const keep = clone(this.hq.wh);
+          try { this.whHeldFromLog(p.p_slug, s, p.p_closing, new Date(this.nowMs).toISOString()); }
+          catch (e) { this.hq.wh = keep; heldError = e.message; }
+        }
         s.state = { cycleDate: p.p_new_cycle, dayOfWeek: p.p_new_dow, emergencyOverride: false,
                     vendorPicks: {}, todaysLog: clone(p.p_todays_log || []) };
         if (p.p_new_cycle === p.p_closing) s.counts.delete(p.p_new_cycle);
-        return ok({ closed: true, logged: n, closedCycle: p.p_closing, cycleDate: p.p_new_cycle });
+        return ok(Object.assign({ closed: true, logged: n, closedCycle: p.p_closing, cycleDate: p.p_new_cycle }, heldError ? { heldError } : {}));
       }
 
       case 'mog_sync_get_log':
@@ -540,13 +548,13 @@ class FakeSupabase {
         let id;
         try {
           id = fn === 'mog_wh_send' ? whDoSend(next, slug, s, this.whStoreVendor(slug), p.p_order, now)
-                                    : whDoReceived(next, slug, p.p_receipt, now);
+                                    : whDoReceived(next, slug, p.p_receipt, now, (s.profile && s.profile.location) || slug);
         } catch (e) {
           const m = String(e.message);
           return err(m.indexOf('REJECTED: ') === 0 ? m : 'REJECTED: ' + m);
         }
         H.wh = next;
-        return ok(Object.assign({ order: whOrderPhoneJson(next, next.orders.find(o => o.id === id)) }, this.whLive(slug, s)));
+        return ok(Object.assign({ order: whOrderPhoneJson(next, next.orders.find(o => o.id === id), this) }, this.whLive(slug, s)));
       }
       // schema_v9.sql: People (T3).
       case 'mog_people_list':
@@ -1202,7 +1210,7 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
 // token with the warehouse role (SESSION_EXPIRED / NOT_ALLOWED otherwise).
 const WH_FNS = { mog_wh_data: 1, mog_wh_history: 1, mog_wh_save: 1, mog_wh_po_save: 1, mog_wh_po_cancel: 1,
                  mog_wh_po_receive: 1, mog_wh_transfer_send: 1, mog_wh_transfer_receive: 1, mog_wh_count: 1,
-                 mog_wh_ship: 1, mog_wh_order_cancel: 1 };
+                 mog_wh_ship: 1, mog_wh_order_cancel: 1, mog_wh_held_receive: 1 };
 const whRej = m => new Error('REJECTED: ' + m);
 const whRound = (v, d) => { const f = Math.pow(10, d); const r = Math.round(Math.abs(v) * f) / f; return v < 0 ? -r : r; };
 const whIsObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -1276,7 +1284,7 @@ function whMove(W, by, product, location, cases, kind, ref, cost, reason, now) {
                  unitCost: cost == null ? null : cost, reason: reason || null, casesAfter: after, avgAfter: p.avgCost });
 }
 function whNextNumber(list, prefix) {
-  const n = list.reduce((m, x) => Math.max(m, Number(x.number.slice(3))), 0) + 1;
+  const n = list.filter(x => x.number.indexOf(prefix + '-') === 0).reduce((m, x) => Math.max(m, Number(x.number.slice(3))), 0) + 1;
   const s = String(n);
   return prefix + '-' + (s.length >= 4 ? s : ('000' + s).slice(-4));
 }
@@ -1312,38 +1320,59 @@ FakeSupabase.prototype.whStoreVendor = function (slug) {
 };
 // mog.wh_store_price (hq/warehouse.js storePrice is the same sum)
 const whStorePrice = (avg, fee, pct) => whRound((Number(avg || 0) + Number(fee || 0)) * (1 + Number(pct || 0) / 100), 2);
-// mog.wh_available: every location's cases minus what sent orders hold,
-// the store's own order for the cycle left out; never below 0.
+// mog.wh_available: a Happy Supply product's cases at HEH's own locations,
+// a held product's (v17, Elpis) at the location its holder holds, minus what
+// sent orders and open deliveries hold, the store's own order for the cycle
+// left out; never below 0.
+const whLc = v => String(v == null ? '' : v).toLowerCase();
 function whAvailable(W, product, slug, cycle) {
+  const p = whProduct(W, product);
   let n = 0;
-  for (const k of Object.keys(W.stock)) if (Number(k.split('|')[0]) === product) n += W.stock[k];
-  for (const o of W.orders) if (o.status === 'sent' && !(o.slug === slug && o.cycleDate === cycle)) {
+  for (const k of Object.keys(W.stock)) {
+    const L = whLocation(W, Number(k.split('|')[1]));
+    if (Number(k.split('|')[0]) === product && whLc(L.heldBy) === whLc(p.via)) n += W.stock[k];
+  }
+  for (const o of W.orders) if ((o.status === 'sent' || o.status === 'ordered') && !(o.slug === slug && o.cycleDate === cycle)) {
     for (const l of o.lines) if (l.productId === product) n -= l.cases;
   }
   return Math.max(0, whRound(n, 2));
 }
-// mog.wh_order_phone_json: no price, no fee, no cost.
-function whOrderPhoneJson(W, o) {
+// mog.wh_held_vendor: the store's vendor an HQ vendor name maps to.
+FakeSupabase.prototype.whHeldVendor = function (slug, hqName) {
+  const l = this.hqLinks().find(x => x.slug === slug && whLc(x.hqName) === whLc(hqName));
+  return l ? l.vendor : null;
+};
+// mog.wh_order_phone_json: no price, no fee, no cost. A delivery from a held
+// location says so, with the store's vendor for it now.
+function whOrderPhoneJson(W, o, sb) {
   const from = Array.from(new Set(o.lines.filter(l => l.locationId != null).map(l => whLocation(W, l.locationId).name))).sort();
-  return { id: o.id, number: o.number, status: o.status, cycleDate: o.cycleDate, neededBy: o.neededBy, note: o.note,
+  const out = { id: o.id, number: o.number, status: o.status, cycleDate: o.cycleDate, neededBy: o.neededBy, note: o.note,
     sentAt: o.sentAt, sentBy: o.sentBy, shippedAt: o.shippedAt, receivedAt: o.receivedAt, receivedBy: o.receivedBy,
     version: o.version, from: from.length ? from.join(', ') : null,
     lines: o.lines.map(l => ({ ord: l.ord, itemId: l.itemId, name: l.name, pack: whProduct(W, l.productId).pack,
                                cases: l.cases, casesShipped: l.casesShipped, casesReceived: l.casesReceived })) };
+  if (o.heldAt != null) Object.assign(out, { held: true, heldVendor: sb.whHeldVendor(o.slug, whLocation(W, o.heldAt).heldBy) });
+  return out;
 }
-// mog.wh_order_json: Dan's view, with the store and the prices.
+// mog.wh_order_json: HQ's view, with the store and the prices; a delivery
+// carries heldAt, a line received beyond the records its beyond.
 function whOrderJson(W, o, st) {
-  return { id: o.id, number: o.number, slug: o.slug, store: st ? st.location : null, concept: st ? st.concept : '',
+  const out = { id: o.id, number: o.number, slug: o.slug, store: st ? st.location : null, concept: st ? st.concept : '',
     isTest: st ? st.isTest : false, vendor: o.vendor, cycleDate: o.cycleDate, neededBy: o.neededBy, note: o.note,
     status: o.status, sentAt: o.sentAt, sentBy: o.sentBy, shippedAt: o.shippedAt, shippedBy: o.shippedBy,
     deliveryFee: o.deliveryFee, receivedAt: o.receivedAt, receivedBy: o.receivedBy, cancelledAt: o.cancelledAt,
     cancelledBy: o.cancelledBy, version: o.version,
     lines: o.lines.map(l => { const p = whProduct(W, l.productId), L = l.locationId == null ? null : whLocation(W, l.locationId);
-      return { ord: l.ord, itemId: l.itemId, name: l.name, productId: l.productId, product: p.name, pack: p.pack, cases: l.cases,
-               casesShipped: l.casesShipped, locationId: l.locationId, location: L ? L.name : null, price: l.price,
-               avgCost: l.avgCost, casesReceived: l.casesReceived }; }) };
+      const x = { ord: l.ord, itemId: l.itemId, name: l.name, productId: l.productId, product: p.name, pack: p.pack, cases: l.cases,
+                  casesShipped: l.casesShipped, locationId: l.locationId, location: L ? L.name : null, price: l.price,
+                  avgCost: l.avgCost, casesReceived: l.casesReceived };
+      if (l.beyond != null) x.beyond = l.beyond;
+      return x; }) };
+  if (o.heldAt != null) out.heldAt = o.heldAt;
+  return out;
 }
-// mog.wh_live_json: {} for a store with no linked item and no order.
+// mog.wh_live_json: {} for a store with no linked item and no order. Held
+// deliveries: open ones, and one received in the last 18 hours.
 FakeSupabase.prototype.whLive = function (slug, s) {
   const W = this.whState();
   const cycle = s.state ? s.state.cycleDate : null;
@@ -1351,13 +1380,81 @@ FakeSupabase.prototype.whLive = function (slug, s) {
     const p = it.whProduct == null ? null : whProduct(W, it.whProduct);
     return it.active === true && p && p.active && (!p.stores.length || p.stores.indexOf(slug) >= 0);
   });
-  const orders = W.orders.filter(o => o.slug === slug && (o.status === 'sent' || o.status === 'shipped' || o.cycleDate === cycle))
+  const recent = new Date(this.nowMs - 18 * 3600 * 1000).toISOString();
+  const orders = W.orders.filter(o => o.slug === slug && (o.status === 'sent' || o.status === 'shipped' || o.status === 'ordered' ||
+                                                          o.cycleDate === cycle || (o.heldAt != null && o.receivedAt && o.receivedAt > recent)))
     .sort((a, b) => (a.sentAt < b.sentAt ? 1 : a.sentAt > b.sentAt ? -1 : b.id - a.id)).slice(0, 10);
   if (!linked.length && !orders.length) return {};
   const items = {};
   for (const it of linked) items[it.id] = { productId: it.whProduct, available: whAvailable(W, it.whProduct, slug, cycle) };
-  return { happySupply: { vendor: this.whStoreVendor(slug), items, orders: orders.map(o => whOrderPhoneJson(W, o)) } };
+  const out = { vendor: this.whStoreVendor(slug), items, orders: orders.map(o => whOrderPhoneJson(W, o, this)) };
+  const held = Array.from(new Set(W.locations.filter(l => l.heldBy != null).map(l => this.whHeldVendor(slug, l.heldBy)).filter(v => v != null))).sort();
+  if (held.length) out.heldVendors = held;
+  return { happySupply: out };
 };
+// mog.wh_held_from_log, the close's step: the closing cycle's log lines from
+// a held location's holder (its store vendor), for items linked to a product
+// held there, become one open delivery per location (EL-0001). A same-day
+// re-close replaces an open one or deletes it; a received one stays.
+FakeSupabase.prototype.whHeldFromLog = function (slug, s, cycle, now) {
+  const W = this.whState();
+  let all = 0;
+  for (const L of W.locations.filter(l => l.heldBy != null).sort((a, b) => a.id - b.id)) {
+    const vend = this.whHeldVendor(slug, L.heldBy);
+    const rec = W.orders.find(o => o.slug === slug && o.cycleDate === cycle && o.heldAt === L.id);
+    if (rec && rec.status === 'received') continue;
+    const lines = s.log.filter(g => g.cycleDate === cycle && g.vendor === vend).sort((a, b) => a.seq - b.seq).map(g => {
+      const it = s.tables.items.find(i => i.id === g.id), p = it && it.whProduct != null ? whProduct(W, it.whProduct) : null;
+      return p && whLc(p.via) === whLc(L.heldBy) ? { g, it, p } : null;
+    }).filter(Boolean);
+    if (!lines.length) { if (rec) W.orders.splice(W.orders.indexOf(rec), 1); continue; }
+    let o = rec;
+    if (!o) {
+      o = { id: ++W.seq.order, number: whNextNumber(W.orders, 'EL'), slug, vendor: vend, cycleDate: cycle, neededBy: null, note: '',
+            status: 'ordered', sentAt: now, sentBy: null, shippedAt: null, shippedBy: null, deliveryFee: null, receivedAt: null,
+            receivedBy: null, cancelledAt: null, cancelledBy: null, version: 1, heldAt: L.id, lines: [] };
+      W.orders.push(o);
+    } else Object.assign(o, { vendor: vend, sentAt: now, version: o.version + 1 });
+    o.lines = lines.map((x, i) => ({ ord: i + 1, itemId: x.g.id, name: x.g.name || x.it.name, productId: x.p.id, cases: x.g.qty,
+                                      casesShipped: null, locationId: L.id, price: null, avgCost: null, casesReceived: null }));
+    all += lines.length;
+  }
+  return all;
+};
+// mog.wh_held_receive: each line's cases leave the held location (a line left
+// out arrived as ordered; more is fine). Beyond the records, the difference
+// is first logged as a count, kept on the line.
+function whHeldReceive(W, o, by, receivedBy, lines, store, now) {
+  lines = lines == null ? [] : lines;
+  if (!Array.isArray(lines)) throw whRej('the lines are a list');
+  if (lines.some(e => !o.lines.some(l => String(l.ord) === String(e && e.ord)))) throw whRej('a line here isn\'t in ' + o.number);
+  whLockProducts(W, o.lines.map(l => l.productId));
+  for (const x of o.lines) {
+    const ln = lines.find(e => String(e.ord) === String(x.ord));
+    const c = ln ? whCases(ln.cases, x.name, true) : x.cases;
+    let beyond = null;
+    if (c > 0) {
+      const have = W.stock[x.productId + '|' + o.heldAt] || 0;
+      if (have < c) {
+        beyond = whRound(c - have, 2);
+        whMove(W, by, x.productId, o.heldAt, beyond, 'count', o.number, null, 'Received at ' + store + ' beyond the records', now);
+      }
+      whMove(W, by, x.productId, o.heldAt, -c, 'shipped', o.number, null, null, now);
+    }
+    Object.assign(x, { casesReceived: c, avgCost: whProduct(W, x.productId).avgCost, beyond });
+  }
+  Object.assign(o, { status: 'received', receivedAt: now, receivedBy, version: o.version + 1 });
+}
+// mog.wh_do_held_receive: HQ marks a store's delivery received for it.
+function whDoHeldReceive(W, by, r, now, storeOf) {
+  if (!whIsObj(r)) throw whRej('a receipt is an object');
+  const o = W.orders.find(x => x.id === whId(r.id, 'The delivery'));
+  if (!o || o.heldAt == null) throw whRej('that delivery isn\'t there any more');
+  if (r.version == null || String(o.version) !== String(r.version)) throw new Error('CONFLICT: ' + o.number + ' changed since you opened it');
+  if (o.status !== 'ordered') throw new Error('CONFLICT: ' + o.number + ' is ' + o.status + ' already');
+  whHeldReceive(W, o, by, ('HQ · ' + by).slice(0, 40), r.lines, storeOf(o.slug), now);
+  return { orderId: o.id, number: o.number };
+}
 // public.mog_wh_send: the order's id.
 function whDoSend(W, slug, s, vend, o, now) {
   if (!whIsObj(o)) throw whRej('an order is an object');
@@ -1386,6 +1483,7 @@ function whDoSend(W, slug, s, vend, o, now) {
     if (it.whProduct == null) throw whRej(it.name + ' isn\'t linked to a Happy Supply product');
     if (it.active !== true || !(it.primaryVendor === vend || (it.eligible || []).indexOf(vend) >= 0)) throw whRej(it.name + ' isn\'t on Happy Supply\'s list here');
     const pr = whProduct(W, it.whProduct);
+    if (pr.via != null) throw whRej(it.name + ' comes from ' + pr.via + ', not Happy Supply');
     if (!pr.active || !(pr.stores.length === 0 || pr.stores.indexOf(slug) >= 0)) throw whRej('Happy Supply doesn\'t sell ' + it.name + ' to this store');
     if (rec.lines.some(l => l.itemId === it.id)) throw whRej(it.name + ' is in the order twice');
     rec.lines.push({ ord: rec.lines.length + 1, itemId: it.id, name: it.name, productId: it.whProduct, cases: whCases(ln.cases, it.name, false),
@@ -1394,11 +1492,17 @@ function whDoSend(W, slug, s, vend, o, now) {
   return rec.id;
 }
 // public.mog_wh_received: the order's id. Received already: as it stands.
-function whDoReceived(W, slug, r, now) {
+// A delivery from a held location (v17): ordered, its cases leave the location.
+function whDoReceived(W, slug, r, now, store) {
   if (!whIsObj(r)) throw whRej('a receipt is an object');
   const id = whId(r.id, 'The order');
   const o = W.orders.find(x => x.id === id && x.slug === slug);
   if (!o) throw whRej('that order isn\'t this store\'s');
+  const by = whText(r.by, 'The name', 200).slice(0, 40) || null;
+  if (o.heldAt != null) {
+    if (o.status === 'ordered') whHeldReceive(W, o, store + (by ? ' · ' + by : ''), by, r.lines, store, now);
+    return o.id;
+  }
   if (o.status === 'received') return o.id;
   if (o.status !== 'shipped') throw whRej(o.number + ' is ' + o.status + ', not shipped');
   const lines = r.lines == null ? [] : r.lines;
@@ -1434,6 +1538,7 @@ function whDoShip(W, by, sh, now) {
       loc = whId(ln.locationId, 'Where ' + x.name + ' ships from');
       const L = whLocation(W, loc);
       if (!L || !L.active) throw whRej('that location isn\'t open');
+      if (L.heldBy != null) throw whRej('Happy Supply never ships from ' + L.name + ': ' + L.heldBy + ' holds it');
       whMove(W, by, x.productId, loc, -c, 'shipped', o.number, null, null, now);
       total += c;
     }
@@ -1460,7 +1565,11 @@ FakeSupabase.prototype.whData = function (name) {
     .sort((a, b) => b.id - a.id);
   return {
     name, roles: clone(H.users.get(name).roles), settings: clone(W.settings),
-    locations: W.locations.slice().sort((a, b) => (a.ord - b.ord) || byLower(x => x.name)(a, b)).map(l => clone(l)),
+    locations: W.locations.slice().sort((a, b) => (a.ord - b.ord) || byLower(x => x.name)(a, b)).map(l => {
+      if (l.heldBy == null) return clone(l);
+      const counts = W.moves.filter(m => m.locationId === l.id && m.kind === 'count' && m.ref == null);
+      return Object.assign(clone(l), { lastCount: counts.length ? counts[counts.length - 1].at : null });
+    }),
     suppliers: W.suppliers.slice().sort(byLower(x => x.name)).map(s => clone(s)),
     products: W.products.slice().sort(byLower(x => x.name)).map(p => {
       const stock = {};
@@ -1470,12 +1579,25 @@ FakeSupabase.prototype.whData = function (name) {
     }),
     pos: lastClosed(W.pos, 'ordered').map(p => whPoJson(W, p)),
     transfers: lastClosed(W.transfers, 'in_transit').map(t => whTransferJson(W, t)),
-    orders: W.orders.filter(o => o.status === 'sent' || o.status === 'shipped')
-      .concat(W.orders.filter(o => o.status === 'received' || o.status === 'cancelled').sort((a, b) => b.id - a.id).slice(0, 30))
+    orders: W.orders.filter(o => o.heldAt == null && (o.status === 'sent' || o.status === 'shipped'))
+      .concat(W.orders.filter(o => o.heldAt == null && (o.status === 'received' || o.status === 'cancelled')).sort((a, b) => b.id - a.id).slice(0, 30))
       .sort((a, b) => b.id - a.id).map(o => {
         const s = this.stores.get(o.slug);
         return whOrderJson(W, o, s ? { location: s.profile.location || null, concept: s.profile.concept || '', isTest: !!s.isTest } : null);
       }),
+    deliveries: W.orders.filter(o => o.heldAt != null && o.status === 'ordered')
+      .concat(W.orders.filter(o => o.heldAt != null && o.status === 'received').sort((a, b) => b.id - a.id).slice(0, 30))
+      .sort((a, b) => b.id - a.id).map(o => {
+        const s = this.stores.get(o.slug);
+        return whOrderJson(W, o, s ? { location: s.profile.location || null, concept: s.profile.concept || '', isTest: !!s.isTest } : null);
+      }),
+    vendorNames: (() => {
+      const seen = new Map();
+      const names = this.hqLinks().map(l => l.hqName);
+      for (const s of this.stores.values()) if (!s.isTest && s.tables) for (const v of s.tables.vendors) names.push(v.name);
+      for (const n of names.slice().sort()) if (!seen.has(n.toLowerCase())) seen.set(n.toLowerCase(), n);
+      return Array.from(seen.values()).sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : a < b ? -1 : 1));
+    })(),
     stores: Array.from(this.stores.entries()).map(([slug, s]) => ({ slug, location: s.profile.location || null, concept: s.profile.concept || '',
       side: s.side != null ? s.side : sideFromLocation(s.profile.location), isTest: !!s.isTest }))
       .sort((a, b) => (a.concept < b.concept ? -1 : a.concept > b.concept ? 1 : 0) || (a.isTest - b.isTest) ||
@@ -1497,16 +1619,34 @@ function whDoSave(W, by, kind, row, now, slugs) {
     const stores = Array.from(new Set((row.stores || []).map(x => (typeof x === 'string' ? x : JSON.stringify(x))))).sort();
     const unknown = stores.find(x => !slugs.has(x));
     if (unknown !== undefined) throw whRej('no store called ' + unknown);
+    // v17: via, where stores order it (null = Happy Supply); left out = unchanged.
+    const viaSet = Object.prototype.hasOwnProperty.call(row, 'via');
+    let via = null;
+    if (viaSet) {
+      via = typeof row.via === 'string' && row.via.trim() ? row.via.trim() : null;
+      if (via != null && via.toLowerCase() === 'happy supply') via = null;
+      if (via != null) {
+        const L = W.locations.find(l => l.heldBy != null && l.heldBy.toLowerCase() === via.toLowerCase());
+        if (!L) throw whRej('no location is held by ' + via);
+        via = L.heldBy;
+      }
+    }
     if (W.products.some(p => p.name.toLowerCase() === name.toLowerCase() && p.id !== id)) throw whRej('there\'s already a product called "' + name + '"');
     if (id == null) {
       const p = { id: ++W.seq.prod, name, pack, par, avgCost: 0, handlingFee: fee, stores, active, version: 1, updatedAt: now, updatedBy: by };
+      if (via != null) p.via = via;
       W.products.push(p);
       return { kind: 'product', id: p.id, name };
     }
     const p = whProduct(W, id);
     if (!p) throw whRej('that product isn\'t in the warehouse any more');
     if (p.version !== whNum(row.version, 'The version')) throw new Error('CONFLICT: ' + name + ' was changed since you opened it (by ' + (p.updatedBy || 'someone') + ')');
+    if (viaSet && whLc(via) !== whLc(p.via) &&
+        (whOwned(W, id) > 0 || W.orders.some(o => (o.status === 'sent' || o.status === 'ordered') && o.lines.some(l => l.productId === id)))) {
+      throw whRej(name + ' has stock or open orders: count it to 0 before changing where stores order it');
+    }
     Object.assign(p, { name, pack, par, handlingFee: fee, stores, active, version: p.version + 1, updatedAt: now, updatedBy: by });
+    if (viaSet) { if (via == null) delete p.via; else p.via = via; }
     return { kind: 'product', id, name };
   }
   if (kind === 'location' || kind === 'supplier') {
@@ -1516,8 +1656,19 @@ function whDoSave(W, by, kind, row, now, slugs) {
     if (list.some(x => x.name.toLowerCase() === name.toLowerCase() && x.id !== id)) throw whRej('there\'s already a ' + kind + ' called "' + name + '"');
     if (kind === 'location') {
       const ord = row.ord == null ? null : whRound(whNum(row.ord, 'The order'), 0);
+      // v17: heldBy, the vendor holding it (null = HEH's own); left out = unchanged.
+      const heldSet = Object.prototype.hasOwnProperty.call(row, 'heldBy');
+      let holder = null;
+      if (heldSet) {
+        holder = typeof row.heldBy === 'string' && row.heldBy.trim() ? row.heldBy.trim() : null;
+        if (holder != null && holder.length > 100) throw whRej('who holds it is longer than 100 characters');
+        if (holder != null && holder.toLowerCase() === 'happy supply') throw whRej('Happy Supply\'s own locations aren\'t held by a vendor');
+        const other = holder == null ? null : W.locations.find(l => l.heldBy != null && l.heldBy.toLowerCase() === holder.toLowerCase() && l.id !== id);
+        if (other) throw whRej(other.name + ' is held by ' + holder + ' already');
+      }
       if (id == null) {
         const l = { id: ++W.seq.loc, name, ord: ord == null ? W.locations.reduce((m, x) => Math.max(m, x.ord), 0) + 10 : ord, active };
+        if (holder != null) l.heldBy = holder;
         W.locations.push(l);
         return { kind, id: l.id, name };
       }
@@ -1528,7 +1679,14 @@ function whDoSave(W, by, kind, row, now, slugs) {
         for (const k of Object.keys(W.stock)) if (Number(k.split('|')[1]) === id) held += W.stock[k];
         if (held > 0) throw whRej(name + ' still holds ' + whCs(whRound(held, 2)) + ': move it or count it to 0 first');
       }
+      if (heldSet && whLc(holder) !== whLc(l.heldBy)) {
+        const stocked = Object.keys(W.stock).some(k => Number(k.split('|')[1]) === id && W.stock[k] > 0);
+        if (stocked || (l.heldBy != null && W.products.some(p => whLc(p.via) === whLc(l.heldBy)))) {
+          throw whRej(name + ' holds stock or has products ordered through it: who holds it can\'t change');
+        }
+      }
       Object.assign(l, { name, ord: ord == null ? l.ord : ord, active });
+      if (heldSet) { if (holder == null) delete l.heldBy; else l.heldBy = holder; }
       return { kind, id, name };
     }
     if (id == null) { const s = { id: ++W.seq.sup, name, active }; W.suppliers.push(s); return { kind, id: s.id, name }; }
@@ -1705,6 +1863,9 @@ FakeSupabase.prototype.handleWh = function (fn, p) {
     if (fn === 'mog_wh_count') done = whDoCount(next, name, p.p_count, now);
     if (fn === 'mog_wh_ship') done = whDoShip(next, name, p.p_ship, now);
     if (fn === 'mog_wh_order_cancel') done = whDoOrderCancel(next, name, p.p_id, p.p_version, now);
+    if (fn === 'mog_wh_held_receive') {
+      done = whDoHeldReceive(next, name, p.p_receipt, now, slug => { const s = this.stores.get(slug); return (s && s.profile.location) || slug; });
+    }
   } catch (e) {
     const m = String(e.message);
     if (m.indexOf('CONFLICT: ') === 0) return { ok: false, error: 'CONFLICT', detail: m.slice(10) };
