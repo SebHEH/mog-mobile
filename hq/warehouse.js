@@ -71,10 +71,40 @@
     });
     return out;
   }
-  const logic = { round, avgAfter, storePrice, stockAt, owned, value, num, cs, money, countPayload, receivePayload, transferProblems };
+  // ---- Store orders (schema v16, W2a) ----
+  // Each line's Ship box to start with: what's left for this order after the
+  // sent orders older than it (the number its store was told), at most what
+  // it ordered and what the chosen location holds; From: the location with
+  // the most of it. held: what the older orders take.
+  function shipPrefill(orders, products, o) {
+    const older = orders.filter(x => x.status === 'sent' && x.id !== o.id && (x.sentAt < o.sentAt || (x.sentAt === o.sentAt && x.id < o.id)));
+    return o.lines.map(l => {
+      const p = products.find(x => x.id === l.productId);
+      const stock = p ? p.stock || {} : {};
+      const total = Object.keys(stock).reduce((t, k) => t + Number(stock[k]), 0);
+      const held = round(older.reduce((t, x) => t + x.lines.filter(y => y.productId === l.productId).reduce((s, y) => s + Number(y.cases), 0), 0), 2);
+      const left = Math.max(0, round(total - held, 2));
+      const locs = Object.keys(stock).filter(k => Number(stock[k]) > 0).sort((a, b) => (Number(stock[b]) - Number(stock[a])) || (Number(a) - Number(b)));
+      const loc = locs.length ? Number(locs[0]) : null;
+      return { ord: l.ord, cases: Math.min(Number(l.cases), left, loc === null ? 0 : Number(stock[String(loc)])), locationId: loc, left: left, held: held,
+               olderOrders: older.filter(x => x.lines.some(y => y.productId === l.productId)).map(x => x.number) };
+    });
+  }
+  // A shipment: every line, by its number (0 = none of it).
+  //   rows: { ord: { cases: text, locationId } }
+  function shipPayload(o, rows) {
+    return { id: o.id, version: o.version, lines: o.lines.map(l => {
+      const r = rows[l.ord] || {}, n = num(r.cases);
+      const line = { ord: l.ord, cases: n === null ? 0 : n };
+      if (line.cases > 0) line.locationId = r.locationId == null || r.locationId === '' ? null : Number(r.locationId);
+      return line;
+    }) };
+  }
+  const logic = { round, avgAfter, storePrice, stockAt, owned, value, num, cs, money, countPayload, receivePayload, transferProblems,
+                  shipPrefill, shipPayload };
 
   // ---- The page ----
-  const VIEWS = ['wh-inventory', 'wh-incoming', 'wh-products', 'wh-history'];
+  const VIEWS = ['wh-inventory', 'wh-incoming', 'wh-orders', 'wh-products', 'wh-history'];
   const PLUS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>';
   const CHECK = '<svg class="ck" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l10 -10"/></svg>';
   const CHEV = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5f5e5a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6l6 -6"/></svg>';
@@ -87,6 +117,9 @@
       '<div class="page-head"><div><h1 id="whn-h">Incoming</h1><p>Vendor orders on their way in, and transfers between locations. Receiving a vendor order adds its cases and updates the average cost.</p></div>' +
       '<div class="actions"><button type="button" class="btn" data-whgo="newtr">New transfer</button><button type="button" class="btn primary" data-whgo="newpo">New vendor order</button></div></div>' +
       '<div class="status" id="whn-status" role="status"></div><div id="whn-body" class="view"></div></section>' +
+    '<section class="view" id="v-wh-orders" aria-labelledby="who-h" hidden>' +
+      '<div class="page-head"><div><h1 id="who-h">Orders</h1><p>Store orders sent from each order guide\'s review screen, soonest needed first. Ship from a location: the stock drops and the store\'s price locks.</p></div></div>' +
+      '<div class="status" id="who-status" role="status"></div><div id="who-body" class="view"></div></section>' +
     '<section class="view" id="v-wh-products" aria-labelledby="whp-h" hidden>' +
       '<div class="page-head"><div><h1 id="whp-h">Products and prices</h1><p>What Happy Supply stocks. A store pays the average cost plus the handling fee per case, fixed on each line when its order ships. Stores never see the fee.</p></div>' +
       '<div class="actions"><button type="button" class="btn" data-wh="prod-new">' + PLUS + 'Add a product</button></div></div>' +
@@ -106,7 +139,8 @@
     const W = { data: null, busy: false,
                 inv: { filter: 'active', counting: false, loc: null, rows: {} },
                 inc: { filter: 'open', sel: null, rcv: {}, po: null, tr: null },
-                prod: { sel: null, draft: null },
+                ord: { filter: 'sent', sel: null, rows: {} },
+                prod: { sel: null, draft: null, send: null },
                 hist: { product: '', location: '', moves: null, more: false, key: null } };
 
     document.querySelector('#main .wrap').insertAdjacentHTML('beforeend', SECTIONS);
@@ -502,9 +536,14 @@
         '<div class="grid2" style="margin-top:10px"><label class="field">Markup %<input id="whs-pct" class="text" inputmode="decimal" value="' + esc(String(Number(d.settings.markupPct))) + '"></label>' +
         '<label class="field">Delivery fee / order<input id="whs-fee" class="text" inputmode="decimal" value="' + esc(Number(d.settings.deliveryFee).toFixed(2)) + '"></label></div>' +
         '<div class="actions" style="margin-top:12px;justify-content:flex-end"><button type="button" class="btn" data-wh="settings-save">Save</button></div></section></div>';
+      if (W.prod.send && W.prod.send.productId !== W.prod.sel) W.prod.send = null;
+      if (W.prod.send) html = html.replace('<div class="stats"', sendHtml() + '<div class="stats"');
       $('whp-body').innerHTML = html;
       updateProductPanel();
+      if (W.prod.send) updateSend();
     }
+    // HQ's catalog in reach: the person has the hq role too.
+    const canSend = () => !!(host.hq && host.hq() && host.CE);
     function listCardHtml(kind, title, help, rows) {
       return '<section class="card" style="padding:18px 20px" aria-label="' + title + '"><h2 style="font-size:16px">' + title + '</h2>' +
         '<p class="help" style="margin-top:4px">' + help + '</p>' +
@@ -531,6 +570,7 @@
         '<label class="check"><input type="checkbox" data-whpf="active"' + (f.active ? ' checked' : '') + '>Active: on new vendor orders and counts</label>' +
         '<div class="row-between" style="margin-top:0"><span class="muted" id="whpp-sum"></span><div class="actions" style="align-items:center">' +
         (p ? '' : '<button type="button" class="linkbtn" data-wh="prod-discard">Cancel</button>') +
+        (p && p.active && canSend() && !W.prod.send ? '<button type="button" class="btn" data-wh="send-open">Send to stores</button>' : '') +
         '<button type="button" class="btn primary" data-wh="prod-save" id="whpp-go">Save</button></div></div>';
     }
     function updateProductPanel() {
@@ -552,6 +592,212 @@
       const sum = $('whpp-sum'), go = $('whpp-go');
       if (sum) sum.textContent = problems.length ? upper(problems.join('; ')) + '.' : '';
       if (go) go.disabled = problems.length > 0;
+    }
+
+    // ---- Orders (schema v16) ----
+    const orders = () => D().orders || [];
+    const sentCount = () => orders().filter(o => o.status === 'sent').length;
+    const storeShort = o => String(o.store || o.slug) + (o.isTest && !/\(TEST\)\s*$/.test(o.store || '') ? ' (TEST)' : '');
+    function orderList() {
+      const f = W.ord.filter, list = orders().filter(o => o.status === f);
+      if (f === 'sent') return list.sort((a, b) => (String(a.neededBy || '9999') < String(b.neededBy || '9999') ? -1 : String(a.neededBy || '9999') > String(b.neededBy || '9999') ? 1 : 0) ||
+                                                  (a.sentAt < b.sentAt ? -1 : a.sentAt > b.sentAt ? 1 : a.id - b.id));
+      return list.sort((a, b) => b.id - a.id);
+    }
+    const dayOf = ymd => (ymd ? day(ymd + 'T12:00:00') : '');
+    function orderMeta(o) {
+      const n = plural(o.lines.length, 'line');
+      if (o.status === 'sent') return (o.neededBy ? 'Needed by ' + dayOf(o.neededBy) + ' · ' : '') + n + ' · sent' + (o.sentBy ? ' by ' + o.sentBy : '') + ', ' + when(o.sentAt);
+      if (o.status === 'shipped') return 'Shipped ' + when(o.shippedAt) + ' · ' + n + ' · waiting for the store to mark it received';
+      if (o.status === 'received') return 'Received ' + when(o.receivedAt) + (o.receivedBy ? ' by ' + o.receivedBy : '') + ' · ' + n;
+      return 'Cancelled ' + when(o.cancelledAt) + (o.cancelledBy ? ' by ' + o.cancelledBy : '');
+    }
+    // Under the product: the store's own name for it, when it differs, and the pack.
+    const lineSub = l => [String(l.name || '').toLowerCase() !== String(l.product || '').toLowerCase() ? 'Store calls it ' + l.name : '', l.pack].filter(Boolean).join(' · ');
+    function orderTag(s) {
+      const t = { sent: ['Sent', 'blue'], shipped: ['Shipped', ''], received: ['Received', 'ok'], cancelled: ['Cancelled', ''] }[s] || [s, ''];
+      return '<span class="tag' + (t[1] ? ' ' + t[1] : '') + '">' + t[0] + '</span>';
+    }
+    function selectOrder(id) {
+      W.ord.sel = id; W.ord.rows = {};
+      const o = orders().find(x => x.id === id);
+      if (o && o.status === 'sent') {
+        for (const r of shipPrefill(orders(), D().products, o)) W.ord.rows[r.ord] = { cases: String(r.cases), locationId: r.locationId == null ? '' : String(r.locationId) };
+      }
+    }
+    function renderOrders() {
+      const list = orderList();
+      if (!list.some(o => o.id === W.ord.sel)) selectOrder(list.length ? list[0].id : null);
+      const count = s => orders().filter(o => o.status === s).length;
+      let html = '<div class="actions" role="group" aria-label="Show">' +
+        [['sent', 'Sent · ' + count('sent')], ['shipped', 'Shipped · ' + count('shipped')], ['received', 'Received'], ['cancelled', 'Cancelled']].map(f =>
+          '<button type="button" class="pill" data-whordf="' + f[0] + '" aria-pressed="' + (W.ord.filter === f[0]) + '">' + f[1] + '</button>').join('') + '</div>';
+      html += '<div class="cols"><section class="card list-card" style="flex:1 1 320px" aria-label="Store orders">' +
+        (list.length ? list.map(o => '<button type="button" class="lrow" data-whosel="' + o.id + '"' + (o.id === W.ord.sel ? ' aria-current="true"' : '') + '>' +
+          '<span class="t"><span class="n">' + esc(storeShort(o) + ' · ' + o.number) + '</span><span class="s">' + esc(orderMeta(o)) + '</span></span>' + orderTag(o.status) + '</button>').join('')
+          : '<div class="list-foot">' + (W.ord.filter === 'sent' ? 'No orders waiting. A store\'s Send to Happy Supply lands here.' : 'None yet.') + '</div>') + '</section>';
+      html += '<section class="card panel focus" style="flex:2 1 560px" aria-label="Order">' + orderPanelHtml() + '</section></div>';
+      html += stockCardHtml();
+      $('who-body').innerHTML = html;
+      updateShip();
+    }
+    function orderPanelHtml() {
+      const o = orders().find(x => x.id === W.ord.sel);
+      if (!o) return emptyHtml('Pick an order.');
+      const head = '<div class="card-head"><h2>' + esc(storeShort(o)) + '</h2><span class="muted">' + esc(o.number + ' · ' + orderMeta(o)) + '</span></div>' +
+        (o.note ? '<p class="note-box" style="margin:0">“' + esc(o.note) + '”</p>' : '');
+      if (o.status !== 'sent') {
+        return head + '<div class="scroll"><table><thead><tr><th>Product</th><th>Ordered</th><th>Shipped</th><th>From</th><th>Received</th><th>Price / cs</th></tr></thead><tbody>' +
+          o.lines.map(l => '<tr><td><b>' + esc(l.product) + '</b><div class="muted" style="font-size:13px">' + esc(lineSub(l)) + '</div></td>' +
+            '<td>' + esc(cs(l.cases)) + '</td><td>' + (l.casesShipped == null ? '<span class="muted">-</span>' : esc(cs(l.casesShipped))) + '</td>' +
+            '<td>' + esc(l.location || '-') + '</td><td>' + (l.casesReceived == null ? '<span class="muted">-</span>' : esc(cs(l.casesReceived)) +
+              (Number(l.casesReceived) < Number(l.casesShipped) ? ' <span class="tag warn">Short</span>' : '')) + '</td>' +
+            '<td>' + (l.price == null ? '<span class="muted">-</span>' : money(l.price)) + '</td></tr>').join('') + '</tbody></table></div>' +
+          (o.status === 'shipped' || o.status === 'received'
+            ? '<div class="row-between"><span class="muted">' + (o.deliveryFee ? 'Delivery fee ' + money(o.deliveryFee) + '. ' : '') + 'Prices fixed when it shipped.</span><b>' +
+              money(o.lines.reduce((t, l) => t + Number(l.casesShipped || 0) * Number(l.price || 0), 0) + Number(o.deliveryFee || 0)) + '</b></div>' : '');
+      }
+      const pre = shipPrefill(orders(), D().products, o), pct = Number(D().settings.markupPct);
+      return head + '<div class="scroll"><table><thead><tr><th>Product</th><th>Ordered</th><th>Ship</th><th>From</th><th>Left after</th><th>Price / cs</th></tr></thead><tbody>' +
+        o.lines.map((l, i) => {
+          const p = prodBy(l.productId), r = W.ord.rows[l.ord] || {}, x = pre[i];
+          const locs = activeLocs().map(lc => [lc.id, lc.name + ' · ' + Number(p ? stockAt(p, lc.id) : 0) + ' cs']);
+          const short = x.cases < Number(l.cases)
+            ? '<tr class="sub"><td colspan="6"><p class="note-box warn" style="margin:0">Short: ' + Number(x.cases) + ' of ' + Number(l.cases) + '.' +
+              (x.held ? ' ' + esc(x.olderOrders.join(', ')) + ' (older) take' + (x.olderOrders.length === 1 ? 's' : '') + ' ' + Number(x.held) + '. The store was told "Only ' + Number(x.left) + ' available". Ship more and the older order gets less.' : ' That\'s all there is.') + '</p></td></tr>' : '';
+          return '<tr><td><b>' + esc(l.product) + '</b><div class="muted" style="font-size:13px">' + esc(lineSub(l)) + '</div></td>' +
+            '<td><b>' + esc(cs(l.cases)) + '</b></td>' +
+            '<td style="min-width:90px">' + inputHtml('data-whship="' + l.ord + '" aria-label="' + esc(l.product) + ' cases to ship"', r.cases) + '</td>' +
+            '<td style="min-width:180px">' + selectHtml('data-whfrom="' + l.ord + '" aria-label="Ship ' + esc(l.product) + ' from"', r.locationId, locs, 'Pick a location') + '</td>' +
+            '<td id="whleft-' + l.ord + '"></td><td>' + (p ? money(storePrice(p.avgCost, p.handlingFee, pct)) : '-') + '</td></tr>' + short;
+        }).join('') + '</tbody></table></div>' +
+        '<div class="row-between"><button type="button" class="linkbtn" data-wh="ord-cancel">Cancel order</button>' +
+        '<div class="actions" style="align-items:center"><span class="muted" id="whship-sum"></span>' +
+        '<button type="button" class="btn primary big" data-wh="ord-ship" id="whship-go">Ship</button></div></div>';
+    }
+    // What's left, the summary and whether Ship can go, without redrawing the boxes.
+    function updateShip() {
+      const o = orders().find(x => x.id === W.ord.sel);
+      if (!o || o.status !== 'sent') return;
+      const pct = Number(D().settings.markupPct), problems = [];
+      let n = 0, total = 0, ordered = 0;
+      for (const l of o.lines) {
+        const r = W.ord.rows[l.ord] || {}, c = num(r.cases), p = prodBy(l.productId), cell = $('whleft-' + l.ord);
+        const box = document.querySelector('[data-whship="' + l.ord + '"]');
+        const bad = c !== null && (isNaN(c) || c < 0 || c > Number(l.cases));
+        if (box) box.setAttribute('aria-invalid', String(bad));
+        ordered += Number(l.cases);
+        if (bad) { problems.push(isNaN(c) || c < 0 ? 'a number of cases, 0 or more' : l.product + ': at most ' + cs(l.cases)); if (cell) cell.innerHTML = '<span class="bad">-</span>'; continue; }
+        const cases = c === null ? 0 : round(c, 2), loc = r.locationId ? Number(r.locationId) : null;
+        if (cases > 0 && !loc) problems.push('where ' + l.product + ' ships from');
+        const after = p && loc ? round(stockAt(p, loc) - cases, 2) : null;
+        if (after !== null && after < 0) problems.push(locName(loc) + ' has ' + cs(stockAt(p, loc)) + ' of ' + l.product);
+        if (cell) cell.innerHTML = after === null ? '<span class="muted">-</span>' : (after < 0 ? '<span class="bad">' + esc(cs(after)) + '</span>'
+          : esc(cs(after) + ' at ' + locName(loc)) + (p && Number(p.par) > 0 && owned(p) - cases < Number(p.par) ? ' <span class="tag warn">Below par</span>' : ''));
+        n += cases;
+        if (p) total += cases * storePrice(p.avgCost, p.handlingFee, pct);
+      }
+      if (!problems.length && n === 0) problems.push('ship at least one case, or cancel the order');
+      const sum = $('whship-sum'), go = $('whship-go');
+      if (sum) sum.innerHTML = problems.length ? esc(upper(problems.join('; ')) + '.') : 'Ships ' + esc(String(round(n, 2))) + ' of ' + esc(cs(ordered)) + ' · <b>' + money(round(total, 2)) + '</b> to ' + esc(storeShort(o));
+      if (go) go.disabled = problems.length > 0;
+    }
+    function stockCardHtml() {
+      const d = D(), locs = activeLocs(), held = {};
+      for (const o of orders()) if (o.status === 'sent') for (const l of o.lines) held[l.productId] = round((held[l.productId] || 0) + Number(l.cases), 2);
+      const prods = d.products.filter(p => p.active);
+      if (!prods.length) return '';
+      return '<section class="card" aria-labelledby="whos-h"><div class="card-head"><h2 id="whos-h">Stock and open orders</h2>' +
+        '<button type="button" class="linkbtn" data-nav="wh-inventory">Inventory</button></div>' +
+        '<div class="scroll"><table><thead><tr><th>Product</th>' + locs.map(l => '<th>' + esc(l.name) + '</th>').join('') + '<th>Ordered</th><th>Par</th></tr></thead><tbody>' +
+        prods.map(p => { const have = locs.reduce((t, l) => t + stockAt(p, l.id), 0), want = held[p.id] || 0;
+          return '<tr><td><b>' + esc(p.name) + '</b>' + (want > have ? ' <span class="tag warn">' + round(want - have, 2) + ' short</span>' : '') + '</td>' +
+            locs.map(l => '<td>' + stockAt(p, l.id) + '</td>').join('') + '<td>' + want + '</td><td class="muted">' + Number(p.par) + '</td></tr>'; }).join('') +
+        '</tbody></table></div><p class="help" style="margin-top:10px">Ordered: sent by stores, not shipped yet. Stores see what\'s left as "available".</p></section>';
+    }
+
+    // ---- Send a product to stores (schema v16; HQ's catalog, so the hq role) ----
+    const HS = 'Happy Supply';
+    function storeHs(st) {
+      const linked = host.linkFor(st.slug, HS);
+      if (linked) return { name: linked, remembered: true };
+      const v = st.tables.vendors.find(x => x.name.toLowerCase() === HS.toLowerCase());
+      return v ? { name: v.name, remembered: false } : null;
+    }
+    function sendOpen(p) {
+      const keys = host.conceptKeys().filter(k => host.storesOf(k).some(host.usable));
+      W.prod.send = { productId: p.id, concept: keys[0] || null, rows: {} };
+      sendConcept(W.prod.send.concept);
+    }
+    function sendConcept(k) {
+      const s = W.prod.send, p = prodBy(s.productId);
+      s.concept = k; s.rows = {};
+      for (const st of host.storesOf(k).filter(host.usable)) {
+        const c = host.CE.productCandidates(st.tables, p.name);
+        s.rows[st.slug] = { on: false, mode: c.best ? 'link' : 'add', link: c.best || (c.items[0] ? c.items[0].id : '') };
+      }
+    }
+    function sendPlan() {
+      const s = W.prod.send, p = prodBy(s.productId);
+      if (!s || !p) return [];
+      return host.storesOf(s.concept).filter(host.usable).filter(st => s.rows[st.slug] && s.rows[st.slug].on).map(st => {
+        const r = s.rows[st.slug], hs = storeHs(st);
+        if (!hs) return { st, links: [], error: 'Add ' + HS + ' to this store on Vendors first (with its delivery days).' };
+        const args = { vendor: null, vendorName: hs.name, product: { id: p.id, name: p.name, pack: p.pack }, link: r.mode === 'link' ? r.link : '', item: { name: p.name } };
+        const links = [{ slug: st.slug, hqName: HS, vendor: hs.name }];
+        try { return { st, links, out: host.CE.call(st.tables, 'commitHqProduct', [args]) }; }
+        catch (err) { return { st, links, error: err.message }; }
+      });
+    }
+    function sendHtml() {
+      const s = W.prod.send, p = s && prodBy(s.productId);
+      if (!s || !p) return '';
+      const keys = host.conceptKeys().filter(k => host.storesOf(k).some(host.usable));
+      const stores = host.storesOf(s.concept).filter(host.usable).sort((a, b) => (a.isTest - b.isTest) || String(a.side).localeCompare(String(b.side)) || host.shortName(a).localeCompare(host.shortName(b)));
+      const rows = stores.map(st => {
+        const r = s.rows[st.slug], hs = storeHs(st), linked = st.tables.items.find(it => Number(it.whProduct) === p.id);
+        const allowed = !p.stores.length || p.stores.indexOf(st.slug) >= 0;
+        const name = esc(host.shortName(st)) + (st.isTest ? ' <span class="tag">TEST</span>' : '');
+        if (linked) return '<tr><td></td><td><b>' + name + '</b></td><td>' + esc(hs ? hs.name : HS) + '</td><td><span class="tag ok">Linked</span> ' + esc(linked.name) + ' (' + esc(linked.id) + ')</td></tr>';
+        if (!allowed) return '<tr><td></td><td><b>' + name + '</b></td><td colspan="2" class="muted">Happy Supply doesn\'t sell ' + esc(p.name) + ' to this store (Which stores can order it, above).</td></tr>';
+        if (!hs) return '<tr><td></td><td><b>' + name + '</b></td><td colspan="2" class="muted">No ' + HS + ' here yet. Add it on <button type="button" class="linkbtn" data-nav="vendor">Vendors</button> first, with its delivery days.</td></tr>';
+        const c = host.CE.productCandidates(st.tables, p.name);
+        const opts = c.items.filter(x => !x.linked).slice(0, 30).map(x => [x.id, x.name + (x.vendor ? ' (' + x.vendor + ', ' + x.id + ')' : ' (' + x.id + ')')]);
+        const choose = '<div class="stack" style="display:flex;flex-direction:column;gap:8px">' +
+          (opts.length ? '<label class="check"><input type="radio" name="whsm-' + esc(st.slug) + '" data-whsmode="' + esc(st.slug) + '" value="link"' + (r.mode === 'link' ? ' checked' : '') + '>Link an item it has</label>' +
+            (r.mode === 'link' ? selectHtml('data-whslink="' + esc(st.slug) + '" aria-label="' + esc(host.shortName(st)) + ' item to link"', r.link, opts) +
+              '<span class="muted" style="font-size:13px">' + esc(linkNote(st, r.link, hs.name, p)) + '</span>' : '') : '') +
+          '<label class="check"><input type="radio" name="whsm-' + esc(st.slug) + '" data-whsmode="' + esc(st.slug) + '" value="add"' + (r.mode === 'add' || !opts.length ? ' checked' : '') + '>Add a new item: ' + esc(p.name) + '</label>' +
+          (r.mode === 'add' || !opts.length ? '<span class="muted" style="font-size:13px">' + (c.items.some(x => x.close) ? 'It has a close match: link it instead, so its par and count history stay.' : 'It waits in Needs setup with no par and no storage area, like an LTO.') + '</span>' : '') + '</div>';
+        return '<tr><td><input type="checkbox" data-whson="' + esc(st.slug) + '" aria-label="Send to ' + esc(host.shortName(st)) + '"' + (r.on ? ' checked' : '') + ' style="width:20px;height:20px"></td>' +
+          '<td><b>' + name + '</b></td><td>Has it: "' + esc(hs.name) + '"</td><td>' + choose + '</td></tr>';
+      }).join('');
+      return '<section class="card focus" aria-labelledby="whsend-h"><div class="card-head"><h2 id="whsend-h">Send ' + esc(p.name) + ' to stores</h2>' +
+        '<button type="button" class="linkbtn" data-wh="send-close">Close</button></div>' +
+        '<p class="help" style="margin:0">Each ticked store gets one change it can undo in its Changes: the item with no par and no storage area, and its link to this product. Or link an item the store already has, so its par and count history stay. Every store or none.</p>' +
+        '<label class="field" style="max-width:320px">Concept' + selectHtml('data-whsconcept="1"', s.concept, keys.map(k => [k, host.conceptName(k)])) + '</label>' +
+        (stores.length ? '<div class="scroll"><table><thead><tr><th><span class="sr">Send</span></th><th>Store</th><th>Happy Supply</th><th>The item</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+          : emptyHtml('No stores in this concept use the app\'s editor.')) +
+        '<div class="row-between"><span class="muted" id="whsend-sum"></span><div class="actions" style="align-items:center">' +
+        '<button type="button" class="btn primary big" data-wh="send-go" id="whsend-go">Send</button></div></div>' +
+        '<div class="status" id="whsend-status" role="status"></div></section>';
+    }
+    function linkNote(st, id, hs, p) {
+      const it = st.tables.items.find(x => x.id === id);
+      if (!it) return '';
+      const parts = [];
+      if (String(it.primaryVendor || '').toLowerCase() !== hs.toLowerCase()) parts.push(HS + ' becomes its main vendor' + (it.primaryVendor ? ', ' + it.primaryVendor + ' stays as a backup' : ''));
+      if (p.pack && it.pack !== p.pack) parts.push('pack becomes ' + p.pack + (it.pack ? ' (was ' + it.pack + ')' : ''));
+      return parts.length ? upper(parts.join('. ')) + '.' : 'Nothing else changes.';
+    }
+    function updateSend() {
+      const plan = sendPlan(), go = $('whsend-go'), sum = $('whsend-sum');
+      const bad = plan.filter(x => x.error);
+      if (sum) sum.textContent = !plan.length ? 'Tick the stores to send it to.'
+        : bad.length ? bad.map(x => host.shortName(x.st) + ': ' + x.error).join(' ')
+        : plural(plan.length, 'store') + ': ' + plural(plan.filter(x => x.out.result.mode === 'link').length, 'item') + ' linked, ' +
+          plural(plan.filter(x => x.out.result.mode === 'add').length, 'item') + ' added.';
+      if (go) { go.disabled = !plan.length || bad.length > 0; go.textContent = plan.length ? 'Send to ' + plural(plan.length, 'store') : 'Send'; }
     }
 
     // ---- Stock history ----
@@ -596,6 +842,7 @@
       if (!W.data) return;
       if (view === 'wh-inventory') renderInventory();
       if (view === 'wh-incoming') renderIncoming();
+      if (view === 'wh-orders') renderOrders();
       if (view === 'wh-products') renderProducts();
       if (view === 'wh-history') renderHistory();
     }
@@ -604,6 +851,8 @@
       const n = openCount(), b = $('wh-badge-incoming'), dot = $('wh-dot-inventory');
       if (b) { b.hidden = !n; b.textContent = String(n); }
       if (dot) dot.hidden = !lowList().length;
+      const ob = $('wh-badge-orders'), on = sentCount();
+      if (ob) { ob.hidden = !on; ob.textContent = String(on); }
     }
     function rerender() { render(host.view()); badges(); }
 
@@ -678,6 +927,36 @@
         if (done) setSel('tr:' + tr.id);
         return rerender();
       }
+      // Orders
+      const ordf = t.getAttribute('data-whordf');
+      if (ordf) { W.ord.filter = ordf; W.ord.sel = null; say('who-status', '', ''); return renderOrders(); }
+      const osel = t.getAttribute('data-whosel');
+      if (osel) { selectOrder(Number(osel)); say('who-status', '', ''); return renderOrders(); }
+      if (a === 'ord-ship' || a === 'ord-cancel') {
+        const o = orders().find(x => x.id === W.ord.sel);
+        if (!o) return;
+        if (a === 'ord-cancel') {
+          if (!window.confirm('Cancel ' + o.number + ' from ' + storeShort(o) + '? Nothing has shipped; the store sees it cancelled.')) return;
+          await write('mog_wh_order_cancel', { p_id: o.id, p_version: o.version }, 'who-status', x => 'Cancelled ' + x.number + '.');
+          selectOrder(o.id);
+          return rerender();
+        }
+        const done = await write('mog_wh_ship', { p_ship: shipPayload(o, W.ord.rows) }, 'who-status',
+          x => 'Shipped ' + x.number + ' to ' + storeShort(o) + ': ' + cs(x.cases) + '. The stock dropped and the prices are fixed; it\'s in Stock history.');
+        if (done) { W.ord.filter = 'shipped'; selectOrder(o.id); } else if (W.conflict) selectOrder(o.id);
+        return rerender();
+      }
+      // Send a product to stores
+      if (a === 'send-open') { const p = prodBy(W.prod.sel); if (p) sendOpen(p); say('whp-status', '', ''); return renderProducts(); }
+      if (a === 'send-close') { W.prod.send = null; return renderProducts(); }
+      if (a === 'send-go') {
+        const plan = sendPlan(), p = prodBy(W.prod.send.productId);
+        if (!plan.length || plan.some(x => x.error)) return;
+        const ok = await host.save(plan, 'whsend-status', () => {});
+        if (ok) { W.prod.send = null; renderProducts(); say('whp-status', 'good', 'Sent ' + p.name + ' to ' + plural(plan.length, 'store') + '. Each store sees it in Manage → Changes, and can undo it there.'); }
+        else updateSend();
+        return;
+      }
       // Products and prices
       const ps = t.getAttribute('data-whpsel');
       if (ps) { W.prod.sel = Number(ps); W.prod.draft = null; say('whp-status', '', ''); return renderProducts(); }
@@ -737,6 +1016,15 @@
       if (t.getAttribute('data-whpf') === 'active') { W.prod.draft.active = t.checked; return updateProductPanel(); }
       const hh = t.getAttribute('data-whh');
       if (hh) { W.hist[hh] = t.value; return renderHistory(); }
+      const from = t.getAttribute('data-whfrom');
+      if (from) { W.ord.rows[from] = W.ord.rows[from] || {}; W.ord.rows[from].locationId = t.value; return updateShip(); }
+      if (t.getAttribute('data-whsconcept')) { sendConcept(t.value); return renderProducts(); }
+      const son = t.getAttribute('data-whson');
+      if (son) { W.prod.send.rows[son].on = t.checked; return updateSend(); }
+      const smode = t.getAttribute('data-whsmode');
+      if (smode) { W.prod.send.rows[smode].mode = t.value; return renderProducts(); }
+      const slink = t.getAttribute('data-whslink');
+      if (slink) { W.prod.send.rows[slink].link = t.value; return renderProducts(); }
     });
     document.addEventListener('input', e => {
       const t = e.target;
@@ -753,6 +1041,8 @@
       if (trl != null) { W.inc.tr.lines[Number(trl)][t.getAttribute('data-k')] = t.value; return updateTrForm(); }
       const pf = t.getAttribute('data-whpf');
       if (pf && pf !== 'active') { W.prod.draft[pf] = t.value; return updateProductPanel(); }
+      const sh = t.getAttribute('data-whship');
+      if (sh) { W.ord.rows[sh] = W.ord.rows[sh] || {}; W.ord.rows[sh].cases = t.value; return updateShip(); }
     });
 
     return { views: VIEWS, fetch: fetchData, take, render, badges, clear: () => { W.data = null; } };

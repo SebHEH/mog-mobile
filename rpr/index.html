@@ -1013,6 +1013,21 @@
     }
     .cta-copy .ti { font-size: 18px; }
 
+    /* Happy Supply (schema v16): cases available on a linked item, the
+       review's needed-by and note, a short line's warning, Mark received. */
+    .hs-avail { display: inline-block; padding: 1px 7px; border-radius: 999px; background: var(--bg-mute); color: var(--text-2); font-size: 11px; font-weight: 700; font-style: normal; }
+    .hs-avail.low { background: var(--warn-fill); color: var(--warn-text); box-shadow: inset 0 0 0 1px var(--warn-border); }
+    .hs-warn { margin: 6px 0 0; display: flex; gap: 6px; align-items: flex-start; font-size: 12px; font-weight: 600; font-style: normal; color: var(--warn-text); }
+    .hs-card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--r-md); padding: 12px 14px; margin-top: 12px; }
+    .hs-card label { display: block; font-size: 12px; font-weight: 700; color: var(--text-2); }
+    .hs-card select, .hs-card textarea { margin-top: 6px; width: 100%; box-sizing: border-box; border: 1px solid var(--border-2); border-radius: var(--r-md); font: inherit; font-size: 15px; background: var(--bg); color: var(--text); }
+    .hs-card select { height: 44px; padding: 0 10px; }
+    .hs-card textarea { padding: 8px 10px; resize: none; }
+    .hs-help { margin: 8px 2px 0; font-size: 12px; color: var(--text-2); }
+    .hs-meta { color: var(--text); font-weight: 600; }
+    .hs-rline { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+    .hs-rinfo { flex: 1; min-width: 0; }
+
     /* Live counting (Phase 1): who else is counting, and counts arriving from
        other phones. The green dot is fixed (it means "live", on every store). */
     .vendor-live {
@@ -3688,6 +3703,33 @@ function parFlagCutoff_(today) {
       orderCopied:      { en: 'Order copied. Paste it into your email.', es: 'Pedido copiado. Pégalo en tu correo.' },
       copyOrderFailed:  { en: "Couldn't copy. Try again.", es: 'No se pudo copiar. Intenta de nuevo.' },
       copied:           { en: 'Copied', es: 'Copiado' },
+      hsAvailable:      { en: 'available', es: 'disponibles' },
+      hsOnly:           { en: 'Only {n} available. Dan ships what he has.', es: 'Solo {n} disponibles. Dan envía lo que tiene.' },
+      hsNotLinked:      { en: 'Not linked to a Happy Supply product yet', es: 'Aún no está vinculado a un producto de Happy Supply' },
+      hsUnlinkedHelp:   { en: '{names}: not linked to Happy Supply yet. Ask HQ to link it, or set its order to 0.', es: '{names}: aún no vinculado a Happy Supply. Pide a HQ que lo vincule, o pon su pedido en 0.' },
+      hsNeededBy:       { en: 'Needed by', es: 'Se necesita para' },
+      hsNextDelivery:   { en: 'next delivery', es: 'próxima entrega' },
+      hsNote:           { en: 'Note for Dan (optional)', es: 'Nota para Dan (opcional)' },
+      hsSend:           { en: 'Send to Happy Supply', es: 'Enviar a Happy Supply' },
+      hsSendHelp:       { en: 'Dan sees it right away. Sending again today replaces it until he ships. It also marks Happy Supply reviewed.', es: 'Dan lo ve al instante. Si lo envías otra vez hoy, reemplaza el pedido hasta que lo envíe. También marca Happy Supply como revisado.' },
+      hsSent:           { en: 'Sent to Happy Supply', es: 'Enviado a Happy Supply' },
+      hsSendFailed:     { en: "Couldn't send. Try again.", es: 'No se pudo enviar. Intenta de nuevo.' },
+      hsOffline:        { en: 'Sending needs a connection. Try again when you are back online.', es: 'Para enviar necesitas conexión. Intenta de nuevo cuando vuelvas a estar en línea.' },
+      hsLineSent:       { en: 'Sent {num}', es: 'Enviado {num}' },
+      hsLineShipped:    { en: 'Shipped {a} of {b} cases', es: 'Enviadas {a} de {b} cajas' },
+      hsLineReceived:   { en: 'Received · {a} cases', es: 'Recibido · {a} cajas' },
+      hsLineCancelled:  { en: '{num} cancelled by Happy Supply', es: '{num} cancelado por Happy Supply' },
+      hsFrom:           { en: 'from', es: 'desde' },
+      hsShippedFrom:    { en: 'shipped from', es: 'enviado desde' },
+      hsShippedOf:      { en: 'Shipped {a} of {b} ordered', es: 'Enviadas {a} de {b} pedidas' },
+      hsShippedN:       { en: 'Shipped {a}', es: 'Enviadas {a}' },
+      hsMarkReceived:   { en: 'Mark received', es: 'Marcar recibido' },
+      hsReceived:       { en: 'Received', es: 'Recibido' },
+      hsReceivedToast:  { en: 'Marked received', es: 'Marcado como recibido' },
+      hsNotYet:         { en: 'Not yet', es: 'Todavía no' },
+      hsChangeShort:    { en: 'Change a line if fewer cases arrived.', es: 'Cambia una línea si llegaron menos cajas.' },
+      hsOneLess:        { en: 'One less', es: 'Una menos' },
+      hsOneMore:        { en: 'One more', es: 'Una más' },
       whoCounting:      { en: "Who's counting?", es: '¿Quién está contando?' },
       whoCountingHelp:  { en: 'Pick your name so others can see who is counting what.', es: 'Elige tu nombre para que los demás vean quién cuenta qué.' },
       someoneElse:      { en: 'Someone else…', es: 'Otra persona…' },
@@ -4387,6 +4429,8 @@ function parFlagCutoff_(today) {
       direct.live.presence = data.presence;
       direct.live.people = Array.isArray(data.people) ? data.people : [];
       direct.live.activity = Array.isArray(data.activity) ? data.activity : [];
+      // Happy Supply (schema v16): only a store with a linked item or an order gets it.
+      direct.live.hs = data.happySupply && typeof data.happySupply === 'object' ? data.happySupply : null;
     }
     // People (schema v9, T3): this device's name was renamed (keep the new
     // one) or removed (ask "Who's counting?" again; the app asks on its next
@@ -5445,6 +5489,14 @@ function parFlagCutoff_(today) {
       });
     });
 
+    // Happy Supply's Mark received opens its sheet, not the vendor.
+    view.querySelectorAll('[data-hs-receive]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openHsReceive_(Number(btn.getAttribute('data-hs-receive')));
+      });
+    });
+
     // A vendor's Contact pill opens its contact sheet, not the vendor.
     view.querySelectorAll('.vc-btn[data-contact-vendor]').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -5736,12 +5788,24 @@ function parFlagCutoff_(today) {
           '<i class="ti ti-phone" aria-hidden="true"></i>' + escapeHtml(t('vcButton')) + '</button>'
       : '';
 
+    // Happy Supply (schema v16): where its order stands; a shipped one is
+    // marked received from the card.
+    let hsHtml = '';
+    const hsOrder = hsIsVendor_(v.name) ? hsCardOrder_() : null;
+    if (hsOrder) {
+      hsHtml = '<div class="vendor-meta hs-meta">' + escapeHtml(hsOrderLine_(hsOrder)) + '</div>';
+      if (hsOrder.status === 'shipped') {
+        pillHtml = '<button class="pill-mark" data-hs-receive="' + hsOrder.id + '"><i class="ti ti-package" aria-hidden="true"></i>' +
+          '<span>' + escapeHtml(t('hsMarkReceived')) + '</span></button>';
+      }
+    }
+
     return (
       '<div class="vendor-card tappable' + statusClass + urgencyClass + '" data-vendor="' + escapeHtml(v.name) + '">' +
         '<div class="vendor-row">' +
           '<div>' +
             '<div class="vendor-name">' + escapeHtml(v.name) + contactHtml + '</div>' +
-            '<div class="vendor-meta">' + metaText + '</div>' +
+            '<div class="vendor-meta">' + metaText + '</div>' + hsHtml +
             vendorLiveHtml_(v.name, status) +
           '</div>' +
           pillHtml +
@@ -6590,6 +6654,128 @@ function parFlagCutoff_(today) {
     return wrap;
   }
 
+  // ---- Happy Supply (schema v16, docs/MOG_Warehouse_Spec.md §2 W2a) ----
+  // From the 10-second read: the store's Happy Supply vendor (HQ's name for
+  // it there), its linked items' cases available, and its orders (open, and
+  // this cycle's), newest first. null when the store has none. Never a price.
+  function hs_() { return direct.mode === 'direct' && direct.live && direct.live.hs ? direct.live.hs : null; }
+  function hsIsVendor_(vendor) { const h = hs_(); return !!(h && h.vendor && h.vendor === vendor); }
+  function hsLinked_(id) { const h = hs_(); return !!(h && h.items && Object.prototype.hasOwnProperty.call(h.items, id)); }
+  function hsAvailable_(id) { const h = hs_(), x = h && h.items ? h.items[id] : null; return x ? Number(x.available) : null; }
+  // The order a card shows: one waiting to be marked received first, else the newest.
+  function hsCardOrder_() {
+    const h = hs_(), list = h && Array.isArray(h.orders) ? h.orders : [];
+    return list.find(o => o.status === 'shipped') || list[0] || null;
+  }
+  function hsYmd_(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function hsDay_(ymd) {
+    return new Date(ymd + 'T12:00:00').toLocaleDateString(state.lang === 'es' ? 'es-US' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+  // The next three days Happy Supply delivers after the order day: an order
+  // placed on a day with a multiplier (Manage → Vendors' delivery days)
+  // arrives the next day. The first is the needed-by date to start with.
+  function hsDeliveryDates_(vendor, cycleDate) {
+    const m = (direct.catalog && direct.catalog.vendorMults && direct.catalog.vendorMults[vendor]) || {};
+    const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const d0 = new Date(cycleDate + 'T12:00:00'), out = [];
+    for (let k = 0; k < 21 && out.length < 3; k++) {
+      const day = new Date(d0.getTime() + k * 86400000);
+      if (Number(m[DAYS[day.getDay()]]) > 0) out.push(hsYmd_(new Date(day.getTime() + 86400000)));
+    }
+    if (!out.length) out.push(hsYmd_(new Date(d0.getTime() + 86400000)));
+    return out;
+  }
+  // What Send to Happy Supply sends: every reviewed line with an order.
+  function hsSendPayload_(vendor, toOrder, neededBy, note, by) {
+    return { vendor: vendor, neededBy: neededBy || null, note: String(note || '').trim(), by: by || null,
+             lines: toOrder.map(it => ({ itemId: it.id, cases: computeSuggested(it) })) };
+  }
+  // A card's line about the order: sent, shipped (how much, from where), received.
+  function hsOrderLine_(o) {
+    const sum = (f) => o.lines.reduce((acc, l) => acc + Number(l[f] || 0), 0);
+    if (o.status === 'sent') return t('hsLineSent').replace('{num}', o.number) + (o.neededBy ? ' · ' + t('hsNeededBy') + ' ' + hsDay_(o.neededBy) : '');
+    if (o.status === 'shipped') return t('hsLineShipped').replace('{a}', fmtQty_(sum('casesShipped'))).replace('{b}', fmtQty_(sum('cases'))) + (o.from ? ' · ' + t('hsFrom') + ' ' + o.from : '');
+    if (o.status === 'received') return t('hsLineReceived').replace('{a}', fmtQty_(sum('casesReceived')));
+    return t('hsLineCancelled').replace('{num}', o.number);
+  }
+  function hsTake_(data) { if (data && data.happySupply && typeof data.happySupply === 'object') direct.live.hs = data.happySupply; }
+  function hsErrorText_(e) {
+    if (isNetworkError_(e)) return t('hsOffline');
+    const m = String((e && e.message) || '').replace(/^REJECTED: /, '');
+    return m ? m.charAt(0).toUpperCase() + m.slice(1) + '.' : t('hsSendFailed');
+  }
+  function backToToday_() {
+    state.currentTab = 'today';
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.getAttribute('data-tab') === 'today'));
+    showView('today');
+    if (state.cache.dashboard) renderToday(state.cache.dashboard);
+    else loadToday();
+  }
+  // Send: the order goes to Dan's queue, and the vendor is marked reviewed.
+  async function onHsSendClick_(ctx, toOrder) {
+    const btn = $('hs-send-btn');
+    if (navigator.onLine === false) { showToast(t('hsOffline'), 'error'); return; }
+    if (btn) btn.disabled = true;
+    const f = ctx.hsForm || {};
+    try {
+      hsTake_(await directCall_('mog_wh_send', { p_order: hsSendPayload_(ctx.vendor, toOrder, f.neededBy, f.note, liveName_()) }));
+    } catch (e) {
+      if (btn) btn.disabled = false;
+      showToast(hsErrorText_(e), 'error');
+      return;
+    }
+    setReviewed(ctx.dateStr, ctx.vendor, true);
+    await playMarkReviewedAnimation(Promise.resolve(), ctx.vendor);
+    showToast(t('hsSent'), 'success');
+    backToToday_();
+  }
+  // Mark received: each shipped line starts at what shipped; a short one is changed.
+  function openHsReceive_(id) {
+    const h = hs_(), o = h && (h.orders || []).find(x => x.id === id);
+    if (!o) return;
+    const rows = o.lines.map(l => {
+      const shipped = Number(l.casesShipped || 0);
+      const sub = (shipped < Number(l.cases) ? t('hsShippedOf').replace('{a}', fmtQty_(shipped)).replace('{b}', fmtQty_(l.cases))
+                                             : t('hsShippedN').replace('{a}', fmtQty_(shipped))) + (l.pack ? ' · ' + l.pack : '');
+      return '<div class="hs-rline"><div class="hs-rinfo"><p class="item-name">' + escapeHtml(l.name) + '</p><p class="item-meta">' + escapeHtml(sub) + '</p></div>' +
+        (shipped > 0 ? '<div class="stepper"><button type="button" class="step-btn" data-hsstep="-1" data-ord="' + l.ord + '" aria-label="' + escapeHtml(t('hsOneLess') + ' ' + l.name) + '">&minus;</button>' +
+          '<input class="step-val" type="number" inputmode="decimal" step="any" min="0" data-hsord="' + l.ord + '" data-max="' + shipped + '" value="' + shipped + '" aria-label="' + escapeHtml(l.name + ' ' + t('hsReceived')) + '">' +
+          '<button type="button" class="step-btn" data-hsstep="1" data-ord="' + l.ord + '" aria-label="' + escapeHtml(t('hsOneMore') + ' ' + l.name) + '">+</button></div>' : '') + '</div>';
+    }).join('');
+    const wrap = openQeSheet_('<h3>' + escapeHtml(t('hsMarkReceived')) + '</h3>' +
+      '<p class="name-help">' + escapeHtml(o.number + (o.from ? ' · ' + t('hsShippedFrom') + ' ' + o.from : '')) + '</p>' + rows +
+      '<p class="hs-help">' + escapeHtml(t('hsChangeShort')) + '</p>' +
+      '<button type="button" class="cta" id="hs-recv-go">' + escapeHtml(t('hsReceived')) + '</button>' +
+      '<button type="button" class="cta-secondary" id="hs-recv-no">' + escapeHtml(t('hsNotYet')) + '</button>');
+    wrap.querySelector('.name-sheet').setAttribute('aria-label', t('hsMarkReceived'));
+    const clamp = input => {
+      const max = Number(input.getAttribute('data-max')), v = Number(input.value);
+      input.value = String(isNaN(v) ? max : Math.max(0, Math.min(max, v)));
+    };
+    wrap.querySelectorAll('[data-hsstep]').forEach(b => b.addEventListener('click', () => {
+      const input = wrap.querySelector('[data-hsord="' + b.getAttribute('data-ord') + '"]');
+      input.value = String(Number(input.value || 0) + Number(b.getAttribute('data-hsstep')));
+      clamp(input);
+    }));
+    wrap.querySelectorAll('[data-hsord]').forEach(i => i.addEventListener('change', () => clamp(i)));
+    $('hs-recv-no').addEventListener('click', closeQeSheet_);
+    $('hs-recv-go').addEventListener('click', async () => {
+      const go = $('hs-recv-go');
+      go.disabled = true;
+      const lines = Array.from(wrap.querySelectorAll('[data-hsord]')).map(i => ({ ord: Number(i.getAttribute('data-hsord')), cases: Number(i.value) }));
+      try {
+        hsTake_(await directCall_('mog_wh_received', { p_receipt: { id: o.id, by: liveName_(), lines: lines } }));
+      } catch (e) {
+        go.disabled = false;
+        showToast(hsErrorText_(e), 'error');
+        return;
+      }
+      closeQeSheet_();
+      showToast(t('hsReceivedToast'), 'success');
+      if (state.cache.dashboard) renderToday(state.cache.dashboard);
+    });
+  }
+
   // The catalog par (what "normal" means), straight from the catalog: the
   // count row's par is 0 for a blank one, which mog_set_par would refuse.
   function catalogPar_(id) {
@@ -6781,6 +6967,7 @@ function parFlagCutoff_(today) {
     // Group by storage area, preserving the API's order. Backup items (this
     // vendor isn't their primary) are fully orderable here — they just carry a
     // "Backup · <primary>" badge so the KM knows this isn't the default source.
+    const hsHere = hsIsVendor_(ctx.vendor);
     let lastArea = null;
     for (const it of items) {
       if (it.storageArea !== lastArea) {
@@ -6806,6 +6993,12 @@ function parFlagCutoff_(today) {
             escapeHtml(t('qeNormally')) + ' ' + escapeHtml(it.normalPar === null ? '—' : fmtQty_(it.normalPar))
           : escapeHtml(t('qePar')) + ' ' + escapeHtml(fmtQty_(it.par));
         meta = (meta ? meta + ' &middot; ' : '') + parTxt;
+      }
+      // Happy Supply (schema v16): what the warehouse can still send.
+      const hsAv = hsHere ? hsAvailable_(it.id) : null;
+      if (hsAv !== null) {
+        meta = (meta ? meta + ' &middot; ' : '') + '<span class="hs-avail' + (sug != null && sug > hsAv ? ' low' : '') + '">' +
+          escapeHtml(fmtQty_(hsAv) + ' ' + t('hsAvailable')) + '</span>';
       }
       html += '<div class="item" data-id="' + escapeHtml(it.id) + '">' +
         '<div class="item-info' + (qe ? ' qe-tap' : '') + '">' +
@@ -7057,7 +7250,8 @@ function parFlagCutoff_(today) {
     if (direct.mode !== 'direct') return '';
     return JSON.stringify([
       (direct.live.presence || []).map(function (p) { return [p.name, p.vendor]; }),
-      (direct.live.activity || []).map(function (a) { return [a.vendor, a.by]; })
+      (direct.live.activity || []).map(function (a) { return [a.vendor, a.by]; }),
+      direct.live.hs ? (direct.live.hs.orders || []).map(function (o) { return [o.id, o.status, o.version]; }) : null
     ]);
   }
 
@@ -7355,6 +7549,20 @@ function parFlagCutoff_(today) {
       '</div>';
     }
 
+    // Happy Supply (schema v16): the order goes to Dan's queue with a
+    // needed-by date and a note, instead of an email.
+    const hs = hsIsVendor_(ctx.vendor) && toOrder.length > 0;
+    let hsUnlinked = [];
+    if (hs) {
+      const dates = hsDeliveryDates_(ctx.vendor, ctx.dateStr);
+      ctx.hsForm = ctx.hsForm || { neededBy: dates[0], note: '' };
+      if (dates.indexOf(ctx.hsForm.neededBy) < 0) ctx.hsForm.neededBy = dates[0];
+      hsUnlinked = toOrder.filter(it => !hsLinked_(it.id)).map(it => it.name);
+      html += '<div class="hs-card"><label for="hs-needed">' + escapeHtml(t('hsNeededBy')) + '</label>' +
+        '<select id="hs-needed">' + dates.map((d, i) => '<option value="' + d + '"' + (d === ctx.hsForm.neededBy ? ' selected' : '') + '>' +
+          escapeHtml(hsDay_(d) + (i === 0 ? ' · ' + t('hsNextDelivery') : '')) + '</option>').join('') + '</select></div>';
+    }
+
     if (!toOrder.length) {
       html += '<div class="empty-state" style="padding:32px 24px">' +
         '<div class="empty-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>' +
@@ -7365,10 +7573,14 @@ function parFlagCutoff_(today) {
       for (const it of toOrder) {
         const sug = computeSuggested(it);
         const pack = it.pack || '';
+        const av = hs ? hsAvailable_(it.id) : null;
+        const hsLine = !hs ? ''
+          : !hsLinked_(it.id) ? '<p class="hs-warn"><i class="ti ti-link-off" aria-hidden="true"></i>' + escapeHtml(t('hsNotLinked')) + '</p>'
+          : av !== null && sug > av ? '<p class="hs-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i>' + escapeHtml(t('hsOnly').replace('{n}', fmtQty_(av))) + '</p>' : '';
         html += '<div class="review-row">' +
           '<div class="review-info">' +
             '<p class="item-name">' + escapeHtml(it.name) + '</p>' +
-            '<p class="item-meta">' + escapeHtml(it.onHand) + ' ' + escapeHtml(t('onHand')) + '</p>' +
+            '<p class="item-meta">' + escapeHtml(it.onHand) + ' ' + escapeHtml(t('onHand')) + '</p>' + hsLine +
           '</div>' +
           '<div class="review-qty">' +
             '<span class="qty-num">' + sug + '</span>' +
@@ -7385,11 +7597,19 @@ function parFlagCutoff_(today) {
       '</div>' +
     '</div>';
 
-    if (toOrder.length) {
-      html += '<button class="cta-copy" id="copyorder-btn"><i class="ti ti-copy" aria-hidden="true"></i>' +
-              '<span>' + escapeHtml(t('copyOrder')) + '</span></button>';
+    if (hs) {
+      html += '<div class="hs-card"><label for="hs-note">' + escapeHtml(t('hsNote')) + '</label>' +
+        '<textarea id="hs-note" rows="2" maxlength="300">' + escapeHtml(ctx.hsForm.note) + '</textarea></div>';
+      html += '<button class="cta" id="hs-send-btn"' + (hsUnlinked.length ? ' disabled' : '') + '>' +
+        '<i class="ti ti-send" aria-hidden="true"></i> ' + escapeHtml(t('hsSend')) + '</button>';
+      html += '<p class="hs-help">' + escapeHtml(hsUnlinked.length ? t('hsUnlinkedHelp').replace('{names}', hsUnlinked.join(', ')) : t('hsSendHelp')) + '</p>';
+    } else {
+      if (toOrder.length) {
+        html += '<button class="cta-copy" id="copyorder-btn"><i class="ti ti-copy" aria-hidden="true"></i>' +
+                '<span>' + escapeHtml(t('copyOrder')) + '</span></button>';
+      }
+      html += '<button class="cta" id="markreview-btn">' + escapeHtml(t('markReviewed')) + '</button>';
     }
-    html += '<button class="cta" id="markreview-btn">' + escapeHtml(t('markReviewed')) + '</button>';
     html += '<button class="cta-secondary" id="back-count-btn">' + escapeHtml(t('backToCount')) + '</button>';
 
     view.innerHTML = html;
@@ -7397,6 +7617,9 @@ function parFlagCutoff_(today) {
     if ($('copyorder-btn'))     $('copyorder-btn').addEventListener('click', () => onCopyOrderClick_(ctx, toOrder));
     if ($('markreview-btn'))    $('markreview-btn').addEventListener('click', onMarkReviewedClick);
     if ($('back-count-btn'))    $('back-count-btn').addEventListener('click', () => reopenCountFromContext_());
+    if ($('hs-send-btn'))       $('hs-send-btn').addEventListener('click', () => onHsSendClick_(ctx, toOrder));
+    if ($('hs-needed'))         $('hs-needed').addEventListener('change', e => { ctx.hsForm.neededBy = e.target.value; });
+    if ($('hs-note'))           $('hs-note').addEventListener('input', e => { ctx.hsForm.note = e.target.value; });
   }
 
   // The order as an email to the vendor: a small table (vendor and date, who
@@ -8858,7 +9081,7 @@ function parFlagCutoff_(today) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.27.0';
+    const versionStr = '0.28.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =

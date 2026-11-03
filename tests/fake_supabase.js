@@ -94,6 +94,10 @@ function checkCatalogTables(t) {
       if (typeof e.lto !== 'string') throw new Error('items lto: ' + JSON.stringify(e.lto));
       it.lto = e.lto;
     }
+    if (e.whProduct != null && e.whProduct !== '') {   // v16: the warehouse product it comes from, only when it has one
+      if (!Number.isInteger(Number(e.whProduct))) throw new Error('items wh_product: ' + JSON.stringify(e.whProduct));
+      it.whProduct = Number(e.whProduct);
+    }
     return it;
   });
   uniq(items, it => it.id, 'items_pkey');
@@ -254,7 +258,7 @@ class FakeSupabase {
       .sort((a, b) => (lower(a.name) < lower(b.name) ? -1 : lower(a.name) > lower(b.name) ? 1 : 0))
       .map(p => ({ name: p.name, lastUsed: new Date(p.lastUsed).toISOString(), inPicker: p.lastUsed > this.nowMs - 30 * 86400000 }));
   }
-  live(s, device) {
+  live(s, device, slug) {
     const presence = Array.from(s.presence.entries())
       .filter(([d, p]) => d !== (device || '') && p.seenAt > this.nowMs - 90000)
       .sort((a, b) => b[1].seenAt - a[1].seenAt)
@@ -270,7 +274,7 @@ class FakeSupabase {
     }
     const activity = Array.from(latest.values()).sort((a, b) => (a.vendor < b.vendor ? -1 : 1))
       .map(c => ({ vendor: c.vendor, by: c.countedBy, secondsAgo: Math.floor((this.nowMs - c.updatedAt) / 1000) }));
-    return { presence, people, activity };
+    return Object.assign({ presence, people, activity }, slug ? this.whLive(slug, s) : {});
   }
 
   snapshot(slug, s, have, auth) {
@@ -525,8 +529,24 @@ class FakeSupabase {
         if (!snap.ok) return snap;
         const now = this.personNow(s, p.p_name);
         if (p.p_device != null) this.touch(s, p.p_device, p.p_name, p.p_vendor);
-        return ok(Object.assign(snap.data, this.live(s, p.p_device),
+        return ok(Object.assign(snap.data, this.live(s, p.p_device, slug),
           { nameNow: now.status === 'renamed' ? now.name : null, nameGone: now.status === 'removed' }));
+      }
+      // schema_v16.sql: Happy Supply store orders (Send, Mark received).
+      case 'mog_wh_send':
+      case 'mog_wh_received': {
+        const H = this.hqState(), next = clone(this.whState());
+        const now = new Date(this.nowMs).toISOString();
+        let id;
+        try {
+          id = fn === 'mog_wh_send' ? whDoSend(next, slug, s, this.whStoreVendor(slug), p.p_order, now)
+                                    : whDoReceived(next, slug, p.p_receipt, now);
+        } catch (e) {
+          const m = String(e.message);
+          return err(m.indexOf('REJECTED: ') === 0 ? m : 'REJECTED: ' + m);
+        }
+        H.wh = next;
+        return ok(Object.assign({ order: whOrderPhoneJson(next, next.orders.find(o => o.id === id)) }, this.whLive(slug, s)));
       }
       // schema_v9.sql: People (T3).
       case 'mog_people_list':
@@ -671,7 +691,8 @@ class FakeSupabase {
 
 const PHONE_FNS = { mog_login: 1, mog_snapshot: 1, mog_save_counts: 1, mog_set_override: 1, mog_set_vendor_pick: 1,
                     mog_snapshot2: 1, mog_save_counts2: 1, mog_quick_edit: 1, mog_set_par: 1,
-                    mog_people_list: 1, mog_people_rename: 1, mog_people_remove: 1, mog_people_join: 1 };
+                    mog_people_list: 1, mog_people_rename: 1, mog_people_remove: 1, mog_people_join: 1,
+                    mog_wh_send: 1, mog_wh_received: 1 };
 
 // ---- The editor's calls (schema_v6.sql) -------------------------------------
 // Written apart from template/editor/catalogEdit.js on purpose, so the host
@@ -715,7 +736,7 @@ function recipientsCheck(stored, list, gmEdit) {
   return { ok: true, list: out };
 }
 const EDITOR_FIELDS = {
-  items: ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto'],
+  items: ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whProduct'],
   pickRows: ['area', 'shelfOrder'], vendors: ['mults', 'cutoff', 'contact'], areas: ['ord']
 };
 const editorIdent = (t, r) => (t === 'items' ? r.id : t === 'pickRows' ? r.vendor + ' / ' + r.id : r.name);
@@ -729,10 +750,20 @@ function editorSame(t, cur, want) {
 }
 // mog.editor_apply_ops: the tables after ops, or an Error (CONFLICT: ..., or
 // what the database would refuse: links, unique names, unlisted vendors, and
-// (v14) an item naming an LTO that doesn't exist, when ltoIds is given).
-function editorApplyOps(tables, ops, ltoIds) {
+// (v14) an item naming an LTO that doesn't exist, when ltoIds is given, and
+// (v16) one linked to a warehouse product that doesn't, when productIds is.
+// An item's whProduct is kept as a number, and left out when empty, as
+// mog.item_row_json reads it back.
+function editorApplyOps(tables, ops, ltoIds, productIds) {
   const out = editorApplyOps1(tables, ops);
   if (ltoIds) for (const it of out.items) if (it.lto && !ltoIds.has(it.lto)) throw new Error('items lto foreign key: ' + it.lto);
+  for (const it of out.items) {
+    if (it.whProduct == null || it.whProduct === '') { delete it.whProduct; continue; }
+    const n = Number(it.whProduct);
+    if (!Number.isInteger(n)) throw new Error('invalid input syntax for type bigint: ' + JSON.stringify(it.whProduct));
+    if (productIds && !productIds.has(n)) throw new Error('items wh_product foreign key: ' + n);
+    it.whProduct = n;
+  }
   return out;
 }
 function editorApplyOps1(tables, ops) {
@@ -1115,7 +1146,7 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
     if (!Array.isArray(ch.ops)) return err('REJECTED: ' + ch.slug + ' ops must be an array');
     if (!ch.ops.length) continue;
     if (ch.ops.length > 5000) return err('REJECTED: too many changes at once for ' + ch.slug);
-    try { next.set(ch.slug, { s, ch, tables: editorApplyOps(s.tables, ch.ops, ltoIds) }); } catch (e) {
+    try { next.set(ch.slug, { s, ch, tables: editorApplyOps(s.tables, ch.ops, ltoIds, this.whProductIds()) }); } catch (e) {
       const m = String(e.message);
       return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: ch.slug + ' ' + m.slice(10) }) : err('REJECTED: ' + ch.slug + ' ' + m);
     }
@@ -1170,7 +1201,8 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
 // transaction does; the refusals say what the SQL says. The calls take an HQ
 // token with the warehouse role (SESSION_EXPIRED / NOT_ALLOWED otherwise).
 const WH_FNS = { mog_wh_data: 1, mog_wh_history: 1, mog_wh_save: 1, mog_wh_po_save: 1, mog_wh_po_cancel: 1,
-                 mog_wh_po_receive: 1, mog_wh_transfer_send: 1, mog_wh_transfer_receive: 1, mog_wh_count: 1 };
+                 mog_wh_po_receive: 1, mog_wh_transfer_send: 1, mog_wh_transfer_receive: 1, mog_wh_count: 1,
+                 mog_wh_ship: 1, mog_wh_order_cancel: 1 };
 const whRej = m => new Error('REJECTED: ' + m);
 const whRound = (v, d) => { const f = Math.pow(10, d); const r = Math.round(Math.abs(v) * f) / f; return v < 0 ? -r : r; };
 const whIsObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -1267,8 +1299,160 @@ FakeSupabase.prototype.whState = function () {
   if (!H.wh) H.wh = { locations: [], suppliers: [], products: [], stock: {}, moves: [], pos: [], transfers: [],
                       settings: { markupPct: 0, deliveryFee: 0, version: 1, updatedAt: null, updatedBy: null },
                       seq: { loc: 0, sup: 0, prod: 0, move: 0, po: 0, tr: 0 } };
+  if (!H.wh.orders) { H.wh.orders = []; H.wh.seq.order = 0; }   // v16: store orders (HS-0001)
   return H.wh;
 };
+FakeSupabase.prototype.whProductIds = function () { return new Set(this.whState().products.map(p => p.id)); };
+
+// ---- Happy Supply store orders, W2a (schema_v16.sql) ------------------------
+// A store's Happy Supply is the vendor HQ's "Happy Supply" maps to.
+FakeSupabase.prototype.whStoreVendor = function (slug) {
+  const l = this.hqLinks().find(x => x.slug === slug && String(x.hqName).toLowerCase() === 'happy supply');
+  return l ? l.vendor : null;
+};
+// mog.wh_store_price (hq/warehouse.js storePrice is the same sum)
+const whStorePrice = (avg, fee, pct) => whRound((Number(avg || 0) + Number(fee || 0)) * (1 + Number(pct || 0) / 100), 2);
+// mog.wh_available: every location's cases minus what sent orders hold,
+// the store's own order for the cycle left out; never below 0.
+function whAvailable(W, product, slug, cycle) {
+  let n = 0;
+  for (const k of Object.keys(W.stock)) if (Number(k.split('|')[0]) === product) n += W.stock[k];
+  for (const o of W.orders) if (o.status === 'sent' && !(o.slug === slug && o.cycleDate === cycle)) {
+    for (const l of o.lines) if (l.productId === product) n -= l.cases;
+  }
+  return Math.max(0, whRound(n, 2));
+}
+// mog.wh_order_phone_json: no price, no fee, no cost.
+function whOrderPhoneJson(W, o) {
+  const from = Array.from(new Set(o.lines.filter(l => l.locationId != null).map(l => whLocation(W, l.locationId).name))).sort();
+  return { id: o.id, number: o.number, status: o.status, cycleDate: o.cycleDate, neededBy: o.neededBy, note: o.note,
+    sentAt: o.sentAt, sentBy: o.sentBy, shippedAt: o.shippedAt, receivedAt: o.receivedAt, receivedBy: o.receivedBy,
+    version: o.version, from: from.length ? from.join(', ') : null,
+    lines: o.lines.map(l => ({ ord: l.ord, itemId: l.itemId, name: l.name, pack: whProduct(W, l.productId).pack,
+                               cases: l.cases, casesShipped: l.casesShipped, casesReceived: l.casesReceived })) };
+}
+// mog.wh_order_json: Dan's view, with the store and the prices.
+function whOrderJson(W, o, st) {
+  return { id: o.id, number: o.number, slug: o.slug, store: st ? st.location : null, concept: st ? st.concept : '',
+    isTest: st ? st.isTest : false, vendor: o.vendor, cycleDate: o.cycleDate, neededBy: o.neededBy, note: o.note,
+    status: o.status, sentAt: o.sentAt, sentBy: o.sentBy, shippedAt: o.shippedAt, shippedBy: o.shippedBy,
+    deliveryFee: o.deliveryFee, receivedAt: o.receivedAt, receivedBy: o.receivedBy, cancelledAt: o.cancelledAt,
+    cancelledBy: o.cancelledBy, version: o.version,
+    lines: o.lines.map(l => { const p = whProduct(W, l.productId), L = l.locationId == null ? null : whLocation(W, l.locationId);
+      return { ord: l.ord, itemId: l.itemId, name: l.name, productId: l.productId, product: p.name, pack: p.pack, cases: l.cases,
+               casesShipped: l.casesShipped, locationId: l.locationId, location: L ? L.name : null, price: l.price,
+               avgCost: l.avgCost, casesReceived: l.casesReceived }; }) };
+}
+// mog.wh_live_json: {} for a store with no linked item and no order.
+FakeSupabase.prototype.whLive = function (slug, s) {
+  const W = this.whState();
+  const cycle = s.state ? s.state.cycleDate : null;
+  const linked = (s.tables ? s.tables.items : []).filter(it => {
+    const p = it.whProduct == null ? null : whProduct(W, it.whProduct);
+    return it.active === true && p && p.active && (!p.stores.length || p.stores.indexOf(slug) >= 0);
+  });
+  const orders = W.orders.filter(o => o.slug === slug && (o.status === 'sent' || o.status === 'shipped' || o.cycleDate === cycle))
+    .sort((a, b) => (a.sentAt < b.sentAt ? 1 : a.sentAt > b.sentAt ? -1 : b.id - a.id)).slice(0, 10);
+  if (!linked.length && !orders.length) return {};
+  const items = {};
+  for (const it of linked) items[it.id] = { productId: it.whProduct, available: whAvailable(W, it.whProduct, slug, cycle) };
+  return { happySupply: { vendor: this.whStoreVendor(slug), items, orders: orders.map(o => whOrderPhoneJson(W, o)) } };
+};
+// public.mog_wh_send: the order's id.
+function whDoSend(W, slug, s, vend, o, now) {
+  if (!whIsObj(o)) throw whRej('an order is an object');
+  if (vend == null || vend !== o.vendor) throw whRej((o.vendor == null ? 'That vendor' : o.vendor) + ' isn\'t this store\'s Happy Supply');
+  const cycle = s.state ? s.state.cycleDate : null;
+  if (!cycle) throw whRej('this store has no order day open');
+  const nb = o.neededBy == null ? '' : String(o.neededBy);
+  if (!/^(\d{4}-\d{2}-\d{2})?$/.test(nb)) throw whRej('needed by is a date');
+  const need = nb || null;
+  if (need && need < cycle) throw whRej('needed by is before the order day');
+  const note = whText(o.note, 'The note', 300);
+  const by = whText(o.by, 'The name', 200).slice(0, 40) || null;
+  const lines = whLines(o.lines, 'The order', 200);
+  let rec = W.orders.find(x => x.slug === slug && x.cycleDate === cycle && x.status === 'sent');
+  if (!rec) {
+    rec = { id: ++W.seq.order, number: whNextNumber(W.orders, 'HS'), slug, vendor: vend, cycleDate: cycle, neededBy: need, note,
+            status: 'sent', sentAt: now, sentBy: by, shippedAt: null, shippedBy: null, deliveryFee: null, receivedAt: null,
+            receivedBy: null, cancelledAt: null, cancelledBy: null, version: 1, lines: [] };
+    W.orders.push(rec);
+  } else {
+    Object.assign(rec, { vendor: vend, neededBy: need, note, sentBy: by, sentAt: now, version: rec.version + 1, lines: [] });
+  }
+  for (const ln of lines) {
+    const it = s.tables.items.find(i => i.id === ln.itemId);
+    if (!it) throw whRej('an item in this order isn\'t at the store any more');
+    if (it.whProduct == null) throw whRej(it.name + ' isn\'t linked to a Happy Supply product');
+    if (it.active !== true || !(it.primaryVendor === vend || (it.eligible || []).indexOf(vend) >= 0)) throw whRej(it.name + ' isn\'t on Happy Supply\'s list here');
+    const pr = whProduct(W, it.whProduct);
+    if (!pr.active || !(pr.stores.length === 0 || pr.stores.indexOf(slug) >= 0)) throw whRej('Happy Supply doesn\'t sell ' + it.name + ' to this store');
+    if (rec.lines.some(l => l.itemId === it.id)) throw whRej(it.name + ' is in the order twice');
+    rec.lines.push({ ord: rec.lines.length + 1, itemId: it.id, name: it.name, productId: it.whProduct, cases: whCases(ln.cases, it.name, false),
+                     casesShipped: null, locationId: null, price: null, avgCost: null, casesReceived: null });
+  }
+  return rec.id;
+}
+// public.mog_wh_received: the order's id. Received already: as it stands.
+function whDoReceived(W, slug, r, now) {
+  if (!whIsObj(r)) throw whRej('a receipt is an object');
+  const id = whId(r.id, 'The order');
+  const o = W.orders.find(x => x.id === id && x.slug === slug);
+  if (!o) throw whRej('that order isn\'t this store\'s');
+  if (o.status === 'received') return o.id;
+  if (o.status !== 'shipped') throw whRej(o.number + ' is ' + o.status + ', not shipped');
+  const lines = r.lines == null ? [] : r.lines;
+  if (!Array.isArray(lines)) throw whRej('the lines are a list');
+  if (lines.some(e => !o.lines.some(l => String(l.ord) === String(e && e.ord)))) throw whRej('a line here isn\'t in ' + o.number);
+  for (const x of o.lines) {
+    const ln = lines.find(e => String(e.ord) === String(x.ord));
+    const shipped = x.casesShipped || 0;
+    const c = ln ? whCases(ln.cases, x.name, true) : shipped;
+    if (c > shipped) throw whRej(x.name + ' shipped ' + whCs(shipped) + '; it can\'t arrive more');
+    x.casesReceived = c;
+  }
+  Object.assign(o, { status: 'received', receivedAt: now, receivedBy: whText(r.by, 'The name', 200).slice(0, 40) || null, version: o.version + 1 });
+  return o.id;
+}
+// mog.wh_do_ship
+function whDoShip(W, by, sh, now) {
+  if (!whIsObj(sh)) throw whRej('a shipment is an object');
+  const o = W.orders.find(x => x.id === whId(sh.id, 'The order'));
+  if (!o) throw whRej('that order isn\'t there any more');
+  if (sh.version == null || String(o.version) !== String(sh.version)) throw new Error('CONFLICT: ' + o.number + ' changed since you opened it');
+  if (o.status !== 'sent') throw new Error('CONFLICT: ' + o.number + ' is ' + o.status + ' already');
+  const lines = whLines(sh.lines, 'The shipment', 200);
+  whLockProducts(W, o.lines.map(l => l.productId));
+  let total = 0;
+  for (const x of o.lines) {
+    const ln = lines.find(e => String(e.ord) === String(x.ord));
+    if (!ln) throw whRej('say how many cases of ' + x.name + ' ship (0 for none)');
+    const c = whCases(ln.cases, x.name, true);
+    if (c > x.cases) throw whRej(x.name + ' ordered ' + whCs(x.cases) + '; ship at most that');
+    let loc = null;
+    if (c > 0) {
+      loc = whId(ln.locationId, 'Where ' + x.name + ' ships from');
+      const L = whLocation(W, loc);
+      if (!L || !L.active) throw whRej('that location isn\'t open');
+      whMove(W, by, x.productId, loc, -c, 'shipped', o.number, null, null, now);
+      total += c;
+    }
+    const p = whProduct(W, x.productId);
+    Object.assign(x, { casesShipped: c, locationId: loc, avgCost: p.avgCost, price: whStorePrice(p.avgCost, p.handlingFee, W.settings.markupPct) });
+  }
+  if (total === 0) throw whRej('nothing ships; cancel the order instead');
+  Object.assign(o, { status: 'shipped', shippedAt: now, shippedBy: by, deliveryFee: W.settings.deliveryFee, version: o.version + 1 });
+  return { orderId: o.id, number: o.number, cases: whRound(total, 2) };
+}
+// mog.wh_do_order_cancel
+function whDoOrderCancel(W, by, id, version, now) {
+  const o = W.orders.find(x => x.id === id);
+  if (!o) throw whRej('that order isn\'t there any more');
+  if (o.version !== version) throw new Error('CONFLICT: ' + o.number + ' changed since you opened it');
+  if (o.status !== 'sent') throw new Error('CONFLICT: ' + o.number + ' is ' + o.status + ' already');
+  Object.assign(o, { status: 'cancelled', cancelledAt: now, cancelledBy: by, version: o.version + 1 });
+  return { orderId: o.id, number: o.number };
+}
 // mog.wh_state
 FakeSupabase.prototype.whData = function (name) {
   const W = this.whState(), H = this.hqState();
@@ -1286,6 +1470,12 @@ FakeSupabase.prototype.whData = function (name) {
     }),
     pos: lastClosed(W.pos, 'ordered').map(p => whPoJson(W, p)),
     transfers: lastClosed(W.transfers, 'in_transit').map(t => whTransferJson(W, t)),
+    orders: W.orders.filter(o => o.status === 'sent' || o.status === 'shipped')
+      .concat(W.orders.filter(o => o.status === 'received' || o.status === 'cancelled').sort((a, b) => b.id - a.id).slice(0, 30))
+      .sort((a, b) => b.id - a.id).map(o => {
+        const s = this.stores.get(o.slug);
+        return whOrderJson(W, o, s ? { location: s.profile.location || null, concept: s.profile.concept || '', isTest: !!s.isTest } : null);
+      }),
     stores: Array.from(this.stores.entries()).map(([slug, s]) => ({ slug, location: s.profile.location || null, concept: s.profile.concept || '',
       side: s.side != null ? s.side : sideFromLocation(s.profile.location), isTest: !!s.isTest }))
       .sort((a, b) => (a.concept < b.concept ? -1 : a.concept > b.concept ? 1 : 0) || (a.isTest - b.isTest) ||
@@ -1513,6 +1703,8 @@ FakeSupabase.prototype.handleWh = function (fn, p) {
     if (fn === 'mog_wh_transfer_send') done = whDoTransferSend(next, name, p.p_transfer, now);
     if (fn === 'mog_wh_transfer_receive') done = whDoTransferReceive(next, name, p.p_id, now);
     if (fn === 'mog_wh_count') done = whDoCount(next, name, p.p_count, now);
+    if (fn === 'mog_wh_ship') done = whDoShip(next, name, p.p_ship, now);
+    if (fn === 'mog_wh_order_cancel') done = whDoOrderCancel(next, name, p.p_id, p.p_version, now);
   } catch (e) {
     const m = String(e.message);
     if (m.indexOf('CONFLICT: ') === 0) return { ok: false, error: 'CONFLICT', detail: m.slice(10) };
@@ -1608,7 +1800,7 @@ FakeSupabase.prototype.handleEditor = function (fn, p) {
   }
 
   const tryApply = ops => {
-    try { s.tables = editorApplyOps(s.tables, ops, new Set(this.hqState().ltos.keys())); this.followVendorRenames(slug, s, ops); return null; } catch (e) {
+    try { s.tables = editorApplyOps(s.tables, ops, new Set(this.hqState().ltos.keys()), this.whProductIds()); this.followVendorRenames(slug, s, ops); return null; } catch (e) {
       const m = String(e.message);
       return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: m.slice(10) }) : err('REJECTED: ' + m);
     }

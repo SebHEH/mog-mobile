@@ -1036,6 +1036,73 @@
              skipped: skipped.concat(imported.skipped) };
   }
 
+  // ---- A Happy Supply product at one store (hq/, schema v16) ---------------
+  // p = { vendor: { name, mults, cutoff } | null   the store's Happy Supply, added the way the Vendors page adds one, when it has none
+  //       vendorName                               the store's name for Happy Supply
+  //       product: { id, name, pack }              the warehouse product
+  //       link: item id | ''                       an item the store has: linked, Happy Supply its main vendor (the old main
+  //                                                stays a backup), the product's pack
+  //       item: { name, notes } }                  else a new item: no par, no storage area, so it waits in Needs setup
+  // One store has one item per product. The link is the item's whProduct.
+  function hqProduct(w, p) {
+    p = p || {};
+    const prod = p.product || {};
+    const pid = Number(prod.id);
+    if (!Number.isInteger(pid) || pid <= 0) throw new Error('Which product?');
+    const pack = s_(prod.pack);
+    const vendorsAdded = [];
+    if (p.vendor) vendorsAdded.push(saveVendor(w, Object.assign({}, p.vendor, { mode: 'add' })).name);
+    const hs = normalizeVendorOrThrow(w, p.vendorName);
+    const link = s_(p.link);
+    const other = w.items.find(it => it.whProduct != null && Number(it.whProduct) === pid && s_(it.id) !== link);
+    if (other) throw new Error('"' + s_(other.name) + '" is linked to ' + s_(prod.name) + ' here already.');
+    if (link) {
+      const it = w.items.find(x => s_(x.id) === link);
+      if (!it) throw new Error('That item isn\'t at the store any more.');
+      if (it.active !== true) throw new Error('"' + s_(it.name) + '" is inactive here.');
+      const oldMain = s_(it.primaryVendor), oldPack = s_(it.pack);
+      if (!oldMain) {
+        it.primaryVendor = hs;
+        it.eligible = [hs].concat((it.eligible || []).filter(v => s_(v).toLowerCase() !== hs.toLowerCase()));
+      } else if (oldMain.toLowerCase() !== hs.toLowerCase()) {
+        if (!(it.eligible || []).some(v => s_(v).toLowerCase() === hs.toLowerCase())) setItemsVendor(w, [s_(it.id)], hs, true);
+        switchActiveVendor(w, s_(it.id), hs);
+      }
+      if (pack) it.pack = pack;
+      it.whProduct = pid;
+      return { ok: true, mode: 'link', id: s_(it.id), name: s_(it.name), product: s_(prod.name), vendor: hs, vendorsAdded: vendorsAdded,
+               oldMain: oldMain && oldMain.toLowerCase() !== hs.toLowerCase() ? oldMain : '',
+               packFrom: oldPack !== s_(it.pack) ? oldPack : null, pack: s_(it.pack) };
+    }
+    const name = s_(p.item && p.item.name) || s_(prod.name);
+    const same = w.items.find(x => s_(x.name).toLowerCase() === name.toLowerCase());
+    if (same) throw new Error('The store has "' + s_(same.name) + '" already: link it instead.');
+    const had = new Set(w.items);
+    importItems(w, { items: [{ name: name, primaryVendor: hs, pack: pack, notes: s_(p.item && p.item.notes) }] });
+    const it = w.items.find(x => !had.has(x));
+    it.whProduct = pid;
+    return { ok: true, mode: 'add', id: s_(it.id), name: name, product: s_(prod.name), vendor: hs, vendorsAdded: vendorsAdded };
+  }
+
+  // The store's active items closest to a product's name, best first, for
+  // HQ's "Link an item it has" (pick-only). best: one close enough to link
+  // by default (the same name ignoring case and punctuation, one inside the
+  // other, or two letters apart).
+  function productCandidates(t, productName) {
+    const norm = s => s_(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const want = norm(productName);
+    const words = want.split(' ').filter(x => x.length > 2);
+    const scored = t.items.filter(it => it.active === true && s_(it.name)).map(it => {
+      const n = norm(it.name);
+      const close = !!want && (n === want || n.indexOf(want) >= 0 || want.indexOf(n) >= 0 || editDistance(n, want) <= 2);
+      const shared = words.filter(x => n.split(' ').indexOf(x) >= 0).length;
+      return { id: s_(it.id), name: s_(it.name), vendor: s_(it.primaryVendor), linked: it.whProduct != null, close: close, shared: shared };
+    }).filter(x => x.close || x.shared > 0)
+      .sort((a, b) => (b.close - a.close) || (b.shared - a.shared) || a.name.localeCompare(b.name));
+    const best = scored.find(x => x.close && !x.linked) || null;
+    return { best: best ? best.id : '', items: scored };
+  }
+
   // ---- An LTO at one store (hq/, schema v14) --------------------------------
   // p = { action: 'end' | 'rollback' | 'standard', lto: id,
   //       vendorsAdded, backupsAdded }   what sending it added here (mog.lto_stores)
@@ -1493,7 +1560,7 @@
   const USER_FIELDS = {
     vendors:  ['mults', 'cutoff', 'contact'],
     areas:    ['ord'],
-    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto'],
+    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whProduct'],
     pickRows: ['area', 'shelfOrder']
   };
   function matches(t, row, want) {
@@ -1607,6 +1674,17 @@
       if (result.vendorsRemoved.length) parts.push('removed vendor' + (result.vendorsRemoved.length === 1 ? ' ' : 's ') + result.vendorsRemoved.join(', '));
       return 'HQ rolled back ' + lto + (parts.length ? ': ' + parts.join('; ') : '');
     }
+    if (fn === 'commitHqProduct') {
+      const parts = [];
+      if (result.vendorsAdded.length) parts.push('added vendor ' + result.vendorsAdded.join(', '));
+      if (result.mode === 'add') parts.push('added "' + result.name + '" (' + result.id + ') from Happy Supply\'s ' + result.product);
+      else {
+        parts.push('linked "' + result.name + '" to Happy Supply\'s ' + result.product);
+        if (result.oldMain) parts.push(result.vendor + ' its main vendor, ' + result.oldMain + ' a backup');
+        if (result.packFrom !== null) parts.push('pack ' + fmt(result.packFrom) + ' → ' + result.pack);
+      }
+      return 'HQ: ' + parts.join('; ');
+    }
     if (fn === 'commitHqRollout') {
       const parts = [];
       const few = names => (names.length <= 6 ? ' (' + names.join(', ') + ')' : '');
@@ -1679,6 +1757,7 @@
     commitSaveVendor: (w, args, shifts, renames) => saveVendor(w, args[0], renames),
     commitHqRollout: (w, args) => hqRollout(w, args[0]),
     commitHqLto: (w, args) => hqLto(w, args[0]),
+    commitHqProduct: (w, args) => hqProduct(w, args[0]),
     commitStorageAreasDraft: (w, args, shifts, renames) => storageAreasDraft(w, args[0], renames),
     commitReorderPickPath: (w, args) => reorderPickPath(w, args[0], args[1]),
     commitPlaceBackupVendors: w => placeBackupVendors(w)
@@ -1700,7 +1779,7 @@
                 writes: Object.keys(WRITES), vendorList: vendorList, parseCsv: parseCsv,
                 multsFromDays: multsFromDays, daysFromMults: daysFromMults, matchVendor: matchVendor,
                 cleanLibrary: cleanLibrary, librarySeed: librarySeed, libraryAdd: libraryAdd, libraryLabel: libraryLabel,
-                ltoStoreState: ltoStoreState, ltoWaiting: ltoWaiting };
+                ltoStoreState: ltoStoreState, ltoWaiting: ltoWaiting, productCandidates: productCandidates };
   root.CatalogEdit = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : this);

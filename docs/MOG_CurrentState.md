@@ -14,7 +14,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
 - **Each Sheet** is frozen for catalog edits. It still holds the Apps Script: the 3:30 AM close, the recap email, the onboarding moves. It also gets a nightly LOG_ORDERS backup.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v14 (LTOs, live 2026-11-02: smoke_v14 26/26, probe 94/94; HQ side shipped in `6fee3a1`). Schema v15 (vendor rename) live 2026-11-02: smoke_v15 18/18, probe 96/96; the Vendors page's rename shipped with it, together with the Items page's new-LTO banner and HQ's library tick boxes (30 gates).
+- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v14 (LTOs, live 2026-11-02: smoke_v14 26/26, probe 94/94; HQ side shipped in `6fee3a1`). Schema v15 (vendor rename) live 2026-11-02: smoke_v15 18/18, probe 96/96; the Vendors page's rename shipped with it, together with the Items page's new-LTO banner and HQ's library tick boxes (30 gates). **Not live yet:** schema v16 (Happy Supply W2a, store orders) with app v0.28.0 / store cache v69, built 2026-11-02 and checked in PGlite (smoke_v16 50/50, 6 planted defects caught) and the preview; 31 gates. It waits for v16 in the SQL Editor, then a push.
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
 - **The three stores that moved empty:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
@@ -28,7 +28,11 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **Items page:** each running LTO's items that lack a par or a storage area are pinned at the top under a banner, with an "LTO · name" chip and a panel note (`catalogEdit.js` `ltoWaiting`). LTO spec session 2 is done.
 - **HQ Libraries:** tick boxes and Tick all; Remove from the library, or Send N items to stores (standard items, no LTO).
 - **Vendors page:** a store can rename a vendor (schema v15): items, count lists, today's counts and edits, and HQ's remembered names follow; a taken name is refused; Undo renames back.
-- **Live checks:** smoke_v15 18/18, `check_api.sh` 96/96, commit `abce087`, CI green, Pages live on all 10 stores and HQ. 30 gates. Seen only in the preview, by script.
+- **Live checks:** smoke_v15 18/18, `check_api.sh` 96/96, commit `abce087`, CI green, Pages live on all 10 stores and HQ. 30 gates.
+- **Used live the same evening** (Sebastian: "all looked right"; checked read-only):
+  - the Teas'n You BOH test library cleared with Tick all → Remove (5:36 PM);
+  - B&T renamed to "B&T Distributors LLC" at Rosslyn, Founders and Tysons BOH (Rockville BOH already had it);
+  - the first real LTO, **Fall Chicken Pho**, sent to Rosslyn, Founders and Tysons BOH (5:41 PM). It's meant to run; its chicken breast has no par yet at any of the three.
 - **Not built:** live stock for Happy Supply and Elpis, now open W2 questions in `docs/MOG_Warehouse_Spec.md`.
 
 **2026-11-02 (later, 3): LTOs, the HQ side, are live** (`docs/MOG_SessionHandoff_2026_11_02.md`, "Later session 3"; spec `docs/MOG_LTO_Spec.md`).
@@ -93,13 +97,13 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
 
 ### Next-session candidates
 
-1. **Use what shipped in later session 4** (Sebastian's steps, live):
-   - a first live LTO on the TEST store (HQ → New LTO → Rosslyn FOH (TEST)), check its Items banner, then Roll back;
-   - pick one spelling per vendor (B&T, Elpis), then rename at each store in Manage → Vendors;
-   - undo "Horse Pho" in Rosslyn FOH (TEST)'s Manage → Changes (change 237).
+1. **Finish lining up after later session 4** (Sebastian's steps, live; checked 11-02 evening):
+   - rename Elpis to "Elpis Wholesale" in Manage → Vendors at Rosslyn FOH, Founders FOH, RP Tysons FOH and TnY Tysons FOH (Rockville BOH and FOH have it already);
+   - undo "Horse Pho" in Rosslyn FOH (TEST)'s Manage → Changes (change 237); that also takes away the TEST store's "B&T".
+   - Done: B&T lined up, the Teas'n You BOH test library cleared, a real LTO sent (Fall Chicken Pho).
 
    Later, its own spec: line up each concept's stores with its library, and items a store can't remove.
-2. **Use the concept library** (schema v12, HQ's Libraries page; `docs/MOG_Warehouse_Spec.md` §1). Checked live 11-02 (later, 4): Teas'n You BOH holds 133 items, a test to clear with Tick all → Remove; Roll Play BOH is empty; the FOH libraries aren't started. Sebastian's steps:
+2. **Use the concept library** (schema v12, HQ's Libraries page; `docs/MOG_Warehouse_Spec.md` §1). Checked live 11-02 evening: Roll Play BOH and Teas'n You BOH are empty (the test cleared); the FOH libraries aren't started. Sebastian's steps:
    - start and clean all four (Rosslyn BOH and FOH, Tysons BOH, Rockville FOH);
    - set up a store from one, or send ticked items with "Send N items to stores".
 3. **Start the warehouse** (W1 live; `docs/MOG_Warehouse_Spec.md` §2):
@@ -107,13 +111,19 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - invites Chef Dan with the warehouse role only (SQL Editor: `select mog.hq_invite('Dan', '{warehouse}');`);
    - Dan adds the locations, suppliers and products, then a first count per location.
 
-   Then W2 (store orders), spec-first: live stock for the people ordering Happy Supply and Elpis, and who records what Elpis ships (open W2 questions, 11-02); Dan confirms no store orders crab or shrimp by the pound; Sebastian decides whether a store order needs an Approve step (the mockup has one, the spec doesn't). Happy Supply goes to the Roll Play stores with W2's first products.
+   Then W2 (store orders). **Its spec is approved** (2026-11-02, `docs/MOG_Warehouse_Spec.md` §2 "W2 spec"):
+   - no Approve step (sent, shipped, received);
+   - cases available on the phone; an order larger than that is sent with a warning;
+   - KMs keep ordering HEH's stock at Elpis from Elpis: Elpis is a location, and the store's receipt lowers it (Sebastian keeps it for now);
+   - built in two parts, W2a Happy Supply first, then W2b Elpis.
+
+   W2a's design is approved too (same section, "W2a design": schema v16, the link on the item's row, the Happy Supply vendor from HQ's remembered names, needed-by from its delivery days). Its mockups are approved and W2a is built, not live: run [supabase/schema_v16.sql](../supabase/schema_v16.sql) and [supabase/tests/smoke_v16.sql](../supabase/tests/smoke_v16.sql) in the SQL Editor, then `check_api.sh`, then push. Then W2b (HQ's stock at Elpis). Before use: Dan's answer on pound ordering, and Dan invited. Happy Supply goes to the Roll Play stores with W2's first products.
 4. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
    - Sebastian's steps: GitHub collaborator on both repos, branch protection on `main`, the Supabase Developer invite, Editor on the 11 Sheets, PINs.
    - Then Donny consents in each store and runs `python deploy.py --redeploy --target rprfo`.
    - Record the result in `docs/MOG_ProjectNotes.md` and CLAUDE.md rule 5.
 5. **Confirm the 2026-10-20 fixes held:** each store's recap goes out once, and nothing new shows up in the nightly run's log (not checked since 10-20).
-6. **Check the Items and Vendors pages, and the phone's Contact sheet, live** (all were checked by script only). Small follow-up: the Overview's "Give each item a storage area and a par" step could open Items on Needs setup.
+6. **Check the phone's Contact sheet live** (checked by script only). The Items page's LTO banner, the Vendors rename and HQ's library tick boxes were used live on 11-02 and looked right. Small follow-up: the Overview's "Give each item a storage area and a par" step could open Items on Needs setup.
 7. **Logic findings held back on 2026-10-20** (edge cases; decide before fixing):
    - A same-day manual close from the Sheet, followed by that night's close of the same day, replaces the day's order log with an empty one.
    - Turning Emergency Override off before 3:30 AM drops the vendors ordered under it from that night's log and email.

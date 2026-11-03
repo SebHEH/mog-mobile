@@ -152,6 +152,17 @@ check "v14 hq_apply, the v12 call: bad token refused" 200 'SESSION_EXPIRED' -X P
 check "v15 editor_apply with a vendor rename: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_label":"x","p_by":"x","p_ops":[{"rename":"vendors","from":"a","to":"b"}]}' "$(rpc mog_editor_apply)"
 check "v15 helper: editor_apply_ops still not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_ops":[]}' "$(rpc editor_apply_ops)"
 
+# schema v16 (Happy Supply store orders; a bogus token only)
+check "v16 tables: wh_orders not reachable"         404 ''   "$URL/rest/v1/wh_orders"
+check "v16 tables: wh_order_lines not reachable"    404 ''   "$URL/rest/v1/wh_order_lines"
+check "v16 helper: wh_do_ship not exposed"          404 ''   -X POST "${J[@]}" -d '{"p_by":"x","p_s":{}}' "$(rpc wh_do_ship)"
+check "v16 helper: wh_live_json not exposed"        404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore"}' "$(rpc wh_live_json)"
+check "v16 helper: wh_available not exposed"        404 ''   -X POST "${J[@]}" -d '{"p_product":1,"p_slug":"nosuchstore","p_cycle":null}' "$(rpc wh_available)"
+check "v16 wh_send: bad token refused"              200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_order":{}}' "$(rpc mog_wh_send)"
+check "v16 wh_received: bad token refused"          200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_receipt":{}}' "$(rpc mog_wh_received)"
+check "v16 wh_ship: bad token refused"              200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_ship":{}}' "$(rpc mog_wh_ship)"
+check "v16 wh_order_cancel: bad token refused"      200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_id":1,"p_version":1}' "$(rpc mog_wh_order_cancel)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

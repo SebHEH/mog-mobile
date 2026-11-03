@@ -1,7 +1,7 @@
 # MOG — Warehouse (Happy Supply), concept library and new stores: spec
 
 **Agreed:** 2026-11-01, Sebastian (spec-first, decisions below).
-**Status:** approved. §1 (concept library) built as schema v12 on 2026-11-01; §2's W1 built as schema v13 and live on 2026-11-02; the rest isn't built. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
+**Status:** approved. §1 (concept library) built as schema v12 on 2026-11-01; §2's W1 built as schema v13 and live on 2026-11-02; §2's W2 spec approved 2026-11-02 (W2a, then W2b), and W2a built the same day as schema v16 (not live yet); the rest isn't built. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
 **Reference, not ported:** Chef Daniel's Happy Supply artifact (a claude.ai page) and "Happy Supply: System Overview for IT" (2026-10-26). They show what people already want; MOG rebuilds it from scratch on Supabase. Daniel's data isn't moved (it isn't really in use); the warehouse starts with a first count.
 
 ---
@@ -107,7 +107,7 @@ A store orders from Happy Supply in its order guide like any vendor, and the ord
 | Phase | What gets done |
 |---|---|
 | W1 | Warehouse data and Dan's page: products, locations, stock, vendor orders in (updating the average cost), transfers, counts and adjustments, history. The warehouse role on HQ's people. |
-| W2 | Store orders: Happy Supply's items at each store linked to warehouse products (publishing a product to stores uses the HQ rollout); Send to Happy Supply on review; Dan ships from a chosen location (stock drops, price locks); the store marks it received. |
+| W2 | Store orders: Happy Supply's items at each store linked to warehouse products (publishing a product to stores uses the HQ rollout); Send to Happy Supply on review; Dan ships from a chosen location (stock drops, price locks); the store marks it received; cases available on the phone. In two parts (spec approved 2026-11-02, below): W2a Happy Supply, W2b HEH's stock held at Elpis. |
 | W3 | Chargebacks per store and month (CSV, PDF statement). Chasin' Tails and NUE order through their own order guides once they're on MOG (step 4). |
 
 ### Design: W1, with W2's data (walkthrough 2026-11-02)
@@ -160,8 +160,8 @@ A store orders from Happy Supply in its order guide like any vendor, and the ord
 
 | Table | One row is | What it holds |
 |---|---|---|
-| `mog.wh_store_vendor` | which of a store's vendors is Happy Supply | follows a rename, goes with the vendor; set by the HQ publish |
-| `mog.wh_item_links` | a store item that comes from a warehouse product | store and item to product; goes with the item; set by the HQ publish |
+| ~~`mog.wh_store_vendor`~~ | which of a store's vendors is Happy Supply | *Replaced at the W2a walkthrough (below): HQ's remembered name, `mog.hq_vendor_links`.* |
+| ~~`mog.wh_item_links`~~ | a store item that comes from a warehouse product | *Replaced at the W2a walkthrough (below): `mog.items.wh_product`, on the item's row.* |
 | `mog.wh_orders`, `mog.wh_order_lines` | a store's Happy Supply order (HS-0001) and its lines | store, cycle date, needed-by date, note, sent by; sent, shipped, received or cancelled; per line the item, product, cases ordered and shipped, ship-from location, price per case locked at ship, average cost at ship |
 
 - **Send to Happy Supply** (the phone, with its PIN session): `mog_wh_send` takes the reviewed vendor's lines (item, cases). The server finds each line's product and refuses an unlinked item by name. Sending again for the same store, vendor and cycle replaces the order while it's still `sent`.
@@ -180,12 +180,64 @@ A store orders from Happy Supply in its order guide like any vendor, and the ord
 - undo: a wrong count is fixed by another count; a wrong receipt's cost needs a maintainer (the moves keep each receipt's cost, so the average can be replayed if a "Correct a receipt" is wanted later);
 - lots and expiry, emails to vendors or Berliner.
 
-**Open for W2 (not needed for W1):**
-- The HQ mockup's Orders board has an Approve step (New, Approved, Shipped); this spec has sent, shipped, received. It's a status value either way, no table change.
-- A linked store item orders in the product's case (the HQ publish sets its pack). Check with Dan that no store orders king crab or shrimp by the pound.
-- **Live stock for the people ordering** (Sebastian, 2026-11-02, to design with W2, spec-first): a KM ordering from Happy Supply sees what the warehouse has. Not decided: what a KM sees (cases on hand, or in stock / low / out), and whether an order larger than the stock is refused, trimmed or sent anyway.
-- **Elpis** (Sebastian, 2026-11-02, same pass): Elpis Wholesale stores HEH's own paper goods (big shipments from China) and also sells its own items. The paper goods are stock HEH owns, like Happy Supply's; Elpis's own items are an ordinary vendor's. Not decided: whether Elpis's held stock is a Happy Supply location or a second stock-holding vendor; who records what Elpis ships to the stores (Elpis doesn't use MOG); whether stores see that stock too. Today the stores name it "Elpis", "Elpis Wholesale" and "ELPIS"; a store can rename a vendor since schema v15.
-- **Adding standard items to stores without an LTO** (built 2026-11-02, later 4): on HQ's Libraries page, tick items, then "Send N to stores" (the library's Set up path with only those items: no LTO record, no pin). W2's publish still has to add the product link.
+### W2 spec (spec-first, approved by Sebastian 2026-11-02)
+
+What W2 adds to the design above, and the answers to what was open for it. Not built.
+
+**Purpose.** A store orders Happy Supply's crab and shrimp in its order guide, and the order lands in Dan's queue. A KM sees the cases the warehouse has while ordering. HEH's own packaging held at Elpis gets the same stock records, while KMs keep ordering it from Elpis.
+
+**Who it's for:**
+- KMs and GMs at the Roll Play stores (the first to get Happy Supply): order, see cases available, follow the order's status, mark it received.
+- Dan: the order queue, shipping from a location.
+- Whoever keeps HEH's stock at Elpis: Sebastian for now (who, decided later).
+
+**Not for:** Elpis itself (no sign-in, it never uses MOG); Chasin' Tails and NUE (step 4); finance (W3); stores' other vendors.
+
+**Success looks like:**
+- A Roll Play store's Happy Supply order reaches Dan's queue from the phone.
+- Dan ships from Berliner or the Tysons freezer, and stock drops; the store's card shows shipped N of M, then received.
+- While counting, a KM sees "N available" on each linked item, and N matches the stock minus the orders not yet out.
+- After a month, HEH's stock at Elpis matches Elpis's own report.
+
+**Decided:**
+- **No Approve step:** sent, shipped, received. Dan decides what goes on his ship screen and can cut a line there; the store's card shows shipped next to ordered. (The HQ mockup's Orders board had Approved; dropped.)
+- **Cases available on the phone,** next to each linked item on the count and review screens. Available = on hand, minus open orders: for Happy Supply, sent and not shipped; for Elpis, ordered this cycle and not marked received. Unlinked items show nothing; prices and fees never reach a phone.
+- **An order larger than what's available** is sent as typed, with "Only 4 available" on the line at review. Dan ships what he has.
+- **Elpis:** KMs keep ordering HEH's own stock from their Elpis vendor, as today. Elpis is a location in Happy Supply's records, and those store items link to its products. Stock drops when the store marks its Elpis delivery received (pre-filled with what was ordered; the KM changes a short line). A Happy Supply order never ships from the Elpis location.
+- **An Elpis delivery nobody marks** stays open and is listed for whoever keeps the Elpis stock. Nothing is assumed: cases available stays right (open orders are subtracted); on hand reads high until it's marked or counted.
+- **Who keeps the Elpis stock** (shipments from China in, counts from Elpis's report): Sebastian for now. Not final.
+- **Linking an item a store already has** (RP Large Bowls under Elpis, say): HQ picks that store's item instead of adding one, so its par and count history stay.
+- **Mark received** on the vendor card, for Happy Supply and Elpis lines, pre-filled with what shipped (Happy Supply) or what was ordered (Elpis). Only an Elpis receipt changes stock; Happy Supply's dropped at ship.
+- **Cases only.** A linked store item orders in the product's case (the HQ publish sets its pack).
+- **Build order:** W2a, Happy Supply store orders (link, Send, ship, received, cases available); then W2b, Elpis as a location and its receipts. Each ships and is checked on its own. Every new screen (Dan's queue, the phone's Happy Supply card) gets a mockup first.
+
+**Out of scope:** an Approve step; chargebacks (W3); emails to Elpis or Berliner; lots and expiry; Teas'n You ordering from Happy Supply until a product is sent there.
+
+**W2a design (walkthrough, approved by Sebastian 2026-11-02).** Not built; mockups of the new screens come first.
+- **Schema v16** (the next free number): `mog.items.wh_product`, `mog.wh_orders` / `wh_order_lines` (HS-0001), the phone's `mog_wh_send` and `mog_wh_received` (PIN session), Dan's `mog_wh_ship` and `mog_wh_order_cancel` (warehouse role), the orders in `mog.wh_state`, and `happySupply` in the phone's 10-second read (`mog.live_json`: the vendor, cases available per linked item, this cycle's order), sent only to a store with a link.
+- **The link is on the item's row** (`mog.items.wh_product`, like `lto`), not a link table: Undo puts a deleted item's whole row back, and item numbers are reused (Rosslyn BOH's ITEM-0197 was Horse Meat, then the Fall Chicken Pho item, on 2026-11-02). Every item compare site carries it (SQL `editor_fields_match`, `catalogEdit.js` `matches`, the fake's `editorSame`), each held by a planted defect.
+- **A store's Happy Supply vendor** is the one HQ's "Happy Supply" maps to in `mog.hq_vendor_links`: it follows a rename and leaves with the vendor. If a store removes it and undoes that, HQ links it again on Vendor names; until then Send is hidden.
+- **The needed-by date** defaults to the next day Happy Supply delivers to that store (its delivery days); the KM can change it on review.
+- **Linking and publishing are HQ's (hq role):** a product's Send to stores adds the vendor (the first time), the item (no par, no area) and its link in one change per store (`hqRollout` stamps the link); Link an item links one a store already has (`hqLinkItems`). Dan's warehouse sign-in never touches a store's catalog.
+- **Pages:** the phone shows "N available" on linked items (count and review), Send to Happy Supply beside Copy order for email, and the order's status with Mark received on the vendor card; HQ gets an Orders page (queue, then Ship from a location). Send needs a connection; offline, the button says so.
+- **Ship order:** v16 and smoke_v16 in PGlite, the fake and a gate (`tests/wh_orders.test.js`), the pages in `mog-preview`; then a maintainer runs v16 in the SQL Editor (smoke, `check_api.sh`), then `build.py` and a push with `CACHE_VERSION` bumped. No Apps Script change.
+- **Mockups approved** (Sebastian, 2026-11-02; three boards in the "Happy Supply W2a" row of the MOG HQ redesign canvas, https://claude.ai/artifact/3pJWHSWbMxVUyaRjmXkXqg): the store phone (count with "N available", review with needed-by, the warning, a note and Send, Home with the order's status and the Mark received sheet), Dan's Orders (queue by needed-by, Ship and From per line, what's left after, price per case) and HQ's Send to stores (per store: link an item it has, pick-only, or add a new one; the TEST store apart; every store or none). Decided on them:
+  - **Linking an item a store orders from another vendor** makes Happy Supply its main vendor and keeps the old one as a backup; its pack becomes the product's case.
+  - **Send to Happy Supply also marks the vendor reviewed** (one tap); Home shows the order's status instead.
+  - **Dan's Ship box starts with what's left after older orders** (the number the store was told), capped at the location's stock; he can raise it, and the line says which older order gets less.
+- **Built (2026-11-02, not live):**
+  - `supabase/schema_v16.sql` as above (generated parts: `editor_apply_ops` from v15, `live_json` from v9, `wh_state` from v13), `smoke_v16.sql` (50 rows), a v16 block in `check_api.sh`, `tests/fake_supabase.js` mirroring it, gate `tests/wh_orders.test.js` (9 planted-defect controls; 31 gates).
+  - `catalogEdit.js` `commitHqProduct` (link or add, Undo exact) and `productCandidates`; `template/hq/warehouse.js` Orders (queue, Ship, Cancel, stock and open orders) and the product's Send to stores; `template/index.html` cases available, the review's needed-by, note and Send, the card's line and Mark received.
+  - **Differs from the mockup:** a store without a Happy Supply vendor can't be ticked on Send to stores; the row sends HQ to Vendors first, since a new vendor needs its delivery days there (pick-only rule). The count screen's "N available" is drawn when the screen opens; the review re-checks it.
+  - **Seen in the preview by script** (hidden pane): Send to stores added the item at the TEST store, the KM set it up, the phone showed "9 available", the review warned, Send went to Dan's queue, Ship 9 of 10 from Berliner at the locked price, the card showed it shipped, Mark received with one short. Right after a sign-in the card's line waits for the first 10-second read.
+
+**Before it can be used (not before building):**
+- Dan confirms that no store orders king crab or shrimp by the pound.
+- Dan is invited (warehouse role only) and adds products and a first count; until then W2 is checked in the preview only.
+
+**Facts it rests on (live, 2026-11-02):** Roll Play's FOH stores order from "Elpis" a mix of branded packaging (RP bowls, lids, bags, Magnum roll boxes, utensil packets; AN broth containers) and Elpis's own catalog (tea, Karat cups, gloves); Teas'n You's stores order boba, tea, cups, lids and straws from "Elpis Wholesale" / "ELPIS". Which items are HEH's own stock is data HQ sets when it links them. One spelling for every store: "Elpis Wholesale" (Sebastian, 2026-11-02).
+
+**Adding standard items to stores without an LTO** (built 2026-11-02, later 4): on HQ's Libraries page, tick items, then "Send N to stores" (the library's Set up path with only those items: no LTO record, no pin). W2's publish still has to add the product link.
 
 ---
 

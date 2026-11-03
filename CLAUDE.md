@@ -196,7 +196,9 @@ mog-mobile/
 │   │                            more stores, Make it standard, End and Roll back (rules in catalogEdit.js commitHqLto).
 │   │                            hq/warehouse.js (schema v13): Happy Supply's Inventory (with a count), Incoming (vendor
 │   │                            orders in, transfers), Products and prices and Stock history, for the warehouse role. Each
-│   │                            person sees the sections their roles (hq, warehouse) open.
+│   │                            person sees the sections their roles (hq, warehouse) open. Orders (schema v16): the store
+│   │                            orders sent from the phone, Ship from a location; a product's Send to stores links an item
+│   │                            a store has, or adds one (catalogEdit.js commitHqProduct; the hq role too).
 │   └── editor/                  The editor on Supabase (one-app Phases 2 and 4): catalogEdit.js (Manage Items, Manage Vendors,
 │                                Storage Areas and Shelf to Sheet over the catalog tables, gated against Items.gs / Vendors.gs /
 │                                PickPath.gs) + host.js (runs those Apps Script pages and Editor Home as static pages) + meImport.js
@@ -254,9 +256,10 @@ mog-mobile/
 │   ├── schema_v13.sql           Happy Supply W1: HQ roles (hq, warehouse), the warehouse tables (stock never below 0, every move kept), mog_wh_* (run after v12).
 │   ├── schema_v14.sql           LTOs: mog.ltos / lto_stores, an item's lto (part of its row), mog_hq_apply's fifth argument (send, more, end, rollback, standard) (run after v13).
 │   ├── schema_v15.sql           A vendor renamed at a store: the editor's rename step takes vendors (items, lists, counts, today's edits, HQ's names follow) (run after v14).
+│   ├── schema_v16.sql           Happy Supply W2a, store orders: mog.items.wh_product (an item's product link, in its row), mog.wh_orders / wh_order_lines (HS-0001), mog_wh_send / mog_wh_received (phone), mog_wh_ship / mog_wh_order_cancel (warehouse), happySupply in the 10-second read (run after v15).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v15.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
+│   └── tests/                   smoke.sql … smoke_v16.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
 │                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 │                                preview_server.js (not a gate): the built app, editor and HQ against the fake Supabase (preview_start "mog-preview").
