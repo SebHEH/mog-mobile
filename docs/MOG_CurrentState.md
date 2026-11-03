@@ -14,7 +14,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
 - **Each Sheet** is frozen for catalog edits. It still holds the Apps Script: the 3:30 AM close, the recap email, the onboarding moves. It also gets a nightly LOG_ORDERS backup.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions:** app v0.27.0 / store cache v68, hub cache v11, schema v14 (LTOs, live 2026-11-02: smoke_v14 26/26, probe 94/94; HQ side shipped in `6fee3a1`). Schema v15 (vendor rename) live 2026-11-02: smoke_v15 18/18, probe 96/96; the Vendors page's rename shipped with it, together with the Items page's new-LTO banner and HQ's library tick boxes (30 gates). **Not live yet:** schema v16 (Happy Supply W2a, store orders) with app v0.28.0 / store cache v69, built 2026-11-02 and checked in PGlite (smoke_v16 50/50, 6 planted defects caught) and the preview; 31 gates. It waits for v16 in the SQL Editor, then a push.
+- **Versions:** app v0.28.0 / store cache v69, hub cache v11, schema v14 (LTOs, live 2026-11-02: smoke_v14 26/26, probe 94/94; HQ side shipped in `6fee3a1`). Schema v15 (vendor rename) live 2026-11-02: smoke_v15 18/18, probe 96/96; the Vendors page's rename shipped with it, together with the Items page's new-LTO banner and HQ's library tick boxes (30 gates). Schema v16 (Happy Supply W2a, store orders) live 2026-11-02: smoke_v16 50/50, probe 105/105; the app (v0.28.0) and HQ shipped with it in `37588dd` (31 gates).
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
 - **The three stores that moved empty:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
@@ -23,6 +23,15 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - all 10 stores closed between 3:23 and 3:38 AM;
   - rpr and rprfo had orders, and their recaps went to their Supabase recipients;
   - the other stores had nothing ordered, so no email (by design).
+
+**2026-11-02 (later, 5): Happy Supply W2a, store orders, live** (`docs/MOG_SessionHandoff_2026_11_02.md`, "Later session 5").
+- **Spec and design:** the W2 spec, the W2a design and its three mockup boards are approved (`docs/MOG_Warehouse_Spec.md` §2).
+- **HQ:** a product's Send to stores links an item a store has (Happy Supply its main vendor, the old one a backup) or adds one, at stores that already have Happy Supply (add it on Vendors first). Dan's Orders page ships from a location, starting at what's left after older orders, and locks each line's price.
+- **Phone:** "N available" on Happy Supply items; the review's needed-by, note and Send to Happy Supply (also marks it reviewed); the card's order line and Mark received.
+- **Schema v16:** the link in the item's row (`mog.items.wh_product`), store orders HS-0001, no price ever on a phone.
+- **Live checks:** smoke_v16 50/50, probe 105/105, commit `37588dd`, CI green, Pages live on all 10 stores and HQ. 31 gates.
+- **In use:** nobody yet. No store has a link and the warehouse has no products. Seen only in the preview, by script.
+- **Next:** W2b, HEH's stock held at Elpis.
 
 **2026-11-02 (later, 4): new LTO items first, library tick boxes, vendor rename, all live** (`docs/MOG_SessionHandoff_2026_11_02.md`, "Later session 4").
 - **Items page:** each running LTO's items that lack a par or a storage area are pinned at the top under a banner, with an "LTO · name" chip and a panel note (`catalogEdit.js` `ltoWaiting`). LTO spec session 2 is done.
@@ -107,7 +116,7 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - start and clean all four (Rosslyn BOH and FOH, Tysons BOH, Rockville FOH);
    - set up a store from one, or send ticked items with "Send N items to stores".
 3. **Start the warehouse** (W1 live; `docs/MOG_Warehouse_Spec.md` §2):
-   - Sebastian tells Donny that schemas v13, v14 and v15 are taken;
+   - Sebastian tells Donny that schemas v13 to v16 are taken;
    - invites Chef Dan with the warehouse role only (SQL Editor: `select mog.hq_invite('Dan', '{warehouse}');`);
    - Dan adds the locations, suppliers and products, then a first count per location.
 
@@ -117,7 +126,13 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - KMs keep ordering HEH's stock at Elpis from Elpis: Elpis is a location, and the store's receipt lowers it (Sebastian keeps it for now);
    - built in two parts, W2a Happy Supply first, then W2b Elpis.
 
-   W2a's design is approved too (same section, "W2a design": schema v16, the link on the item's row, the Happy Supply vendor from HQ's remembered names, needed-by from its delivery days). Its mockups are approved and W2a is built, not live: run [supabase/schema_v16.sql](../supabase/schema_v16.sql) and [supabase/tests/smoke_v16.sql](../supabase/tests/smoke_v16.sql) in the SQL Editor, then `check_api.sh`, then push. Then W2b (HQ's stock at Elpis). Before use: Dan's answer on pound ordering, and Dan invited. Happy Supply goes to the Roll Play stores with W2's first products.
+   W2a's design is approved too (same section, "W2a design": schema v16, the link on the item's row, the Happy Supply vendor from HQ's remembered names, needed-by from its delivery days). **W2a is live** (schema v16, `37588dd`). First use on the TEST store:
+   1. a product and a first count in HQ → Happy Supply;
+   2. Happy Supply added to Rosslyn FOH (TEST) on HQ → Vendors, with its delivery days;
+   3. Send to stores, then set the item up at the store;
+   4. a phone order, Ship, Mark received.
+
+   Then W2b (HQ's stock at Elpis), walkthrough and mockups first. Before use: Dan's answer on pound ordering, and Dan invited. Happy Supply goes to the Roll Play stores with W2's first products.
 4. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
    - Sebastian's steps: GitHub collaborator on both repos, branch protection on `main`, the Supabase Developer invite, Editor on the 11 Sheets, PINs.
    - Then Donny consents in each store and runs `python deploy.py --redeploy --target rprfo`.
@@ -255,8 +270,8 @@ Most recent first. Keep about five; older rows move to the archive.
 
 | Date | Session | Outcome |
 |---|---|---|
+| 2026-11-02 (later, 5) | The W2 spec, Happy Supply store orders (W2a) | Live check first (library cleared, B&T lined up, Elpis three spellings, Fall Chicken Pho real), then the W2 spec (no Approve step, cases available, over-order warned, Elpis as a location in W2b), the W2a design and three mockup boards, all approved. Schema v16: `mog.items.wh_product` in the item's row, `mog.wh_orders` / `wh_order_lines` (HS-0001), `mog_wh_send` / `mog_wh_received` (phone), `mog_wh_ship` / `mog_wh_order_cancel` (warehouse), `happySupply` in the 10-second read. `catalogEdit.js` `commitHqProduct`; HQ's Orders page and Send to stores; the phone's available, Send and Mark received (app v0.28.0, cache v69). Live: smoke_v16 50/50, probe 105/105, CI green, Pages live. Gate `wh_orders` (31 total). Blueprint R32. Commit `37588dd`. Detail: `docs/MOG_SessionHandoff_2026_11_02.md` (Later session 5). |
 | 2026-11-02 (later, 4) | New LTO items first on Items, library tick boxes, vendor rename | The store's Items page pins each running LTO's items until set up (banner, chip, panel note; `catalogEdit.js` `ltoWaiting`). HQ Libraries: tick boxes, Remove, Send N items to stores without an LTO. Schema v15: a store renames a vendor with a rename step (items, lists, pick rows, today's counts and edits, HQ's names follow; a taken name refused). Live: smoke_v15 18/18, probe 96/96, CI green, Pages live. Gate `vendor_rename` (30 total). Blueprint R28, R31. Live stock for Happy Supply and Elpis left as open W2 questions. Commit `abce087`. Detail: `docs/MOG_SessionHandoff_2026_11_02.md` (Later session 4). |
 | 2026-11-02 (later, 3) | LTOs, the HQ side | Spec `docs/MOG_LTO_Spec.md` and two mockup boards approved. Schema v14: `mog.ltos` / `lto_stores`, `mog.items.lto` in the item's row, `mog_hq_apply`'s fifth argument. `catalogEdit.js` `commitHqLto` (end, rollback, standard), `ltoStoreState`; HQ's New LTO and LTOs page (`template/hq/ltos.js`). Live: smoke_v14 26/26, probe 94/94, CI green, Pages live. Gate `lto` (29 total). Blueprint R31. Handoffs now commit and push. Commit `6fee3a1`. Detail: `docs/MOG_SessionHandoff_2026_11_02.md` (Later session 3). |
 | 2026-11-02 (later, 2) | Local preview server, the slicer on Windows | `tests/preview_server.js` and the launch entry "mog-preview": the built app, editor and HQ against the fake Supabase (six stores, three HQ people, the Happy Supply sample), refusing any page that names a real Supabase address; checked in the browser pane. `slice_js_selftest` takes the file's line ending, so the gates pass in new Windows worktrees (28). PR 6: `8ea3603`, `94d496d`, merge `35cb81c`; nothing the stores run changed. Detail: `docs/MOG_SessionHandoff_2026_11_02.md` (the last Later session). |
 | 2026-11-02 (later) | Happy Supply W1, the warehouse | Design for W1 with W2's data approved (stock never below 0), its screens mocked up and approved. Schema v13: HQ roles (hq, warehouse), the warehouse tables (stock per location, every move kept, vendor orders in, transfers, counts), nine `mog_wh_*` calls; HQ's Happy Supply pages (`template/hq/warehouse.js`). Live: smoke_v13 44/44, probe 88/88, CI green, Sebastian saw it on the live page. CI now runs the real SQL in PGlite (`supabase/tests/run_pglite.mjs`); gate `warehouse` (28 total). Blueprint R30. Commits `f7352c3`, `aa48f85`. Detail: `docs/MOG_SessionHandoff_2026_11_02.md` (Later session). |
-| 2026-11-02 | Concept library, HQ redesign | Schema v12: `mog.stores.side`, the concept libraries (one per concept and side, versioned whole-list saves with a log), set up a store from one like an LTO, add an LTO's items to the library in the same save; smoke 21/21, probe 74/74, gate `concept_library` (27 total). HQ redesigned from an approved mockup: the order guide's computer look with the HEH brand, concept then stores, pick-only vendors. Blueprint R29. Commits `67cccb0`, `84ac2cb`. Detail: `docs/MOG_SessionHandoff_2026_11_02.md`. |

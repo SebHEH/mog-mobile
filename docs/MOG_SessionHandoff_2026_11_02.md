@@ -16,7 +16,8 @@
 **Later session (same day, Sebastian):** Happy Supply W1 built and live (schema v13). See "Later session" at the end.
 **Later session 2 (same day, Sebastian):** the local preview server and the slicer on Windows (PR 6). See "Later session — the local preview server".
 **Later session 3 (same day, Sebastian):** LTOs, the HQ side (schema v14, live). See "Later session 3".
-**Later session 4 (same day, Sebastian):** new LTO items first on Items, library tick boxes in HQ, vendor rename (schema v15, live). See the last section.
+**Later session 4 (same day, Sebastian):** new LTO items first on Items, library tick boxes in HQ, vendor rename (schema v15, live). See "Later session 4".
+**Later session 5 (same day, Sebastian):** the W2 spec, then Happy Supply store orders, W2a (schema v16, live). See the last section.
 
 ---
 
@@ -638,4 +639,162 @@ Read docs/MOG_CurrentState.md and the last "Later session" of docs/MOG_SessionHa
 Live since abce087: new LTO items pinned at the top of each store's Items page, tick boxes on HQ's Libraries (Remove, Send N items to stores without an LTO), and vendor rename on the Vendors page (schema v15: items, lists, counts, today's edits and HQ's names follow); 30 gates.
 Ask first what Sebastian saw: did the Teas'n You BOH test library clear, were the B&T and Elpis names lined up, and did a live TEST LTO show its Items banner and roll back? STILL OUTSTANDING: Horse Pho on rprfotest, tell Donny v13 to v15 are taken.
 Then either help clean the libraries, or start W2 (store orders) spec-first: live stock for the people ordering Happy Supply and Elpis, who records Elpis's shipments, Dan's pound question, the Approve step (docs/MOG_Warehouse_Spec.md §2, "Open for W2"). Use preview_start "mog-preview" (or "mog-preview-alt") to check anything you build.
+```
+
+---
+
+## Later session 5 — the W2 spec, Happy Supply store orders (W2a)
+
+**Author:** Sebastian
+**Session focus:** check what Sebastian saw after later session 4, then spec W2 (store orders) spec-first and build its first part.
+**Outcome:** W2a is live (commit `37588dd`).
+- Sebastian ran schema v16 in the SQL Editor: smoke_v16 50/50 PASS (his paste). A read-only check matched; `check_api.sh` gave "105 passed, 0 failed".
+- CI `gates` passed and Pages published it; the new build is live on all 10 stores (app v0.28.0, cache v69) and HQ.
+- Nothing changes at any store until HQ links a product there. Checked live: no store has a link or an order yet.
+
+**Next session focus:** first live use (Happy Supply on the TEST store through Vendors, Send to stores, a test order end to end), then W2b, HEH's stock held at Elpis.
+
+### Checked live first (read-only, before asking)
+
+- The Teas'n You BOH test library was cleared at 5:36 PM. Both started libraries are empty; the FOH ones aren't started.
+- B&T is "B&T Distributors LLC" at every real store; only the TEST store still has "B&T", from Horse Pho.
+- Elpis has three spellings: "Elpis" (Rosslyn FOH, Founders FOH, RP Tysons FOH), "Elpis Wholesale" (Rockville BOH and FOH) and "ELPIS" (TnY Tysons FOH).
+- Fall Chicken Pho went to Rosslyn, Founders and Tysons BOH at 5:41 PM. It's a real LTO (Sebastian: keep it).
+- Horse Pho (change 237) is still not undone.
+- What stores order from Elpis: Roll Play's FOH stores get branded packaging (RP bowls, lids, bags, Magnum roll boxes, utensil packets) plus Elpis's own catalog (tea, Karat cups, gloves); Teas'n You gets boba, tea, cups, lids and straws.
+
+### Sebastian's decisions
+
+- **The three pages from later session 4** looked right on a screen.
+- **Elpis:** one spelling at every store, "Elpis Wholesale" (his renames, below).
+- **The W2 spec** (`docs/MOG_Warehouse_Spec.md` §2 "W2 spec"), picks as recommended unless noted:
+  - KMs keep ordering HEH's stock at Elpis from Elpis; Elpis becomes a location, and the store's receipt lowers it;
+  - no Approve step (sent, shipped, received);
+  - KMs see cases available as a number; an order larger than that is sent with a warning;
+  - who keeps the Elpis stock: "we can decide after, for now it can be me";
+  - an Elpis delivery nobody marks stays open and is listed;
+  - W2a (Happy Supply) first, W2b (Elpis) next.
+- **The W2a design** (walkthrough):
+  - the item's link in its row (not the design's link table);
+  - a store's Happy Supply from HQ's remembered names;
+  - needed-by defaults to the next delivery day and can be changed.
+- **The mockups** (three boards, the "Happy Supply W2a" row of https://claude.ai/artifact/3pJWHSWbMxVUyaRjmXkXqg) approved, plus:
+  - linking makes Happy Supply the main vendor, the old one a backup;
+  - Send also marks the vendor reviewed;
+  - Ship starts with what's left after older orders.
+- **Shipping:** Claude runs the probe; push to every store at once (nothing shows until HQ links a product).
+
+### What shipped (`37588dd`)
+
+- **`supabase/schema_v16.sql`:**
+  - `mog.items.wh_product`, in the item's row like `lto`: compared by `editor_fields_match`, written by `editor_apply_ops`, read back only when set;
+  - `mog.wh_orders` / `wh_order_lines` (HS-0001, one sent order per store and cycle);
+  - the phone's `mog_wh_send` / `mog_wh_received`, Dan's `mog_wh_ship` / `mog_wh_order_cancel`;
+  - `happySupply` in the 10-second read (`mog.wh_live_json`): the vendor, cases available per linked item (`mog.wh_available`), the open and this cycle's orders. Never a price.
+  - The price locks at ship (`mog.wh_store_price`, the same sum as `hq/warehouse.js` `storePrice`). `editor_apply_ops`, `live_json` and `wh_state` were generated from v15, v9 and v13 with asserted replacements.
+- **`catalogEdit.js`:**
+  - `commitHqProduct` links an item a store has (Happy Supply main, the old main a backup with its count-list row, the product's pack) or adds one (no par, no area); Undo is exact;
+  - `productCandidates` gives the pick-only link choices;
+  - `USER_FIELDS` carries `whProduct`.
+- **HQ** (`template/hq/warehouse.js`, `index.html`):
+  - the Orders page: the queue by needed-by, Ship with From per line, starting at what's left after older orders, what's left after, the price per case, Cancel, stock and open orders;
+  - a product's Send to stores (hq role too), every store or none, through `mog_hq_apply` with HQ's remembered name.
+- **Phone** (`template/index.html`, app v0.28.0, cache v69):
+  - "N available" on linked items;
+  - the review's needed-by (the next three delivery days), the warning, a note and Send to Happy Supply (which also marks it reviewed); Copy order and Mark as reviewed are hidden for Happy Supply;
+  - the card's order line and Mark received (a sheet, each line at most what shipped).
+- **Checks:**
+  - `smoke_v16.sql` (50 rows), a v16 block in `check_api.sh`;
+  - `tests/fake_supabase.js` mirrors v16;
+  - new gate `tests/wh_orders.test.js` (9 controls, 31 gates);
+  - the `lto` and `vendor_contacts` gates got their anchor and slice list moved.
+- **Docs:**
+  - the W2 spec, the W2a design and the mockup decisions in the warehouse spec;
+  - migration §7 rows and Blueprint R32, the Store order entity and the item's product link (`current_as_of 37588dd`);
+  - project notes, CurrentState, CLAUDE.md.
+
+### Validation
+
+- **PGlite:** "smoke_v16.sql: 50/50 PASS", "schema_v16.sql (again), no row changed". Six planted SQL defects each failed the rows about their rule:
+  - the store's own order counted in its available;
+  - the compare forgetting the link (caught only after a smoke row was added; Process lessons);
+  - Ship taking more than ordered;
+  - a price on the phone;
+  - a product's store limit ignored;
+  - more received than shipped.
+- **Gates:** "run_all: ALL PASS (31 gates)", "wh_orders: ALL PASS" with all 9 controls biting.
+- **Preview** (`mog-preview`, driven by script in a hidden pane):
+  - HQ's Send to stores added "Shrimp 16/20" at the TEST store;
+  - the KM's setup kept the link;
+  - the phone showed "9 available", and the review warned "Only 9 available";
+  - Send landed in Dan's queue with the note;
+  - Ship started at 9 of 10 from Berliner ($84.50 a case, $760.50);
+  - the card showed "Shipped 9 of 10 cases · from Berliner", and Mark received went through with 8 (capped at 9);
+  - no console errors.
+- **Live:**
+  - smoke_v16 50/50 (Sebastian's paste);
+  - read-only: the four calls and helpers, `items.wh_product`, the public key held off the tables and helpers, no smoke rows left, no store with a link;
+  - `check_api.sh` 105/105;
+  - CI `gates` success on `37588dd`;
+  - Pages markers on all 10 stores and HQ.
+
+### Outstanding (carry forward)
+
+1. **Sebastian, live:**
+   1. Rename Elpis to "Elpis Wholesale" in Manage → Vendors at Rosslyn FOH, Founders FOH, RP Tysons FOH and TnY Tysons FOH.
+   2. Undo Horse Pho in Rosslyn FOH (TEST)'s Manage → Changes (change 237).
+   3. Tell Donny that schemas v13 to v16 are taken.
+2. **First use of W2a, on the TEST store first:**
+   - The warehouse holds no products or stock yet (Dan isn't invited).
+   - Add a product and a first count in HQ → Happy Supply, and add Happy Supply to Rosslyn FOH (TEST) in HQ → Vendors, with its delivery days.
+   - Then Products and prices → the product → Send to stores, set the item up at the store, order from the phone, Ship in Orders, and Mark received.
+   - Nobody has seen the new pages on a real screen.
+3. **W2b** (HEH's stock held at Elpis): the spec is decided, the build is next. Who keeps the Elpis stock: Sebastian for now, decided later.
+4. **Before real orders:** Dan's answer on ordering by the pound, and Dan's invite (warehouse role only).
+5. **Small, noticed:**
+   - Right after a sign-in, the card's Happy Supply line waits for the first 10-second read.
+   - The count screen's "N available" is drawn when the screen opens.
+   - Send to stores can't add the Happy Supply vendor itself (Vendors first, with delivery days), which differs from the mockup's "Adds the vendor".
+6. **From the sessions above, unchanged:** clean and start the libraries, the repo's origin in the desktop app, `gh`.
+
+### Files touched (later session 5)
+
+- **Supabase:** `supabase/schema_v16.sql` (new), `supabase/tests/smoke_v16.sql` (new), `supabase/tests/check_api.sh`.
+- **Editor rules:** `template/editor/catalogEdit.js`.
+- **HQ:** `template/hq/warehouse.js`, `template/hq/index.html`.
+- **Phone:** `template/index.html`, `template/sw.js`.
+- **Tests:** `tests/wh_orders.test.js` (new), `tests/fake_supabase.js`, `tests/lto.test.js`, `tests/vendor_contacts.test.js`.
+- **Generated** (`build.py`): every store's `index.html`, `sw.js` and `editor/catalogEdit.js`; `hq/index.html`, `hq/warehouse.js`, `hq/catalogEdit.js`.
+- **Docs:** `docs/MOG_Warehouse_Spec.md`, `docs/MOG_SupabaseMigration.md`, `docs/MOG_LogicBlueprint.md` and `.html`, `docs/MOG_ProjectNotes.md`, `docs/MOG_CurrentState.md`, `CLAUDE.md`, this handoff.
+- **Skills:** `.claude/skills/mog-supabase-schema/SKILL.md` (two rules).
+- **Outside the repo:** the canvas's three W2a boards; scratchpad `gen_v16.py` and `v16_src.sql` (they generated v16; the file is the record), `plant_v16.py` and `wait_live.sh` (one-off).
+
+### Process lessons
+
+- Checking the live database read-only before asking turned "were the names lined up, did the LTO roll back" into facts, and showed that the LTO went to real stores. The pickers then asked only what a person knows (is it real, did it look right). [→ docs/MOG_ProjectNotes.md]
+- smoke_v16's first CONFLICT check also changed the vendor and pack, so a planted "the link isn't compared" passed until a row differing only by the link was added. [→ mog-supabase-schema]
+- A gate value worked out by hand was wrong again (crab "left" 14; the code says 20, both locations). A pinned value comes from running the code or the SQL. [→ mog-supabase-schema]
+- `vendor_contacts` slices `renderVendorCard`; once the card called the Happy Supply helpers, the gate failed with "hsIsVendor_ is not defined" until they joined its slice list. A sliced helper has to be a function declaration. [→ docs/MOG_ProjectNotes.md]
+- In the hidden pane, a fresh sign-in reads a plain snapshot: the card's Happy Supply line came with the first 10-second read, so the first look said "Reviewed" only. [→ docs/MOG_ProjectNotes.md]
+- The approved mockup's "Adds the vendor" on Send to stores met the pick-only rule (a store's new vendor goes in on Vendors, with its delivery days) only at build time, so the build differs from the mockup there. [→ one-off]
+- `build.py` hit OSError Errno 22 once more; the rerun worked. [→ docs/MOG_ProjectNotes.md]
+
+**Skill gate:** one picker round, two questions, both Apply, both into `mog-supabase-schema` (commit `3666d5d`): a CONFLICT check differs only in the field it guards, and a pinned value comes from running the SQL or the page's own code. Not asked: the live-check-first habit and the Errno 22 rerun (already in the project notes), the sliced-helper rule and the 10-second wait (project facts, added to the project notes), the mockup's vendor step (one-off). Checked: Sebastian's picks this session (all as recommended, except "we can decide after, for now it can be me" on who keeps the Elpis stock), no rejected tool uses.
+
+### Commits landed (later session 5)
+
+```
+3666d5d skills: mog-supabase-schema on CONFLICT checks and values pinned from page code
+37588dd Happy Supply W2a, store orders (schema v16): Send, Ship, Mark received
+```
+
+Plus this handoff's commit.
+
+### Opening prompt for next session
+
+```
+Read docs/MOG_CurrentState.md and the last "Later session" of docs/MOG_SessionHandoff_2026_11_02.md first, and run git pull.
+Happy Supply W2a is live (schema v16, commit 37588dd): HQ links store items to warehouse products (Send to stores), the phone shows cases available and sends to Happy Supply, Dan ships from HQ's Orders page, the store marks it received; 31 gates. No store has a link yet, and the warehouse holds no products.
+Ask first whether Sebastian tried it on the TEST store (Vendors → Happy Supply with delivery days, a product and a count, Send to stores, a phone order, Ship, Mark received) and renamed Elpis at the four stores. STILL OUTSTANDING: Horse Pho on rprfotest, tell Donny v13 to v16 are taken.
+Then build W2b, HEH's stock held at Elpis (docs/MOG_Warehouse_Spec.md §2, "W2 spec": Elpis as a location, the store's receipt lowers it, unmarked deliveries listed), starting with an architectural walkthrough and mockups. Use preview_start "mog-preview" to check it.
 ```

@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: abce087 (2026-11-02) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: 37588dd (2026-11-02) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -363,7 +363,7 @@ naive rebuild silently loses.*
   - The average cost per case covers every location and what's in transit: c cases in at cost k, with o owned at average a, make (o x a + c x k) / (o + c), kept to 4 decimals.
   - A transfer between locations is numbered (TR-0001); its cases leave on send, are in transit, and arrive when received.
   - A count at a location changes only the products given a number; a difference needs a reason, and a match changes nothing.
-  - A store's price per case will be the average cost plus the product's handling fee, plus the markup (0 to start), fixed when its order ships; stores never see the fee. *(W2, designed, not built.)*
+  - A store's price per case is the average cost plus the product's handling fee, plus the markup (0 to start), fixed when its order ships; stores never see the fee (R32).
   - Why: the warehouse's stock, costs and chargebacks need one honest record that matches a physical count, and its admin must not be able to touch the stores. *(Confirmed: owner 2026-11-01 and 2026-11-02, `docs/MOG_Warehouse_Spec.md` §2. The owner picked "refuse below zero" over allowing a negative balance until a count.)*
 - **R31. An LTO is a named record HQ can end or take back at every store at once.**
   - Sending new items to stores (R28) makes one LTO: a name (required), one concept, the items as sent, the stores it went to, and a status: running, ended, rolled back or made standard.
@@ -376,6 +376,16 @@ naive rebuild silently loses.*
   - At the store, a running LTO's items that still lack a par or a storage area sit at the very top of the Items page, under a banner per LTO, newest first, until each has both; every LTO item carries an "LTO · name" mark.
   - An action made from an older view of the LTO is refused, as is any change to a store the action isn't about.
   - Why: an LTO reaches many stores in one step (R28) and has to leave them the same way, without a sign-in at each store. *(Confirmed: owner 2026-11-02, `docs/MOG_LTO_Spec.md`. The owner picked "inactive" for End over deleting, "delete anyway, name the stores" for Roll back, and "Make it standard" over the rollout's library box.)*
+- **R32. A store orders from Happy Supply in its order guide, and the warehouse ships it.**
+  - HQ links a store's item to a warehouse product (R30): it adds the item (no par, no area), or links one the store already has, which makes Happy Supply its main vendor (the old one stays a backup) and orders it in the product's case. The link is part of the item, so a store's Undo takes it off with the change and an item added later under a deleted item's number never inherits it.
+  - A store's Happy Supply is the vendor that HQ's name "Happy Supply" maps to at that store (R28's remembered names). HQ adds it to a store, with its delivery days, before linking items there.
+  - While counting, a KM sees each linked item's cases available: the warehouse's cases at every location, minus what other stores' sent orders hold. The store's own order this cycle is left out.
+  - Send to Happy Supply sends the reviewed lines with a needed-by date (the next day Happy Supply delivers, by default) and a note, and marks the vendor reviewed. More than is available goes as typed, with a warning on the line; sending again in the same cycle replaces the order while it hasn't shipped. Every line is an active item on Happy Supply's list, linked to a product sold to that store.
+  - An order is sent, then shipped, then received; it can be cancelled only while sent. There is no Approve step.
+  - The warehouse ships each line from one location, at most what was ordered and never taking a location below 0. The Ship box starts with what's left after older sent orders (the number the store was told). Shipping drops the stock (a shipped move under the order's number) and fixes each line's price per case, (average cost + handling fee) x (1 + markup %) to the cent, and the order's delivery fee.
+  - The store marks it received, each line at most what shipped; stock doesn't move then.
+  - A phone never sees a price, a fee or a cost.
+  - Why: a store's Happy Supply order went through a Facebook chat; this puts it in the warehouse's queue, with the stock and the fixed prices the monthly chargebacks (W3) read. *(Confirmed: owner 2026-11-02, `docs/MOG_Warehouse_Spec.md` §2, "W2 spec" and "W2a design". The owner picked no Approve step, cases available as a number, an over-order sent with a warning, the link in the item's row, and Ship starting with what's left after older orders. HEH's own stock held at Elpis follows as W2b.)*
 
 ---
 
@@ -412,6 +422,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | use-multiplier | boolean | col M. Off = order flat to par, for bulk/batch items (R20). |
 | active | boolean | col L. |
 | notes | text | col N. |
+| warehouse product | product ref or none | The Happy Supply product it comes from (R32). Set by HQ; part of the item, so Undo brings it back. |
 
 #### Entity: Vendor
 | Field | Type (conceptual) | Notes |
@@ -449,7 +460,17 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | handling fee | money per case | Never shown to a store. |
 | stores | list of store refs | The stores that may order it; none = every store. |
 | stock | cases per location | Never below 0. |
-| moves | list of {when, who, location, cases (+/-), kind, order or transfer number, cost, reason, cases after, average after} | Every change to stock; never edited. Kinds: received, transfer out, transfer in, count, shipped (W2). |
+| moves | list of {when, who, location, cases (+/-), kind, order or transfer number, cost, reason, cases after, average after} | Every change to stock; never edited. Kinds: received, transfer out, transfer in, count, shipped (R32). |
+
+#### Entity: Store order (Happy Supply, R32)
+| Field | Type (conceptual) | Notes |
+|---|---|---|
+| number | text | HS-0001 on, from the orders there. |
+| store, cycle | store ref, date | One sent order per store and cycle; sending again replaces it. |
+| needed by, note, sent by | date, text, name | From the phone's review. |
+| status | sent, shipped, received, cancelled | Cancelled only while sent. |
+| lines | list of {store item and its name, product, cases ordered, shipped (and from where), received, price per case, average cost} | Price and average fixed at ship; the phone never sees them. |
+| delivery fee | money per order | Fixed at ship. |
 
 #### Entity: Count line (per item, per vendor, per day)
 | Field | Type (conceptual) | Notes |
@@ -612,7 +633,8 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
   with its own stock, costs and admin role behind it; only a store's items from that vendor link to
   warehouse products, and a KM sends that vendor's order to the warehouse from the review screen.
   Built so far (W1, 2026-11-02): the warehouse's own stock, vendor orders in, transfers, counts and
-  history, and the warehouse role (R30). Next: store orders (W2) and monthly chargebacks (W3).
+  history, and the warehouse role (R30); store orders from Happy Supply (W2a, R32). Next: HEH's own
+  stock held at Elpis (W2b, KMs keep ordering it from Elpis) and monthly chargebacks (W3).
 - **LTOs as records.** Built 2026-11-02 (R31, `docs/MOG_LTO_Spec.md`): HQ ends, rolls back or makes
   standard what it sent, and the store's Items page shows new LTO items first until set up. Next:
   lining up each concept's stores with its library, and items a store can't remove (its own spec).
