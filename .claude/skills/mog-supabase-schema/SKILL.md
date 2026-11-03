@@ -92,6 +92,8 @@ file is run once, in order. Re-running any of them must stay harmless.
 - **SQL gotchas met here:**
   - `-` binds tighter than `->` (smoke_v6);
   - `now()` never moves in one DO block (smoke_v5);
+  - plpgsql names ignore case: a loop record called `L` is the table alias `l` in its own query
+    (schema v17: `record "l" is not assigned yet`); name records apart from every alias;
   - the vendor list sorts with `und-x-icu` to match `localeCompare` (schema_v4, pinned by smoke_v4);
   - a regex over a SQL file counts commented-out rows, so strip `--` first (`mog-add-store`'s
     `validate.py`).
@@ -110,6 +112,9 @@ file is run once, in order. Re-running any of them must stay harmless.
        column). Nor is a plant that makes the call itself throw (a key clash, a bad statement in
        the body): every row after it fails. It counts only when the rows that fail are about the
        rule you planted (2026-11-02, v15's count plant).
+     - **A plant reported NOT CAUGHT: first check it hit the code whose output a smoke row reads.**
+       A rule written twice passes when only one copy is planted (2026-11-03, v17: the line count,
+       not the insert); re-plant the copy that writes before calling it a gap in the smoke file.
      - The runner skips what PGlite can't pass and says why: `smoke.sql` and `smoke_v2` (v1
        assertions that v3 changed), `smoke_v4` (no ICU; `und-x-icu` faked as "C") and two rows of
        `smoke_v7`.
