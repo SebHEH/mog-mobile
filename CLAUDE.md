@@ -18,7 +18,7 @@ Project facts and gotchas that used to live in Claude's memory on one computer (
 
 Replace the path here with the newest handoff at the end of each session that ships material changes. (The `mog-session-handoff` skill rewrites this line.)
 
-@docs/MOG_SessionHandoff_2026_11_02.md
+@docs/MOG_SessionHandoff_2026_11_03.md
 
 ## Quick orientation
 
