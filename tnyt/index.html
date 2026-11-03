@@ -922,19 +922,25 @@
     .item-name { font-size: 15px; font-weight: 500; margin: 0; }
     .item-meta { font-size: 12px; color: var(--text-3); margin: 2px 0 0; font-style: italic; }
 
-    /* Primary/secondary vendor badge on a count row — labels whether this
-       vendor is the item's primary (default order source) or a backup. Both
-       are fully orderable here. */
+    /* A badge on a count row (Today only, with the quick edits below). */
     .vend-badge {
       display: inline-block; font-size: 10px; font-weight: 700;
       letter-spacing: .02em; border-radius: 999px;
       padding: 1px 7px; margin-left: 6px; vertical-align: 1px; white-space: nowrap;
     }
-    /* Fixed semantic colors (NOT concept-themed) so the green/yellow coding
-       reads consistently on every store: green = default source, yellow =
-       backup. Primary is green; secondary is amber/yellow. */
-    .vend-badge.vb-primary { color: var(--green-dark); background: var(--green-light); border: 0.5px solid rgba(26,122,85,0.40); }
-    .vend-badge.vb-secondary { color: var(--amber-dark); background: var(--amber-light); border: 0.5px solid rgba(186,117,23,0.45); }
+    /* An item's other vendors (shownItems_): the arrow after its name opens
+       the line under it that names them. */
+    .bk-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 24px; margin: -4px 0 -4px 2px; padding: 0;
+      border: none; border-radius: var(--r-sm); background: none;
+      color: var(--text-3); vertical-align: middle; cursor: pointer;
+    }
+    .bk-toggle i { font-size: 16px; transition: transform .15s; }
+    .bk-toggle[aria-expanded="true"] i { transform: rotate(180deg); }
+    .bk-toggle:active { background: var(--bg-soft); }
+    .bk-line { font-size: 12px; color: var(--text-2); margin: 3px 0 0; }
+    .bk-line[hidden] { display: none; }
 
     .stepper {
       display: flex;
@@ -1096,6 +1102,8 @@
     .qe-pick:last-child { border-bottom: none; }
     .qe-pick small { display: block; color: var(--text-2); font-size: 12px; margin-top: 2px; }
     .qe-empty { padding: 14px 12px; color: var(--text-2); font-size: 13px; }
+    .qe-group { padding: 8px 12px 4px; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--text-3); background: var(--bg-soft); }
     .cta-copy:active { background: var(--teal-light); }
     .cta-copy.copied { background: var(--teal-light); }
 
@@ -3690,8 +3698,9 @@ function parFlagCutoff_(today) {
       itemsOrdered:     { en: 'Items ordered', es: 'Artículos pedidos' },
       reference:        { en: 'Reference', es: 'Referencia' },
       onHand:           { en: 'on hand', es: 'stock' },
-      primary:          { en: 'Primary', es: 'Principal' },
-      secondary:        { en: 'Secondary', es: 'Secundario' },
+      bkToggle:         { en: 'Other vendors for this item', es: 'Otros proveedores de este artículo' },
+      bkMain:           { en: 'Main vendor:', es: 'Proveedor principal:' },
+      bkBackups:        { en: 'Backups:', es: 'Respaldos:' },
       counted:          { en: 'counted', es: 'contados' },
       reviewOrder:      { en: 'Review order', es: 'Revisar pedido' },
       saveContinue:     { en: 'Save and continue later', es: 'Guardar y continuar después' },
@@ -3763,6 +3772,10 @@ function parFlagCutoff_(today) {
       qeAddHelp:        { en: "It's on this list for today's order only.", es: 'Queda en esta lista solo para el pedido de hoy.' },
       qeSearch:         { en: 'Search items', es: 'Buscar artículos' },
       qeNoMatches:      { en: 'No items to add.', es: 'No hay artículos para agregar.' },
+      qeBackupsHere:    { en: 'Backup items for this vendor', es: 'Artículos de respaldo de este proveedor' },
+      qeOtherItems:     { en: 'Other items', es: 'Otros artículos' },
+      qeUsually:        { en: 'usually from', es: 'normalmente de' },
+      qeShownHere:      { en: '{item} is on this list now. Counting it here orders it from {v}.', es: '{item} ya está en esta lista. Si lo cuentas aquí, se pide a {v}.' },
       qeConfirmToday:   { en: 'Use this par just for today?', es: '¿Usar este par solo por hoy?' },
       qeConfirmTodayMsg:{ en: "Only today's order uses it, on every list this item is on. Manage Items flags it for review.", es: 'Solo el pedido de hoy lo usa, en todas las listas de este artículo. Administrar artículos lo marca para revisión.' },
       qeConfirmGood:    { en: 'Change the par for good?', es: '¿Cambiar el par para siempre?' },
@@ -5726,16 +5739,12 @@ function parFlagCutoff_(today) {
           ' ' + escapeHtml(fmt12h(v.cutoffTime));
       }
     }
-    // Primary count headlines; backups get a quiet "+N backup" suffix so a
-    // vendor that's mostly a backup source (e.g. B&T) explains its own count
-    // screen. Older cached payloads may lack backupCount — treat as 0.
-    const backupSegment = v.backupCount
-      ? ' &middot; +' + v.backupCount + ' ' +
-        (state.lang === 'en'
-          ? (v.backupCount === 1 ? 'backup' : 'backups')
-          : (v.backupCount === 1 ? 'respaldo' : 'respaldos'))
-      : '';
-    metaText = v.itemCount + ' ' + t(v.itemCount === 1 ? 'item' : 'items') + backupSegment + cutoffSegment;
+    // The number the count screen lists (shownItems_: each item on its main
+    // vendor's list only). Without this phone's copy of the day (Apps
+    // Script), the vendor's own items.
+    const shown = shownCountFor_(v.name);
+    const listed = shown !== null ? shown : (v.itemCount || 0);
+    metaText = listed + ' ' + t(listed === 1 ? 'item' : 'items') + cutoffSegment;
 
     if (status === 'sent') {
       // Vendor already has a LOG_ORDERS row stamped with the current cycle
@@ -5752,9 +5761,9 @@ function parFlagCutoff_(today) {
     } else if (status === 'in_progress') {
       statusClass = ' status-progress';
       const entered = (v.enteredCount != null) ? v.enteredCount : null;
-      // Denominator = everything the count screen lists (primaries + backups)
-      // so "entered X / Y" can't overflow on a backup-heavy vendor.
-      const total   = (v.itemCount || 0) + (v.backupCount || 0);
+      // Denominator = what the count screen lists, so "entered X / Y" matches
+      // it (and never falls below what's entered).
+      const total   = Math.max(listed, entered || 0);
       // Two sub-cases:
       //   (a) entered > 0  → show a tappable "Mark reviewed" button in
       //       place of the passive pill. Lets the KM finish a vendor
@@ -6861,7 +6870,9 @@ function parFlagCutoff_(today) {
   }
 
   // Active items not on this vendor's list (today's adds included), A to Z,
-  // with a search box.
+  // with a search box. This vendor's backup items, which its list hides
+  // (shownItems_), come first: picking one shows it here on this phone with
+  // nothing saved (bkKept_), so counting it here orders it from this vendor.
   function openAddItemSheet_() {
     const ctx = state.countContext;
     const cat = direct.catalog;
@@ -6872,6 +6883,10 @@ function parFlagCutoff_(today) {
       .map(r => String(r[1] || '').trim()));
     ctx.items.forEach(i => onList.add(i.id));
     const items = cat.items || {};
+    const shownIds = new Set(shownItems_(ctx).map(i => i.id));
+    const backups = ctx.items.filter(i => !shownIds.has(i.id))
+      .map(i => ({ id: i.id, name: i.name, pack: i.pack, primary: i.primaryVendor, backup: true }))
+      .sort((a, b) => a.name.localeCompare(b.name));
     const cands = Object.keys(items)
       .filter(id => items[id].active === true && items[id].name && !onList.has(id))
       .map(id => ({ id: id, name: items[id].name, pack: items[id].pack, primary: items[id].primaryVendor }))
@@ -6882,17 +6897,24 @@ function parFlagCutoff_(today) {
       '<input class="name-input" id="qe-search" type="search" autocomplete="off" placeholder="' + escapeHtml(t('qeSearch')) + '">' +
       '<div class="qe-list" id="qe-list"></div>' +
       '<button class="cta-secondary" id="qe-cancel">' + escapeHtml(t('cancel')) + '</button>');
+    const pickHtml = c => '<button class="qe-pick" data-id="' + escapeHtml(c.id) + '"' + (c.backup ? ' data-backup="1"' : '') + '>' +
+      escapeHtml(c.name) + '<small>' +
+      escapeHtml([c.pack, c.backup && c.primary ? t('qeUsually') + ' ' + c.primary : c.primary].filter(Boolean).join(' · ')) +
+      '</small></button>';
     const paint = () => {
       const q = $('qe-search').value.trim().toLowerCase();
-      const shown = cands.filter(c => !q || c.name.toLowerCase().indexOf(q) >= 0).slice(0, 200);
+      const match = c => !q || c.name.toLowerCase().indexOf(q) >= 0;
+      const b = backups.filter(match);
+      const o = cands.filter(match).slice(0, 200);
       const list = $('qe-list');
-      list.innerHTML = shown.length
-        ? shown.map(c => '<button class="qe-pick" data-id="' + escapeHtml(c.id) + '">' + escapeHtml(c.name) +
-            '<small>' + escapeHtml([c.pack, c.primary].filter(Boolean).join(' · ')) + '</small></button>').join('')
-        : '<div class="qe-empty">' + escapeHtml(t('qeNoMatches')) + '</div>';
-      list.querySelectorAll('.qe-pick').forEach(b => b.addEventListener('click', async () => {
-        const id = b.getAttribute('data-id');
+      let html = '';
+      if (b.length) html += '<div class="qe-group">' + escapeHtml(t('qeBackupsHere')) + '</div>' + b.map(pickHtml).join('');
+      if (o.length) html += (b.length ? '<div class="qe-group">' + escapeHtml(t('qeOtherItems')) + '</div>' : '') + o.map(pickHtml).join('');
+      list.innerHTML = html || '<div class="qe-empty">' + escapeHtml(t('qeNoMatches')) + '</div>';
+      list.querySelectorAll('.qe-pick').forEach(btn => btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
         closeQeSheet_();
+        if (btn.hasAttribute('data-backup')) { showBackupHere_(ctx, id); return; }
         if (!(await showConfirm({ title: t('qeConfirmAdd'), msg: items[id].name + ' → ' + ctx.vendor + '. ' + t('qeConfirmAddMsg'),
                                   confirmLabel: t('qeJustToday'), kind: 'warn', icon: 'plus' }))) return;
         runQuickEdit_('quickEdit', { kind: 'add_today', vendor: ctx.vendor, id: id });
@@ -6901,6 +6923,23 @@ function parFlagCutoff_(today) {
     $('qe-search').addEventListener('input', paint);
     $('qe-cancel').addEventListener('click', closeQeSheet_);
     paint();
+  }
+
+  // A backup item brought back on this list (openAddItemSheet_): kept for the
+  // day (bkKept_), drawn, and put in view with the live-count highlight.
+  function showBackupHere_(ctx, id) {
+    bkKept_(ctx.vendor).add(id);
+    if (state.countContext !== ctx || state.currentView !== 'count') return;
+    renderCount();
+    const it = ctx.items.find(i => i.id === id);
+    const row = $('view-count').querySelector('.item[data-id="' + cssEscape(id) + '"]');
+    if (row) {
+      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      row.classList.remove('live-flash');
+      void row.offsetWidth;   // restart the animation
+      row.classList.add('live-flash');
+    }
+    showToast(t('qeShownHere').replace('{item}', it ? it.name : id).replace('{v}', ctx.vendor), 'success');
   }
 
   // One quick edit, then the count screen from the answer. A today par
@@ -6940,10 +6979,111 @@ function parFlagCutoff_(today) {
     }
   }
 
+  // Which items a vendor's count screen lists (2026-11-03). Each item is on
+  // one list, its main vendor's, so going through every vendor counts it
+  // once. An item with no main vendor, or whose main vendor's list doesn't
+  // have it, is on the first of its lists in the store's vendor order. A
+  // backup row still shows when it was added to this list for today, has a
+  // count here today (nothing that will be ordered is hidden), or is kept on
+  // this phone (bkKept_). Counting a backup here orders it from this vendor,
+  // as it always has (OrderMath.gs): only what the list shows changed.
+  function shownItems_(ctx) {
+    const here = String(ctx.vendor || '').toLowerCase();
+    const kept = bkKept_(ctx.vendor);
+    return ctx.items.filter(it => {
+      if (it.todayOnly || kept.has(it.id)) return true;
+      if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) return true;
+      const home = homeList_(it);
+      return home === null || home.toLowerCase() === here;
+    });
+  }
+
+  // Each item's lists (the store's vendors whose count list has it), in the
+  // store's vendor order, from the catalog. null without one (Apps Script).
+  let itemListsCat_ = null, itemListsMap_ = null;
+  function itemLists_() {
+    const cat = direct.catalog;
+    if (!cat) return null;
+    if (itemListsCat_ === cat) return itemListsMap_;
+    const order = new Map((cat.vendorList || []).map((v, i) => [String(v).toLowerCase(), i]));
+    const lists = new Map();
+    for (const r of (cat.pickRows || [])) {
+      const v = String(r[0] === null || r[0] === undefined ? '' : r[0]);
+      const id = String(r[1] || '').trim();
+      if (!v || !id || (order.size && !order.has(v.toLowerCase()))) continue;
+      const l = lists.get(id) || [];
+      if (!l.some(x => x.toLowerCase() === v.toLowerCase())) l.push(v);
+      lists.set(id, l);
+    }
+    if (order.size) for (const l of lists.values()) l.sort((a, b) => order.get(a.toLowerCase()) - order.get(b.toLowerCase()));
+    itemListsCat_ = cat;
+    itemListsMap_ = lists;
+    return lists;
+  }
+
+  // The one list an item shows on (shownItems_). Without the catalog, its
+  // main vendor's, or null when it has none (every list shows it, as before).
+  function homeList_(it) {
+    const main = String(it.primaryVendor || '');
+    const lists = itemLists_();
+    if (!lists) return main || null;
+    const mine = lists.get(it.id) || [];
+    if (main && mine.some(v => v.toLowerCase() === main.toLowerCase())) return main;
+    return mine.length ? mine[0] : (main || null);
+  }
+
+  // Backup rows this phone keeps on a list for the day: brought back with
+  // "Add an item", or typed into (a row never vanishes mid-count).
+  const bkKeptByList_ = new Map();
+  function bkKept_(vendor) {
+    const key = (directCycleDate_() || '') + '\u0001' + String(vendor || '').toLowerCase();
+    if (!bkKeptByList_.has(key)) bkKeptByList_.set(key, new Set());
+    return bkKeptByList_.get(key);
+  }
+
+  // The line under a row naming the item's other vendors: its backups, and
+  // its main vendor when this list isn't that. '' when there are none, or
+  // without the catalog (Apps Script); then the row has no arrow.
+  function backupLineFor_(it, vendor) {
+    const lists = itemLists_();
+    if (!lists) return '';
+    const here = String(vendor || '').toLowerCase();
+    const main = String(it.primaryVendor || '');
+    const mainLow = main.toLowerCase();
+    const others = (lists.get(it.id) || []).filter(v => v.toLowerCase() !== here && v.toLowerCase() !== mainLow);
+    const parts = [];
+    if (main && mainLow !== here) parts.push(escapeHtml(t('bkMain')) + ' ' + escapeHtml(main));
+    if (others.length) parts.push(escapeHtml(t('bkBackups')) + ' ' + others.map(escapeHtml).join(', '));
+    return parts.join(' &middot; ');
+  }
+
+  // How many items a vendor's count screen lists (shownItems_), for its Today
+  // card. null without this phone's copy of the day (Apps Script).
+  function shownCountFor_(vendor) {
+    if (direct.mode !== 'direct' || !direct.snap) return null;
+    try {
+      if (direct.inputsFor !== direct.snap || !direct.inputs) {
+        direct.inputs = orderInputsFromSnapshot_(direct.snap);
+        direct.inputsFor = direct.snap;
+      }
+      const inputs = direct.inputs;
+      const payload = vendorItemsFromSnapshot_(inputs, vendorNameFromInputs_(inputs, vendor));
+      return shownItems_({ vendor: vendor, items: payload.items }).length;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // The item rows drawn on the count screen, in order (liveRefreshCount_).
+  function drawnItemIds_() {
+    return Array.from($('view-count').querySelectorAll('.item[data-id]'))
+      .map(r => r.getAttribute('data-id')).join('\u0001');
+  }
+
   function renderCount() {
     const ctx = state.countContext;
     const view = $('view-count');
-    const items = ctx.items;
+    const items = shownItems_(ctx);
 
     let toOrder = 0;
     let counted = 0;
@@ -6985,9 +7125,9 @@ function parFlagCutoff_(today) {
       '</span>' +
     '</div>';
 
-    // Group by storage area, preserving the API's order. Backup items (this
-    // vendor isn't their primary) are fully orderable here — they just carry a
-    // "Backup · <primary>" badge so the KM knows this isn't the default source.
+    // Group by storage area, preserving the API's order. Only the items this
+    // list shows (shownItems_); an arrow after an item's name opens a line
+    // naming its other vendors (backupLineFor_).
     const hsHere = hsIsVendor_(ctx.vendor) || hsHeld_(ctx.vendor);
     const hsAvText = hsIsVendor_(ctx.vendor) ? t('hsAvailable') : t('hsAvailableAt').replace('{v}', ctx.vendor);
     let lastArea = null;
@@ -7000,11 +7140,11 @@ function parFlagCutoff_(today) {
       const sug = computeSuggested(it);
       const pillCls = sug == null ? 'suggest empty' : (sug === 0 ? 'suggest zero' : 'suggest');
       const pillTxt = sug == null ? '—' : sug;
-      const badge = (it.secondary
-        ? ' <span class="vend-badge vb-secondary">' + escapeHtml(t('secondary')) +
-            (it.primaryVendor ? ' &middot; ' + escapeHtml(it.primaryVendor) : '') + '</span>'
-        : ' <span class="vend-badge vb-primary">' + escapeHtml(t('primary')) + '</span>') +
-        (it.todayOnly ? ' <span class="vend-badge vb-today">' + escapeHtml(t('qeTodayOnly')) + '</span>' : '');
+      const bkLine = backupLineFor_(it, ctx.vendor);
+      const bkOpen = !!(bkLine && ctx.bkOpen && ctx.bkOpen.has(it.id));
+      const badge = (it.todayOnly ? ' <span class="vend-badge vb-today">' + escapeHtml(t('qeTodayOnly')) + '</span>' : '') +
+        (bkLine ? '<button type="button" class="bk-toggle" aria-expanded="' + bkOpen + '" aria-label="' +
+            escapeHtml(t('bkToggle')) + '"><i class="ti ti-chevron-down" aria-hidden="true"></i></button>' : '');
       // Quick edits (Supabase stores): the par shows in the meta line, and
       // tapping the item opens its sheet. A today par says what it normally is.
       const qe = direct.mode === 'direct';
@@ -7027,6 +7167,7 @@ function parFlagCutoff_(today) {
         '<div class="item-info' + (qe ? ' qe-tap' : '') + '">' +
           '<p class="item-name">' + escapeHtml(it.name) + badge + '</p>' +
           '<p class="item-meta">' + meta + '</p>' +
+          (bkLine ? '<p class="bk-line"' + (bkOpen ? '' : ' hidden') + '>' + bkLine + '</p>' : '') +
         '</div>' +
         '<div class="stepper">' +
           '<button class="step-btn" data-step="-1">&minus;</button>' +
@@ -7063,6 +7204,21 @@ function parFlagCutoff_(today) {
 
     if ($('review-btn'))         $('review-btn').addEventListener('click', onReviewClick);
     if ($('save-continue-btn'))  $('save-continue-btn').addEventListener('click', onSaveContinueClick);
+    // The arrow opens or closes the line naming the item's other vendors, and
+    // it stays open through redraws. It isn't a tap on the row (the item sheet).
+    view.querySelectorAll('.bk-toggle').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const row = btn.closest('.item');
+        const id = row.getAttribute('data-id');
+        const open = btn.getAttribute('aria-expanded') !== 'true';
+        btn.setAttribute('aria-expanded', String(open));
+        const line = row.querySelector('.bk-line');
+        if (line) line.hidden = !open;
+        if (!ctx.bkOpen) ctx.bkOpen = new Set();
+        if (open) ctx.bkOpen.add(id); else ctx.bkOpen.delete(id);
+      });
+    });
     view.querySelectorAll('.item-info.qe-tap').forEach(el => {
       el.addEventListener('click', () => openItemSheet_(el.closest('.item').getAttribute('data-id')));
     });
@@ -7115,6 +7271,7 @@ function parFlagCutoff_(today) {
     if (!item) return;
     item.onHand = val;
     ctx.dirty[id] = val;
+    bkKept_(ctx.vendor).add(id);   // a row typed into stays on this list (shownItems_)
     paintItem_(id, false);
     paintProgress_();
     // Persist draft to localStorage so a crash doesn't lose work
@@ -7151,7 +7308,7 @@ function parFlagCutoff_(today) {
 
   function paintProgress_() {
     const ctx = state.countContext;
-    const items = ctx.items;
+    const items = shownItems_(ctx);
     let toOrder = 0, counted = 0;
     for (const it of items) {
       if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) {
@@ -7298,6 +7455,10 @@ function parFlagCutoff_(today) {
     const changed = liveMergeCounts_(ctx.items, fresh.items, ctx.dirty, focusedRow ? focusedRow.getAttribute('data-id') : null);
     for (const id of changed) paintItem_(id, true);
     if (changed.length) paintProgress_();
+    // A backup counted on another phone joins this list (shownItems_), and one
+    // cleared there leaves it: redraw when the list isn't what's drawn, unless
+    // someone is typing (the next tick tries again).
+    if (!focusedRow && drawnItemIds_() !== ids(shownItems_(ctx))) { renderCount(); return; }
     renderLiveBanner_();
   }
 
@@ -9109,7 +9270,7 @@ function parFlagCutoff_(today) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.29.0';
+    const versionStr = '0.30.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =

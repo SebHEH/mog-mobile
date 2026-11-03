@@ -266,7 +266,7 @@ function phoneProblems(html) {
     vm.createContext(ctx);
     vm.runInContext(
       slices(html, ['vendorContact_', 'contactsSignature_', 'vcPhoneDigits_', 'vcEmailOk_', 'vcWebHref_',
-                    'openVendorContact_', 'renderVendorCard', 'hs_', 'hsIsVendor_', 'hsCardOrder_', 'hsHeld_', 'hsHeldCardOrder_']), ctx);
+                    'openVendorContact_', 'renderVendorCard', 'shownCountFor_', 'hs_', 'hsIsVendor_', 'hsCardOrder_', 'hsHeld_', 'hsHeldCardOrder_']), ctx);
   } catch (e) { return ['the contact code did not load: ' + e.message]; }
   const run = code => vm.runInContext(code, ctx);
   const card = name => run('renderVendorCard(' + JSON.stringify({ name, itemCount: 2, backupCount: 0, cutoffTime: null }) + ', "not_started", "2026-11-01")');
