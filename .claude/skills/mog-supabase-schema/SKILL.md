@@ -77,9 +77,14 @@ file is run once, in order. Re-running any of them must stay harmless.
 - **A newer schema that accepts what an older smoke row says is refused** (v15 renaming vendors vs
   smoke_v8's "only areas rename", 2026-11-02): point that probe at something no version accepts. A
   runner skip isn't enough: the probe now really writes, and later rows of that file fail.
-- **A value a gate or smoke pins against the SQL** (an average, a price) comes from running the SQL
-  in PGlite, never from working it out by hand: a hand-worked 77.5926 was wrong (Postgres: 77.5968),
-  2026-11-02.
+- **A value a gate or smoke pins** (an average, a price, what's left) comes from running the SQL in
+  PGlite or the page's own code, never from working it out by hand: a hand-worked 77.5926 was wrong
+  (Postgres: 77.5968), and v16's gate expected 14 cases left where the code's 20 (both locations)
+  was right, both 2026-11-02.
+- **A CONFLICT check (a smoke row or a gate) differs from the stored row only in the field it
+  guards.** Otherwise another field trips the CONFLICT and a planted "this field isn't compared"
+  passes: smoke_v16's first link check also changed the vendor and pack, and missed the plant until
+  a row differing only by the link was added (2026-11-02).
 - **A long function redefined from an earlier version is generated, not retyped:** a scratch script
   copies the old definition from its `schema_vN.sql` and applies asserted one-match replacements
   (schema v10's `editor_apply_ops` from v8, `catalog_from_tables` from v4). Nothing else in the
