@@ -194,7 +194,7 @@ mog-mobile/
 │   │                            Vendor names); heh-logo.svg and the concept marks beside it come from the HEH brand kit.
 │   │                            hq/ltos.js (schema v14): each concept's LTOs, where each stands at each store, and Send to
 │   │                            more stores, Make it standard, End and Roll back (rules in catalogEdit.js commitHqLto).
-│   │                            hq/warehouse.js (schema v13): Happy Supply's Inventory (with a count), Incoming (vendor
+│   │                            hq/warehouse.js (schema v13, pages rebuilt in v20): HEH STOCK: Stock (every item at each place, On the way), Items, Places, Who took what; Incoming (vendor
 │   │                            orders in, transfers), Products and prices and Stock history, for the warehouse role. Each
 │   │                            person sees the sections their roles (hq, warehouse) open. Orders (schema v16): the store
 │   │                            orders sent from the phone, Ship from a location; a product's Send to stores links an item
@@ -261,9 +261,10 @@ mog-mobile/
 │   ├── schema_v17.sql           Happy Supply W2b, HEH's stock held at Elpis: a location held by a vendor (held_by), a product's via, the 3:30 AM close recording each store's Elpis delivery (EL-0001, guarded), Mark received at the store or by HQ (mog_wh_held_receive) dropping the stock, a receipt beyond the records logged as a count (run after v16).
 │   ├── schema_v18.sql           HQ remembers a device: mog_hq_remember (30 days from each open, the sign-in's "Remember this device" box) and mog_hq_signout (Sign out ends the sign-in on the server) (run after v17).
 │   ├── schema_v19.sql           Elpis on one page: mog.wh_products.concept (the concept whose stores carry a held product), saved by mog_wh_save, read in mog_wh_data (run after v18).
+│   ├── schema_v20.sql           HEH's stock at three places (W2c): a place's kind (held_store, count_how), mog.wh_product_places (an item's places and low points), a Happy Supply line into a place (to_location), the close and the phone by place, mog_wh_taken (run after v19).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v19.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
+│   └── tests/                   smoke.sql … smoke_v20.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
 │                                + test_store_elpis.sql (SQL Editor: two Elpis deliveries on the TEST store, which never closes)
 │                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).

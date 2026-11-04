@@ -22,7 +22,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 ## Stores
 
 - **Canary: rprfo** (`route.py`'s `CANARY`). rpr's pars may not be true 1-day pars, so it's a poor test store.
-- **Not used:** rpt, rptfo and rpfrf (Roll Play Tysons, and Founders FOH).
+- **Not used:** rptfo and rpfrf (Roll Play Tysons FOH and Founders FOH: 0 and 2 order lines in the 30 days to 2026-11-04). Roll Play Tysons BOH (rpt) is in use (219 order lines in those 30 days) and will hold Happy Supply's shrimp for Rosslyn and Founders BOH (`docs/MOG_Warehouse_Spec.md` §2, W2c).
 
   Never use them as canaries or as evidence of real behavior.
 - **Tysons BOH (tnyt) is being set up** (2026-11-01: 208 items, 42 changes from 10-26 to 10-30, 71 items still without a vendor). It moved to the app empty on 10-19; it seeds the Teas'n You BOH library. rpfr was built from rpt's Sheet (and the FOH pair the same way), so drift shows up in pairs. Tysons FOH (tnytf) runs that whole store, including a "BOH section - Warehouse" area.
@@ -97,11 +97,17 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - **The 3:30 AM close records the deliveries** (`mog_sync_close_cycle` replaced in v17, same signature, no Apps Script change), in its own exception block: a failure there comes back as `heldError` in the close's answer and never stops a store's close. The live check after shipping: the next morning's close at every store answered without `heldError`.
   - A delivery and a Happy Supply order share `mog.wh_orders` (`held_at` set for a delivery, status `ordered` then `received`). Every reader of the orders splits them: `wh_orders_json` (Dan's Orders) leaves deliveries out, `wh_deliveries_json` is HQ's Elpis page, and the phone's card picks by `held` and `heldVendor`.
   - A receipt beyond the records logs a `count` move with the EL number as its ref; a real count has no ref. The Elpis page's "count it" flag reads that difference (`lastCount` is the newest count with no ref).
-- **Elpis on one page (schema v19, 2026-11-04; boards in the MOG HQ redesign canvas, bottom row):**
-  - HQ's Elpis page (sidebar "Held at a vendor") sets itself up in four steps: where it's kept, what HEH keeps there (name, pack, concept), how much is there (the count), which stores order it. After setup: Deliveries, Stock (the same count) and Products and stores. Products and prices and Inventory leave held products and locations out.
-  - **Stores link by name:** an item named exactly like an Elpis product (case and spaces aside) is HEH's (`catalogEdit.js` `heldMatches`, `commitHqHeldLinks`). A store spelled differently gets a Rename to the product's name, applied with the link. One name per item everywhere, like vendors.
+- **Elpis on one page (schema v19, 2026-11-04):** its page is gone since v20 (Places and Items, below); what stays:
+  - **Stores link by name:** an item named exactly like an HQ item (case and spaces aside) is HEH's (`catalogEdit.js` `heldMatches`, `commitHqHeldLinks`). A store spelled differently gets a Rename to the item's name, applied with the link. One name per item everywhere, like vendors.
   - A product's concept (`mog.wh_products.concept`, null = every concept) decides which stores' lines show.
   - **The phone checks deliveries in apart from ordering:** "To check in" above "Vendors today" (an Elpis delivery still ordered, a Happy Supply order shipped), each opening a full Check in screen. A vendor card never carries it.
+- **HEH's stock at three places (schema v20, W2c, 2026-11-04; boards in the MOG HQ redesign canvas, bottom row; `docs/MOG_Warehouse_Spec.md` §2, "W2c design"):**
+  - **A place is a warehouse location with a kind:** HEH's own (Happy Supply's freezers), held at a store (`held_store`, RP Tysons; `held_by` is the vendor the other stores order it under, "Transfer (Tysons)"), held by a vendor (`held_by` only, "Elpis Wholesale").
+  - **An item sits at places** (`mog.wh_product_places`, each with a low point); a product's `via` is only a fallback for one with no place yet, and saving a `via` also places it. Every page reads places through `fits(p, loc)`; the SQL through `mog.wh_place_carries`.
+  - **The store's own vendor for an item decides where it comes from** (`mog.wh_item_place`): a held place whose HQ name the store maps to that vendor, never one the store holds itself; else Happy Supply's own. The close records a held place's deliveries the same way.
+  - **A Happy Supply order from a store holding a place for the item is a move, not a sale** (`wh_order_lines.to_location`, no price, no delivery fee): it's in transit until checked in, on the phone or by HQ (Stock, On the way), and then it's in that place. A plain sale stays the store's to check in.
+  - **Who took what** (`mog_wh_taken`): cases only, the days after `from` through `to` in New York time; a holder's own use is minus the real counts' adjustments at its place, an opening count (nothing on record before it) left out.
+  - HQ's HEH STOCK group: Stock, Items, Places, Incoming (Suppliers moved here), Orders, Who took what. Inventory, Products and prices and the Elpis page are gone.
 - **No Undo in W1.** A wrong count is fixed by another count. A wrong cost on a delivery needs a maintainer in the SQL Editor; `mog.wh_moves` keeps each delivery's cost, so the average can be replayed.
 
 ## Local previews and the browser pane

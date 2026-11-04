@@ -180,6 +180,15 @@ check "v18 tables: hq_sessions still not reachable" 404 ''   "$URL/rest/v1/hq_se
 check "v19 wh_save with a concept: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_kind":"product","p_row":{"name":"x","concept":"roll-play"}}' "$(rpc mog_wh_save)"
 check "v19 helper: wh_do_save still not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_by":"x","p_kind":"product","p_row":{}}' "$(rpc wh_do_save)"
 
+# schema v20 (HEH's stock at three places; a bogus token only)
+check "v20 wh_taken: bad token refused"             200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_from":"2026-10-04","p_to":"2026-11-01"}' "$(rpc mog_wh_taken)"
+check "v20 wh_save with places: bad token refused"  200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_kind":"product","p_row":{"name":"x","places":[]}}' "$(rpc mog_wh_save)"
+check "v20 tables: wh_product_places not reachable" 404 ''   "$URL/rest/v1/wh_product_places"
+check "v20 helper: wh_item_place not exposed"       404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_vendor":"x","p_product":1}' "$(rpc wh_item_place)"
+check "v20 helper: wh_available_at not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_product":1,"p_place":null,"p_slug":"nosuchstore","p_cycle":"2026-11-04"}' "$(rpc wh_available_at)"
+check "v20 helper: wh_hs_receive not exposed"       404 ''   -X POST "${J[@]}" -d '{"p_id":1,"p_by":"x","p_received_by":"x","p_lines":[]}' "$(rpc wh_hs_receive)"
+check "v20 helper: wh_taken not exposed"            404 ''   -X POST "${J[@]}" -d '{"p_from":"2026-10-04","p_to":"2026-11-01"}' "$(rpc wh_taken)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

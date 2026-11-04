@@ -182,10 +182,12 @@ function signIn(who) {
   const A = wh('mog_wh_save', { p_kind: 'location', p_row: { name: 'Berliner' } }).id;
   const B = wh('mog_wh_save', { p_kind: 'location', p_row: { name: 'Tysons freezer' } }).id;
   const S = wh('mog_wh_save', { p_kind: 'supplier', p_row: { name: 'Ruby Seas' } }).id;
+  // v20: each sits at both freezers, with a low point at each.
+  const both = (low1, low2) => [{ locationId: A, lowPoint: low1 }, { locationId: B, lowPoint: low2 }];
   const crab = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'King crab legs 9/12', pack: '20 LB case', par: 10, handlingFee: 25,
-    stores: ['zzrpr', 'zzrprfo', 'zzrpfr'] } }).id;
-  const shrimp = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Shrimp 16/20', pack: '10 LB case', par: 12, handlingFee: 6 } }).id;
-  const snow = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Snow crab clusters', pack: '30 LB case', par: 6, handlingFee: 12 } }).id;
+    stores: ['zzrpr', 'zzrprfo', 'zzrpfr'], places: both(8, 4) } }).id;
+  const shrimp = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Shrimp 16/20', pack: '10 LB case', par: 12, handlingFee: 6, places: both(8, 3) } }).id;
+  const snow = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Snow crab clusters', pack: '30 LB case', par: 6, handlingFee: 12, places: both(5, 1) } }).id;
   const po = wh('mog_wh_po_save', { p_po: { supplierId: S, locationId: A, lines: [{ productId: crab, cases: 20, cost: 312 },
     { productId: shrimp, cases: 11, cost: 78.5 }, { productId: snow, cases: 6, cost: 145 }] } });
   wh('mog_wh_po_receive', { p_receipt: { id: po.id, version: 1, lines: [{ ord: 1, cases: 20, cost: 312 }, { ord: 2, cases: 11, cost: 78.5 },

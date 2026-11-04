@@ -1,7 +1,7 @@
 # MOG — Warehouse (Happy Supply), concept library and new stores: spec
 
 **Agreed:** 2026-11-01, Sebastian (spec-first, decisions below).
-**Status:** approved. §1 (concept library) built as schema v12 on 2026-11-01; §2's W1 built as schema v13 and live on 2026-11-02; §2's W2 spec approved 2026-11-02 (W2a, then W2b), W2a built and live the same day as schema v16, and W2b built and live 2026-11-03 as schema v17; the rest isn't built. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
+**Status:** approved. §1 (concept library) built as schema v12 on 2026-11-01; §2's W1 built as schema v13 and live on 2026-11-02; §2's W2 spec approved 2026-11-02 (W2a, then W2b), W2a built and live the same day as schema v16, and W2b built and live 2026-11-03 as schema v17; W2c (HEH's stock at three places: Happy Supply, RP Tysons, Elpis) spec approved 2026-11-04, mockup next; the rest isn't built. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
 **Reference, not ported:** Chef Daniel's Happy Supply artifact (a claude.ai page) and "Happy Supply: System Overview for IT" (2026-10-26). They show what people already want; MOG rebuilds it from scratch on Supabase. Daniel's data isn't moved (it isn't really in use); the warehouse starts with a first count.
 
 ---
@@ -255,6 +255,79 @@ What W2 adds to the design above, and the answers to what was open for it. Not b
 **Facts it rests on (live, 2026-11-02):** Roll Play's FOH stores order from "Elpis" a mix of branded packaging (RP bowls, lids, bags, Magnum roll boxes, utensil packets; AN broth containers) and Elpis's own catalog (tea, Karat cups, gloves); Teas'n You's stores order boba, tea, cups, lids and straws from "Elpis Wholesale" / "ELPIS". Which items are HEH's own stock is data HQ sets when it links them. One spelling for every store: "Elpis Wholesale" (Sebastian, 2026-11-02).
 
 **Adding standard items to stores without an LTO** (built 2026-11-02, later 4): on HQ's Libraries page, tick items, then "Send N to stores" (the library's Set up path with only those items: no LTO record, no pin). W2's publish still has to add the product link.
+
+### W2c spec: HEH's stock at three places (spec-first, approved by Sebastian 2026-11-04)
+
+Why: after v19 the HQ pages read as a warehouse that sells to stores, with prices up front, while what Sebastian needs is how much of HEH's stock sits where. "Transfer (Tysons)" landed on Products and prices under "where Happy Supply's stock sits", and the Elpis page felt like a third system. Not built; a mockup comes first.
+
+**Purpose.** HQ shows how much of HEH's own stock sits at each place right now, and what each store took from each place every month:
+- **Happy Supply:** Dan's bulk stock, from the big shipments.
+- **RP Tysons:** shrimp it holds for itself and for Rosslyn BOH and Founders BOH.
+- **Elpis:** HEH's paper goods from China, kept at a vendor HEH also buys from.
+
+**Who it's for:** Sebastian (all three places and the monthly list); Dan (shipments into Happy Supply, sending to RP Tysons); KMs keep ordering on the phone as today: RP Tysons from Happy Supply, Rosslyn and Founders from "Transfer (Tysons)", every store from Elpis.
+
+**Not for:** Elpis's or Capital's own products; Teas'n You (for now); prices and charges (W3); other store-to-store transfers (Founders and Tysons also have a "Transfer (Rosslyn)" vendor).
+
+**Success looks like:**
+- One HQ page shows each place's stock per product, in cases, and what's on its way.
+- A Happy Supply shipment to RP Tysons moves cases from Happy Supply to Tysons.
+- A Rosslyn or Founders order from "Transfer (Tysons)" comes off Tysons' stock once checked in.
+- Elpis's number matches Elpis's report on the day it's typed in, then drops with each check-in.
+- At month end, a list per store of what it took from each place, in cases.
+
+**Decided (Sebastian, 2026-11-04):**
+- **Shrimp at Tysons is HEH's until a store takes it.** Tysons is a holding place like Elpis; the monthly list shows RP Tysons, Rosslyn and Founders each for what they took.
+- **RP Tysons' own use comes from its MarginEdge count:** Tysons' Sunday inventory gives its stock; last count + what came in from Happy Supply − what Rosslyn and Founders checked in − the new count = what RP Tysons used.
+- **Elpis's number comes from Elpis's report**, typed in as a count; check-ins subtract in between.
+- **The monthly list is cases only**; prices come with W3 and stay off the main page.
+- **One HEH stock page** replaces Inventory, Products and prices and Elpis as HQ's way in.
+- **Round two, after the first mockup** (Sebastian: cards per place "change shape" as items grow; the product page was confusing, it should work like a store's items and vendors):
+  - **Stock is one table:** items as rows, places as columns (who counts it and when under each place's name), amber below a place's low point, then "On the way".
+  - **Items and Places mirror a store's Manage:** a place is like a vendor and an item sits at one or more places like a store item on vendors' lists; the Items page is the store's list beside a panel with one Save, and Places is the Vendors page (kind, held at, how it's counted, the stores that take from it under which of their vendors, where it gets its stock).
+  - **Instead of a par, an item has a price and a stock level per place.** Stock level is both how much is there now (changing it saves a count and asks why) and a low point. The price is cost plus a fee: the cost from deliveries (never typed), a handling fee per case typed, the store price shown.
+
+**Build steps (key decision, then the default):**
+1. One HEH stock page: a table of items by place (round two; first drawn as a card per place). Prices live on Items, not here.
+2. Tysons as a holding place: the "Transfer (Tysons)" location (made 2026-11-04) held by the vendor Rosslyn and Founders order from; their orders recorded at the 3:30 AM close and checked in on the phone. Default: reuse W2b's held places.
+3. Happy Supply to RP Tysons: Dan ships RP Tysons' order and the cases move into Tysons' stock instead of leaving HEH's records. Default: a move between places, not a sale.
+4. RP Tysons' own use from the MarginEdge count (above).
+5. Elpis: its report as a count (built); its setup moves into step 1's page.
+6. The monthly list per store and place, cases only.
+7. Items and Places pages shaped like a store's Items and Vendors (round two): an item's name, pack, concept, its places with now and a low point each, and its price; a place's kind, holder, count source and stores.
+
+About two sessions after the mockup. W1's stock records, W2a's orders and W2b's held places and check-ins stay; the HQ pages change most.
+
+**For the walkthrough:**
+- **A product is ordered from different places at different stores:** shrimp from Happy Supply at RP Tysons, from "Transfer (Tysons)" at Rosslyn and Founders. Today a product has one `via`; the store's own vendor has to decide it.
+- **MarginEdge counts shrimp in pounds** ("Shrimp, 21/25 P&D", 60 on 2026-11-01 at $6.50, so 6 cases); MOG's SHRIMP is CASE (10LBs) at all three stores. Typed in by hand at first, or pulled from MarginEdge later (the MarginEdge API item in CurrentState's "Later").
+- **Who types Tysons' Sunday count, and when:** not decided.
+- Dan's pound-ordering answer and his invite still come before Happy Supply's real use.
+
+**Facts it rests on (live, 2026-11-04):**
+- SHRIMP is CASE (10LBs) at RP Tysons BOH (par 6, from Capital), Rosslyn BOH (par 7.15, main vendor "Transfer (Tysons)", backup SamuelSon) and Founders BOH (par 6, main vendor "Transfer (Tysons)", backup Capital). Rosslyn's last 35 days of shrimp orders went to SamuelSon (7 to 17 cases, twice a week); its main vendor changed after 11-01.
+- RP Tysons is in MarginEdge as "Roll Play - Tysons": an inventory every Sunday on four count sheets (FOH, Kitchen, Storage Room, Walk-Ins); shrimp is on Walk-Ins, Walk-In Freezer.
+- Live warehouse data: one held location (Elpis Wholesale, 2 products) and one HEH location, "Transfer (Tysons)", with no stock; no suppliers, no Happy Supply products or orders.
+
+**Mockups approved** (Sebastian, 2026-11-04, second round: "Approved, design next"): the "HEH's stock" row of the MOG HQ redesign canvas (https://claude.ai/artifact/3pJWHSWbMxVUyaRjmXkXqg): Stock (one table), Items (like a store's Items page), Places (like its Vendors page), Who took what.
+
+**W2c design (walkthrough, approved by Sebastian 2026-11-04).** Not built; about two sessions, one push.
+- **Decided:**
+  - **RP Tysons orders its shrimp on the phone from Happy Supply**, as today's W2a order; Dan ships; the cases go into the Tysons place when RP Tysons checks it in. RP Tysons' SHRIMP par covers all three stores (about 19 cases: its 6, Rosslyn's 7.15, Founders' 6), since its KMs count the whole freezer. Not chosen: Dan restocking Tysons from HQ by its low point.
+  - **RP Tysons' Sunday count is typed in HQ** (Stock, Count a place, in cases: 60 lb is 6). Reading it from MarginEdge waits for a check that MarginEdge gives a server an API key, and is its own build after W2c.
+  - **v20 replaces the close's delivery step** so it matches by place, inside v17's guard (a failure comes back as `heldError` and never stops a store's close). Rollback: re-run v19's version of that function. The morning after, every store's close is checked read-only.
+- **Places are the warehouse locations, with a kind:** HEH's own (`held_by` and `held_store` empty), held at a vendor (`held_by` = HQ's vendor name, Elpis Wholesale), held at a store (`held_store` = the store, rpt; `held_by` = the name the other stores order it under, "Transfer (Tysons)"). `count_how` says how it's counted (in HQ, from MarginEdge, from a report); a label only.
+- **An item sits at places:** `mog.wh_product_places` (product, place, low point) replaces the product's single `via`, which stays as a column nobody reads. Filled from `via` and from each product's `par` for its HEH-own places.
+- **The store's own vendor for an item decides where its order comes from:** a vendor HQ's name maps to at that store (`mog.hq_vendor_links`) for a held place that carries the item, or the store's Happy Supply. The close (`wh_held_from_log`) records a held place's deliveries that way; `wh_available` and the phone's read (`wh_live_json`) give each linked item the cases at its own source place.
+- **A Happy Supply order from a store that holds a place carrying the item is a move, not a sale:** `wh_do_ship` sets each such line's `to_location` and locks no price; the check-in (`mog_wh_received`, or HQ's check-in for the store) puts the cases into that place. Stock's "On the way" shows them until then.
+- **Who took what** (`mog_wh_taken`, cases only): checked-in held deliveries and Happy Supply receipts per store, the holder store's own use per held-at-store place from count to count (count + in − out − next count), and moves between places apart.
+- **Pages:** HQ's HEH STOCK group: Stock (items × places, amber below a low point, On the way with Check in for the store), Items (list and panel: name, pack, concept, places with now and a low point, price as cost plus a fee, the stores linked by name), Places (list and panel: kind, held at, how it's counted, the stores that take from it under which of their vendors, where it gets its stock), Incoming (Suppliers move here), Orders, Who took what, Stock history. Inventory, Products and prices and the Elpis page go. `catalogEdit.js` links items by place. The phone keeps its check-in list; VERIFY nothing there reads `via`.
+- **Built (2026-11-04, not live):**
+  - `supabase/schema_v20.sql` (generated: `wh_held_from_log`, `wh_do_ship`, `mog_wh_received`, `mog_wh_send`, `wh_order_json` from v17, `wh_in_transit` from v13, `wh_do_save`, `wh_state` from v19), `smoke_v20.sql` (37 rows; ten planted defects all caught), a v20 block in `check_api.sh` (123 probes), `tests/fake_supabase.js` mirroring it, gate `tests/wh_places.test.js` (9 controls).
+  - `template/hq/warehouse.js`: Stock (one table, items by place, amber below a low point, "count it" after a receipt beyond the records, On the way with Check in for the store), Items (list and panel: name, pack, concept, places with Now and a low point, the price, which stores, Send to stores), Places (list and panel: kind, held at, the name stores order it under, how it's counted; the stores that take from it linked by name), Who took what (a month, three tables, CSV). `template/hq/index.html`: the HEH STOCK sidebar group.
+  - **Found while building:** an opening count (nothing on record) would have read as negative use; the smoke and the SQL leave it out.
+  - **Differs from the mockup:** Stock's "Count a place" is one panel for any place (MarginEdge's pounds typed as cases); Items keeps "Which stores can order it" and Send to stores from the old Products page; Who took what has no summary tiles.
+- **Ship order:** `git pull` and v20 told to Donny first; v20 (`mog-supabase-schema`: smoke, fake, gate `tests/wh_places.test.js`, PGlite, planted defects), then the pages in `mog-preview`; a maintainer runs v20 and its smoke in the SQL Editor, the probe, then one push the same hour (today's pages save `via`, so they can't run on v20).
 
 ---
 
