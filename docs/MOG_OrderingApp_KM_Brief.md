@@ -1,102 +1,157 @@
-# MOG Daily Ordering App — KM Tool Brief
+# MOG Order Guide — KM Tool Brief
 
-**TOOL:** MOG (Master Ordering Guide) — the phone ordering app at `sebheh.github.io/mog-mobile/<store>/`
-**AUDIENCE:** Kitchen Managers — they use it daily; they do not configure items, pars, or vendors (that lives in the computer editor, admin-side).
-**Written from the deployed code, 2026-07-29** (`template/index.html`, `apps-script/MOGApi.gs`, `apps-script/Recap.gs`).
+**TOOL:** MOG (Master Ordering Guide): the ordering app on the phone at `sebheh.github.io/mog-mobile/<store>/`, and its **Manage** pages on a computer.
+**AUDIENCE:** Kitchen Managers. They count and order on the phone every day, and set up their store's items, pars, vendors and storage areas in Manage on a computer.
+**Written from the deployed code, 2026-11-03** (app v0.30.0, schema v18; `template/index.html`, `template/editor/`, `apps-script/OrderMath.gs`, `apps-script/Recap.gs`, `apps-script/Sync.gs`). It replaces the 2026-07-27 brief, which described the app before it moved off the Google Sheet. Section 13 lists what changed since then.
 
 ## 1. ONE-LINER
 
-You count what's on the shelf, and the app tells you exactly how much to order from each vendor delivering on today's order — then emails the whole order list for you.
+Count what's on the shelf and the app tells you how much to order from each vendor delivering on today's order, then emails the order list so it can be placed.
 
 ## 2. WHY IT EXISTS
 
-Before this, ordering meant a shared spreadsheet on a computer: easy to skip an item, easy to over-order, and nothing reminded you a vendor's cutoff was coming. The app puts the count on your phone in shelf order, does the order math for you, and protects food cost (no guess-ordering), prep time (no walking back to the office), and order accuracy (nothing due today gets forgotten).
+Ordering used to mean a shared spreadsheet on a computer: easy to skip an item, easy to over-order, and nothing warned you a cutoff was coming. The app puts the count on your phone in the order you walk the shelves and does the order math the same way every time. It protects food cost (no guess-ordering), prep time (no trips to the office) and order accuracy (nothing due today gets forgotten). Manage lets each store keep its own items and pars right, with every change logged and undoable.
 
 ## 3. THE 60-SECOND EXPLANATION
 
-Open the app and put in the store PIN. The **Today** screen lists only the vendors you order from today, each with its cutoff time. Tap a vendor and walk the shelf — items appear in the same order you walk it. Type a number for every item — 0 if you're out; the **Order** column instantly shows how much to order, based on the par set for each item. A blank orders nothing. When a vendor's list looks right, tap **Review order**, then **Mark as reviewed** — the card turns green. When the last vendor goes green, the app automatically emails the full order to everyone on the recipients list. Overnight, it files today's order into History and clears the counts for tomorrow — by itself.
+Open the app, enter the store PIN and pick your name. **Today** lists only the vendors you order from today, earliest cutoff first. Tap a vendor and walk the shelves: items come up area by area, in shelf order. Type what you have for every item, 0 if you're out. The **Order** column shows what to order: the par for the days this delivery covers, minus what you have, rounded up. Tap **Review order**, then **Mark as reviewed**. When every card is done, tap **Email me the daily summary** so the order goes out, and place each order before its cutoff. At about 3:30 AM the day closes by itself: today's order goes into History and the counts clear for tomorrow.
 
 ## 4. WHO TOUCHES IT
 
 | Role | What they do in it | How often |
 |---|---|---|
-| KM | Count items, mark vendors reviewed, resend the summary email, turn Emergency override on/off; **places the orders from the daily email** (mostly the KM; sometimes the GM) | Daily |
-| BOH shift lead | May do the counting when the KM can't — same flow, same PIN | As assigned |
-| GM | Receives the daily order email; may place orders; GM rows on the recipients list show "Managed by GM — edit in the spreadsheet" and can't be changed in the app | Daily (email) |
-| Admin / HR / regional managers | Keep the Settings → Recipients list current per store; store PINs | As needed |
-| KM (on a computer) | Items, pars, vendors, delivery days, cutoffs live in the separate computer editor — each store sets up its own vendors there. Separate training session. | Weekly / as needed |
+| KM | Counts and reviews every vendor, sends the daily email, places orders (mostly the KM, sometimes the GM: Sebastian, 2026-07-27). On a computer: Manage (items, pars, vendors, areas, shelf order), Undo in Changes. | Daily; Manage weekly or as needed |
+| BOH shift lead | Counts when the KM can't. Same PIN, same screens. Changes a par with **Just today** only; a par changed for good (**From now on**) is the KM's call (Sebastian, 2026-11-03). | As assigned |
+| GM | Gets the daily email. The GM row on the email list is changed only on a computer. | Daily (email) |
+| Anyone with the PIN | Settings → **Recipients**: who gets the daily email. **VERIFY:** who owns this list now (July: admin, HR or regional managers). | As needed |
+| HQ (Sebastian) | Sends LTOs and vendors to many stores at once. Each one shows in the store's **Changes** as "HQ · <name>", and the store can undo it there. | As needed |
+
+A KM can't change: the store PIN, an item's ID, or anything about an LTO (create, end, roll back). A KM can undo any change in Changes.
 
 ## 5. THE KM WORKFLOW
 
-1. Open the app from the phone's home-screen icon → enter the store PIN. On the first open of a new day you'll see **"Detected new day — resetting On Hand…"** run by itself — that's normal, let it finish.
-2. **Today** tab → the header shows the date and store, then **Vendors today** with a count. Each card shows items, the cutoff (e.g. "cutoff 2:00 PM"), and a status: **Not started**, **In progress**, **Reviewed**, or **Submitted**.
-3. Tap a vendor card → the count screen. Columns are **Item / On hand / Order**, grouped under storage-area headers in walk order. The top strip shows **"X of Y counted"**.
-4. For each item, type what you have (decimals like 1.5 are fine) or use the **−  +** buttons. The **Order** number updates as you type. **DO NOT SKIP: if you're out of an item, type 0. A blank shows "—" and orders NOTHING.**
-5. Tap **Review order** → check the list → **Mark as reviewed**. The confirm says "This locks counts for this vendor. You can still come back and edit if you need to." You should see the card turn green with a ✓ **Reviewed** pill and drop to the bottom of the list.
-6. Repeat for every vendor. Shortcut: once a card shows counts entered, a **Mark reviewed** button appears right on the card. If every remaining vendor has at least one count, a **Mark all remaining as reviewed** link appears at the bottom.
-7. When the last vendor goes green: the **"All vendors reviewed"** panel appears and the summary email sends itself — watch for the **"Daily summary emailed"** toast. If it fails, tap **Email me the daily summary** on that panel.
-8. Place the orders with each vendor from the email, before each cutoff. This is usually the KM's job (sometimes the GM's).
+**On the phone, every day**
+
+1. Open the app from the home-screen icon → enter the PIN → **Sign in**. The first time on a phone, **Who's counting?** asks your name: pick it (or **Someone else…**) → **Continue**. Others now see "<your name> counting" on the card.
+2. **Today** → **Vendors today · N**. Each card shows the item count, the cutoff ("· cutoff 2:00 PM") and a status: **Not started** (red card), **In progress** (amber), **Reviewed**.
+3. Tap a vendor → columns **Item / On hand / Order**, under storage-area headers, with "**5 of 23 counted**" at the top.
+4. Type a count for every item, or use **−** / **+**. Decimals are fine. **DO NOT SKIP: out of it means type 0. A blank shows "—" and orders nothing.** Counts save by themselves a few seconds after you stop typing.
+5. Tap **Review order** → check the list → **Mark as reviewed** → **Mark as reviewed** on the confirm. The bar fills, "<Vendor> reviewed!", and the card turns your concept's colour.
+   - **Copy order for email** on the same screen copies that vendor's order (delivery day and store address included) to paste into an email or text to the rep.
+6. Repeat for each vendor. Shortcut: the **✓ 5 / 23** pill on a card marks it reviewed. **Mark all remaining as reviewed** (bottom of the list) marks the rest and sends the email.
+   - **Two people counting:** anyone can count (counts show on every phone within seconds), but **one phone** marks every vendor reviewed and sends the email. Reviewed is saved on the phone that marked it (Sebastian, 2026-11-03).
+7. **DO NOT SKIP:** when every card is done, **All vendors reviewed** appears → the KM taps **Email me the daily summary** (Sebastian, 2026-11-03). It goes to everyone on Settings → Recipients; you should see "**Daily summary emailed · N recipients**". Marking the last vendor reviewed does NOT send it by itself.
+8. Place each order with its vendor before its cutoff.
+
+**On a computer (Manage)**
+
+Open the same store link on a computer (a mouse and a wide window). The sidebar has **ORDER GUIDE** (Today, Order history) and **MANAGE** (Overview, Items, Vendors, Storage areas, Shelf to Sheet, Health check), with **Changes** and **Settings** at the bottom.
+
+- **Overview** → **Set up <store>**, a 5-step checklist: Add your items · Set each vendor's delivery days · Create storage areas · Give each item a storage area and a par · Put each area in shelf order. Under it, **Needs attention**: par review flags, the phones' one-day edits (**Apply** / **Dismiss**), Health check problems.
+- **Items** → click an item → set **Par**, **Storage area**, **Vendors** (the **Main** vendor plus backups) → **Save changes**. Saving needs a name, a main vendor and a par. An item reaches a count list only once it has a storage area.
+- **Vendors** → **Delivery days** and **Order due by**. A vendor with no delivery days never shows on Today.
+- **Changes** → every change, newest first, with who made it → **Undo**.
 
 ## 6. THE WEEKLY / DAILY RHYTHM
 
-- **Every day, after the lunch rush:** count and review every vendor shown on Today, before each vendor's cutoff time. Counting at a consistent time matters — the pars are tuned to a post-lunch shelf. The orange **"cutoff approaching"** badge appears 90 minutes before cutoff; after it passes you'll see **"cutoff missed"**.
-- **Count EVERYTHING, type a number — even when you have plenty.** Every item on the guide should be ordering roughly once a week; if something goes 2+ weeks without ordering, that's sitting inventory tying up cash. The counts are the data that surfaces it — blanks hide it.
-- **Deadline reality:** miss a cutoff and that vendor's order slips a full cycle. Recovery: call the vendor rep and ask for a favor; failing that, check whether another vendor that carries similar items can add them to its delivery.
-- **Weekly (KM judgment):** review MarginEdge for items climbing in price — if a Secondary vendor is now cheaper, it may be worth making it the Primary for the coming week (done in the computer editor, not this app).
-- **Overnight:** nothing to do — the next morning's first open logs the day into **History** and clears counts automatically.
+- **Every day, after the lunch rush** (Sebastian, 2026-07-27): count and review every vendor on Today, tightest cutoff first. Cards turn orange **"cutoff approaching"** 90 minutes before the cutoff and red **"cutoff missed"** after it.
+- **Count everything, type a number, every day.** The counts are what show over-ordering and stock sitting on the shelf.
+- **Before you leave:** send the daily email (step 7). If nobody sends it, it goes at the 3:30 AM close, after that day's cutoffs (`apps-script/Sync.gs`, `nightlyMaintenance_`).
+- **Missed cutoff:** that vendor's order slips a full delivery. Call the rep for a favor, or add the items to a similar vendor's delivery (Sebastian, 2026-07-27).
+- **Weekly, on a computer:** Manage → **Items** → the **Par review** filter. Read each flagged item's note and adjust its par. Also Overview → **Needs attention**.
+- **When HQ sends an LTO:** Items shows **"New from HQ: <LTO> · N items to set up"** → **Set it up**: give each item a par and a storage area. Until then they're on no count list.
+- **Overnight (about 3:30 AM):** nothing to do. The day closes, the order goes into History, counts clear, Emergency override turns off.
 
 ## 7. THE 3–5 THINGS THAT GO WRONG
 
-1. **"I left it blank."** Blank means NOT COUNTED — the app suggests nothing and the item never reaches the email. Out of it? That blank is a stockout. Have plenty? That blank erases the data point that shows what we over-order. Spot it: "—" in the **Order** column; "X of Y counted" short of Y. Fix: the standard is **count everything, type a number** — 0 when you're out, the real count when you're not.
-2. **Nobody marks the last vendor reviewed.** The email only sends itself when ALL vendors are green — stall at 4 of 5 and no order email goes out that day. Spot it: no "All vendors reviewed" panel by end of shift. Cost: a whole missed order day (the morning reset emails it late, after cutoffs). Fix: finish every card; use **Mark all remaining as reviewed** if counts are in.
-3. **Counting after the cutoff.** Spot it: red **"cutoff missed (was 2:00 PM)"** on the card. Cost: that vendor slips a full delivery cycle. Fix: hit the tightest-cutoff vendor first (the cards warn you 90 minutes out); if it slips, call the rep for a favor or add the items to a similar vendor's delivery.
-4. **Changing counts after the email already went.** Spot it: gold banner **"Daily summary is out of date"**. Cost: whoever places orders works from wrong numbers. Fix: tap **Resend** on that banner.
-5. **Emergency override left on / used casually.** It shows every vendor and sizes orders bigger (to cover each vendor's next delivery). Spot it: the amber **"Emergency override on"** banner. Cost: over-ordering across the board. Fix: **Turn off** when done; it also turns itself off at the next morning reset.
+1. **"I left it blank."** Blank orders nothing. Out of it, that's a stockout. Spot it: "—" in **Order**, "X of Y counted" short of Y. Fix: type a number for every item, 0 when you're out.
+2. **The item isn't on any count list.** No storage area, no par, or its vendor has no delivery days: nobody counts it and it never gets ordered, with no warning on the phone. Spot it: Overview checklist, Items → **Needs setup**, the Vendors alert "<vendor> has no delivery days, so it never shows on Today." Fix: give it an area and a par, and set the vendor's days.
+3. **Nobody sends the email.** Every card is green but nobody tapped **Email me the daily summary**, so whoever places orders has no list until 3:30 AM. Spot it: no "Daily summary emailed" toast; the panel doesn't say "Already sent today". Fix: send it from the all-done panel, or Settings → **Daily summary**.
+4. **Counting after the cutoff.** Spot it: red "cutoff missed" on the card. Cost: a full delivery cycle. Fix: start with the tightest cutoff; if it slips, call the rep.
+5. **A par changed for good by mistake.** On the phone, **From now on** changes the par for every order after today, and **Just today** changes it for today only. Shift leads use Just today; From now on is the KM's call. Spot it: Manage → **Changes**, "Changed the par of "<item>" on a phone: 4 → 6". Fix: **Undo** it there.
 
 ## 8. QUIZ-ABLE FACTS
 
-- Q: You're completely out of an item — what do you type? / A: 0. Never leave it blank.
-- Q: What does "—" in the Order column mean? / A: Not counted — nothing gets ordered.
-- Q: When does the daily email send itself? / A: When the last vendor is marked reviewed.
-- Q: You edited counts after the email went — what do you tap? / A: Resend, on the "Daily summary is out of date" banner.
-- Q: How early does the orange cutoff warning show? / A: 90 minutes before cutoff.
-- Q: Where do you add someone to the order email? / A: Settings → Recipients.
-- Q: How many wrong PIN tries lock the app, and for how long? / A: 5 tries, 5 minutes.
-- Q: When does Emergency override shut off on its own? / A: At the next morning reset.
+- Q: You're out of an item. What do you type? / A: 0. A blank orders nothing.
+- Q: How early does the orange cutoff warning show? / A: 90 minutes before the cutoff.
+- Q: What do 5 wrong PINs do? / A: Lock the store's phones out for 5 minutes.
+- Q: Does marking the last vendor reviewed send the email? / A: No. Tap Email me the daily summary.
+- Q: When does Emergency override turn itself off? / A: At the overnight close, about 3:30 AM.
+- Q: Which count screen does an item show on? / A: Its main vendor's.
+- Q: Where do you undo a change to an item? / A: Manage → Changes → Undo.
+- Q: What must an item have to reach a count list? / A: A storage area.
+- Q: On the phone, who changes a par for good? / A: The KM, with From now on.
 
 ## 9. NUMBERS AND DEFINITIONS
 
-- **Order math:** order = par × today's multiplier − on hand, rounded UP; blank if no count entered, the vendor isn't delivering today, or you already have enough (`computeSuggestedQty_`, `apps-script/MOGApi.gs`). Admin changes pars in the computer editor.
-- **Par:** the target amount to have for one day. One par per item, even if two vendors carry it (`MASTER_ITEMS` col G).
-- **Day multiplier:** per vendor per weekday — how many days that order must cover until the next delivery (`SETUP` S:Y; set via delivery days in Manage Vendors, admin). 0 = vendor hidden that day.
-- **Cutoff warning:** 90 minutes (`APPROACH_MINUTES`, `template/index.html`). Cutoff times are per-vendor, per-store data (`SETUP` col AA) — every live vendor should have one entered, but each store sets up its own vendors, so a missing cutoff means no warning will ever show for that vendor.
-- **PIN lockout:** 5 wrong attempts → 5-minute lock for the whole store (`PIN_MAX_ATTEMPTS`, `PIN_LOCKOUT_MS`, `MOGApi.gs`).
-- **Email dedupe:** the summary sends once per day automatically; **Resend** and **Email me the daily summary** can send again on purpose (`api_emailRecap_`, `apps-script/Recap.gs`). Subject: "[Store] Daily order recap — <date>".
-- **Primary / Secondary badge:** Primary = this vendor is the item's default source. Secondary shows "Secondary · <primary vendor>" — you can order it here on your own judgment: primary out of stock, or the secondary's price is now better (check MarginEdge). A lasting switch of who's Primary happens in the computer editor.
-- **Submitted (grey pill):** that vendor's order is already filed for this day — usually seen only around the overnight reset.
-- **Offline:** counts save on the phone ("Saved offline — will sync when back online") and send when signal returns.
+- **The order:** par × the days this delivery covers − on hand, always rounded up to a whole number. At or above that: "0". Not counted: "—" (`apps-script/OrderMath.gs`, `computeSuggestedQty_`). Example: par 2 a day, Monday's order covers 3 days, 1 on hand: order 5.
+- **Par:** set per item in Items. **Per delivery day** (the default, shown "N / day"): one day's use, multiplied by the days the order covers. **Fixed amount**: the same target every order day. Count, par and order are all in the item's pack unit (cases, bags) at every store (Sebastian, 2026-11-03).
+- **Days covered (multiplier):** from the vendor's delivery days in Vendors. Orders go in the day before each delivery and cover until the next one (Vendors shows "Monday's order arrives Tuesday and covers 3 days").
+- **Main / backup vendor:** the main vendor is where the item is ordered by default. A backup sits behind the small arrow next to the item name ("Main vendor: Sysco · Backups: Baldor"). Counting it on a backup's screen orders it from that backup.
+- **Today only:** an item added to a list, or a par changed, for today's order only. Manage flags it in Overview → Needs attention.
+- **Reviewed:** a check that you finished a vendor. It locks nothing, and it's saved on that phone only: another phone doesn't see it (`template/index.html`, `setReviewed`).
+- **Cutoff warning:** 90 minutes. **PIN lockout:** 5 wrong tries, 5 minutes, all the store's phones.
+- **Par review** (Items, last 28 days, needs 3+ orders): **"Runs out"** when on hand was at most 10% of par at 75% of orders (par 3 or more); **"Over-ordered"** when on hand was at least 75% of par at half the orders. After a par change the item shows **"Par changed"** for 7 days (`OrderMath.gs`; `template/editor/Items.html`).
+- **History:** the last 30 days. Today's order appears after the 3:30 AM close; before that use **View full order list**.
+- **Limits:** 18 storage areas; a name not used in 30 days isn't offered in Who's counting?
 
 ## 10. WHAT IT DOES NOT DO
 
-- It does **not** place orders with any vendor. The email is the handoff; a person places every order.
-- It won't catch a blank item — blank is treated as "skip," silently. The house standard (count everything, type a number) exists because the app can't enforce it.
-- It won't stop you ordering the same item from its Primary AND a Secondary vendor on the same day (they share one par — that's a double order).
-- It doesn't know what actually arrived, invoice prices, or waste. It only knows par minus your count. Price watching lives in MarginEdge.
-- Items, pars, vendors, and cutoffs can't be changed in this app — that's the computer editor (a separate tool with its own training).
+- It does not place orders. The email and Copy order are the handoff; a person places every order.
+- It won't catch a blank. Blank is skipped silently.
+- It doesn't share Reviewed between phones. Two KMs on two phones each see only their own checks, which is why one phone finishes the day.
+- It won't warn about an item that's on no count list. Check Overview and Items → Needs setup.
+- It won't stop the same item being counted on its main vendor and on a backup's list: both order.
+- It doesn't know what arrived, invoice prices or waste (MarginEdge does).
+- Counts typed offline that reach the server after the 3:30 AM close aren't ordered. The app says so when they arrive.
 
 ## 11. NOT BUILT YET
 
-- **WIP:** automatic retry when the daily email fails to send — today a failure shows "Daily summary email failed. Retry from home." and needs a manual resend. Teach the manual resend; it's the real behavior.
-- **WIP:** faster new-store setup tooling (`onboard.py`) — admin-side only, no change to how you teach the app.
+- **WIP:** **Happy Supply** (HEH's own warehouse). Built, but no store has it yet. When it starts, its items show "N available"; its review screen has **Needed by**, **Note for Dan (optional)** and **Send to Happy Supply** instead of Copy order; the card later shows **Mark received**. Don't teach it as current; a one-slide "coming soon" is fine.
+- **WIP:** **Elpis** (HEH's own packaging held at Elpis). Built, not in use. KMs keep ordering from Elpis as today; the card will show "HEH's items ordered …" and **Mark received** once HQ sets it up. No change to how you teach ordering now.
+- **WIP:** the daily email sent from the new system instead of the Sheet. Doesn't change what KMs do.
 
 ## 12. OPEN QUESTIONS FOR SEBASTIAN
 
-**All resolved 2026-07-29 (answers folded into the sections above):**
+**Answered 2026-11-03 (folded into the sections above):**
 
-- Who places orders from the daily email? → **KM or GM, mostly the KM.** BOH shift leads may also do the counting. (§4, §5 step 8)
-- When to count? → **After the lunch rush.** (§6)
-- Missed cutoff recovery? → **Slips a cycle; call the rep for a favor, or add items to a similar vendor's delivery.** (§6, §7 #3)
-- Cutoff times entered everywhere? → **Yes for live vendors, but per-store setup — a store that skips one gets no warning.** (§9)
-- Blank-on-purpose OK? → **No. Count everything, type a number** — the counts are the data that exposes over-ordering and sitting inventory (anything not ordering ~weekly). (§6, §7 #1)
-- Secondary ordering on KM judgment? → **Yes** — including watching MarginEdge prices and proposing a Primary flip for the week. (§6, §9)
-- Who owns the Recipients list? → **Admin, HR, or regional managers.** (§4)
+- Sending the email? → **The KM taps Email me the daily summary when every card is green.** The last Mark as reviewed no longer sends it (removed on purpose: it sent emails people didn't know about). (§5 step 7)
+- Two people counting one store? → **Anyone counts; one phone marks every vendor reviewed and sends the email.** (§5 step 6, §10)
+- From now on on the phone? → **KMs only; shift leads use Just today.** (§4, §7 #5)
+- Pars in the pack unit? → **Yes, at every store.** (§9)
+
+**Still open:**
+
+- Who owns Settings → Recipients now? Anyone with the PIN can change it on a phone (except the GM row).
+- Do all KMs edit in Manage, or one setup person per store? (Rockville and Tysons BOH KMs set up their own stores.)
+- Still true from July: the KM places most orders, sometimes the GM?
+
+## 13. WHAT'S NEW SINCE THE 2026-07-27 BRIEF
+
+- **Aug 4–7:** pull down to refresh on every screen; app updates arrive without signing out. Emergency override got a per-vendor day pick ("When is this vendor's next delivery after this one?"). The order math matches everywhere (screen, email, history).
+- **Oct 4:** Teas'n You Rockville BOH and FOH joined.
+- **Oct 15–17:** every store moved off the Google Sheet: phones save straight to the new system, and the day closes by itself at about 3:30 AM instead of at the first open in the morning.
+- **Oct 18:**
+  - **Copy order for email** on the review screen, with the delivery day and the store's address.
+  - **Live counting:** **Who's counting?**, "<name> counting" on cards, and counts showing on other phones within seconds.
+  - **Quick edits on the phone:** **Just today** / **From now on** par, **+ Add an item to this list (today only)**.
+- **Oct 19:** Manage moved into the app on a computer, with one sidebar for Today and Manage. Order history, Recipients, People and the Health check came with it, plus the Overview checklist and **Import from MarginEdge**.
+- **Oct 20:**
+  - **Items** redesigned: search, filters (Active, Needs setup, Par review, Inactive), an item panel, and tick several items to change them together.
+  - No more duplicate daily emails.
+  - Late offline counts are flagged.
+  - Typed negative counts become 0.
+- **Nov 1:** **Vendors** page with each vendor's contact; a **Contact** pill on the Today card (Call, Text, Email).
+- **Nov 2:**
+  - HQ can send a named LTO to many stores. Its items wait at the top of Items until set up.
+  - A store can rename a vendor, and its items and lists follow.
+  - One spelling per vendor: "B&T Distributors LLC", "Elpis Wholesale".
+- **Nov 3:** each item shows on its **main vendor's count screen only**, its other vendors behind a small arrow. Fewer double counts. Happy Supply and Elpis are built (section 11).
+
+---
+
+### Code notes for Sebastian (not for slides)
+
+Found while writing this; none is taught above.
+- **Stale wording, fixed in app v0.30.1 (2026-11-04):** "Unassigned" and "Manage Items / Manage Vendors" in the import message and Health check fixes; "Reset On Hand" in Order History; "vendor tabs" in Storage areas and Shelf to Sheet; "This locks counts" on Mark as reviewed; the ended-LTO note (now: par kept, storage area comes off); the Items bulk-bar note about backups.
+- **Bug, confirmed and being fixed:** changing the area of an item with a backup vendor moved only the main vendor's row, so Items kept showing the old area (Rosslyn FOH: Ramekin Cups and Lids).
