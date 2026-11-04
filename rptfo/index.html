@@ -3794,8 +3794,8 @@ function parFlagCutoff_(today) {
       cancel:           { en: 'Cancel', es: 'Cancelar' },
       confirmReview:    { en: 'Mark as reviewed?', es: '¿Marcar como revisado?' },
       confirmReviewMsg: {
-        en: 'This locks counts for this vendor. You can still come back and edit if you need to.',
-        es: 'Esto bloquea los conteos. Puedes volver y editar si lo necesitas.'
+        en: 'This marks the vendor done on this phone. You can still come back and change a count.',
+        es: 'Esto marca el proveedor como listo en este teléfono. Puedes volver y cambiar un conteo.'
       },
       confirmOpenReviewed: { en: 'Open reviewed vendor?', es: '¿Abrir proveedor revisado?' },
       confirmOpenReviewedMsg: {
@@ -3943,8 +3943,8 @@ function parFlagCutoff_(today) {
       markReviewedShort: { en: 'Mark reviewed', es: 'Marcar revisado' },
       confirmMarkVendorTitle: { en: 'Mark as reviewed?', es: '¿Marcar como revisado?' },
       confirmMarkVendorMsg:   {
-        en: 'This will mark this vendor as fully reviewed for today. You can still un-review it by tapping the card.',
-        es: 'Esto marcará este proveedor como revisado para hoy. Puedes deshacerlo tocando la tarjeta.'
+        en: 'This marks the vendor done for today on this phone. Changing one of its counts takes the mark off.',
+        es: 'Esto marca el proveedor como listo hoy en este teléfono. Si cambias uno de sus conteos, se quita la marca.'
       },
       bulkMarkAllCta: { en: 'Mark all remaining as reviewed', es: 'Marcar todo lo demás como revisado' },
       // A vendor's contact (schema v10), from the vendor card
@@ -9270,7 +9270,7 @@ function parFlagCutoff_(today) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.30.0';
+    const versionStr = '0.30.1';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =

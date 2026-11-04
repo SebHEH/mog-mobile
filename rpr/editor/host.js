@@ -607,10 +607,10 @@
         tr: tr,
         done: function (res) {
           const n = res.itemsAdded, v = res.vendorsAdded.length, skip = res.skipped.length;
-          const en = [n ? 'Imported ' + n + ' item' + (n === 1 ? '' : 's') + '. They are under Unassigned: give each a storage area and a par.' : '',
-                      v ? 'Added ' + v + ' vendor' + (v === 1 ? '' : 's') + '. Set their delivery days in Manage Vendors; until then they order nothing.' : '',
+          const en = [n ? 'Imported ' + n + ' item' + (n === 1 ? '' : 's') + '. They are under Needs setup in Items: give each a storage area and a par.' : '',
+                      v ? 'Added ' + v + ' vendor' + (v === 1 ? '' : 's') + '. Set their delivery days in Vendors; until then they order nothing.' : '',
                       skip ? skip + ' item' + (skip === 1 ? ' was' : 's were') + ' already in the catalog.' : ''].filter(Boolean).join(' ');
-          const es = [n ? 'Se importaron ' + n + ' artículo' + (n === 1 ? '' : 's') + '. Están en el filtro Sin Área: dale a cada uno un área y un par.' : '',
+          const es = [n ? 'Se importaron ' + n + ' artículo' + (n === 1 ? '' : 's') + '. Están en Por configurar, en Artículos: dale a cada uno un área y un par.' : '',
                       v ? 'Se agregaron ' + v + ' proveedor' + (v === 1 ? '' : 'es') + '. Ponles días de entrega en Proveedores; hasta entonces no piden nada.' : '',
                       skip ? skip + ' ya estaba' + (skip === 1 ? '' : 'n') + ' en el catálogo.' : ''].filter(Boolean).join(' ');
           const reload = function () { window.location.reload(); };

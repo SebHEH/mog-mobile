@@ -412,10 +412,10 @@
           '<div class="lt-text"><h2 id="lt-h-' + esc(g.id) + '">' + esc(T('New from HQ: ', 'Nuevo de HQ: ') + name + ' · ' +
             plural(n, 'item to set up', 'items to set up', 'artículo por configurar', 'artículos por configurar')) + '</h2>' +
           '<p>' + esc((date ? T('HQ sent it on ' + date + '. ', 'HQ lo envió el ' + date + '. ') : '') +
-            (n === 1 ? T('Give it a par and a storage area so it shows up on the count list. When HQ ends the LTO, it goes inactive here, with your par and area kept.',
-                         'Dale un par y un área para que aparezca en la lista de conteo. Cuando HQ termine el LTO, quedará inactivo aquí, con tu par y tu área guardados.')
-                     : T('Give each one a par and a storage area so they show up on the count list. When HQ ends the LTO, they go inactive here, with your pars and areas kept.',
-                         'Dale a cada uno un par y un área para que aparezcan en la lista de conteo. Cuando HQ termine el LTO, quedarán inactivos aquí, con tus pares y áreas guardados.'))) + '</p></div>' +
+            (n === 1 ? T('Give it a par and a storage area so it shows up on the count list. When HQ ends the LTO, it goes inactive here: your par is kept, its storage area comes off.',
+                         'Dale un par y un área para que aparezca en la lista de conteo. Cuando HQ termine el LTO, quedará inactivo aquí: tu par se guarda, su área se quita.')
+                     : T('Give each one a par and a storage area so they show up on the count list. When HQ ends the LTO, they go inactive here: your pars are kept, their storage areas come off.',
+                         'Dale a cada uno un par y un área para que aparezcan en la lista de conteo. Cuando HQ termine el LTO, quedarán inactivos aquí: tus pares se guardan, sus áreas se quitan.'))) + '</p></div>' +
           '<button type="button" class="lt-btn" data-ltoopen="' + esc(g.items[0].id) + '">' + esc(n === 1 ? T('Set it up', 'Configurarlo') : T('Set them up', 'Configurarlos')) + '</button></section>';
       }).join('');
       h += Object.keys(S.ltoDone).map(function (id) {
@@ -542,8 +542,8 @@
       var note = '';
       if (S.vendor && S.onOff === 'off') {
         h += '<button type="button" class="bk-btn primary" data-bulk="addv">' + esc(T('Add ' + ids.length + ' to ' + S.vendor, 'Agregar ' + ids.length + ' a ' + S.vendor)) + '</button>';
-        note = T('They show on ' + S.vendor + '’s count list as a backup. Their main vendor doesn’t change.',
-                 'Aparecen en la lista de conteo de ' + S.vendor + ' como respaldo. Su proveedor principal no cambia.');
+        note = T(S.vendor + ' becomes a backup for them: they stay on their main vendor’s count list, and on ' + S.vendor + '’s phone list under “Backup items for this vendor”. Their main vendor doesn’t change.',
+                 S.vendor + ' queda como respaldo: siguen en la lista de conteo de su proveedor principal, y en la de ' + S.vendor + ' bajo “Artículos de respaldo de este proveedor”. Su proveedor principal no cambia.');
       } else if (S.vendor) {
         h += '<button type="button" class="bk-btn" data-bulk="rmv">' + esc(T('Remove from ' + S.vendor, 'Quitar de ' + S.vendor)) + '</button>';
         note = T('Items whose main vendor is ' + S.vendor + ' stay on its list.', 'Los artículos cuyo proveedor principal es ' + S.vendor + ' se quedan en su lista.');
@@ -632,10 +632,10 @@
       var name = it.lto.name || 'LTO', date = shortDate(it.lto.sentAt);
       var title = T('From HQ’s ' + name + ' LTO' + (date ? ' (' + date + ')' : ''), 'Del LTO ' + name + ' de HQ' + (date ? ' (' + date + ')' : ''));
       var body = it.lto.status === 'ended'
-        ? T('HQ ended this LTO, so its items went inactive here, with their par and area kept.',
-            'HQ terminó este LTO, así que sus artículos quedaron inactivos aquí, con su par y su área guardados.')
-        : T('When HQ ends the LTO, this item goes inactive here, with its par and area kept. You can still change anything below.',
-            'Cuando HQ termine el LTO, este artículo quedará inactivo aquí, con su par y su área guardados. Puedes cambiar lo que quieras abajo.');
+        ? T('HQ ended this LTO, so its items went inactive here: their par is kept, their storage area came off. Undoing the end in Changes brings the area back.',
+            'HQ terminó este LTO, así que sus artículos quedaron inactivos aquí: su par se guarda, su área se quitó. Deshacer el fin en Cambios devuelve el área.')
+        : T('When HQ ends the LTO, this item goes inactive here: its par is kept, its storage area comes off. You can still change anything below.',
+            'Cuando HQ termine el LTO, este artículo quedará inactivo aquí: su par se guarda, su área se quita. Puedes cambiar lo que quieras abajo.');
       return '<div class="pn-callout lto"><b>' + esc(title) + '</b>' + esc(body) + '</div>';
     }
     // Unsaved edits ask first: Save, Don't save, or Cancel.

@@ -49,7 +49,7 @@
 ## Decided (Sebastian, 2026-11-02)
 
 - **LTOs first.** The library line-up follows in its own spec once the libraries hold items. Warehouse W2 waits for Chef Dan (not invited yet).
-- **Ending an LTO (it got pulled) makes its items inactive** at each store: off the count list, with their par, area and order history kept. If the LTO comes back, they come back set up. Each store can undo it in Changes.
+- **Ending an LTO (it got pulled) makes its items inactive** at each store: off the count list, with their par and order history kept. Their storage area comes off, as for any item made inactive, so if the LTO comes back each item needs its area again. Each store can undo the end in Changes, which brings the areas back. (Corrected 2026-11-04: the code always dropped the area; Sebastian chose to say so rather than change it.)
 - **Roll back (a mistake or a test) deletes the LTO's items at every store, even ones a KM already set up.** The confirm names the stores where a KM gave one a par or an area. Each store can undo the rollback in its own Changes, which brings that par and area back.
 - **The Roll out page's "add to library" box goes.** LTO items go to the LTO list only; "Make it standard" on an LTO moves its items into the concept library. This replaces `docs/MOG_Warehouse_Spec.md` §1's "An HQ LTO rollout can add its items to the library".
 

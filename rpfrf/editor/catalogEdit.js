@@ -385,7 +385,7 @@
       noDays.length ? noDays.length + ' vendor' + (noDays.length === 1 ? ' has' : 's have') + ' no delivery days, so ' +
                       (noDays.length === 1 ? 'it orders' : 'they order') + ' nothing: ' + listOf(noDays) + '.'
                     : 'Every vendor has delivery days.',
-      noDays.length ? 'Manage Vendors: set each one\'s delivery days.' : '');
+      noDays.length ? 'Vendors: set each one\'s delivery days.' : '');
 
     const active = t.items.filter(it => it.active === true && s_(it.id) && s_(it.name));
     const unassigned = getUnassignedActiveItems(t);
@@ -394,21 +394,21 @@
                           ' no storage area, so ' + (unassigned.length === 1 ? 'it is' : 'they are') + ' on no count list: ' +
                           listOf(unassigned.map(u => u.name)) + '.'
                         : 'Every active item has a storage area.',
-      unassigned.length ? 'Manage Items → Unassigned: give each a storage area.' : '');
+      unassigned.length ? 'Items → Needs setup: give each a storage area.' : '');
 
     const noPar = active.filter(it => typeof it.par !== 'number').map(it => s_(it.name));
     add('items_par', 'Items with a par', noPar.length ? 'warn' : 'pass',
       noPar.length ? noPar.length + ' active item' + (noPar.length === 1 ? ' has' : 's have') + ' no par, so ' +
                      (noPar.length === 1 ? 'it is' : 'they are') + ' never ordered: ' + listOf(noPar) + '.'
                    : 'Every active item has a par.',
-      noPar.length ? 'Manage Items: set each one\'s par.' : '');
+      noPar.length ? 'Items → Needs setup: set each one\'s par.' : '');
 
     const noVendor = active.filter(it => !s_(it.primaryVendor)).map(it => s_(it.name));
     add('items_primary', 'Items with a primary vendor', noVendor.length ? 'warn' : 'pass',
       noVendor.length ? noVendor.length + ' active item' + (noVendor.length === 1 ? ' has' : 's have') +
                         ' no primary vendor (its vendor was removed): ' + listOf(noVendor) + '.'
                       : 'Every active item has a primary vendor.',
-      noVendor.length ? 'Manage Items: pick a primary vendor for each.' : '');
+      noVendor.length ? 'Items → Needs setup: pick a main vendor for each.' : '');
 
     const missing = missingBackupRows(t);
     add('backups_placed', 'Backup vendor placement', missing.length ? 'warn' : 'pass',
@@ -427,7 +427,7 @@
     add('item_names', 'Item names', repeated.length ? 'warn' : 'pass',
       repeated.length ? 'Active items sharing a name, which is easy to mix up when counting: ' + listOf(repeated) + '.'
                       : 'Every active item has its own name.',
-      repeated.length ? 'Manage Items: rename or deactivate the extra copies.' : '');
+      repeated.length ? 'Items: rename the extra copies, or make them inactive.' : '');
 
     const summary = { pass: 0, warn: 0, fail: 0 };
     checks.forEach(c => { summary[c.status]++; });
@@ -1108,7 +1108,7 @@
   //       vendorsAdded, backupsAdded }   what sending it added here (mog.lto_stores)
   // Its items are the ones that carry its id.
   //   end       each active one made inactive, as the Items page's bulk bar
-  //             does (off every count list, par and area kept);
+  //             does (off every count list, par kept, storage area dropped);
   //   rollback  each one deleted, the backups it added to the store's own
   //             items taken off again (when still there), and each vendor it
   //             added removed when no item names it any more: as if never sent;
