@@ -77,6 +77,10 @@ file is run once, in order. Re-running any of them must stay harmless.
 - **A newer schema that accepts what an older smoke row says is refused** (v15 renaming vendors vs
   smoke_v8's "only areas rename", 2026-11-02): point that probe at something no version accepts. A
   runner skip isn't enough: the probe now really writes, and later rows of that file fail.
+- **Older smoke files run against the newest schema** (PGlite runs every smoke file after the whole
+  chain). A version that retires a field keeps it working as a fallback, and keeps an old refusal a
+  smoke row reads, or those files fail (v20 kept `via` and v17's "that delivery isn't there",
+  2026-11-04).
 - **A value a gate or smoke pins** (an average, a price, what's left) comes from running the SQL in
   PGlite or the page's own code, never from working it out by hand: a hand-worked 77.5926 was wrong
   (Postgres: 77.5968), and v16's gate expected 14 cases left where the code's 20 (both locations)
