@@ -519,6 +519,18 @@
     w.pickRows.push({ vendor: String(vendor).trim(), id: id, area: areaName, shelfOrder: maxShelf + 10, seq: nextPickSeq(w) });
   }
 
+  // The item moves to areaName on every list it's on: its main vendor's row
+  // (assignArea), then each backup's row not already there, each at the end
+  // of that area on its own list (2026-11-04: only the main vendor's row
+  // moved, so a backup kept the old area and Items could show it).
+  function moveItemToArea(w, itemId, vendor, areaName, opts) {
+    assignArea(w, itemId, vendor, areaName, opts);
+    const id = String(itemId || '').trim(), vLow = String(vendor).trim().toLowerCase();
+    const others = w.pickRows.filter(r => s_(r.id) === id && s_(r.vendor).toLowerCase() !== vLow && s_(r.area) !== areaName)
+      .map(r => s_(r.vendor));
+    for (const v of others) assignArea(w, id, v, areaName, opts);
+  }
+
   // syncItemEligiblePickRows_ (Items.gs): the item's pick rows follow its
   // eligible list. Rows for vendors no longer eligible go; an eligible vendor
   // without a row gets one in the item's current area (none if it has none).
@@ -611,7 +623,7 @@
       let assignedArea = '', areaError = '';
       if (payload.areaName) {
         try {
-          assignArea(w, itemId, vendor, String(payload.areaName).trim(), { itemName: name });
+          moveItemToArea(w, itemId, vendor, String(payload.areaName).trim(), { itemName: name });
           assignedArea = String(payload.areaName).trim();
         } catch (err) {
           areaError = (err && err.message) ? err.message : String(err);
@@ -648,7 +660,7 @@
     let assignedArea = '', areaError = '';
     if (active && payload.areaName) {
       try {
-        assignArea(w, existing.id, vendor, String(payload.areaName).trim(), { itemName: editName });
+        moveItemToArea(w, existing.id, vendor, String(payload.areaName).trim(), { itemName: editName });
         assignedArea = String(payload.areaName).trim();
       } catch (err) {
         areaError = (err && err.message) ? err.message : String(err);
@@ -806,7 +818,7 @@
       if (item.active !== true) { skipped.push({ id: id, reason: 'inactive' }); continue; }
       const vendor = settle(w, item, map);
       if (!vendor) { skipped.push({ id: id, reason: 'no vendor' }); continue; }
-      assignArea(w, id, vendor, area, { itemName: s_(item.name) });
+      moveItemToArea(w, id, vendor, area, { itemName: s_(item.name) });
       syncEligiblePickRows(w, id, { name: s_(item.name), primary: vendor, eligible: item.eligible });
       moved++;
     }

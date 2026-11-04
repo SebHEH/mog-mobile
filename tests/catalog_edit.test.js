@@ -21,6 +21,9 @@
 //   - removing a vendor is compared with the Sheet's removal plus D23's
 //     differences (its pick rows go, it leaves every item's vendors, and the
 //     items it supplied stay active with no primary vendor)
+//   - an item's new storage area is compared with the Sheet's move run again
+//     for each backup's row elsewhere: it moves on every list it's on
+//     (AREA_ALL_LISTS, 2026-11-04)
 // Planted-defect controls in catalogEdit.js must each be caught.
 //
 // Run bare: node tests/catalog_edit.test.js [stores]   (default 100)
@@ -113,6 +116,7 @@ function makeSide(spec) {
   side.ctx.SpreadsheetApp.newDataValidation = () => rule;
   SHEET.runInContext(side.ctx);
   vm.runInContext(D23_REMOVE, side.ctx);
+  vm.runInContext(AREA_ALL_LISTS, side.ctx);
   return side;
 }
 const run = (side, fn) => { NEW_EXECUTION.runInContext(side.ctx); return fn(side.ctx); };
@@ -269,6 +273,23 @@ function randomToolCall(rnd, CE, tables) {
   return ['getPickPathForSidebar', [someVendor()]];
 }
 
+// An item's new storage area moves it on every list it's on (2026-11-04,
+// catalogEdit.js moveItemToArea): the Sheet moves only the main vendor's
+// row, so its own commitPickPathAreaAssignment_ runs again for each backup
+// whose row is elsewhere. commitUpsertItem_ calls it by name, so it picks
+// this up.
+const AREA_ALL_LISTS = `
+var __assignAreaOneList = commitPickPathAreaAssignment_;
+commitPickPathAreaAssignment_ = function (itemId, vendor, areaName, opts) {
+  var out = __assignAreaOneList(itemId, vendor, areaName, opts);
+  var id = String(itemId || '').trim(), vLow = String(vendor).trim().toLowerCase();
+  var others = readPickDb_(getSheet_(SHEET_SETUP)).filter(function (r) {
+    return String(r[1] || '').trim() === id && String(r[0] || '').trim().toLowerCase() !== vLow && String(r[3] || '').trim() !== areaName;
+  }).map(function (r) { return String(r[0] || '').trim(); });
+  for (var i = 0; i < others.length; i++) __assignAreaOneList(id, others[i], areaName, opts);
+  return out;
+};`;
+
 // The Sheet's vendor removal with D23's differences applied: the vendor's pick
 // rows go, it leaves every item's vendors, and items it supplied keep their
 // active flag with no primary vendor (the Sheet deactivates them).
@@ -395,6 +416,8 @@ function runSuite(ceText, stores) {
 }
 
 const CONTROLS = [
+  { name: 'a new area moves only the main vendor\'s row',
+    find: '    for (const v of others) assignArea(w, id, v, areaName, opts);\n', replace: '' },
   { name: 'a promoted item drops its old primary',
     find: '      eligibleList.push(oldPrimary);', replace: '' },
   { name: 'a new item goes at the end instead of after its vendor',
