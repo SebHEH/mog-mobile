@@ -1615,7 +1615,7 @@ FakeSupabase.prototype.whData = function (name) {
 };
 
 // mog.wh_do_save
-function whDoSave(W, by, kind, row, now, slugs) {
+function whDoSave(W, by, kind, row, now, slugs, concepts) {
   if (!whIsObj(row)) throw whRej('nothing to save');
   const id = row.id == null ? null : whId(row.id, 'The id');
   if (kind === 'product') {
@@ -1640,10 +1640,15 @@ function whDoSave(W, by, kind, row, now, slugs) {
         via = L.heldBy;
       }
     }
+    // v19: the concept whose stores carry it (null = every concept); left out = unchanged.
+    const conceptSet = Object.prototype.hasOwnProperty.call(row, 'concept');
+    const concept = conceptSet && typeof row.concept === 'string' && row.concept.trim() ? row.concept.trim() : null;
+    if (concept != null && !(concepts || new Set()).has(concept)) throw whRej('no store is in the concept ' + concept);
     if (W.products.some(p => p.name.toLowerCase() === name.toLowerCase() && p.id !== id)) throw whRej('there\'s already a product called "' + name + '"');
     if (id == null) {
       const p = { id: ++W.seq.prod, name, pack, par, avgCost: 0, handlingFee: fee, stores, active, version: 1, updatedAt: now, updatedBy: by };
       if (via != null) p.via = via;
+      if (concept != null) p.concept = concept;
       W.products.push(p);
       return { kind: 'product', id: p.id, name };
     }
@@ -1656,6 +1661,7 @@ function whDoSave(W, by, kind, row, now, slugs) {
     }
     Object.assign(p, { name, pack, par, handlingFee: fee, stores, active, version: p.version + 1, updatedAt: now, updatedBy: by });
     if (viaSet) { if (via == null) delete p.via; else p.via = via; }
+    if (conceptSet) { if (concept == null) delete p.concept; else p.concept = concept; }
     return { kind: 'product', id, name };
   }
   if (kind === 'location' || kind === 'supplier') {
@@ -1863,7 +1869,8 @@ FakeSupabase.prototype.handleWh = function (fn, p) {
   const next = clone(W);
   let done;
   try {
-    if (fn === 'mog_wh_save') done = whDoSave(next, name, p.p_kind, p.p_row, now, new Set(this.stores.keys()));
+    if (fn === 'mog_wh_save') done = whDoSave(next, name, p.p_kind, p.p_row, now, new Set(this.stores.keys()),
+                                              new Set(Array.from(this.stores.values()).map(s => s.profile.concept).filter(Boolean)));
     if (fn === 'mog_wh_po_save') done = whDoPoSave(next, name, p.p_po, now);
     if (fn === 'mog_wh_po_cancel') done = whDoPoCancel(next, name, p.p_id, p.p_version, now);
     if (fn === 'mog_wh_po_receive') done = whDoPoReceive(next, name, p.p_receipt, now);

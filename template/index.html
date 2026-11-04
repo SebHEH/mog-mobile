@@ -1032,6 +1032,26 @@
     .hs-help { margin: 8px 2px 0; font-size: 12px; color: var(--text-2); }
     .hs-meta { color: var(--text); font-weight: 600; }
     .hs-rline { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+    /* "To check in" on Today and the Check in screen (2026-11-04) */
+    .checkin-card { display: flex; align-items: center; gap: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; }
+    .checkin-icon { width: 40px; height: 40px; flex: none; border-radius: 12px; background: #e6eff9; color: #1d4f8a; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+    .checkin-text { flex: 1; min-width: 0; }
+    .checkin-name { font-size: 15px; font-weight: 700; }
+    .checkin-meta { margin-top: 2px; font-size: 12px; color: var(--text-2); }
+    .checkin-btn { flex: none; min-height: 40px; padding: 0 14px; border: none; border-radius: 10px; background: #1d4f8a; color: #fff; font: inherit; font-size: 13px; font-weight: 700; }
+    .checkin-done { margin: 0 4px 12px; font-size: 12px; color: var(--text-2); }
+    .name-backdrop.checkin { align-items: stretch; }
+    .name-sheet.checkin { border-radius: 0; height: 100%; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column;
+                          padding-top: calc(8px + env(safe-area-inset-top)); background: var(--bg-soft); }
+    .checkin-bar { display: flex; align-items: center; gap: 8px; margin: 0 -8px 14px; }
+    .checkin-back { display: inline-flex; align-items: center; gap: 2px; min-width: 76px; height: 44px; padding: 0 4px; border: none; background: none;
+                    color: var(--teal-dark); font: inherit; font-size: 15px; font-weight: 600; }
+    .checkin-title { flex: 1; text-align: center; font-size: 16px; font-weight: 700; }
+    .checkin-pad { min-width: 76px; }
+    .checkin-lines { background: var(--bg); border-radius: 14px; padding: 0 14px; }
+    .checkin-lines .hs-rline:last-child { border-bottom: none; }
+    .checkin-spacer { flex: 1; min-height: 16px; }
+    .name-sheet.checkin .cta.checkin-go { background: #1d4f8a; }
     .hs-rinfo { flex: 1; min-width: 0; }
 
     /* Live counting (Phase 1): who else is counting, and counts arriving from
@@ -2824,26 +2844,37 @@
       hsOffline:        { en: 'Sending needs a connection. Try again when you are back online.', es: 'Para enviar necesitas conexión. Intenta de nuevo cuando vuelvas a estar en línea.' },
       hsLineSent:       { en: 'Sent {num}', es: 'Enviado {num}' },
       hsLineShipped:    { en: 'Shipped {a} of {b} cases', es: 'Enviadas {a} de {b} cajas' },
-      hsLineReceived:   { en: 'Received · {a} cases', es: 'Recibido · {a} cajas' },
+      hsLineReceived:   { en: 'Checked in · {a} cases', es: 'Recibido · {a} cajas' },
       hsLineCancelled:  { en: '{num} cancelled by Happy Supply', es: '{num} cancelado por Happy Supply' },
       hsFrom:           { en: 'from', es: 'desde' },
       hsShippedFrom:    { en: 'shipped from', es: 'enviado desde' },
       hsShippedOf:      { en: 'Shipped {a} of {b} ordered', es: 'Enviadas {a} de {b} pedidas' },
       hsShippedN:       { en: 'Shipped {a}', es: 'Enviadas {a}' },
-      hsMarkReceived:   { en: 'Mark received', es: 'Marcar recibido' },
-      hsReceived:       { en: 'Received', es: 'Recibido' },
-      hsReceivedToast:  { en: 'Marked received', es: 'Marcado como recibido' },
-      hsNotYet:         { en: 'Not yet', es: 'Todavía no' },
-      hsChangeShort:    { en: 'Change a line if fewer cases arrived.', es: 'Cambia una línea si llegaron menos cajas.' },
+      // Checking a delivery in (2026-11-04): its own list on Today and its own screen.
+      hsToCheckIn:      { en: 'To check in', es: 'Por recibir' },
+      hsCheckIn:        { en: 'Check in', es: 'Recibir' },
+      hsCheckedIn:      { en: 'Checked in', es: 'Recibido' },
+      hsCheckedInToast: { en: '{num} checked in', es: '{num} recibido' },
+      hsNotHereYet:     { en: 'Not here yet', es: 'Todavía no llega' },
+      hsFromV:          { en: 'From {v}', es: 'De {v}' },
+      hsBackToday:      { en: 'Today', es: 'Hoy' },
+      hsMetaHeld:       { en: "HEH's items ordered {day} · {n} · {num}", es: 'Artículos de HEH pedidos el {day} · {n} · {num}' },
+      hsMetaShipped:    { en: 'Shipped {day}{from} · {a} of {b} cases · {num}', es: 'Enviado el {day}{from} · {a} de {b} cajas · {num}' },
+      hsItemsN:         { en: '{n} items', es: '{n} artículos' },
+      hsItems1:         { en: '1 item', es: '1 artículo' },
+      hsCheckedToday:   { en: 'Checked in today: {list}', es: 'Recibido hoy: {list}' },
+      hsLeadHeld:       { en: "HEH's own items you ordered from {v} on {day}. Count what came off the truck.", es: 'Los artículos propios de HEH que pediste a {v} el {day}. Cuenta lo que llegó.' },
+      hsLeadShipped:    { en: 'What Happy Supply shipped{from}. Count what came off the truck.', es: 'Lo que envió Happy Supply{from}. Cuenta lo que llegó.' },
+      hsChangeShort:    { en: 'Fewer than shipped? Type what came.', es: '¿Llegaron menos de las enviadas? Escribe lo que llegó.' },
       hsOneLess:        { en: 'One less', es: 'Una menos' },
       hsOneMore:        { en: 'One more', es: 'Una más' },
       hsAvailableAt:    { en: 'available at {v}', es: 'disponibles en {v}' },
       hsOnlyAt:         { en: 'Only {n} available at {v}.', es: 'Solo {n} disponibles en {v}.' },
-      hsHeldHelp:       { en: "Order from {v} the way you do today. HEH's own items in it are recorded at tonight's close; mark them received when {v} delivers.", es: 'Pide a {v} como siempre. Los artículos propios de HEH se registran en el cierre de esta noche; márcalos como recibidos cuando {v} entregue.' },
+      hsHeldHelp:       { en: "Order from {v} the way you do today. HEH's own items in it are recorded at tonight's close; check them in on Today when {v} delivers.", es: 'Pide a {v} como siempre. Los artículos propios de HEH se registran en el cierre de esta noche; recíbelos en Hoy cuando {v} entregue.' },
       hsLineOrdered:    { en: "HEH's items ordered {day} · {num}", es: 'Artículos de HEH pedidos el {day} · {num}' },
       hsOrderedN:       { en: 'Ordered {a}', es: 'Pedidas {a}' },
       hsHeldFrom:       { en: "HEH's items ordered from {v}", es: 'Artículos de HEH pedidos a {v}' },
-      hsChangeHeld:     { en: "Only HEH's own items are here. Change a line if {v} sent more or fewer cases.", es: 'Aquí solo están los artículos propios de HEH. Cambia una línea si {v} envió más o menos cajas.' },
+      hsChangeHeld:     { en: "Only HEH's own items are here; the rest of the {v} order isn't checked in. More or fewer than ordered is fine: type what came.", es: 'Aquí solo están los artículos propios de HEH; el resto del pedido de {v} no se registra aquí. Si llegaron más o menos, escribe lo que llegó.' },
       whoCounting:      { en: "Who's counting?", es: '¿Quién está contando?' },
       whoCountingHelp:  { en: 'Pick your name so others can see who is counting what.', es: 'Elige tu nombre para que los demás vean quién cuenta qué.' },
       someoneElse:      { en: 'Someone else…', es: 'Otra persona…' },
@@ -4520,6 +4551,7 @@
       '</button>';
     }
 
+    html += hsCheckInHtml_();
     html += '<div class="section-label">' + escapeHtml(t('vendorsToday')) + ' &middot; ' + data.vendors.length + '</div>';
 
     // Sort vendors: reviewed/sent move to bottom so what's pending is
@@ -4607,7 +4639,7 @@
       });
     });
 
-    // Happy Supply's Mark received opens its sheet, not the vendor.
+    // A delivery's Check in opens its own screen.
     view.querySelectorAll('[data-hs-receive]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -4902,18 +4934,13 @@
           '<i class="ti ti-phone" aria-hidden="true"></i>' + escapeHtml(t('vcButton')) + '</button>'
       : '';
 
-    // Happy Supply (schema v16): where its order stands; a shipped one is
-    // marked received from the card. Elpis (v17): its open delivery of HEH's
-    // items, marked received the same way.
+    // Happy Supply (schema v16): where its order stands. A vendor card only
+    // ever means count and order: a delivery to check in (a shipped Happy
+    // Supply order, an Elpis delivery) is in "To check in" above the vendors
+    // (2026-11-04), never on the card.
     let hsHtml = '';
-    const hsOrder = hsIsVendor_(v.name) ? hsCardOrder_() : hsHeld_(v.name) ? hsHeldCardOrder_(v.name) : null;
-    if (hsOrder) {
-      hsHtml = '<div class="vendor-meta hs-meta">' + escapeHtml(hsOrderLine_(hsOrder)) + '</div>';
-      if (hsOrder.status === 'shipped' || hsOrder.status === 'ordered') {
-        pillHtml = '<button class="pill-mark" data-hs-receive="' + hsOrder.id + '"><i class="ti ti-package" aria-hidden="true"></i>' +
-          '<span>' + escapeHtml(t('hsMarkReceived')) + '</span></button>';
-      }
-    }
+    const hsOrder = hsIsVendor_(v.name) ? hsCardOrder_() : null;
+    if (hsOrder) hsHtml = '<div class="vendor-meta hs-meta">' + escapeHtml(hsOrderLine_(hsOrder)) + '</div>';
 
     return (
       '<div class="vendor-card tappable' + statusClass + urgencyClass + '" data-vendor="' + escapeHtml(v.name) + '">' +
@@ -5822,6 +5849,43 @@
     if (o.status === 'received') return t('hsLineReceived').replace('{a}', fmtQty_(sum('casesReceived')));
     return t('hsLineCancelled').replace('{num}', o.number);
   }
+  // "To check in" on Today (2026-11-04): an Elpis delivery still ordered and
+  // a Happy Supply order shipped, each with a Check in button; under them,
+  // what was checked in today. Vendor cards never carry it.
+  function hsCheckIns_() {
+    const h = hs_();
+    return (h && Array.isArray(h.orders) ? h.orders : []).filter(o => (o.held && o.status === 'ordered') || (!o.held && o.status === 'shipped'));
+  }
+  function hsCheckedToday_() {
+    const h = hs_(), today = hsYmd_(new Date());
+    return (h && Array.isArray(h.orders) ? h.orders : []).filter(o => o.status === 'received' && o.receivedAt && hsYmd_(new Date(o.receivedAt)) === today);
+  }
+  function hsCheckInVendor_(o) { const h = hs_(); return o.held ? (o.heldVendor || '') : ((h && h.vendor) || 'Happy Supply'); }
+  function hsCheckInMeta_(o) {
+    const sum = f => o.lines.reduce((acc, l) => acc + Number(l[f] || 0), 0);
+    const n = o.lines.length === 1 ? t('hsItems1') : t('hsItemsN').replace('{n}', o.lines.length);
+    if (o.held) return t('hsMetaHeld').replace('{day}', hsDay_(o.cycleDate)).replace('{n}', n).replace('{num}', o.number);
+    return t('hsMetaShipped').replace('{day}', o.shippedAt ? hsDay_(hsYmd_(new Date(o.shippedAt))) : '').replace('{from}', o.from ? ' · ' + t('hsFrom') + ' ' + o.from : '')
+      .replace('{a}', fmtQty_(sum('casesShipped'))).replace('{b}', fmtQty_(sum('cases'))).replace('{num}', o.number);
+  }
+  function hsCheckInHtml_() {
+    const open = hsCheckIns_(), done = hsCheckedToday_();
+    if (!open.length && !done.length) return '';
+    let html = '';
+    if (open.length) {
+      html += '<div class="section-label">' + escapeHtml(t('hsToCheckIn')) + ' &middot; ' + open.length + '</div>' + open.map(o =>
+        '<div class="checkin-card"><span class="checkin-icon" aria-hidden="true"><i class="ti ti-package"></i></span>' +
+        '<div class="checkin-text"><div class="checkin-name">' + escapeHtml(t('hsFromV').replace('{v}', hsCheckInVendor_(o))) + '</div>' +
+        '<div class="checkin-meta">' + escapeHtml(hsCheckInMeta_(o)) + '</div></div>' +
+        '<button type="button" class="checkin-btn" data-hs-receive="' + o.id + '">' + escapeHtml(t('hsCheckIn')) + '</button></div>').join('');
+    }
+    if (done.length) {
+      const at = iso => new Date(iso).toLocaleTimeString(state.lang === 'es' ? 'es-US' : 'en-US', { hour: 'numeric', minute: '2-digit' });
+      html += '<p class="checkin-done">' + escapeHtml(t('hsCheckedToday').replace('{list}',
+        done.map(o => o.number + ' ' + at(o.receivedAt) + (o.receivedBy ? ' · ' + o.receivedBy : '')).join(', '))) + '</p>';
+    }
+    return html;
+  }
   function hsTake_(data) { if (data && data.happySupply && typeof data.happySupply === 'object') direct.live.hs = data.happySupply; }
   function hsErrorText_(e) {
     if (isNetworkError_(e)) return t('hsOffline');
@@ -5853,9 +5917,9 @@
     showToast(t('hsSent'), 'success');
     backToToday_();
   }
-  // Mark received: each shipped line starts at what shipped; a short one is
-  // changed. An Elpis delivery (v17): each line starts at what was ordered,
-  // and can be more.
+  // Check in, on a screen of its own (2026-11-04): each shipped line starts
+  // at what shipped; a short one is changed. An Elpis delivery (v17): each
+  // line starts at what was ordered, and can be more.
   function openHsReceive_(id) {
     const h = hs_(), o = h && (h.orders || []).find(x => x.id === id);
     if (!o) return;
@@ -5867,15 +5931,23 @@
         : t('hsShippedN').replace('{a}', fmtQty_(start))) + (l.pack ? ' · ' + l.pack : '');
       return '<div class="hs-rline"><div class="hs-rinfo"><p class="item-name">' + escapeHtml(l.name) + '</p><p class="item-meta">' + escapeHtml(sub) + '</p></div>' +
         (start > 0 ? '<div class="stepper"><button type="button" class="step-btn" data-hsstep="-1" data-ord="' + l.ord + '" aria-label="' + escapeHtml(t('hsOneLess') + ' ' + l.name) + '">&minus;</button>' +
-          '<input class="step-val" type="number" inputmode="decimal" step="any" min="0" data-hsord="' + l.ord + '" data-start="' + start + '" data-max="' + (held ? '' : start) + '" value="' + start + '" aria-label="' + escapeHtml(l.name + ' ' + t('hsReceived')) + '">' +
+          '<input class="step-val" type="number" inputmode="decimal" step="any" min="0" data-hsord="' + l.ord + '" data-start="' + start + '" data-max="' + (held ? '' : start) + '" value="' + start + '" aria-label="' + escapeHtml(l.name + ' ' + t('hsCheckedIn')) + '">' +
           '<button type="button" class="step-btn" data-hsstep="1" data-ord="' + l.ord + '" aria-label="' + escapeHtml(t('hsOneMore') + ' ' + l.name) + '">+</button></div>' : '') + '</div>';
     }).join('');
-    const wrap = openQeSheet_('<h3>' + escapeHtml(t('hsMarkReceived')) + '</h3>' +
-      '<p class="name-help">' + escapeHtml(o.number + (held ? ' · ' + t('hsHeldFrom').replace('{v}', o.heldVendor || '') : o.from ? ' · ' + t('hsShippedFrom') + ' ' + o.from : '')) + '</p>' + rows +
+    const wrap = openQeSheet_('<div class="checkin-bar"><button type="button" class="checkin-back" id="hs-recv-back"><i class="ti ti-chevron-left" aria-hidden="true"></i>' +
+        escapeHtml(t('hsBackToday')) + '</button><span class="checkin-title">' + escapeHtml(t('hsCheckIn')) + '</span><span class="checkin-pad"></span></div>' +
+      '<h3>' + escapeHtml(t('hsFromV').replace('{v}', hsCheckInVendor_(o)) + ' · ' + o.number) + '</h3>' +
+      '<p class="name-help">' + escapeHtml(held ? t('hsLeadHeld').replace('{v}', o.heldVendor || '').replace('{day}', hsDay_(o.cycleDate))
+                                                : t('hsLeadShipped').replace('{from}', o.from ? ' ' + t('hsFrom') + ' ' + o.from : '')) + '</p>' +
+      '<div class="checkin-lines">' + rows + '</div>' +
       '<p class="hs-help">' + escapeHtml(held ? t('hsChangeHeld').replace('{v}', o.heldVendor || '') : t('hsChangeShort')) + '</p>' +
-      '<button type="button" class="cta" id="hs-recv-go">' + escapeHtml(t('hsReceived')) + '</button>' +
-      '<button type="button" class="cta-secondary" id="hs-recv-no">' + escapeHtml(t('hsNotYet')) + '</button>');
-    wrap.querySelector('.name-sheet').setAttribute('aria-label', t('hsMarkReceived'));
+      '<div class="checkin-spacer"></div>' +
+      '<button type="button" class="cta checkin-go" id="hs-recv-go">' + escapeHtml(t('hsCheckedIn')) + '</button>' +
+      '<button type="button" class="cta-secondary" id="hs-recv-no">' + escapeHtml(t('hsNotHereYet')) + '</button>');
+    wrap.classList.add('checkin');
+    wrap.querySelector('.name-sheet').classList.add('checkin');
+    wrap.querySelector('.name-sheet').setAttribute('aria-label', t('hsCheckIn'));
+    $('hs-recv-back').addEventListener('click', closeQeSheet_);
     const clamp = input => {
       const m = input.getAttribute('data-max'), max = m === '' ? Infinity : Number(m), v = Number(input.value);
       input.value = String(isNaN(v) ? Number(input.getAttribute('data-start')) : Math.max(0, Math.min(max, v)));
@@ -5899,7 +5971,7 @@
         return;
       }
       closeQeSheet_();
-      showToast(t('hsReceivedToast'), 'success');
+      showToast(t('hsCheckedInToast').replace('{num}', o.number), 'success');
       if (state.cache.dashboard) renderToday(state.cache.dashboard);
     });
   }
@@ -8368,7 +8440,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.30.1';
+    const versionStr = '0.31.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =

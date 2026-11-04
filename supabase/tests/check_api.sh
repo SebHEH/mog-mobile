@@ -176,6 +176,10 @@ check "v18 hq_remember: bad token refused"          200 'SESSION_EXPIRED' -X POS
 check "v18 hq_signout: bad token refused"           200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_hq_signout)"
 check "v18 tables: hq_sessions still not reachable" 404 ''   "$URL/rest/v1/hq_sessions"
 
+# schema v19 (a product's concept; no new entry point, a bogus token only)
+check "v19 wh_save with a concept: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_kind":"product","p_row":{"name":"x","concept":"roll-play"}}' "$(rpc mog_wh_save)"
+check "v19 helper: wh_do_save still not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_by":"x","p_kind":"product","p_row":{}}' "$(rpc wh_do_save)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

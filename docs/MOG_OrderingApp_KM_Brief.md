@@ -107,8 +107,8 @@ Open the same store link on a computer (a mouse and a wide window). The sidebar 
 
 ## 11. NOT BUILT YET
 
-- **WIP:** **Happy Supply** (HEH's own warehouse). Built, but no store has it yet. When it starts, its items show "N available"; its review screen has **Needed by**, **Note for Dan (optional)** and **Send to Happy Supply** instead of Copy order; the card later shows **Mark received**. Don't teach it as current; a one-slide "coming soon" is fine.
-- **WIP:** **Elpis** (HEH's own packaging held at Elpis). Built, not in use. KMs keep ordering from Elpis as today; the card will show "HEH's items ordered …" and **Mark received** once HQ sets it up. No change to how you teach ordering now.
+- **WIP:** **Happy Supply** (HEH's own warehouse). Built, but no store has it yet. When it starts, its items show "N available"; its review screen has **Needed by**, **Note for Dan (optional)** and **Send to Happy Supply** instead of Copy order. A shipped order then shows under **To check in** at the top of Today, with a **Check in** button. Don't teach it as current; a one-slide "coming soon" is fine.
+- **WIP:** **Elpis** (HEH's own packaging held at Elpis). Built, not in use. KMs keep ordering from Elpis as today. Once HQ sets it up, each delivery of HEH's items shows under **To check in** on Today ("From Elpis · HEH's items ordered Tue · EL-0002"): tap **Check in**, count what came, tap **Checked in**. No change to how you teach ordering now.
 - **WIP:** the daily email sent from the new system instead of the Sheet. Doesn't change what KMs do.
 
 ## 12. OPEN QUESTIONS FOR SEBASTIAN

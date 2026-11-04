@@ -1096,6 +1096,52 @@
     return { ok: true, mode: 'add', id: s_(it.id), name: name, product: s_(prod.name), via: s_(prod.via), vendor: hs, vendorsAdded: vendorsAdded };
   }
 
+  // ---- HEH's stock held at a vendor, linked by name (hq/ Elpis page, v19) --
+  // An item is HEH's product when its name is the product's name (case and
+  // spaces aside). For each product: 'linked' (the item carries it),
+  // 'match' (an active item has the name, not linked yet), 'taken' (that
+  // item is linked to another product) or 'missing'.
+  const sameName = (a, b) => s_(a).replace(/\s+/g, ' ').toLowerCase() === s_(b).replace(/\s+/g, ' ').toLowerCase();
+  function heldMatches(t, products) {
+    return (products || []).map(p => {
+      const pid = Number(p.id);
+      const linked = t.items.find(it => it.whProduct != null && Number(it.whProduct) === pid);
+      if (linked) return { productId: pid, status: 'linked', itemId: s_(linked.id), itemName: s_(linked.name) };
+      const it = t.items.find(x => x.active === true && sameName(x.name, p.name));
+      if (!it) return { productId: pid, status: 'missing', itemId: '', itemName: '' };
+      return { productId: pid, status: it.whProduct != null ? 'taken' : 'match', itemId: s_(it.id), itemName: s_(it.name) };
+    });
+  }
+  // p = { vendorName: the store's vendor holding it ("Elpis Wholesale")
+  //       products: [{ id, name, pack, via }]
+  //       renames: [{ itemId, to }] }   items renamed to a product's name first
+  // Then every product whose name an active, unlinked item has is linked the
+  // way Send to stores links one (hqProduct): the holder its main vendor, the
+  // product's pack. One change at the store, undoable there.
+  function hqHeldLinks(w, p) {
+    p = p || {};
+    const renamed = [];
+    for (const r of (Array.isArray(p.renames) ? p.renames : [])) {
+      const it = w.items.find(x => s_(x.id) === s_(r.itemId));
+      if (!it) throw new Error('That item isn\'t at the store any more.');
+      const to = s_(r.to);
+      if (!to) throw new Error('A rename needs a name.');
+      const clash = w.items.find(x => x !== it && sameName(x.name, to));
+      if (clash) throw new Error('The store has "' + s_(clash.name) + '" already (' + s_(clash.id) + ').');
+      if (!sameName(it.name, to) || s_(it.name) !== to) renamed.push({ id: s_(it.id), from: s_(it.name), to: to });
+      it.name = to;
+    }
+    const linked = [];
+    for (const m of heldMatches(w, p.products)) {
+      if (m.status !== 'match') continue;
+      const prod = p.products.find(x => Number(x.id) === m.productId);
+      hqProduct(w, { vendor: null, vendorName: p.vendorName, product: prod, link: m.itemId });
+      linked.push(s_(prod.name));
+    }
+    if (!linked.length && !renamed.length) throw new Error('Nothing to link here.');
+    return { ok: true, linked: linked, renamed: renamed, via: s_((p.products[0] || {}).via), vendor: normalizeVendorOrThrow(w, p.vendorName) };
+  }
+
   // The store's active items closest to a product's name, best first, for
   // HQ's "Link an item it has" (pick-only). best: one close enough to link
   // by default (the same name ignoring case and punctuation, one inside the
@@ -1686,6 +1732,12 @@
       if (result.vendorsRemoved.length) parts.push('removed vendor' + (result.vendorsRemoved.length === 1 ? ' ' : 's ') + result.vendorsRemoved.join(', '));
       return 'HQ rolled back ' + lto + (parts.length ? ': ' + parts.join('; ') : '');
     }
+    if (fn === 'commitHqHeldLinks') {
+      const parts = [];
+      for (const r of result.renamed) parts.push('renamed "' + r.from + '" to "' + r.to + '"');
+      if (result.linked.length) parts.push('linked ' + plural(result.linked.length, 'item') + ' to HEH\'s stock at ' + result.via + ' (' + result.linked.join(', ') + ')');
+      return 'HQ: ' + parts.join('; ');
+    }
     if (fn === 'commitHqProduct') {
       const parts = [];
       if (result.vendorsAdded.length) parts.push('added vendor ' + result.vendorsAdded.join(', '));
@@ -1771,6 +1823,7 @@
     commitHqRollout: (w, args) => hqRollout(w, args[0]),
     commitHqLto: (w, args) => hqLto(w, args[0]),
     commitHqProduct: (w, args) => hqProduct(w, args[0]),
+    commitHqHeldLinks: (w, args) => hqHeldLinks(w, args[0]),
     commitStorageAreasDraft: (w, args, shifts, renames) => storageAreasDraft(w, args[0], renames),
     commitReorderPickPath: (w, args) => reorderPickPath(w, args[0], args[1]),
     commitPlaceBackupVendors: w => placeBackupVendors(w)
@@ -1792,7 +1845,7 @@
                 writes: Object.keys(WRITES), vendorList: vendorList, parseCsv: parseCsv,
                 multsFromDays: multsFromDays, daysFromMults: daysFromMults, matchVendor: matchVendor,
                 cleanLibrary: cleanLibrary, librarySeed: librarySeed, libraryAdd: libraryAdd, libraryLabel: libraryLabel,
-                ltoStoreState: ltoStoreState, ltoWaiting: ltoWaiting, productCandidates: productCandidates };
+                ltoStoreState: ltoStoreState, ltoWaiting: ltoWaiting, productCandidates: productCandidates, heldMatches: heldMatches };
   root.CatalogEdit = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : this);

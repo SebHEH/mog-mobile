@@ -97,6 +97,11 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - **The 3:30 AM close records the deliveries** (`mog_sync_close_cycle` replaced in v17, same signature, no Apps Script change), in its own exception block: a failure there comes back as `heldError` in the close's answer and never stops a store's close. The live check after shipping: the next morning's close at every store answered without `heldError`.
   - A delivery and a Happy Supply order share `mog.wh_orders` (`held_at` set for a delivery, status `ordered` then `received`). Every reader of the orders splits them: `wh_orders_json` (Dan's Orders) leaves deliveries out, `wh_deliveries_json` is HQ's Elpis page, and the phone's card picks by `held` and `heldVendor`.
   - A receipt beyond the records logs a `count` move with the EL number as its ref; a real count has no ref. The Elpis page's "count it" flag reads that difference (`lastCount` is the newest count with no ref).
+- **Elpis on one page (schema v19, 2026-11-04; boards in the MOG HQ redesign canvas, bottom row):**
+  - HQ's Elpis page (sidebar "Held at a vendor") sets itself up in four steps: where it's kept, what HEH keeps there (name, pack, concept), how much is there (the count), which stores order it. After setup: Deliveries, Stock (the same count) and Products and stores. Products and prices and Inventory leave held products and locations out.
+  - **Stores link by name:** an item named exactly like an Elpis product (case and spaces aside) is HEH's (`catalogEdit.js` `heldMatches`, `commitHqHeldLinks`). A store spelled differently gets a Rename to the product's name, applied with the link. One name per item everywhere, like vendors.
+  - A product's concept (`mog.wh_products.concept`, null = every concept) decides which stores' lines show.
+  - **The phone checks deliveries in apart from ordering:** "To check in" above "Vendors today" (an Elpis delivery still ordered, a Happy Supply order shipped), each opening a full Check in screen. A vendor card never carries it.
 - **No Undo in W1.** A wrong count is fixed by another count. A wrong cost on a delivery needs a maintainer in the SQL Editor; `mog.wh_moves` keeps each delivery's cost, so the average can be replayed.
 
 ## Local previews and the browser pane

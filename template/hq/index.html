@@ -238,6 +238,19 @@
     .cell-in[aria-invalid="true"] { border: 2px solid var(--bad); }
     .note-box { padding: 12px 14px; border-radius: 12px; background: var(--ground); font-size: 14px; color: var(--ink2); }
     .note-box.warn { background: var(--warn-bg); color: var(--warn); }
+    /* The Elpis page's setup steps and store lines (schema v19) */
+    .el-step { display: flex; gap: 14px; align-items: flex-start; padding: 16px; margin: 6px 0; border-radius: 12px; border: 2px solid transparent; }
+    .el-step.cur { background: var(--ground); border-color: var(--ink); }
+    .el-dot { width: 30px; height: 30px; flex: none; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--line2); background: #fff; color: var(--muted);
+              display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+    .el-dot.cur { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .el-dot.ok { background: var(--ok); border-color: var(--ok); color: #fff; }
+    .el-body { flex: 1; min-width: 0; }
+    .el-body h3 { margin: 4px 0 8px; font-size: 16px; }
+    .el-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+    .el-lines { margin-top: 10px; }
+    .el-line { padding: 12px 0; border-bottom: 1px solid var(--hair); }
+    .el-fix { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--ground); font-size: 14px; }
     .err { margin: 0; font-size: 14px; font-weight: 600; color: var(--bad); }
     .panel h2 { font-size: 19px; }
     [id^="v-wh-"] > .status:empty { display: none; }
@@ -297,8 +310,9 @@
       <button type="button" class="nav" data-nav="wh-inventory"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5l0 9l-8 4.5l-8 -4.5l0 -9l8 -4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12l0 9"/><path d="M12 12l-8 -4.5"/></svg>Inventory<span class="dotw" id="wh-dot-inventory" hidden aria-label="Below par"></span></button>
       <button type="button" class="nav" data-nav="wh-incoming"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10h14l-4 -4"/><path d="M17 14h-14l4 4"/></svg>Incoming<span class="badge" id="wh-badge-incoming" hidden></span></button>
       <button type="button" class="nav" data-nav="wh-orders"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"/><path d="M9 5a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"/><path d="M9 12h.01"/><path d="M13 12h2"/><path d="M9 16h.01"/><path d="M13 16h2"/></svg>Orders<span class="badge" id="wh-badge-orders" hidden></span></button>
-      <button type="button" class="nav" data-nav="wh-elpis" id="nav-wh-elpis" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21l18 0"/><path d="M5 21v-12l7 -5l7 5v12"/><path d="M9 21v-6h6v6"/></svg><span id="wh-elpis-label">Elpis</span><span class="badge" id="wh-badge-elpis" hidden></span></button>
       <button type="button" class="nav" data-nav="wh-products"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1"/><path d="M5 16h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1"/><path d="M15 12h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1"/><path d="M15 4h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1"/></svg>Products and prices</button>
+      <div class="eyebrow" style="padding-top:18px">HELD AT A VENDOR</div>
+      <button type="button" class="nav" data-nav="wh-elpis" id="nav-wh-elpis" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21l18 0"/><path d="M5 21v-12l7 -5l7 5v12"/><path d="M9 21v-6h6v6"/></svg><span id="wh-elpis-label">Elpis</span><span class="badge" id="wh-badge-elpis" hidden></span></button>
       </div>
       <div class="spacer"></div>
       <button type="button" class="nav" data-nav="wh-history" id="nav-wh-history" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8l0 4l2 2"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></svg>Stock history</button>

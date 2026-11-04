@@ -179,7 +179,8 @@
                 inv: { filter: 'active', counting: false, loc: null, rows: {} },
                 inc: { filter: 'open', sel: null, rcv: {}, po: null, tr: null },
                 ord: { filter: 'sent', sel: null, rows: {} },
-                el: { filter: 'open', sel: null, rows: {} },
+                el: { filter: 'open', sel: null, rows: {}, tab: 'deliveries', newLoc: { name: 'Elpis', heldBy: '' },
+                      add: { name: '', pack: '', concept: '' }, edit: null, count: {}, reasons: {}, renames: {}, vend: {} },
                 prod: { sel: null, draft: null, send: null },
                 hist: { product: '', location: '', moves: null, more: false, key: null } };
 
@@ -293,7 +294,7 @@
       const prods = countProducts();
       return '<section class="card focus" aria-labelledby="whc-h"><div class="card-head"><h2 id="whc-h">Count a location</h2>' +
         '<label class="field" style="flex-direction:row;align-items:center;gap:10px"><span class="sr">Location</span>' +
-        selectHtml('data-whcloc="1"', loc, activeLocs().map(l => [l.id, l.name])) + '</label></div>' +
+        selectHtml('data-whcloc="1"', loc, ownLocs().map(l => [l.id, l.name])) + '</label></div>' +
         '<p class="help">Type what is on the shelf. A number that differs from the record needs a reason. A product left blank keeps its number.</p>' +
         (!prods.length ? emptyHtml('No products to count.') :
         '<div class="scroll" style="margin-top:12px"><table><thead><tr><th>Product</th><th>On record</th><th>Counted</th><th>Difference</th><th>Why it\'s different</th></tr></thead><tbody>' +
@@ -563,7 +564,8 @@
                : { id: null, version: null, name: '', pack: '', par: '0', fee: '0.00', limit: false, stores: [], active: true, via: '' };
     }
     function renderProducts() {
-      const d = D(), list = d.products;
+      // A product held at a vendor (Elpis) lives on that vendor's page (v19).
+      const d = D(), list = d.products.filter(p => !p.via);
       if (W.prod.sel !== 'new' && !list.some(p => p.id === W.prod.sel)) { W.prod.sel = list.length ? list[0].id : 'new'; W.prod.draft = null; }
       if (!W.prod.draft) W.prod.draft = draftOf(W.prod.sel === 'new' ? null : prodBy(W.prod.sel));
       const pct = Number(d.settings.markupPct);
@@ -575,7 +577,7 @@
           : '<div class="list-foot">No products yet: add the first one.</div>') + '</section>';
       html += '<section class="card panel" style="flex:1 1 400px" aria-labelledby="whpp-h">' + productPanelHtml() + '</section></div>';
       html += '<div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">' + listCardHtml('supplier', 'Suppliers', 'Picked on a vendor order. Tap one to hide it from new orders or show it again.', d.suppliers) +
-        listCardHtml('location', 'Locations', 'Where stock sits. Tap one to close it (it has to be empty) or open it again. One held by a vendor (Elpis) holds HEH\'s stock that stores order from that vendor; Happy Supply never ships from it.', d.locations) +
+        listCardHtml('location', 'Locations', 'Where Happy Supply\'s stock sits. Tap one to close it (it has to be empty) or open it again. HEH\'s stock kept at a vendor (Elpis) is set up on its own page.', d.locations.filter(l => !l.heldBy)) +
         '<section class="card" aria-labelledby="whs-h" style="padding:18px 20px"><h2 id="whs-h" style="font-size:16px">For every store</h2>' +
         '<p class="help" style="margin-top:4px">Both 0 to start. A store\'s price per case is the average cost plus the handling fee, plus the markup.</p>' +
         '<div class="grid2" style="margin-top:10px"><label class="field">Markup %<input id="whs-pct" class="text" inputmode="decimal" value="' + esc(String(Number(d.settings.markupPct))) + '"></label>' +
@@ -596,8 +598,6 @@
             (r.heldBy ? ' <span class="muted">· held by ' + esc(r.heldBy) + '</span>' : '') + '</button>').join('')
           : '<span class="muted">None yet.</span>') + '</div>' +
         '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px"><input class="text" id="whadd-' + kind + '" maxlength="60" placeholder="' + (kind === 'supplier' ? 'Supplier name' : 'Location name') + '" aria-label="New ' + kind + ' name" style="height:40px;font-size:14px;flex:1 1 160px">' +
-        (kind === 'location' ? selectHtml('id="whadd-heldby" aria-label="Who holds the new location"', '',
-          [['', 'HEH\'s own']].concat((D().vendorNames || []).filter(n => lcs(n) !== 'happy supply' && !D().locations.some(l => lcs(l.heldBy) === lcs(n))).map(n => [n, 'Held by ' + n]))) : '') +
         '<button type="button" class="btn small" data-whadd="' + kind + '" style="height:40px">Add</button></div></section>';
     }
     function productPanelHtml() {
@@ -610,7 +610,7 @@
         '<label class="field">Par (cases)<input data-whpf="par" value="' + esc(f.par) + '" inputmode="decimal"></label>' +
         '<label class="field">Handling fee / cs<input data-whpf="fee" value="' + esc(f.fee) + '" inputmode="decimal"></label></div>' +
         '<div class="note-box" id="whpp-price"></div>' +
-        (heldLocs().length || f.via ? '<div role="group" aria-labelledby="whpp-via"><div class="chips-label" id="whpp-via">Stores order it from</div>' +
+        (f.via ? '<div role="group" aria-labelledby="whpp-via"><div class="chips-label" id="whpp-via">Stores order it from</div>' +
           '<div class="seg" style="display:inline-flex;margin-top:8px">' +
           [['', HS]].concat(heldLocs().map(l => [l.heldBy, l.heldBy])).map(o => '<button type="button" data-whvia="' + esc(o[0]) + '" aria-pressed="' + (lcs(f.via) === lcs(o[0])) + '">' + esc(o[1]) + '</button>').join('') + '</div>' +
           '<p class="help" style="margin-top:6px">' + (f.via ? 'Its stock is kept at ' + esc((heldLocs().find(l => lcs(l.heldBy) === lcs(f.via)) || {}).name || f.via) + '. A store\'s delivery takes from it when marked received; Happy Supply never ships it.'
@@ -784,44 +784,122 @@
     }
     function elMeta(o) {
       const n = plural(o.lines.length, 'line');
-      if (o.status === 'ordered') return 'Ordered ' + dayOf(o.cycleDate) + ' · ' + n + (elOld(o) ? ' · not marked for ' + plural(daysOpen(o), 'day') : ' · waiting for the store');
-      return 'Received ' + when(o.receivedAt) + (o.receivedBy ? ' by ' + o.receivedBy : '') + ' · ' + n;
+      if (o.status === 'ordered') return 'Ordered ' + dayOf(o.cycleDate) + ' · ' + n + (elOld(o) ? ' · not checked in for ' + plural(daysOpen(o), 'day') : ' · waiting for the store');
+      return 'Checked in ' + when(o.receivedAt) + (o.receivedBy ? ' by ' + o.receivedBy : '') + ' · ' + n;
     }
     function elTag(o) {
-      if (o.status === 'received') return o.lines.some(l => Number(l.beyond) > 0) ? '<span class="tag warn">Beyond the records</span>' : '<span class="tag ok">Received</span>';
-      return elOld(o) ? '<span class="tag warn">Not marked</span>' : '<span class="tag blue">Ordered</span>';
+      if (o.status === 'received') return o.lines.some(l => Number(l.beyond) > 0) ? '<span class="tag warn">Beyond the records</span>' : '<span class="tag ok">Checked in</span>';
+      return elOld(o) ? '<span class="tag warn">Not checked in</span>' : '<span class="tag blue">Ordered</span>';
     }
     function selectDelivery(id) { W.el.sel = id; W.el.rows = {}; }
+    // ---- Elpis on one page (schema v19) ----
+    // Until it's set up, four steps on this page: where it's kept, what HEH
+    // keeps there, how much is there, which stores order it. After, three
+    // tabs: Deliveries, Stock (the same count) and Products and stores. Its
+    // products are only HEH's own, each linked to the store item of the same
+    // name (catalogEdit.js heldMatches / commitHqHeldLinks).
+    const heldLoc = () => heldLocs()[0] || null;
+    const heldProds = loc => (loc ? D().products.filter(p => lcs(p.via) === lcs(loc.heldBy)) : []);
+    // The stores a product held there can be linked at: its concept's, or
+    // every concept's for one with none; only stores whose editor is here.
+    function heldStores(loc) {
+      const prods = heldProds(loc), every = prods.some(p => !p.concept);
+      const keys = every ? host.conceptKeys() : Array.from(new Set(prods.map(p => p.concept)));
+      const out = [];
+      for (const k of keys) for (const st of host.storesOf(k)) if (host.usable(st) && out.indexOf(st) < 0) out.push(st);
+      return out.sort((a, b) => (a.isTest - b.isTest) || host.shortName(a).localeCompare(host.shortName(b)));
+    }
+    // One store: its share of the products, its vendor for the holder (HQ's
+    // name, else a vendor with the holder's name, else picked here, else a
+    // guess to start the pick), and each product's match.
+    function heldStoreState(st, loc) {
+      const prods = heldProds(loc).filter(p => !p.concept || p.concept === (st.concept || ''));
+      const known = storeHs(st, loc.heldBy), picked = W.el.vend[st.slug], guess = guessVendor(st, loc.heldBy);
+      const vend = known ? known.name : picked || guess || '';
+      const ren = W.el.renames[st.slug] || {};
+      const view = host.CE.heldMatches(st.tables, prods).map(x =>
+        (x.status === 'missing' && ren[x.productId]) ? Object.assign({}, x, { status: 'rename', itemId: ren[x.productId] }) : x);
+      return { st, prods, known, vend, view, linked: view.filter(x => x.status === 'linked').length,
+               toLink: view.filter(x => x.status === 'match' || x.status === 'rename').length };
+    }
+    function heldPlan(loc) {
+      if (!loc || !canSend()) return [];
+      return heldStores(loc).map(st => heldStoreState(st, loc)).filter(s => s.vend && s.toLink > 0).map(s => {
+        const ren = W.el.renames[s.st.slug] || {};
+        const args = { vendorName: s.vend, products: s.prods.map(p => ({ id: p.id, name: p.name, pack: p.pack, via: p.via })),
+                       renames: Object.keys(ren).map(pid => ({ itemId: ren[pid], to: prodBy(pid).name })) };
+        const links = [{ slug: s.st.slug, hqName: loc.heldBy, vendor: s.vend }];
+        try { return { st: s.st, links, out: host.CE.call(s.st.tables, 'commitHqHeldLinks', [args]) }; }
+        catch (err) { return { st: s.st, links, error: err.message }; }
+      });
+    }
+    // Which steps are done. Someone without the hq role (Dan) can't link
+    // stores, so for them the count finishes it.
+    function elSetup(loc) {
+      const prods = heldProds(loc);
+      const linked = !!loc && canSend() && heldStores(loc).some(st => st.tables.items.some(it => it.whProduct != null && prods.some(p => p.id === Number(it.whProduct))));
+      const steps = [!!loc, prods.length > 0, !!(loc && loc.lastCount), linked || (!!loc && !canSend() && !!loc.lastCount)];
+      return { steps, done: steps.every(Boolean), n: steps.filter(Boolean).length, current: steps.indexOf(false) };
+    }
     function renderElpis() {
-      const loc = heldLocs()[0];
-      if (!loc) {
-        $('whe-h').textContent = 'Elpis';
-        $('whe-sub').textContent = '';
-        $('whe-body').innerHTML = emptyHtml('No location is held by a vendor yet. Add one on <button type="button" class="linkbtn" data-nav="wh-products">Products and prices</button> (Locations, Held by).');
-        return;
+      const loc = heldLoc(), s = elSetup(loc), who = loc ? loc.heldBy : 'Elpis';
+      $('whe-h').textContent = loc ? loc.name : 'Elpis';
+      $('whe-sub').textContent = 'HEH\'s own packaging, kept at ' + (loc ? loc.heldBy : 'a vendor') + '. Stores keep ordering it from their ' + who + ' vendor. ' +
+        (s.done ? 'Count it, link stores and see each store\'s deliveries here.' : 'Set it up once here; after that, this page is where you count it and see each store\'s deliveries.');
+      let html;
+      if (!s.done) html = elSetupHtml(loc, s);
+      else {
+        const nOpen = deliveries().filter(o => o.heldAt === loc.id && o.status === 'ordered').length;
+        html = '<div class="actions" role="tablist" aria-label="' + esc(loc.name) + '">' +
+          [['deliveries', 'Deliveries' + (nOpen ? ' · ' + nOpen + ' open' : '')], ['stock', 'Stock'], ['products', 'Products and stores']].map(t =>
+            '<button type="button" class="pill" role="tab" data-wheltab="' + t[0] + '" aria-selected="' + (W.el.tab === t[0]) + '" aria-pressed="' + (W.el.tab === t[0]) + '">' + esc(t[1]) + '</button>').join('') + '</div>';
+        if (W.el.tab === 'deliveries') html += elDeliveriesHtml(loc);
+        else if (W.el.tab === 'stock') html += elStockHtml(loc) + elCountHtml(loc, false);
+        else html += '<section class="card" aria-labelledby="whelp-h"><div class="card-head"><h2 id="whelp-h">What HEH keeps there</h2></div>' + elProductsHtml(loc) + '</section>' +
+          '<section class="card" aria-labelledby="whelk-h"><div class="card-head"><h2 id="whelk-h">Which stores order it</h2></div>' + elLinksHtml(loc) + '</section>';
       }
-      $('whe-h').textContent = loc.name;
-      $('whe-sub').textContent = 'HEH\'s own stock held at ' + loc.name + ' (' + loc.heldBy + '). Stores keep ordering it from their ' + loc.heldBy +
-        ' vendor; it leaves these records when a store marks its delivery received. Shipments in and counts use Incoming and Inventory, with ' + loc.name + ' as the location.';
+      $('whe-body').innerHTML = html;
+      if (s.done && W.el.tab === 'deliveries') updateElpis();
+      if (loc && (!s.done || W.el.tab === 'stock')) updateElCount(loc);
+      if (loc && (!s.done || W.el.tab === 'products')) updateElLinks(loc);
+    }
+    function elDeliveriesHtml(loc) {
       const list = elList(loc);
       if (!list.some(o => o.id === W.el.sel)) selectDelivery(list.length ? list[0].id : null);
       const nOpen = deliveries().filter(o => o.heldAt === loc.id && o.status === 'ordered').length;
       let html = beyondSinceCount(deliveries(), loc).map(b =>
         '<div class="note-box warn" role="alert" style="margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:12px"><span style="flex:1 1 380px"><b>' + esc(b.line.product) + ':</b> ' +
-          esc(storeShort(b.order)) + ' marked ' + esc(cs(b.line.casesReceived)) + ' received on ' + esc(b.order.number) + ' (' + esc(day(b.order.receivedAt)) + '), but the records held ' +
+          esc(storeShort(b.order)) + ' checked in ' + esc(cs(b.line.casesReceived)) + ' on ' + esc(b.order.number) + ' (' + esc(day(b.order.receivedAt)) + '), but the records held ' +
           esc(String(b.held)) + '. The other ' + esc(String(Number(b.line.beyond))) + ' were logged as a count difference. Count ' + esc(loc.name) + ' from its next report.</span>' +
           '<button type="button" class="btn small" data-wh="el-count">Count ' + esc(loc.name) + '</button></div>').join('');
       html += '<div class="actions" role="group" aria-label="Show">' +
-        [['open', 'Open · ' + nOpen], ['received', 'Received']].map(f =>
+        [['open', 'Open · ' + nOpen], ['received', 'Checked in']].map(f =>
           '<button type="button" class="pill" data-whelf="' + f[0] + '" aria-pressed="' + (W.el.filter === f[0]) + '">' + f[1] + '</button>').join('') + '</div>';
       html += '<div class="cols"><section class="card list-card" style="flex:1 1 320px" aria-label="Deliveries">' +
         (list.length ? list.map(o => '<button type="button" class="lrow" data-whesel="' + o.id + '"' + (o.id === W.el.sel ? ' aria-current="true"' : '') + '>' +
           '<span class="t"><span class="n">' + esc(storeShort(o) + ' · ' + o.number) + '</span><span class="s">' + esc(elMeta(o)) + '</span></span>' + elTag(o) + '</button>').join('')
           : '<div class="list-foot">' + (W.el.filter === 'open' ? 'Nothing open. The night\'s close lists each store\'s ' + esc(loc.heldBy) + ' order of HEH\'s items here.' : 'None yet.') + '</div>') + '</section>';
-      html += '<section class="card panel focus" style="flex:2 1 560px" aria-label="Delivery">' + elPanelHtml(loc) + '</section></div>';
-      html += elStockHtml(loc);
-      $('whe-body').innerHTML = html;
-      updateElpis();
+      return html + '<section class="card panel focus" style="flex:2 1 560px" aria-label="Delivery">' + elPanelHtml(loc) + '</section></div>';
+    }
+    function elStepHtml(i, s, title, body) {
+      const done = s.steps[i], cur = s.current === i;
+      const dot = done ? '<span class="el-dot ok" aria-hidden="true">' + CHECK + '</span>' : '<span class="el-dot' + (cur ? ' cur' : '') + '" aria-hidden="true">' + (i + 1) + '</span>';
+      return '<div class="el-step' + (cur ? ' cur' : '') + '">' + dot + '<div class="el-body"><h3>' + esc(title) + (done ? '<span class="sr"> (done)</span>' : '') + '</h3>' + body + '</div></div>';
+    }
+    function elSetupHtml(loc, s) {
+      const names = (D().vendorNames || []).filter(n => lcs(n) !== 'happy supply');
+      const holder = W.el.newLoc.heldBy || names.find(n => /\belpis\b/i.test(n)) || '';
+      const where = loc
+        ? '<p class="help" style="margin:0">At <b>' + esc(loc.heldBy) + '</b>, as HEH\'s location "' + esc(loc.name) + '". Happy Supply never ships from it.</p>'
+        : '<p class="help" style="margin:0 0 10px">The vendor that keeps HEH\'s stock, and what HQ calls the place.</p><div class="el-row">' +
+          '<label class="field">Kept at' + selectHtml('data-whelheld="1" aria-label="The vendor that keeps it"', holder, names.map(n => [n, n]), 'Pick the vendor') + '</label>' +
+          '<label class="field">Location name<input class="text" data-whellocname="1" maxlength="60" value="' + esc(W.el.newLoc.name) + '"></label>' +
+          '<button type="button" class="btn primary" data-wh="el-loc-add">Create</button></div>';
+      return '<section class="card" aria-labelledby="whsu-h"><div class="card-head"><h2 id="whsu-h">Set up ' + esc(loc ? loc.name : 'Elpis') + '</h2><span class="muted"><b>' + s.n + ' of 4 done</b></span></div>' +
+        elStepHtml(0, s, 'Where it\'s kept', where) +
+        elStepHtml(1, s, 'What HEH keeps there', loc ? elProductsHtml(loc) : '<p class="help" style="margin:0">After step 1.</p>') +
+        elStepHtml(2, s, 'How much is there now', loc && heldProds(loc).length ? elCountHtml(loc, true) : '<p class="help" style="margin:0">After step 2.</p>') +
+        elStepHtml(3, s, 'Which stores order it', loc && heldProds(loc).length ? elLinksHtml(loc) : '<p class="help" style="margin:0">After step 2.</p>') + '</section>';
     }
     function elPanelHtml(loc) {
       const o = deliveries().find(x => x.id === W.el.sel);
@@ -840,7 +918,7 @@
           '<td style="min-width:90px">' + inputHtml('data-whel="' + l.ord + '" aria-label="' + esc(l.product) + ' cases received at ' + esc(storeShort(o)) + '"', W.el.rows[l.ord] == null ? String(Number(l.cases)) : W.el.rows[l.ord]) + '</td>' +
           '<td id="whelafter-' + l.ord + '"></td></tr>').join('') + '</tbody></table></div>' +
         '<div class="row-between"><span class="muted" id="whel-sum"></span><div class="actions" style="align-items:center">' +
-        '<button type="button" class="btn primary big" data-wh="el-receive" id="whel-go">Mark received for ' + esc(storeShort(o)) + '</button></div></div>';
+        '<button type="button" class="btn primary big" data-wh="el-receive" id="whel-go">Check in for ' + esc(storeShort(o)) + '</button></div></div>';
     }
     // What's left at the location after this receipt, and whether it can go.
     function updateElpis() {
@@ -861,24 +939,130 @@
         cell.innerHTML = after >= 0 ? esc(cs(after)) : '0 <span class="tag warn">' + esc(String(-after)) + ' beyond the records</span>';
       }
       const sum = $('whel-sum'), go = $('whel-go');
-      if (sum) sum.textContent = problems.length ? upper(problems.join('; ')) + '.' : storeShort(o) + '\'s card will show it received by "HQ · ' + D().name + '".';
+      if (sum) sum.textContent = problems.length ? upper(problems.join('; ')) + '.' : storeShort(o) + ' will see it checked in by "HQ · ' + D().name + '".';
       if (go) go.disabled = problems.length > 0;
     }
     function elStockHtml(loc) {
       const rows = heldStock(D().products, deliveries(), loc), need = new Set(beyondSinceCount(deliveries(), loc).map(b => b.line.productId));
       const pos = D().pos.filter(p => p.status === 'ordered' && p.locationId === loc.id);
-      return '<section class="card" aria-labelledby="whes-h"><div class="card-head"><h2 id="whes-h">Stock at ' + esc(loc.name) + '</h2>' +
-        '<button type="button" class="linkbtn" data-nav="wh-history">Stock history</button></div>' +
-        (!rows.length ? emptyHtml('No products ordered through ' + esc(loc.heldBy) + ' yet. On Products and prices, a product\'s "Stores order it from" puts it here.') :
-        '<div class="scroll"><table><thead><tr><th>Product</th><th>On hand</th><th>Open</th><th>Available</th><th>Par</th></tr></thead><tbody>' +
+      return '<section class="card" aria-labelledby="whes-h"><div class="card-head"><h2 id="whes-h">At ' + esc(loc.name) + ' now</h2>' +
+        '<span class="muted">' + (loc.lastCount ? 'Last counted ' + esc(when(loc.lastCount)) : 'Not counted yet') + ' · <button type="button" class="linkbtn" data-nav="wh-history">Stock history</button></span></div>' +
+        (!rows.length ? emptyHtml('No products here yet: add them on Products and stores.') :
+        '<div class="scroll"><table><thead><tr><th>Product</th><th>Cases there</th><th>Stores can still get</th></tr></thead><tbody>' +
         rows.map(x => '<tr><td><b>' + esc(x.product.name) + '</b>' + (x.open > x.onHand ? ' <span class="tag warn">' + round(x.open - x.onHand, 2) + ' short</span>' : '') +
-          (need.has(x.product.id) ? ' <span class="tag warn">Count</span>' : '') + '</td><td>' + x.onHand + '</td><td>' + x.open + '</td><td><b>' + x.available + '</b></td>' +
-          '<td class="muted">' + Number(x.product.par) + '</td></tr>').join('') + '</tbody></table></div>') +
-        '<p class="help" style="margin-top:10px">Open: ordered at a store\'s nightly close, not marked received yet. Stores see what\'s left as "available" on their ' + esc(loc.heldBy) + ' items.</p>' +
-        '<div class="note-box" style="margin:10px 0 0">' +
-          (pos.length ? pos.map(p => '<div><b>Coming in:</b> ' + esc(p.number + ' from ' + p.supplier + ', ' + p.lines.map(l => l.product + ' ' + cs(l.cases)).join(', ')) +
-            '. <button type="button" class="linkbtn" data-whgopo="' + p.id + '">Receive it</button></div>').join('') : '') +
-          '<div><b>Last counted:</b> ' + (loc.lastCount ? esc(when(loc.lastCount)) : 'not yet. Count it from ' + esc(loc.heldBy) + '\'s report on Inventory.') + '</div></div></section>';
+          (need.has(x.product.id) ? ' <span class="tag warn">Count</span>' : '') + '</td><td>' + x.onHand + '</td><td><b>' + x.available + '</b>' +
+          (x.open ? ' <span class="muted" style="font-size:13px">(' + esc(cs(x.open)) + ' on deliveries not checked in)</span>' : '') + '</td></tr>').join('') + '</tbody></table></div>') +
+        (pos.length ? '<div class="note-box" style="margin:10px 0 0">' + pos.map(p => '<div><b>Coming in:</b> ' + esc(p.number + ' from ' + p.supplier + ', ' + p.lines.map(l => l.product + ' ' + cs(l.cases)).join(', ')) +
+            '. <button type="button" class="linkbtn" data-whgopo="' + p.id + '">Receive it</button></div>').join('') + '</div>' : '') + '</section>';
+    }
+    // The count from the holder's report: setup's step 3 and the Stock tab.
+    // A blank line keeps its number; after the first count, a line that
+    // changed says why (the report, damaged, other).
+    const elReasons = loc => [loc.heldBy + '\'s report', 'Damaged', 'Other'];
+    const elCountProds = loc => heldProds(loc).filter(p => p.active || stockAt(p, loc.id) > 0);
+    function elCountHtml(loc, inSetup) {
+      const prods = elCountProds(loc), first = !loc.lastCount;
+      const lead = first ? 'From ' + esc(loc.heldBy) + '\'s latest report. This is the starting count; deliveries take from it as stores check them in.'
+                         : 'Type what ' + esc(loc.heldBy) + '\'s report says. Only a line that changed asks why; a blank line keeps its number.';
+      const table = '<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Product</th><th>Cases there</th><th><span class="sr">Difference</span></th></tr></thead><tbody>' +
+        prods.map(p => '<tr><td><b>' + esc(p.name) + '</b>' + (p.pack ? '<div class="muted" style="font-size:13px">' + esc(p.pack) + '</div>' : '') + '</td>' +
+          '<td style="width:130px">' + inputHtml('data-whek="' + p.id + '" aria-label="' + esc(p.name) + ' cases at ' + esc(loc.name) + '"', W.el.count[p.id],
+            ' placeholder="' + (first ? 'cases' : esc(String(stockAt(p, loc.id)))) + '"') + '</td><td id="whekd-' + p.id + '"></td></tr>').join('') + '</tbody></table></div>';
+      const foot = '<div class="row-between"><span class="muted" id="whek-sum"></span><div class="actions" style="align-items:center">' +
+        '<button type="button" class="btn primary" data-wh="el-count-save" id="whek-go">Save the count</button></div></div>';
+      if (inSetup) return '<p class="help" style="margin:0">' + lead + '</p>' + table + foot;
+      return '<section class="card focus" aria-labelledby="whek-h"><div class="card-head"><h2 id="whek-h">Count from ' + esc(loc.heldBy) + '\'s report</h2></div>' +
+        '<p class="help" style="margin:0">' + lead + '</p>' + table + foot + '</section>';
+    }
+    function updateElCount(loc) {
+      const first = !loc.lastCount, changed = [];
+      let bad = false, typed = 0;
+      for (const p of elCountProds(loc)) {
+        const n = num(W.el.count[p.id]), cell = $('whekd-' + p.id), box = document.querySelector('[data-whek="' + p.id + '"]');
+        if (box) box.setAttribute('aria-invalid', String(n !== null && (isNaN(n) || n < 0)));
+        if (!cell) continue;
+        if (n === null) { cell.innerHTML = ''; continue; }
+        typed++;
+        if (isNaN(n) || n < 0) { bad = true; cell.innerHTML = '<span class="bad">Not a number</span>'; continue; }
+        const diff = round(round(n, 2) - stockAt(p, loc.id), 2);
+        if (diff === 0) { cell.innerHTML = '<span class="tag ok">Matches</span>'; continue; }
+        changed.push(p.name);
+        cell.innerHTML = first ? '' : '<div class="el-row" style="gap:8px;align-items:center"><span class="tag warn">' + esc(signed(diff)) + ' cs</span>' +
+          selectHtml('data-whekr="' + p.id + '" aria-label="Why ' + esc(p.name) + ' changed"', W.el.reasons[p.id] || elReasons(loc)[0], elReasons(loc).map(r => [r, r])) + '</div>';
+      }
+      const sum = $('whek-sum'), go = $('whek-go');
+      if (sum) sum.textContent = bad ? 'A count is a number of cases, 0 or more.' : !typed ? 'Type the cases from the report.'
+        : !changed.length ? 'Everything typed matches the records.' : 'Saves ' + changed.join(', ') + '.';
+      if (go) go.disabled = bad || !changed.length;
+    }
+    // Its products: name, pack and concept, added and edited in place.
+    function elProductsHtml(loc) {
+      const prods = heldProds(loc), cOpts = [['', 'Every concept']].concat(host.conceptKeys().map(k => [k, host.conceptName(k)]));
+      const rows = prods.map(p => {
+        const e = W.el.edit;
+        if (e && e.id === p.id) return '<tr><td><input class="cell-in" data-whele="name" value="' + esc(e.name) + '" maxlength="120" aria-label="Product name"></td>' +
+          '<td><input class="cell-in" data-whele="pack" value="' + esc(e.pack) + '" maxlength="60" aria-label="Pack"></td>' +
+          '<td>' + selectHtml('data-whele="concept" aria-label="Concept"', e.concept, cOpts) + '</td>' +
+          '<td style="white-space:nowrap"><button type="button" class="btn small primary" data-wh="el-prod-save">Save</button> <button type="button" class="linkbtn" data-wh="el-prod-cancel">Cancel</button></td></tr>';
+        return '<tr><td><b>' + esc(p.name) + '</b>' + (p.active ? '' : ' <span class="tag">Inactive</span>') + '</td><td class="muted">' + esc(p.pack || '-') + '</td>' +
+          '<td>' + (p.concept ? '<span class="tag ok">' + esc(host.conceptName(p.concept)) + '</span>' : '<span class="muted">Every concept</span>') + '</td>' +
+          '<td><button type="button" class="linkbtn" data-whelpe="' + p.id + '">Edit</button></td></tr>';
+      }).join('');
+      const a = W.el.add;
+      return '<div class="scroll"><table><thead><tr><th>Product</th><th>Pack</th><th>Concept</th><th><span class="sr">Edit</span></th></tr></thead><tbody>' + rows +
+        '<tr><td><input class="cell-in" data-whela="name" value="' + esc(a.name) + '" maxlength="120" placeholder="Add a product, e.g. RP Small Bowls" aria-label="New product name"></td>' +
+        '<td><input class="cell-in" data-whela="pack" value="' + esc(a.pack) + '" maxlength="60" placeholder="Pack" aria-label="New product pack"></td>' +
+        '<td>' + selectHtml('data-whela="concept" aria-label="New product concept"', a.concept, cOpts) + '</td>' +
+        '<td><button type="button" class="btn small" data-wh="el-prod-add">Add</button></td></tr></tbody></table></div>' +
+        '<p class="help" style="margin-top:8px">Name, pack and concept. The name is the one every store\'s order guide uses for it. Only what HEH owns goes here: ' +
+        esc(loc.heldBy) + '\'s own products (cups, tea, gloves) stay plain ' + esc(loc.heldBy) + ' items at each store.</p>';
+    }
+    // Which stores order it: one line per store, matched by name.
+    function elLinksHtml(loc) {
+      if (!canSend()) return '<p class="help" style="margin:0">Linking stores changes their order guides, so it needs an HQ sign-in with the hq role.</p>';
+      const states = heldStores(loc).map(st => heldStoreState(st, loc));
+      const shown = states.filter(s => s.vend && s.prods.length), none = states.filter(s => !s.vend).map(s => host.shortName(s.st));
+      return '<p class="help" style="margin:0">Linked by name: on each store\'s ' + esc(loc.heldBy) + ' list, an item named exactly like a product above is HEH\'s. One line per store; only what doesn\'t match needs you.</p>' +
+        '<div class="el-lines">' + (shown.length ? shown.map(s => elStoreLine(s, loc)).join('') : '<p class="muted" style="margin:10px 0">No store here has a ' + esc(loc.heldBy) + ' vendor yet.</p>') +
+        (none.length ? '<div class="muted" style="font-size:13px;padding:10px 0">No ' + esc(loc.heldBy) + ' vendor at ' + esc(none.join(', ')) + '.</div>' : '') + '</div>' +
+        '<div class="row-between"><span class="muted" id="whelk-sum" style="max-width:660px"></span><div class="actions" style="align-items:center">' +
+        '<button type="button" class="btn primary" data-wh="el-link-go" id="whelk-go">Link</button></div></div>';
+    }
+    function elStoreLine(s, loc) {
+      const st = s.st, total = s.prods.length;
+      const name = esc(host.shortName(st)) + (st.isTest ? ' <span class="tag">TEST</span>' : '');
+      const vend = s.known ? 'Its ' + esc(loc.heldBy) + ' vendor: ' + esc(s.vend)
+        : '<span class="el-row" style="gap:8px;align-items:center">Its ' + esc(loc.heldBy) + ' vendor:' +
+          selectHtml('data-whelv="' + esc(st.slug) + '" aria-label="' + esc(host.shortName(st)) + '\'s vendor for ' + esc(loc.heldBy) + '"', s.vend, st.tables.vendors.map(v => [v.name, v.name])) + '</span>';
+      const pill = s.linked === total ? '<span class="tag ok">✓ ' + s.linked + ' of ' + total + ' linked</span>'
+        : '<span class="tag ' + (s.toLink ? 'blue' : 'warn') + '">' + (s.linked + s.toLink) + ' of ' + total + ' match' + (s.toLink ? ' · ' + s.toLink + ' to link' : '') + '</span>';
+      const vlow = lcs(s.vend), used = new Set(s.view.filter(x => x.itemId).map(x => x.itemId));
+      const cands = st.tables.items.filter(it => it.active === true && it.whProduct == null && !used.has(it.id) &&
+        (lcs(it.primaryVendor) === vlow || (it.eligible || []).some(v => lcs(v) === vlow)));
+      const fix = s.view.map(x => {
+        const p = prodBy(x.productId);
+        if (x.status === 'taken') return '<div class="el-fix">"' + esc(x.itemName) + '" is linked to another product here.</div>';
+        if (x.status === 'rename') {
+          const it = st.tables.items.find(y => y.id === x.itemId);
+          return '<div class="el-fix"><span style="flex:1 1 260px">Renames <b>' + esc(it ? it.name : x.itemId) + '</b> to <b>' + esc(p.name) + '</b> when you link.</span>' +
+            '<button type="button" class="linkbtn" data-whelru="' + esc(st.slug + '|' + p.id) + '">Undo</button></div>';
+        }
+        if (x.status !== 'missing') return '';
+        return '<div class="el-fix"><span style="flex:1 1 260px">No item named <b>' + esc(p.name) + '</b>. Rename theirs to match:</span>' +
+          (cands.length ? selectHtml('data-whelr="' + esc(st.slug + '|' + p.id) + '" aria-label="' + esc(host.shortName(st)) + ' item to rename to ' + esc(p.name) + '"', '', cands.map(it => [it.id, it.name]), 'Pick one of its ' + s.vend + ' items')
+                        : '<span class="muted">It has no other ' + esc(s.vend) + ' item.</span>') + '</div>';
+      }).join('');
+      return '<div class="el-line"><div class="row-between" style="margin:0"><span><b>' + name + '</b><span class="muted" style="display:block;font-size:13px">' + vend + '</span></span>' + pill + '</div>' + fix + '</div>';
+    }
+    function updateElLinks(loc) {
+      const go = $('whelk-go'), sum = $('whelk-sum');
+      if (!go) return;
+      const plan = heldPlan(loc), bad = plan.filter(x => x.error);
+      if (sum) sum.textContent = bad.length ? bad.map(x => host.shortName(x.st) + ': ' + x.error).join(' ')
+        : !plan.length ? 'Nothing to link: every match is linked.'
+        : 'Each store keeps ordering from its own ' + loc.heldBy + ' vendor. A rename and a link show in that store\'s Changes, undoable there.';
+      go.disabled = !plan.length || bad.length > 0;
+      go.textContent = plan.length ? 'Link ' + plural(plan.length, 'store') : 'Link';
     }
 
     // ---- Send a product to stores (schema v16; HQ's catalog, so the hq role) ----
@@ -1051,11 +1235,12 @@
       if (dot) dot.hidden = !lowList().length;
       const ob = $('wh-badge-orders'), on = sentCount();
       if (ob) { ob.hidden = !on; ob.textContent = String(on); }
-      const loc = heldLocs()[0], nav = $('nav-wh-elpis'), eb = $('wh-badge-elpis'), lab = $('wh-elpis-label');
+      // The Elpis page is always there for the warehouse role: it's where Elpis is set up (v19).
+      const loc = heldLoc(), nav = $('nav-wh-elpis'), eb = $('wh-badge-elpis'), lab = $('wh-elpis-label'), set = elSetup(loc);
       const en = loc ? deliveries().filter(o => o.heldAt === loc.id && o.status === 'ordered').length : 0;
-      if (nav) nav.hidden = !loc;
-      if (lab && loc) lab.textContent = loc.name;
-      if (eb) { eb.hidden = !en; eb.textContent = String(en); }
+      if (nav) nav.hidden = false;
+      if (lab) lab.textContent = loc ? loc.name : 'Elpis';
+      if (eb) { eb.hidden = set.done && !en; eb.textContent = set.done ? String(en) : 'Set up'; }
     }
     function rerender() { render(host.view()); badges(); }
 
@@ -1073,7 +1258,7 @@
       }
       const a = t.getAttribute('data-wh');
       // Inventory
-      if (a === 'count-open') { W.inv.counting = true; W.inv.loc = W.inv.loc || (activeLocs()[0] || {}).id || null; W.inv.rows = {}; say('whi-status', '', ''); renderInventory(); const c = $('whc-h'); if (c) c.scrollIntoView({ block: 'start' }); return; }
+      if (a === 'count-open') { W.inv.counting = true; W.inv.loc = (ownLocs().find(l => l.id === W.inv.loc) || ownLocs()[0] || {}).id || null; W.inv.rows = {}; say('whi-status', '', ''); renderInventory(); const c = $('whc-h'); if (c) c.scrollIntoView({ block: 'start' }); return; }
       if (a === 'count-cancel') { W.inv.counting = false; W.inv.rows = {}; return renderInventory(); }
       if (a === 'count-save') {
         const done = await write('mog_wh_count', { p_count: countPayload(W.inv.loc, W.inv.rows) }, 'whi-status',
@@ -1154,10 +1339,50 @@
       if (elf) { W.el.filter = elf; W.el.sel = null; say('whe-status', '', ''); return renderElpis(); }
       const esel = t.getAttribute('data-whesel');
       if (esel) { selectDelivery(Number(esel)); say('whe-status', '', ''); return renderElpis(); }
-      if (a === 'el-count') {
-        const loc = heldLocs()[0];
-        W.inv.counting = true; W.inv.loc = loc.id; W.inv.rows = {}; say('whi-status', '', '');
-        return host.go('wh-inventory');
+      if (a === 'el-count') { W.el.tab = 'stock'; W.el.count = {}; W.el.reasons = {}; return renderElpis(); }
+      const eltab = t.getAttribute('data-wheltab');
+      if (eltab) { W.el.tab = eltab; say('whe-status', '', ''); return renderElpis(); }
+      if (a === 'el-loc-add') {
+        const nl = W.el.newLoc, held = nl.heldBy || ((D().vendorNames || []).find(n => /\belpis\b/i.test(n)) || '');
+        if (!held) { say('whe-status', 'bad', 'Pick the vendor that keeps it.'); return; }
+        if (!String(nl.name).trim()) { say('whe-status', 'bad', 'Give the location a name.'); return; }
+        await write('mog_wh_save', { p_kind: 'location', p_row: { name: String(nl.name).trim(), heldBy: held } }, 'whe-status',
+          x => 'Created ' + x.name + ', kept at ' + held + '. Next: what HEH keeps there.');
+        return rerender();
+      }
+      if (a === 'el-prod-add' || a === 'el-prod-save') {
+        const loc = heldLoc(), f = a === 'el-prod-add' ? W.el.add : W.el.edit, p = f.id ? prodBy(f.id) : null;
+        if (!loc || !f) return;
+        const row = p ? { id: p.id, version: p.version, name: f.name, pack: f.pack, par: Number(p.par), handlingFee: Number(p.handlingFee), stores: p.stores, active: p.active, concept: f.concept || '' }
+                      : { name: f.name, pack: f.pack, par: 0, handlingFee: 0, stores: [], active: true, via: loc.heldBy, concept: f.concept || '' };
+        const done = await write('mog_wh_save', { p_kind: 'product', p_row: row }, 'whe-status', x => 'Saved ' + x.name + '.');
+        if (done) { if (a === 'el-prod-add') W.el.add = { name: '', pack: '', concept: f.concept }; else W.el.edit = null; }
+        else if (W.conflict) W.el.edit = null;
+        return rerender();
+      }
+      if (a === 'el-prod-cancel') { W.el.edit = null; return renderElpis(); }
+      const elpe = t.getAttribute('data-whelpe');
+      if (elpe) { const p = prodBy(elpe); W.el.edit = { id: p.id, name: p.name, pack: p.pack, concept: p.concept || '' }; return renderElpis(); }
+      if (a === 'el-count-save') {
+        const loc = heldLoc(), first = !loc.lastCount, rows = {};
+        for (const p of elCountProds(loc)) {
+          const n = num(W.el.count[p.id]);
+          if (n === null || isNaN(n)) continue;
+          rows[p.id] = { counted: W.el.count[p.id], reason: first ? 'Opening count from ' + loc.heldBy + '\'s report' : (W.el.reasons[p.id] || elReasons(loc)[0]) };
+        }
+        const done = await write('mog_wh_count', { p_count: countPayload(loc.id, rows) }, 'whe-status',
+          x => 'Saved the count for ' + x.location + ': ' + plural(x.changed, 'product') + ' changed. Each is in Stock history with its reason.');
+        if (done) { W.el.count = {}; W.el.reasons = {}; }
+        return rerender();
+      }
+      const elru = t.getAttribute('data-whelru');
+      if (elru) { const [slug, pid] = elru.split('|'); if (W.el.renames[slug]) delete W.el.renames[slug][pid]; return renderElpis(); }
+      if (a === 'el-link-go') {
+        const loc = heldLoc(), plan = heldPlan(loc);
+        if (!plan.length || plan.some(x => x.error)) return;
+        const ok = await host.save(plan, 'whe-status', () => {});
+        if (ok) { W.el.renames = {}; W.el.vend = {}; say('whe-status', 'good', 'Linked ' + plural(plan.length, 'store') + '. Each store sees it in Manage → Changes, and can undo it there.'); }
+        return rerender();
       }
       const gopo = t.getAttribute('data-whgopo');
       if (gopo) { W.inc.filter = 'open'; setSel('po:' + gopo); return host.go('wh-incoming'); }
@@ -1165,7 +1390,7 @@
         const o = deliveries().find(x => x.id === W.el.sel);
         if (!o) return;
         const done = await write('mog_wh_held_receive', { p_receipt: heldPayload(o, W.el.rows) }, 'whe-status',
-          x => 'Marked ' + x.number + ' received for ' + storeShort(o) + '. The stock there dropped; it\'s in Stock history.');
+          x => 'Checked in ' + x.number + ' for ' + storeShort(o) + '. The stock there dropped; it\'s in Stock history.');
         if (done) { W.el.filter = 'received'; selectDelivery(o.id); } else if (W.conflict) selectDelivery(o.id);
         return rerender();
       }
@@ -1245,6 +1470,18 @@
       const from = t.getAttribute('data-whfrom');
       if (from) { W.ord.rows[from] = W.ord.rows[from] || {}; W.ord.rows[from].locationId = t.value; return updateShip(); }
       if (t.getAttribute('data-whsconcept')) { sendConcept(t.value); return renderProducts(); }
+      // The Elpis page
+      if (t.getAttribute('data-whelheld')) { W.el.newLoc.heldBy = t.value; return; }
+      const ela = t.getAttribute('data-whela');
+      if (ela === 'concept') { W.el.add.concept = t.value; return; }
+      const ele = t.getAttribute('data-whele');
+      if (ele === 'concept' && W.el.edit) { W.el.edit.concept = t.value; return; }
+      const ekr = t.getAttribute('data-whekr');
+      if (ekr) { W.el.reasons[ekr] = t.value; return; }
+      const elv = t.getAttribute('data-whelv');
+      if (elv) { W.el.vend[elv] = t.value; delete W.el.renames[elv]; return renderElpis(); }
+      const elr = t.getAttribute('data-whelr');
+      if (elr && t.value) { const [slug, pid] = elr.split('|'); W.el.renames[slug] = W.el.renames[slug] || {}; W.el.renames[slug][pid] = t.value; return renderElpis(); }
       const son = t.getAttribute('data-whson');
       if (son) { W.prod.send.rows[son].on = t.checked; return updateSend(); }
       const smode = t.getAttribute('data-whsmode');
@@ -1273,6 +1510,13 @@
       if (sh) { W.ord.rows[sh] = W.ord.rows[sh] || {}; W.ord.rows[sh].cases = t.value; return updateShip(); }
       const el = t.getAttribute('data-whel');
       if (el) { W.el.rows[el] = t.value; return updateElpis(); }
+      if (t.getAttribute('data-whellocname')) { W.el.newLoc.name = t.value; return; }
+      const ela = t.getAttribute('data-whela');
+      if (ela && ela !== 'concept') { W.el.add[ela] = t.value; return; }
+      const ele = t.getAttribute('data-whele');
+      if (ele && ele !== 'concept' && W.el.edit) { W.el.edit[ele] = t.value; return; }
+      const ek = t.getAttribute('data-whek');
+      if (ek) { W.el.count[ek] = t.value; return updateElCount(heldLoc()); }
     });
 
     return { views: VIEWS, fetch: fetchData, take, render, badges, clear: () => { W.data = null; } };
