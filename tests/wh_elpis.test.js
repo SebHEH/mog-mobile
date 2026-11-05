@@ -8,8 +8,8 @@
 //     holder), the receipts beyond the records since its last real count, the
 //     Mark received payload (a blank line as ordered), Ship's start leaving a
 //     held location out, which products a location takes
-//   - catalogEdit.js commitHqProduct for a product held at Elpis: the store's
-//     own Elpis item linked, Elpis stays its main vendor, the change's label
+//   - catalogEdit.js commitHqRoutes (v21) for an item held at Elpis: the store's
+//     own Elpis item routed from the Elpis place, Elpis stays its main vendor, the label
 //   - the phone (template/index.html): a held vendor, its card's delivery
 //     (open first, only its own), Happy Supply's card never showing one, the
 //     card's line for an open delivery
@@ -85,10 +85,10 @@ function problems(ceText, whText, phoneHtml) {
 
   // ---- hq/warehouse.js ----
   const loc = { id: 3, name: 'Elpis', heldBy: 'Elpis Wholesale', lastCount: '2026-11-01T12:00:00Z' };
-  const products = [{ id: 7, name: 'RP Large Bowls', via: 'Elpis Wholesale', par: 30, stock: { 3: 40 } },
-                    { id: 8, name: 'RP Large Bowl Lids', via: 'Elpis Wholesale', par: 30, stock: { 3: 3 } },
-                    { id: 9, name: 'Shrimp', par: 12, stock: { 1: 9, 3: 2 } },
-                    { id: 10, name: 'Crab', par: 4, stock: { 1: 5 } }];
+  const products = [{ id: 7, name: 'RP Large Bowls', places: [{ locationId: 3, lowPoint: 0 }], stock: { 3: 40 } },
+                    { id: 8, name: 'RP Large Bowl Lids', places: [{ locationId: 3, lowPoint: 0 }], stock: { 3: 3 } },
+                    { id: 9, name: 'Shrimp', places: [{ locationId: 1, lowPoint: 0 }], stock: { 1: 9, 3: 2 } },
+                    { id: 10, name: 'Crab', places: [{ locationId: 1, lowPoint: 0 }], stock: { 1: 5 } }];
   const dels = [
     { id: 1, number: 'EL-0006', heldAt: 3, status: 'ordered', sentAt: '2026-10-30T07:30:00Z', lines: [{ ord: 1, productId: 7, cases: 2 }] },
     { id: 2, number: 'EL-0009', heldAt: 3, status: 'ordered', sentAt: '2026-11-03T07:30:00Z', lines: [{ ord: 1, productId: 7, cases: 2 }, { ord: 2, productId: 8, cases: 4 }] },
@@ -108,12 +108,13 @@ function problems(ceText, whText, phoneHtml) {
   const pre = WH.shipPrefill(orders, products, orders[0], [3]);
   if (pre[0].cases !== 9 || pre[0].locationId !== 1 || pre[0].left !== 9) bad('warehouse: Ship starts with stock at a held location', JSON.stringify(pre));
 
-  // ---- catalogEdit.js: link a store's own Elpis item ----
+  // ---- catalogEdit.js: route a store's own Elpis item from the Elpis place (v21) ----
   const t = storeTables();
-  const c = CE.call(t, 'commitHqProduct', [{ vendor: null, vendorName: 'Elpis', product: { id: 7, name: 'RP Large Bowls', pack: 'CASE (300)', via: 'Elpis Wholesale' }, link: 'ITEM-0003', item: { name: 'RP Large Bowls' } }]);
+  const c = CE.call(t, 'commitHqRoutes', [{ product: { id: 7, name: 'RP Large Bowls', pack: 'CASE (300)' },
+                                            routes: [{ itemId: 'ITEM-0003', place: 3, placeName: 'Elpis', vendor: 'Elpis' }] }]);
   const a = CE.applyOps(t, c.ops), it = a.items.find(x => x.id === 'ITEM-0003');
-  if (it.whProduct !== 7 || it.primaryVendor !== 'Elpis' || !same(it.eligible, ['Elpis', 'Amazon']) || it.par !== 3) bad('link: Elpis stays the main vendor, the item otherwise as it was', JSON.stringify(it));
-  if (c.label !== 'HQ: linked "RP Large Bowls" to HEH\'s RP Large Bowls at Elpis Wholesale') bad('link: the change\'s label', c.label);
+  if (it.whProduct !== 7 || it.whPlace !== 3 || it.whVendor !== 'Elpis' || it.primaryVendor !== 'Elpis' || !same(it.eligible, ['Elpis', 'Amazon']) || it.par !== 3) bad('link: routed from Elpis, Elpis stays the main vendor, the item otherwise as it was', JSON.stringify(it));
+  if (c.label !== 'HQ RP Large Bowls: "RP Large Bowls" from Elpis as Elpis') bad('link: the change\'s label', c.label);
   if (!same(CE.applyOps(a, CE.inverseOps(c.ops)), t)) bad('link: Undo is not exact');
 
   // ---- The phone ----
@@ -149,30 +150,32 @@ function problems(ceText, whText, phoneHtml) {
   const elpis = r0.data.done.id;
   if (!r0.data.locations.some(l => l.id === elpis && l.heldBy === 'Elpis Wholesale' && l.lastCount === null) || r0.data.locations.some(l => l.id === berliner && 'heldBy' in l)) bad('fake: a location held by a vendor', JSON.stringify(r0.data.locations));
   if (!/is held by/.test(wh('mog_wh_save', { p_kind: 'location', p_row: { name: 'Elpis 2', heldBy: 'elpis wholesale' } }).error || '')) bad('fake: two locations with one holder');
-  const bowls = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'RP Large Bowls', pack: 'CASE (300)', par: 30, handlingFee: 0, stores: [], active: true, via: 'ELPIS WHOLESALE' } }).data.done.id;
-  const shrimp = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Shrimp', pack: '10 LB case', par: 12, handlingFee: 6, stores: [], active: true } }).data.done.id;
+  // v21: an item sits at places (its via, par and store limit retired).
+  const bowls = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'RP Large Bowls', pack: 'CASE (300)', handlingFee: 0, active: true, places: [{ locationId: elpis }] } }).data.done.id;
+  const shrimp = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Shrimp', pack: '10 LB case', handlingFee: 6, active: true, places: [{ locationId: berliner }] } }).data.done.id;
   const d0 = wh('mog_wh_data', {}).data;
-  if (d0.products.find(p => p.id === bowls).via !== 'Elpis Wholesale' || 'via' in d0.products.find(p => p.id === shrimp)) bad('fake: a product\'s via in the holder\'s spelling, none for Happy Supply');
+  const pb0 = d0.products.find(p => p.id === bowls), ps0 = d0.products.find(p => p.id === shrimp);
+  if (!same(pb0.places.map(x => x.locationId), [elpis]) || !same(ps0.places.map(x => x.locationId), [berliner]) || 'via' in pb0 || 'par' in pb0 || 'stores' in pb0) bad('fake: each item at its places, no via, par or store limit', JSON.stringify([pb0, ps0]));
   wh('mog_wh_count', { p_count: { locationId: elpis, lines: [{ productId: bowls, cases: 40, reason: 'Elpis report' }] } });
   wh('mog_wh_count', { p_count: { locationId: berliner, lines: [{ productId: shrimp, cases: 9, reason: 'first count' }] } });
-  if (!/has stock/.test(wh('mog_wh_save', { p_kind: 'product', p_row: { id: bowls, version: 1, name: 'RP Large Bowls', pack: 'CASE (300)', par: 30, handlingFee: 0, stores: [], active: true, via: null } }).error || '')) bad('fake: where stores order a product changed while it has stock');
+  if (!/has stock/.test(wh('mog_wh_save', { p_kind: 'product', p_row: { id: bowls, version: 1, name: 'RP Large Bowls', pack: 'CASE (300)', handlingFee: 0, active: true, places: [] } }).error || '')) bad('fake: an item left a place while it has stock there');
 
-  // HQ links each store's own bowls and names its Elpis (the first time).
+  // HQ routes each store's own bowls from Elpis, under its "Elpis" (v21: no remembered names).
   const hqData = sb.handle('mog_hq_data', { p_token: tok }).data;
-  const plan = ['zza', 'zzb'].map(slug => ({ slug, call: CE.call(hqData.stores.find(x => x.slug === slug).tables, 'commitHqProduct',
-    [{ vendorName: 'Elpis', product: { id: bowls, name: 'RP Large Bowls', pack: 'CASE (300)', via: 'Elpis Wholesale' }, link: 'ITEM-0003', item: { name: 'RP Large Bowls' } }]) }));
-  const applied = sb.handle('mog_hq_apply', { p_token: tok, p_changes: plan.map(x => ({ slug: x.slug, label: x.call.label, ops: x.call.ops })),
-    p_links: plan.map(x => ({ slug: x.slug, hqName: 'Elpis Wholesale', vendor: 'Elpis' })) });
+  const plan = ['zza', 'zzb'].map(slug => ({ slug, call: CE.call(hqData.stores.find(x => x.slug === slug).tables, 'commitHqRoutes',
+    [{ product: { id: bowls, name: 'RP Large Bowls', pack: 'CASE (300)' }, routes: [{ itemId: 'ITEM-0003', place: elpis, placeName: 'Elpis', vendor: 'Elpis' }] }]) }));
+  const applied = sb.handle('mog_hq_apply', { p_token: tok, p_changes: plan.map(x => ({ slug: x.slug, label: x.call.label, ops: x.call.ops })), p_links: [] });
   if (!applied.ok) return out.concat(['fake: HQ\'s link was refused: ' + JSON.stringify(applied)]);
   const ptok = slug => sb.handle('mog_login', { p_slug: slug, p_pin: '4321' }).data.token;
   const pa = ptok('zza'), pb = ptok('zzb');
   const snap = tk => sb.handle('mog_snapshot2', { p_token: tk, p_have_version: null }).data;
   const h0 = snap(pa).happySupply;
   if (!h0 || !same(h0.heldVendors, ['Elpis']) || h0.items['ITEM-0003'].available !== 40) bad('fake: the phone sees its Elpis and what\'s left there', JSON.stringify(h0));
-  // An Elpis product on Happy Supply's list too is still refused there.
+  // An item routed from Elpis is refused on a Happy Supply order (the store's Happy Supply: its route to HEH's own).
   sb.stores.get('zzb').tables.items.find(x => x.id === 'ITEM-0003').eligible = ['Elpis', 'Amazon', 'Happy Supply'];
-  sb.hqLinks().push({ slug: 'zzb', hqName: 'Happy Supply', vendor: 'Happy Supply' });
-  if (!/comes from Elpis Wholesale, not Happy Supply/.test(sb.handle('mog_wh_send', { p_token: pb, p_order: { vendor: 'Happy Supply', lines: [{ itemId: 'ITEM-0003', cases: 1 }] } }).error || '')) bad('fake: an Elpis product went to Happy Supply');
+  sb.stores.get('zzb').tables.items.push({ id: 'ITEM-0009', name: 'Shrimp', primaryVendor: 'Happy Supply', pack: '10 LB case', par: 10, active: true, useMult: true,
+                                           notes: '', sku: '', category: '', eligible: ['Happy Supply'], seq: 9, whProduct: shrimp, whVendor: 'Happy Supply' });
+  if (!/comes from Elpis, not Happy Supply/.test(sb.handle('mog_wh_send', { p_token: pb, p_order: { vendor: 'Happy Supply', lines: [{ itemId: 'ITEM-0003', cases: 1 }] } }).error || '')) bad('fake: an Elpis item went to Happy Supply');
 
   // The night's close records the delivery (an hour after the count).
   sb.nowMs += 3600 * 1000;
@@ -205,9 +208,8 @@ function problems(ceText, whText, phoneHtml) {
   if (WH.beyondSinceCount(hr.data.deliveries, hl).length !== 1) bad('warehouse: the receipt beyond the records isn\'t flagged for a count', JSON.stringify(hl));
 
   // Happy Supply never ships from Elpis.
-  sb.hqLinks().push({ slug: 'zza', hqName: 'Happy Supply', vendor: 'Happy Supply' });
   sb.stores.get('zza').tables.items.push({ id: 'ITEM-0009', name: 'Shrimp', primaryVendor: 'Happy Supply', pack: '10 LB case', par: 10, active: true, useMult: true,
-                                           notes: '', sku: '', category: '', eligible: ['Happy Supply'], seq: 9, whProduct: shrimp });
+                                           notes: '', sku: '', category: '', eligible: ['Happy Supply'], seq: 9, whProduct: shrimp, whVendor: 'Happy Supply' });
   sb.stores.get('zza').state.cycleDate = '2026-11-04';
   const sent = sb.handle('mog_wh_send', { p_token: pa, p_order: { vendor: 'Happy Supply', lines: [{ itemId: 'ITEM-0009', cases: 2 }] } });
   const ho = sent.ok && wh('mog_wh_data', {}).data.orders.find(o => o.id === sent.data.order.id);
@@ -220,7 +222,7 @@ let failed = 0;
 const CE_TEXT = SRC(CE_FILE), WH_TEXT = SRC(WH_FILE), PHONE = SRC(PHONE_FILE);
 const main = problems(CE_TEXT, WH_TEXT, PHONE);
 if (main.length) { failed++; console.log('FAIL  ' + main.join('\n      ')); }
-else console.log('PASS  Elpis: the held location\'s stock, receipts beyond the records and Mark received\'s payload, the link (Elpis stays main), ' +
+else console.log('PASS  Elpis: the held location\'s stock, receipts beyond the records and Mark received\'s payload, the route (Elpis stays main), ' +
                  'the phone\'s Elpis card, and the close, Mark received (store and HQ) and the refusals through the fake Supabase');
 
 const CONTROLS = [
@@ -239,9 +241,9 @@ const CONTROLS = [
   { file: 'wh', name: 'Ship starts with stock at a held location',
     find: "      for (const k of heldIds || []) delete stock[String(k)];",
     replace: "" },
-  { file: 'ce', name: 'the label says Happy Supply for an Elpis product',
-    find: "const whose = result.via ? 'HEH\\'s ' + result.product + ' at ' + result.via : 'Happy Supply\\'s ' + result.product;",
-    replace: "const whose = 'Happy Supply\\'s ' + result.product;" },
+  { file: 'ce', name: 'a route to Elpis keeps no place',
+    find: "      if (place === null) delete it.whPlace; else it.whPlace = place;",
+    replace: "      delete it.whPlace;" },
   { file: 'phone', name: 'Happy Supply\'s card shows Elpis deliveries',
     find: "const h = hs_(), list = (h && Array.isArray(h.orders) ? h.orders : []).filter(o => !o.held);",
     replace: "const h = hs_(), list = (h && Array.isArray(h.orders) ? h.orders : []);" },

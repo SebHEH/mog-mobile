@@ -98,6 +98,14 @@ function checkCatalogTables(t) {
       if (!Number.isInteger(Number(e.whProduct))) throw new Error('items wh_product: ' + JSON.stringify(e.whProduct));
       it.whProduct = Number(e.whProduct);
     }
+    if (e.whPlace != null && e.whPlace !== '') {   // v21: its route's place (none = HEH's own), only when set
+      if (!Number.isInteger(Number(e.whPlace))) throw new Error('items wh_place: ' + JSON.stringify(e.whPlace));
+      it.whPlace = Number(e.whPlace);
+    }
+    if (e.whVendor != null && e.whVendor !== '') {   // v21: its route's vendor, a foreign key like primary_vendor
+      if (!vendorNames.has(e.whVendor)) throw new Error('items wh_vendor foreign key: ' + e.whVendor);
+      it.whVendor = e.whVendor;
+    }
     return it;
   });
   uniq(items, it => it.id, 'items_pkey');
@@ -547,7 +555,7 @@ class FakeSupabase {
         const now = new Date(this.nowMs).toISOString();
         let id;
         try {
-          id = fn === 'mog_wh_send' ? whDoSend(next, slug, s, this.whStoreVendor(slug), p.p_order, now)
+          id = fn === 'mog_wh_send' ? whDoSend(next, slug, s, null, p.p_order, now)
                                     : whDoReceived(next, slug, p.p_receipt, now, (s.profile && s.profile.location) || slug);
         } catch (e) {
           const m = String(e.message);
@@ -744,7 +752,7 @@ function recipientsCheck(stored, list, gmEdit) {
   return { ok: true, list: out };
 }
 const EDITOR_FIELDS = {
-  items: ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whProduct'],
+  items: ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whProduct', 'whPlace', 'whVendor'],
   pickRows: ['area', 'shelfOrder'], vendors: ['mults', 'cutoff', 'contact'], areas: ['ord']
 };
 const editorIdent = (t, r) => (t === 'items' ? r.id : t === 'pickRows' ? r.vendor + ' / ' + r.id : r.name);
@@ -759,13 +767,17 @@ function editorSame(t, cur, want) {
 // mog.editor_apply_ops: the tables after ops, or an Error (CONFLICT: ..., or
 // what the database would refuse: links, unique names, unlisted vendors, and
 // (v14) an item naming an LTO that doesn't exist, when ltoIds is given, and
-// (v16) one linked to a warehouse product that doesn't, when productIds is.
-// An item's whProduct is kept as a number, and left out when empty, as
-// mog.item_row_json reads it back.
-function editorApplyOps(tables, ops, ltoIds, productIds) {
-  const out = editorApplyOps1(tables, ops);
+// (v16) one linked to a warehouse product that doesn't, when productIds is,
+// and (v21) a route through a place that isn't there, when placeIds is.
+// An item's whProduct and whPlace are kept as numbers, and left out when
+// empty, as mog.item_row_json reads them back; an empty whVendor too.
+function editorApplyOps(tables, ops, ltoIds, productIds, placeIds) {
+  const out = editorApplyOps1(tables, ops, placeIds);
   if (ltoIds) for (const it of out.items) if (it.lto && !ltoIds.has(it.lto)) throw new Error('items lto foreign key: ' + it.lto);
   for (const it of out.items) {
+    if (it.whPlace == null || it.whPlace === '') delete it.whPlace;
+    else it.whPlace = Number(it.whPlace);
+    if (it.whVendor == null || it.whVendor === '') delete it.whVendor;
     if (it.whProduct == null || it.whProduct === '') { delete it.whProduct; continue; }
     const n = Number(it.whProduct);
     if (!Number.isInteger(n)) throw new Error('invalid input syntax for type bigint: ' + JSON.stringify(it.whProduct));
@@ -774,7 +786,7 @@ function editorApplyOps(tables, ops, ltoIds, productIds) {
   }
   return out;
 }
-function editorApplyOps1(tables, ops) {
+function editorApplyOps1(tables, ops, placeIds) {
   const t = clone(tables);
   for (const op of ops) {
     if (!op || typeof op !== 'object') throw new Error('BAD_OP');
@@ -795,6 +807,7 @@ function editorApplyOps1(tables, ops) {
       } else {   // schema v15: items' main vendor and pick rows follow (on update cascade); array_replace on eligible
         for (const it of t.items) {
           if (it.primaryVendor === op.from) it.primaryVendor = op.to;
+          if (it.whVendor === op.from) it.whVendor = op.to;   // v21: the route's vendor follows (on update cascade)
           if ((it.eligible || []).indexOf(op.from) >= 0) it.eligible = it.eligible.map(x => (x === op.from ? op.to : x));
         }
         for (const r of t.pickRows) if (r.vendor === op.from) r.vendor = op.to;
@@ -811,6 +824,9 @@ function editorApplyOps1(tables, ops) {
     if (op.t === 'items' && a) {
       const bad = (a.eligible || []).find(x => !t.vendors.some(v => v.name === x));
       if (bad) throw new Error('Vendor "' + bad + '" is not listed');
+      // v21: a route's vendor is one of the store's, and its place is a place.
+      if (a.whVendor != null && a.whVendor !== '' && !t.vendors.some(v => v.name === a.whVendor)) throw new Error('Vendor "' + a.whVendor + '" is not listed');
+      if (a.whPlace != null && a.whPlace !== '' && placeIds && !placeIds.has(Number(a.whPlace))) throw new Error('REJECTED: that place isn\'t in the warehouse any more');
     }
     if (!a) {
       list.splice(i, 1);
@@ -818,7 +834,10 @@ function editorApplyOps1(tables, ops) {
       if (op.t === 'areas') t.pickRows = t.pickRows.filter(r => r.area !== b.name);
       if (op.t === 'vendors') {
         t.pickRows = t.pickRows.filter(r => r.vendor !== b.name);
-        for (const it of t.items) if (it.primaryVendor === b.name) it.primaryVendor = null;  // D23
+        for (const it of t.items) {
+          if (it.primaryVendor === b.name) it.primaryVendor = null;  // D23
+          if (it.whVendor === b.name) delete it.whVendor;            // v21: on delete set null (wh_vendor)
+        }
       }
     } else if (i < 0) {
       const seqs = list.map(r => r.seq || 0);
@@ -1163,7 +1182,7 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
     if (!Array.isArray(ch.ops)) return err('REJECTED: ' + ch.slug + ' ops must be an array');
     if (!ch.ops.length) continue;
     if (ch.ops.length > 5000) return err('REJECTED: too many changes at once for ' + ch.slug);
-    try { next.set(ch.slug, { s, ch, tables: editorApplyOps(s.tables, ch.ops, ltoIds, this.whProductIds()) }); } catch (e) {
+    try { next.set(ch.slug, { s, ch, tables: editorApplyOps(s.tables, ch.ops, ltoIds, this.whProductIds(), this.whPlaceIds()) }); } catch (e) {
       const m = String(e.message);
       return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: ch.slug + ' ' + m.slice(10) }) : err('REJECTED: ' + ch.slug + ' ' + m);
     }
@@ -1322,32 +1341,22 @@ FakeSupabase.prototype.whState = function () {
   return H.wh;
 };
 FakeSupabase.prototype.whProductIds = function () { return new Set(this.whState().products.map(p => p.id)); };
+FakeSupabase.prototype.whPlaceIds = function () { return new Set(this.whState().locations.map(l => l.id)); };
 
 // ---- Happy Supply store orders, W2a (schema_v16.sql) ------------------------
-// A store's Happy Supply is the vendor HQ's "Happy Supply" maps to.
-FakeSupabase.prototype.whStoreVendor = function (slug) {
-  const l = this.hqLinks().find(x => x.slug === slug && String(x.hqName).toLowerCase() === 'happy supply');
-  return l ? l.vendor : null;
-};
+// v21: a store's routes, from its items' rows: each linked item with a
+// vendor (whPlace empty = HEH's own places).
+const whRouted = items => (items || []).filter(it => it.whProduct != null && it.whVendor != null);
 // mog.wh_store_price (hq/warehouse.js storePrice is the same sum)
 const whStorePrice = (avg, fee, pct) => whRound((Number(avg || 0) + Number(fee || 0)) * (1 + Number(pct || 0) / 100), 2);
 const whLc = v => String(v == null ? '' : v).toLowerCase();
-// mog.wh_place_carries (v20): a product sits at a place (its places), or, with
-// no place yet, its v17 via names the place's holder.
+// mog.wh_place_carries (v20; v21 drops the fallback through a via): a
+// product sits at a place.
 function whCarries(W, product, location) {
   const p = whProduct(W, product), L = whLocation(W, location);
   if (!p || !L) return false;
-  if (p.places && p.places.length) return p.places.some(x => x.locationId === location);
-  return L.heldBy != null && p.via != null && whLc(p.via) === whLc(L.heldBy);
+  return !!(p.places && p.places.some(x => x.locationId === location));
 }
-// mog.wh_item_place (v20): the held place a store's item is ordered from (its
-// vendor maps to the holder name, the place carries it), never one the store
-// holds itself. Null = Happy Supply's own.
-FakeSupabase.prototype.whItemPlace = function (W, slug, vendor, product) {
-  const L = W.locations.filter(l => l.heldBy != null && l.heldStore !== slug && this.whHeldVendor(slug, l.heldBy) === vendor &&
-                                    whCarries(W, product, l.id)).sort((a, b) => a.id - b.id)[0];
-  return L ? L.id : null;
-};
 // mog.wh_available_at (v20): Happy Supply's own locations minus sent orders,
 // or a held place's cases minus its open deliveries; the store's own order
 // for the cycle left out; never below 0.
@@ -1365,13 +1374,9 @@ function whAvailableAt(W, product, place, slug, cycle) {
   }
   return Math.max(0, whRound(n, 2));
 }
-// mog.wh_held_vendor: the store's vendor an HQ vendor name maps to.
-FakeSupabase.prototype.whHeldVendor = function (slug, hqName) {
-  const l = this.hqLinks().find(x => x.slug === slug && whLc(x.hqName) === whLc(hqName));
-  return l ? l.vendor : null;
-};
 // mog.wh_order_phone_json: no price, no fee, no cost. A delivery from a held
-// location says so, with the store's vendor for it now.
+// place says so, with the store's vendor for it now: its routes' vendor
+// (v21), else the one the close recorded.
 function whOrderPhoneJson(W, o, sb) {
   const from = Array.from(new Set(o.lines.filter(l => l.locationId != null).map(l => whLocation(W, l.locationId).name))).sort();
   const out = { id: o.id, number: o.number, status: o.status, cycleDate: o.cycleDate, neededBy: o.neededBy, note: o.note,
@@ -1379,7 +1384,11 @@ function whOrderPhoneJson(W, o, sb) {
     version: o.version, from: from.length ? from.join(', ') : null,
     lines: o.lines.map(l => ({ ord: l.ord, itemId: l.itemId, name: l.name, pack: whProduct(W, l.productId).pack,
                                cases: l.cases, casesShipped: l.casesShipped, casesReceived: l.casesReceived })) };
-  if (o.heldAt != null) Object.assign(out, { held: true, heldVendor: sb.whHeldVendor(o.slug, whLocation(W, o.heldAt).heldBy) });
+  if (o.heldAt != null) {
+    const st = sb.stores.get(o.slug);
+    const r = whRouted(st && st.tables ? st.tables.items : []).filter(i => i.whPlace === o.heldAt).sort((a, b) => (a.id < b.id ? -1 : 1))[0];
+    Object.assign(out, { held: true, heldVendor: r ? r.whVendor : o.vendor });
+  }
   return out;
 }
 // mog.wh_order_json: HQ's view, with the store and the prices; a delivery
@@ -1405,9 +1414,9 @@ function whOrderJson(W, o, st) {
 FakeSupabase.prototype.whLive = function (slug, s) {
   const W = this.whState();
   const cycle = s.state ? s.state.cycleDate : null;
-  const linked = (s.tables ? s.tables.items : []).filter(it => {
-    const p = it.whProduct == null ? null : whProduct(W, it.whProduct);
-    return it.active === true && p && p.active && (!p.stores.length || p.stores.indexOf(slug) >= 0);
+  const linked = whRouted(s.tables ? s.tables.items : []).filter(it => {   // v21: by route
+    const p = whProduct(W, it.whProduct);
+    return it.active === true && p && p.active;
   });
   const recent = new Date(this.nowMs - 18 * 3600 * 1000).toISOString();
   const orders = W.orders.filter(o => o.slug === slug && (o.status === 'sent' || o.status === 'shipped' || o.status === 'ordered' ||
@@ -1416,30 +1425,30 @@ FakeSupabase.prototype.whLive = function (slug, s) {
   if (!linked.length && !orders.length) return {};
   const items = {};
   for (const it of linked) {
-    items[it.id] = { productId: it.whProduct,
-                     available: whAvailableAt(W, it.whProduct, this.whItemPlace(W, slug, it.primaryVendor, it.whProduct), slug, cycle) };
+    items[it.id] = { productId: it.whProduct, available: whAvailableAt(W, it.whProduct, it.whPlace == null ? null : it.whPlace, slug, cycle) };
   }
-  const out = { vendor: this.whStoreVendor(slug), items, orders: orders.map(o => whOrderPhoneJson(W, o, this)) };
-  const held = Array.from(new Set(W.locations.filter(l => l.heldBy != null).map(l => this.whHeldVendor(slug, l.heldBy)).filter(v => v != null))).sort();
+  const own = linked.filter(it => it.whPlace == null).map(it => it.whVendor).sort();
+  const out = { vendor: own.length ? own[0] : null, items, orders: orders.map(o => whOrderPhoneJson(W, o, this)) };
+  const held = Array.from(new Set(linked.filter(it => it.whPlace != null).map(it => it.whVendor))).sort();
   if (held.length) out.heldVendors = held;
   return { happySupply: out };
 };
-// mog.wh_held_from_log, the close's step: the closing cycle's log lines from
-// a held location's holder (its store vendor), for items linked to a product
-// held there, become one open delivery per location (EL-0001). A same-day
-// re-close replaces an open one or deletes it; a received one stays.
+// mog.wh_held_from_log, the close's step: the closing cycle's log lines of the
+// items whose route names a held place, ordered under the route's vendor
+// (v21), become one open delivery per place (EL-0001). A same-day re-close
+// replaces an open one or deletes it; a received one stays.
 FakeSupabase.prototype.whHeldFromLog = function (slug, s, cycle, now) {
   const W = this.whState();
   let all = 0;
   for (const L of W.locations.filter(l => l.heldBy != null && l.heldStore !== slug).sort((a, b) => a.id - b.id)) {
-    const vend = this.whHeldVendor(slug, L.heldBy);
     const rec = W.orders.find(o => o.slug === slug && o.cycleDate === cycle && o.heldAt === L.id);
     if (rec && rec.status === 'received') continue;
-    const lines = s.log.filter(g => g.cycleDate === cycle && g.vendor === vend).sort((a, b) => a.seq - b.seq).map(g => {
+    const lines = s.log.filter(g => g.cycleDate === cycle).sort((a, b) => a.seq - b.seq).map(g => {
       const it = s.tables.items.find(i => i.id === g.id), p = it && it.whProduct != null ? whProduct(W, it.whProduct) : null;
-      return p && whCarries(W, p.id, L.id) ? { g, it, p } : null;
+      return p && it.whPlace === L.id && it.whVendor != null && g.vendor === it.whVendor && whCarries(W, p.id, L.id) ? { g, it, p } : null;
     }).filter(Boolean);
     if (!lines.length) { if (rec) W.orders.splice(W.orders.indexOf(rec), 1); continue; }
+    const vend = lines[0].g.vendor;
     let o = rec;
     if (!o) {
       o = { id: ++W.seq.order, number: whNextNumber(W.orders, 'EL'), slug, vendor: vend, cycleDate: cycle, neededBy: null, note: '',
@@ -1511,9 +1520,13 @@ function whDoHeldReceive(W, by, r, now, storeOf) {
   return { orderId: o.id, number: o.number };
 }
 // public.mog_wh_send: the order's id.
-function whDoSend(W, slug, s, vend, o, now) {
+function whDoSend(W, slug, s, _vend, o, now) {
   if (!whIsObj(o)) throw whRej('an order is an object');
-  if (vend == null || vend !== o.vendor) throw whRej((o.vendor == null ? 'That vendor' : o.vendor) + ' isn\'t this store\'s Happy Supply');
+  // v21: the store's Happy Supply is a vendor its routes to HEH's own places use.
+  const vend = o.vendor;
+  if (!whRouted(s.tables.items).some(i => i.whPlace == null && i.whVendor === vend)) {
+    throw whRej((vend == null ? 'That vendor' : vend) + ' isn\'t this store\'s Happy Supply');
+  }
   const cycle = s.state ? s.state.cycleDate : null;
   if (!cycle) throw whRej('this store has no order day open');
   const nb = o.neededBy == null ? '' : String(o.neededBy);
@@ -1536,14 +1549,14 @@ function whDoSend(W, slug, s, vend, o, now) {
     const it = s.tables.items.find(i => i.id === ln.itemId);
     if (!it) throw whRej('an item in this order isn\'t at the store any more');
     if (it.whProduct == null) throw whRej(it.name + ' isn\'t linked to a Happy Supply product');
-    if (it.active !== true || !(it.primaryVendor === vend || (it.eligible || []).indexOf(vend) >= 0)) throw whRej(it.name + ' isn\'t on Happy Supply\'s list here');
+    // v21: the item's route says where it comes from, and under which vendor.
+    if (it.whPlace != null) throw whRej(it.name + ' comes from ' + whLocation(W, it.whPlace).name + ', not Happy Supply');
+    if (it.active !== true || it.whVendor !== vend) throw whRej(it.name + ' isn\'t on Happy Supply\'s list here');
     const pr = whProduct(W, it.whProduct);
-    if (pr.via != null) throw whRej(it.name + ' comes from ' + pr.via + ', not Happy Supply');
-    // v20: a product kept only at places other than HEH's own isn't Happy Supply's.
-    if (pr.places && pr.places.length && !pr.places.some(x => { const L = whLocation(W, x.locationId); return L && L.heldBy == null; })) {
+    if (!(pr.places || []).some(x => { const L = whLocation(W, x.locationId); return L && L.heldBy == null; })) {
       throw whRej(it.name + ' isn\'t kept at Happy Supply');
     }
-    if (!pr.active || !(pr.stores.length === 0 || pr.stores.indexOf(slug) >= 0)) throw whRej('Happy Supply doesn\'t sell ' + it.name + ' to this store');
+    if (!pr.active) throw whRej('Happy Supply doesn\'t sell ' + it.name + ' now');
     if (rec.lines.some(l => l.itemId === it.id)) throw whRej(it.name + ' is in the order twice');
     rec.lines.push({ ord: rec.lines.length + 1, itemId: it.id, name: it.name, productId: it.whProduct, cases: whCases(ln.cases, it.name, false),
                      casesShipped: null, locationId: null, price: null, avgCost: null, casesReceived: null });
@@ -1633,8 +1646,18 @@ FakeSupabase.prototype.whData = function (name) {
       const stock = {};
       for (const k of Object.keys(W.stock)) if (Number(k.split('|')[0]) === p.id && W.stock[k] !== 0) stock[k.split('|')[1]] = W.stock[k];
       const last = W.moves.filter(m => m.productId === p.id && m.kind === 'received').pop();
-      return Object.assign(clone(p), { stock, inTransit: whInTransit(W, p.id), lastReceipt: last ? { ref: last.ref, at: last.at } : null });
+      const out = Object.assign(clone(p), { stock, inTransit: whInTransit(W, p.id), lastReceipt: last ? { ref: last.ref, at: last.at } : null });
+      delete out.par; delete out.stores; delete out.via;   // v21: retired
+      return out;
     }),
+    // v21: every store item linked to an HQ item, its route beside what the store has now.
+    routes: Array.from(this.stores.entries()).flatMap(([slug, st]) => (st.tables ? st.tables.items : []).filter(it => it.whProduct != null)
+      .map(it => ({ slug, store: st.profile.location || slug, isTest: !!st.isTest, concept: st.profile.concept || '', itemId: it.id, item: it.name,
+                    productId: it.whProduct, placeId: it.whPlace == null ? null : it.whPlace, vendor: it.whVendor == null ? null : it.whVendor,
+                    mainVendor: it.primaryVendor == null ? null : it.primaryVendor, active: it.active === true, par: it.par == null ? null : it.par,
+                    pack: it.pack })))
+      .sort((a, b) => (a.productId - b.productId) || (a.isTest - b.isTest) || String(a.store).localeCompare(String(b.store)) ||
+                      (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0) || (a.itemId < b.itemId ? -1 : 1)),
     pos: lastClosed(W.pos, 'ordered').map(p => whPoJson(W, p)),
     transfers: lastClosed(W.transfers, 'in_transit').map(t => whTransferJson(W, t)),
     orders: W.orders.filter(o => o.heldAt == null && (o.status === 'sent' || o.status === 'shipped'))
@@ -1710,31 +1733,15 @@ FakeSupabase.prototype.whTaken = function (from, to) {
 };
 
 // mog.wh_do_save
-function whDoSave(W, by, kind, row, now, slugs, concepts) {
+function whDoSave(W, by, kind, row, now, slugs, concepts, routedAt) {
   if (!whIsObj(row)) throw whRej('nothing to save');
   const id = row.id == null ? null : whId(row.id, 'The id');
   if (kind === 'product') {
     const name = whName(row.name, 'The product', 120);
     const pack = whText(row.pack, 'The pack', 60);
-    const par = whCases(row.par, 'The par', true);
     const fee = whMoney(row.handlingFee, 'The handling fee');
     const active = whBool(row.active, 'Active', true);
-    if (row.stores != null && !Array.isArray(row.stores)) throw whRej('the stores are a list');
-    const stores = Array.from(new Set((row.stores || []).map(x => (typeof x === 'string' ? x : JSON.stringify(x))))).sort();
-    const unknown = stores.find(x => !slugs.has(x));
-    if (unknown !== undefined) throw whRej('no store called ' + unknown);
-    // v17: via, where stores order it (null = Happy Supply); left out = unchanged.
-    const viaSet = Object.prototype.hasOwnProperty.call(row, 'via');
-    let via = null;
-    if (viaSet) {
-      via = typeof row.via === 'string' && row.via.trim() ? row.via.trim() : null;
-      if (via != null && via.toLowerCase() === 'happy supply') via = null;
-      if (via != null) {
-        const L = W.locations.find(l => l.heldBy != null && l.heldBy.toLowerCase() === via.toLowerCase());
-        if (!L) throw whRej('no location is held by ' + via);
-        via = L.heldBy;
-      }
-    }
+    // v21: a product's par, stores and via are retired; each store's route says which stores take it.
     // v19: the concept whose stores carry it (null = every concept); left out = unchanged.
     const conceptSet = Object.prototype.hasOwnProperty.call(row, 'concept');
     const concept = conceptSet && typeof row.concept === 'string' && row.concept.trim() ? row.concept.trim() : null;
@@ -1748,11 +1755,6 @@ function whDoSave(W, by, kind, row, now, slugs, concepts) {
     }
     if (W.products.some(p => p.name.toLowerCase() === name.toLowerCase() && p.id !== id)) throw whRej('there\'s already a product called "' + name + '"');
     const setPlaces = p => {
-      if (via != null) {   // a v17 via also places it at its holder's location
-        const L = W.locations.find(l => l.heldBy != null && whLc(l.heldBy) === whLc(via));
-        p.places = p.places || [];
-        if (L && !p.places.some(x => x.locationId === L.id)) p.places.push({ locationId: L.id, lowPoint: 0 });
-      }
       if (placesSet) {
         const next = [], seen = new Set();
         for (const e of row.places) {
@@ -1761,7 +1763,8 @@ function whDoSave(W, by, kind, row, now, slugs, concepts) {
           if (!L) throw whRej('pick a place from the list');
           if (seen.has(loc)) throw whRej(L.name + ' is in the places twice');
           seen.add(loc);
-          next.push({ locationId: loc, lowPoint: Object.prototype.hasOwnProperty.call(e, 'lowPoint') ? whCases(e.lowPoint, 'The low point at ' + L.name, true) : 0 });
+          const low = Object.prototype.hasOwnProperty.call(e, 'lowPoint') ? whCases(e.lowPoint, 'The low point at ' + L.name, true) : 0;
+          next.push({ locationId: loc, lowPoint: L.heldStore != null ? 0 : low });   // v21: a place at a store refills at its holder's par
         }
         const gone = (p.places || []).filter(x => !seen.has(x.locationId)).map(x => whLocation(W, x.locationId))
           .filter(L => (W.stock[p.id + '|' + L.id] || 0) > 0 || W.orders.some(o => o.heldAt === L.id && o.status === 'ordered' && o.lines.some(l => l.productId === p.id)))
@@ -1775,8 +1778,7 @@ function whDoSave(W, by, kind, row, now, slugs, concepts) {
       }
     };
     if (id == null) {
-      const p = { id: ++W.seq.prod, name, pack, par, avgCost: 0, handlingFee: fee, stores, active, version: 1, updatedAt: now, updatedBy: by };
-      if (via != null) p.via = via;
+      const p = { id: ++W.seq.prod, name, pack, avgCost: 0, handlingFee: fee, active, version: 1, updatedAt: now, updatedBy: by };
       if (concept != null) p.concept = concept;
       setPlaces(p);
       W.products.push(p);
@@ -1785,14 +1787,9 @@ function whDoSave(W, by, kind, row, now, slugs, concepts) {
     const p = whProduct(W, id);
     if (!p) throw whRej('that product isn\'t in the warehouse any more');
     if (p.version !== whNum(row.version, 'The version')) throw new Error('CONFLICT: ' + name + ' was changed since you opened it (by ' + (p.updatedBy || 'someone') + ')');
-    if (viaSet && whLc(via) !== whLc(p.via) &&
-        (whOwned(W, id) > 0 || W.orders.some(o => (o.status === 'sent' || o.status === 'ordered') && o.lines.some(l => l.productId === id)))) {
-      throw whRej(name + ' has stock or open orders: count it to 0 before changing where stores order it');
-    }
-    Object.assign(p, { name, pack, par, handlingFee: fee, stores, active, version: p.version + 1, updatedAt: now, updatedBy: by });
-    if (viaSet) { if (via == null) delete p.via; else p.via = via; }
+    Object.assign(p, { name, pack, handlingFee: fee, active, version: p.version + 1, updatedAt: now, updatedBy: by });
     if (conceptSet) { if (concept == null) delete p.concept; else p.concept = concept; }
-    if (viaSet || placesSet) setPlaces(p);
+    if (placesSet) setPlaces(p);
     return { kind: 'product', id, name };
   }
   if (kind === 'location' || kind === 'supplier') {
@@ -1803,7 +1800,7 @@ function whDoSave(W, by, kind, row, now, slugs, concepts) {
     if (kind === 'location') {
       const ord = row.ord == null ? null : whRound(whNum(row.ord, 'The order'), 0);
       // v17: heldBy, the vendor holding it (null = HEH's own); left out = unchanged.
-      const heldSet = Object.prototype.hasOwnProperty.call(row, 'heldBy');
+      let heldSet = Object.prototype.hasOwnProperty.call(row, 'heldBy');
       let holder = null;
       if (heldSet) {
         holder = typeof row.heldBy === 'string' && row.heldBy.trim() ? row.heldBy.trim() : null;
@@ -1820,8 +1817,10 @@ function whDoSave(W, by, kind, row, now, slugs, concepts) {
       const how = howSet && typeof row.countHow === 'string' && row.countHow.trim() ? row.countHow.trim() : null;
       if (how != null && ['hq', 'marginedge', 'report'].indexOf(how) < 0) throw whRej('a place is counted in HQ, from MarginEdge or from a report');
       const cur = id == null ? null : whLocation(W, id);
+      // v21: a place at a store is held under its own name; each route carries its store's vendor.
       if ((storeSet ? store : cur && cur.heldStore) != null && (heldSet ? holder : cur && cur.heldBy) == null) {
-        throw whRej('a place at a store needs the name the other stores order it under');
+        heldSet = true;
+        holder = name;
       }
       if (id == null) {
         const l = { id: ++W.seq.loc, name, ord: ord == null ? W.locations.reduce((m, x) => Math.max(m, x.ord), 0) + 10 : ord, active };
@@ -1840,8 +1839,7 @@ function whDoSave(W, by, kind, row, now, slugs, concepts) {
       }
       if (heldSet && whLc(holder) !== whLc(l.heldBy)) {
         const stocked = Object.keys(W.stock).some(k => Number(k.split('|')[1]) === id && W.stock[k] > 0);
-        if (stocked || (l.heldBy != null && W.products.some(p => whLc(p.via) === whLc(l.heldBy))) ||
-            W.products.some(p => (p.places || []).some(x => x.locationId === id))) {
+        if (stocked || W.products.some(p => (p.places || []).some(x => x.locationId === id)) || (routedAt && routedAt(id))) {
           throw whRej(name + ' holds stock or has products ordered through it: who holds it can\'t change');
         }
       }
@@ -2027,7 +2025,8 @@ FakeSupabase.prototype.handleWh = function (fn, p) {
   let done;
   try {
     if (fn === 'mog_wh_save') done = whDoSave(next, name, p.p_kind, p.p_row, now, new Set(this.stores.keys()),
-                                              new Set(Array.from(this.stores.values()).map(s => s.profile.concept).filter(Boolean)));
+                                              new Set(Array.from(this.stores.values()).map(s => s.profile.concept).filter(Boolean)),
+                                              id => Array.from(this.stores.values()).some(s => s.tables && s.tables.items.some(i => i.whPlace === id)));
     if (fn === 'mog_wh_po_save') done = whDoPoSave(next, name, p.p_po, now);
     if (fn === 'mog_wh_po_cancel') done = whDoPoCancel(next, name, p.p_id, p.p_version, now);
     if (fn === 'mog_wh_po_receive') done = whDoPoReceive(next, name, p.p_receipt, now);
@@ -2134,7 +2133,7 @@ FakeSupabase.prototype.handleEditor = function (fn, p) {
   }
 
   const tryApply = ops => {
-    try { s.tables = editorApplyOps(s.tables, ops, new Set(this.hqState().ltos.keys()), this.whProductIds()); this.followVendorRenames(slug, s, ops); return null; } catch (e) {
+    try { s.tables = editorApplyOps(s.tables, ops, new Set(this.hqState().ltos.keys()), this.whProductIds(), this.whPlaceIds()); this.followVendorRenames(slug, s, ops); return null; } catch (e) {
       const m = String(e.message);
       return m.indexOf('CONFLICT: ') === 0 ? err('CONFLICT', { detail: m.slice(10) }) : err('REJECTED: ' + m);
     }

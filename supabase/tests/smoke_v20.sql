@@ -35,7 +35,8 @@ returns void language sql as $$
 $$;
 
 -- A store on the app's editor and phones, counting today, with its vendors,
--- items and HQ vendor names. Answers its sync key.
+-- items and HQ vendor names (since v21 the stock side reads each item's
+-- route, not these names). Answers its sync key.
 create or replace function pg_temp.store20(p_slug text, p_location text, p_vendors jsonb, p_items jsonb, p_picks jsonb, p_links jsonb)
 returns text language plpgsql as $$
 declare
@@ -104,7 +105,6 @@ begin
   perform pg_temp.chk('privileges: the public key cannot reach the places table or the new helpers',
     not has_table_privilege('anon', 'mog.wh_product_places', 'select')
       and not has_function_privilege('anon', 'mog.wh_place_carries(bigint, bigint)', 'execute')
-      and not has_function_privilege('anon', 'mog.wh_item_place(text, text, bigint)', 'execute')
       and not has_function_privilege('anon', 'mog.wh_available_at(bigint, bigint, text, date)', 'execute')
       and not has_function_privilege('anon', 'mog.wh_hs_receive(bigint, text, text, jsonb)', 'execute')
       and not has_function_privilege('anon', 'mog.wh_taken(date, date)', 'execute'), null);
@@ -142,20 +142,18 @@ begin
   locB := (r -> 'data' -> 'done' ->> 'id')::bigint;
   r := public.mog_wh_save(tok, 'location', '{"name": "zz smoke 20 Elpis", "heldBy": "zz smoke 20 Holder", "countHow": "report"}');
   locE := (r -> 'data' -> 'done' ->> 'id')::bigint;
-  r := public.mog_wh_save(tok, 'location', '{"name": "zz smoke 20 Tysons", "heldStore": "zztest20"}');
-  perform pg_temp.chk('place: one at a store needs the name the other stores order it under',
-    r ->> 'error' like 'REJECTED: a place at a store needs the name%' and not exists (select 1 from mog.wh_locations where name = 'zz smoke 20 Tysons'), r);
   r := public.mog_wh_save(tok, 'location', '{"name": "zz smoke 20 Tysons", "heldBy": "zz smoke 20 Transfer", "heldStore": "nosuchstore"}');
   perform pg_temp.chk('place: a store that isn''t there is refused', r ->> 'error' like 'REJECTED: no store called nosuchstore%', r);
   r := public.mog_wh_save(tok, 'location', '{"name": "zz smoke 20 Tysons", "heldBy": "zz smoke 20 Transfer", "heldStore": "zztest20", "countHow": "by eye"}');
   perform pg_temp.chk('place: how it''s counted is one of three', r ->> 'error' like 'REJECTED: a place is counted in HQ, from MarginEdge or from a report%', r);
-  r := public.mog_wh_save(tok, 'location', '{"name": "zz smoke 20 Tysons", "heldBy": "zz smoke 20 Transfer", "heldStore": "zztest20", "countHow": "marginedge"}');
+  -- v21: a place at a store is held under its own name (each route carries its store's vendor).
+  r := public.mog_wh_save(tok, 'location', '{"name": "zz smoke 20 Tysons", "heldStore": "zztest20", "countHow": "marginedge"}');
   locT := (r -> 'data' -> 'done' ->> 'id')::bigint;
-  perform pg_temp.chk('place: at a store, with its store''s name and how it''s counted; HEH''s own carries none of it',
+  perform pg_temp.chk('place: at a store, held under its own name, with how it''s counted; HEH''s own carries none of it',
     (r ->> 'ok')::boolean
       and exists (select 1 from jsonb_array_elements(r -> 'data' -> 'locations') l
                    where (l ->> 'id')::bigint = locT and l ->> 'heldStore' = 'zztest20' and l ->> 'store' = 'Smoke v20 Tysons BOH'
-                     and l ->> 'countHow' = 'marginedge' and l ->> 'heldBy' = 'zz smoke 20 Transfer')
+                     and l ->> 'countHow' = 'marginedge' and l ->> 'heldBy' = 'zz smoke 20 Tysons')
       and exists (select 1 from jsonb_array_elements(r -> 'data' -> 'locations') l
                    where (l ->> 'id')::bigint = locB and not (l ? 'heldStore') and not (l ? 'countHow') and not (l ? 'lastCount')),
     r -> 'data' -> 'locations');
@@ -170,11 +168,11 @@ begin
          'stores', '[]'::jsonb, 'active', true, 'places', jsonb_build_array(jsonb_build_object('locationId', locB, 'lowPoint', 20),
                                                                               jsonb_build_object('locationId', locT, 'lowPoint', 12))));
   shrimp := (r -> 'data' -> 'done' ->> 'id')::bigint;
-  perform pg_temp.chk('product: its places come back with their low points',
+  perform pg_temp.chk('product: its places come back with their low points; a place at a store has none of its own (v21)',
     (r ->> 'ok')::boolean and exists (select 1 from jsonb_array_elements(r -> 'data' -> 'products') p
       where (p ->> 'id')::bigint = shrimp
-        and p -> 'places' = jsonb_build_array(jsonb_build_object('locationId', least(locB, locT), 'lowPoint', case when locB < locT then 20 else 12 end),
-                                              jsonb_build_object('locationId', greatest(locB, locT), 'lowPoint', case when locB < locT then 12 else 20 end))),
+        and p -> 'places' = jsonb_build_array(jsonb_build_object('locationId', least(locB, locT), 'lowPoint', case when locB < locT then 20 else 0 end),
+                                              jsonb_build_object('locationId', greatest(locB, locT), 'lowPoint', case when locB < locT then 0 else 20 end))),
     r -> 'data' -> 'products');
   r := public.mog_wh_save(tok, 'product', jsonb_build_object('name', 'zz smoke 20 bowls', 'pack', 'CASE (300)', 'par', 0, 'handlingFee', 0,
          'stores', '[]'::jsonb, 'active', true, 'places', jsonb_build_array(jsonb_build_object('locationId', locE))));
@@ -182,10 +180,13 @@ begin
   r := public.mog_wh_save(tok, 'product', jsonb_build_object('name', 'zz smoke 20 lids', 'pack', 'CASE (300)', 'par', 0, 'handlingFee', 0,
          'stores', '[]'::jsonb, 'active', true, 'places', jsonb_build_array(jsonb_build_object('locationId', locE))));
   lids := (r -> 'data' -> 'done' ->> 'id')::bigint;
-  r := public.mog_wh_save(tok, 'product', '{"name": "zz smoke 20 cups", "pack": "CASE", "par": 0, "handlingFee": 0, "stores": [], "active": true, "via": "zz smoke 20 Holder"}');
+  r := public.mog_wh_save(tok, 'product', jsonb_build_object('name', 'zz smoke 20 cups', 'pack', 'CASE', 'handlingFee', 0, 'active', true,
+         'places', jsonb_build_array(jsonb_build_object('locationId', locE, 'lowPoint', 3), jsonb_build_object('locationId', locT, 'lowPoint', 5))));
   cups := (r -> 'data' -> 'done' ->> 'id')::bigint;
-  perform pg_temp.chk('product: a v17 via also places it at its holder''s location, low point 0',
-    (select jsonb_agg(jsonb_build_array(location_id, low_point)) from mog.wh_product_places where product_id = cups) = jsonb_build_array(jsonb_build_array(locE, 0)), null);
+  perform pg_temp.chk('product: a low point is kept at a vendor''s place, never at a store''s (v21; v17''s via is retired)',
+    (select jsonb_agg(jsonb_build_array(location_id, low_point) order by location_id) from mog.wh_product_places where product_id = cups)
+      = jsonb_build_array(jsonb_build_array(least(locE, locT), case when locE < locT then 3 else 0 end),
+                          jsonb_build_array(greatest(locE, locT), case when locE < locT then 0 else 3 end)), null);
 
   perform mog.wh_move(me, shrimp, locB, 40, 'received', 'zz', 65, null);
   perform mog.wh_move(me, bowls, locE, 10, 'received', 'zz', 41, null);
@@ -193,9 +194,11 @@ begin
          jsonb_build_object('productId', shrimp, 'cases', 6, 'reason', 'Opening count from MarginEdge'))));
   perform pg_temp.chk('count: the opening count at the store''s place', (r ->> 'ok')::boolean
     and (select cases from mog.wh_stock where product_id = shrimp and location_id = locT) = 6, r);
-  update mog.items set wh_product = shrimp where slug in ('zztest20', 'zztest20b') and item_id = 'ITEM-0001';
-  update mog.items set wh_product = bowls where slug = 'zztest20b' and item_id = 'ITEM-0002';
-  update mog.items set wh_product = lids where slug = 'zztest20b' and item_id = 'ITEM-0003';
+  -- v21: each link with its route (the place, empty for HEH's own, and the vendor).
+  update mog.items set wh_product = shrimp, wh_vendor = 'HS Co' where slug = 'zztest20' and item_id = 'ITEM-0001';
+  update mog.items set wh_product = shrimp, wh_place = locT, wh_vendor = 'Transfer (Tysons)' where slug = 'zztest20b' and item_id = 'ITEM-0001';
+  update mog.items set wh_product = bowls, wh_place = locE, wh_vendor = 'Elpis' where slug = 'zztest20b' and item_id = 'ITEM-0002';
+  update mog.items set wh_product = lids, wh_vendor = 'HS Co' where slug = 'zztest20b' and item_id = 'ITEM-0003';
 
   -- ---- Each item's cases from its own source place ----
   perform pg_temp.chk('read: the taker''s shrimp counts on the place it orders from (Tysons, 6), its bowls on Elpis (10)',
@@ -206,7 +209,7 @@ begin
     (mog.live_json('zztest20', null) -> 'happySupply' -> 'items' -> 'ITEM-0001' ->> 'available')::numeric = 40,
     mog.live_json('zztest20', null) -> 'happySupply' -> 'items');
   update mog.items set primary_vendor = 'Sysco' where slug = 'zztest20' and item_id = 'ITEM-0001';
-  perform pg_temp.chk('read: even under a vendor mapped to its own place''s name, the holder never counts on that place',
+  perform pg_temp.chk('read: the store changing its main vendor doesn''t reroute it; the holder never counts on its own place (v21)',
     (mog.live_json('zztest20', null) -> 'happySupply' -> 'items' -> 'ITEM-0001' ->> 'available')::numeric = 40,
     mog.live_json('zztest20', null) -> 'happySupply' -> 'items');
   update mog.items set primary_vendor = 'HS Co' where slug = 'zztest20' and item_id = 'ITEM-0001';
@@ -251,6 +254,8 @@ begin
       and (select cases from mog.wh_stock where product_id = shrimp and location_id = locT) = 25, r);
 
   -- ---- A plain sale is still the store's ----
+  -- v21: one route per item, so the taker's shrimp routes to Happy Supply for the sale, then back.
+  update mog.items set wh_place = null, wh_vendor = 'HS Co' where slug = 'zztest20b' and item_id = 'ITEM-0001';
   r := public.mog_wh_send(ptokb, '{"vendor": "HS Co", "lines": [{"itemId": "ITEM-0001", "cases": 3}]}');
   hsS := (r -> 'data' -> 'order' ->> 'id')::bigint;
   r := public.mog_wh_ship(tok, jsonb_build_object('id', hsS, 'version', 1, 'lines', jsonb_build_array(
@@ -264,6 +269,7 @@ begin
   perform pg_temp.chk('check in: the store checks in its sale, no stock moves',
     (r ->> 'ok')::boolean and (select status from mog.wh_orders where id = hsS) = 'received'
       and (select cases from mog.wh_stock where product_id = shrimp and location_id = locB) = 17, r);
+  update mog.items set wh_place = locT, wh_vendor = 'Transfer (Tysons)' where slug = 'zztest20b' and item_id = 'ITEM-0001';
 
   -- ---- The close, by place ----
   r := public.mog_sync_close_cycle('zztest20b', kb, current_date, current_date + 1, to_char(current_date + 1, 'Dy'),
@@ -329,7 +335,7 @@ begin
     r ->> 'error' like 'REJECTED: zz smoke 20 Tysons holds stock%' and (select held_store from mog.wh_locations where id = locT) = 'zztest20', r);
   r := public.mog_wh_save(tok, 'location', jsonb_build_object('id', locT, 'name', 'zz smoke 20 Tysons', 'active', true));
   perform pg_temp.chk('place: a save that leaves them out keeps the store, the holder name and how it''s counted',
-    (r ->> 'ok')::boolean and (select held_store = 'zztest20' and held_by = 'zz smoke 20 Transfer' and count_how = 'marginedge'
+    (r ->> 'ok')::boolean and (select held_store = 'zztest20' and held_by = 'zz smoke 20 Tysons' and count_how = 'marginedge'
                                 from mog.wh_locations where id = locT), r);
 
   perform pg_temp.clean20();

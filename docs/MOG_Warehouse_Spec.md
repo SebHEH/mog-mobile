@@ -1,7 +1,7 @@
 # MOG — Warehouse (Happy Supply), concept library and new stores: spec
 
 **Agreed:** 2026-11-01, Sebastian (spec-first, decisions below).
-**Status:** approved. §1 (concept library) built as schema v12 on 2026-11-01; §2's W1 built as schema v13 and live on 2026-11-02; §2's W2 spec approved 2026-11-02 (W2a, then W2b), W2a built and live the same day as schema v16, and W2b built and live 2026-11-03 as schema v17; W2c (HEH's stock at three places: Happy Supply, RP Tysons, Elpis) spec approved 2026-11-04, mockup next; the rest isn't built. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
+**Status:** approved. §1 (concept library) built as schema v12 on 2026-11-01; §2's W1 built as schema v13 and live on 2026-11-02; §2's W2 spec approved 2026-11-02 (W2a, then W2b), W2a built and live the same day as schema v16, and W2b built and live 2026-11-03 as schema v17; W2c (HEH's stock at three places: Happy Supply, RP Tysons, Elpis) spec approved 2026-11-04 and built as schema v20 the same day; the routes spec (one record per store and item, set on the HQ item) approved 2026-11-05, mockup next; the rest isn't built. HQ control (schema v11) and vendor contacts (v10) shipped the same day and are the base for it.
 **Reference, not ported:** Chef Daniel's Happy Supply artifact (a claude.ai page) and "Happy Supply: System Overview for IT" (2026-10-26). They show what people already want; MOG rebuilds it from scratch on Supabase. Daniel's data isn't moved (it isn't really in use); the warehouse starts with a first count.
 
 ---
@@ -328,6 +328,78 @@ About two sessions after the mockup. W1's stock records, W2a's orders and W2b's 
   - **Found while building:** an opening count (nothing on record) would have read as negative use; the smoke and the SQL leave it out.
   - **Differs from the mockup:** Stock's "Count a place" is one panel for any place (MarginEdge's pounds typed as cases); Items keeps "Which stores can order it" and Send to stores from the old Products page; Who took what has no summary tiles.
 - **Ship order:** `git pull` and v20 told to Donny first; v20 (`mog-supabase-schema`: smoke, fake, gate `tests/wh_places.test.js`, PGlite, planted defects), then the pages in `mog-preview`; a maintainer runs v20 and its smoke in the SQL Editor, the probe, then one push the same hour (today's pages save `via`, so they can't run on v20).
+
+### Routes spec (spec-first, approved by Sebastian 2026-11-05)
+
+Why: Sebastian's first W2c setup was refused on 2026-11-05. Items → SHRIMP → Send to stores asked Rosslyn BOH and Founders BOH for a Happy Supply vendor, though they take shrimp from RP Tysons. That screen was kept from v16/v17 and decides one route per item (`p.via || 'Happy Supply'`, `template/hq/warehouse.js`). The fitting link was on another page (Places → "Stores that take from it"). Underneath, HQ has no record of "this store gets this item from that place". It's worked out from six settings on four pages (the item's places, a place's "ordered as" name, HQ's remembered names, the store item's link, "Which stores can order it", the store item's main vendor), so a wrong route can't be seen. Forget on Vendor names also emptied HQ's remembered names, which the close and the phone read. Not built; a mockup comes first.
+
+**Purpose.** For every HEH item, HQ shows and sets which stores take it, from which place, and under which of each store's own vendors. That's one record per store and item (a route), on one screen, saved in one go. The close, the phones and Who took what read that record, so what HQ shows is what happens.
+
+**Who it's for:** Sebastian and Donny (the hq role) set routes; Dan (warehouse) sees them read-only.
+**Not for:** KMs (the phone looks the same and reads the route); store catalog edits beyond the link; prices and charges (W3).
+
+**What's separate, and the one link:**
+
+| Record | What's in it | Owner |
+|---|---|---|
+| HQ item | name, pack, concept, cases at each place | HQ (counts: Dan too) |
+| Place | kind (HEH's own, at a store, at a vendor), how it's counted | HQ |
+| A store's order guide | its items, vendors, pars | the store |
+| **Route** (the one link) | a store's item ← an HQ item, from one place, under one of the store's vendors | HQ sets it; the store's Changes show and undo it |
+
+Live, as routes: RP Tysons BOH's SHRIMP from Happy Supply as "Happy Supply" (from Capital until then); Rosslyn BOH's and Founders BOH's SHRIMP from RP Tysons as "Transfer (Tysons)"; Rosslyn FOH (TEST)'s RP Large Bowls and Lids from Elpis as "Elpis".
+
+**Success looks like:**
+- SHRIMP's three stores are set up on one screen in one save, with no visit to Vendor names or Places.
+- Each item lists its routes in words ("Rosslyn BOH · SHRIMP · from RP Tysons · as Transfer (Tysons)").
+- A broken route (the store renamed or removed that vendor, the item went inactive, its main vendor moved elsewhere) shows on the item and on Stock, never silently.
+- Forget on Vendor names can't change what the close records.
+- A gate built from the live case runs the screens' own code: SHRIMP (Tysons from Happy Supply; Rosslyn and Founders from Tysons) and the Elpis bowls. The same case is in `tests/preview_server.js` (added 2026-11-05), and the mockup is checked against it.
+- No field stays alive only so older smoke rows pass (`mog-supabase-schema`, rule rewritten 2026-11-05).
+
+**Out of scope:** charges (W3); ordering by the pound; reading Tysons' count from MarginEdge; Dan's invite; store-to-store transfers that don't go through an HEH place ("Transfer (Rosslyn)"); history for the catalog side's remembered names.
+
+**Decided (Sebastian, 2026-11-05, all as recommended):**
+- **Routes are set on the HQ item:** a Stores table in its panel (store, its item, from, ordered as, status), one Save, like a store item listing its vendors.
+- **One refill number for a store-held place:** the holder's par (RP Tysons' SHRIMP par, about 19, as decided 11-04). The place shows it and has no low point of its own.
+- **Retired in v21:** `via`, the item's `par`, "Which stores can order it", Send to stores, Places' "Stores that take from it" and the first-word vendor guess. The older smoke rows that read them get rewritten. Existing links become routes.
+- **Only the hq role sets routes;** the warehouse role reads them.
+
+**Build steps (key decision, then the default):**
+1. The route record. What decides where an order comes from: the route HQ set. The close records a store's lines only under the route's vendor; a store-side change shows on HQ as a broken route instead of rerouting.
+2. The Stores table on the item (decided above).
+3. Retire the list above (decided above).
+4. Happy Supply becomes just a place: no hardcoded name. The phone's Send to Happy Supply appears for a vendor that routes to one of HEH's own places.
+5. Carry over what exists: every current link becomes a route. Add `alter table mog.wh_product_places enable row level security;` (v20 left it off, unlike every other `mog` table; Supabase's advisor flagged it on 2026-11-05; the public keys can't reach `mog`).
+6. Mockup, then build: one board set that walks the setup task (SHRIMP's three stores), then what Stock, Who took what and a Rosslyn phone show after; then the code design (architectural-walkthrough), then schema v21. About 1 session to mock up and design, 1 to 2 to build.
+
+**Mockups approved** (Sebastian, 2026-11-05: "Approved, design next"): four boards in the "Routes" row of the MOG HQ redesign canvas (https://claude.ai/artifact/3pJWHSWbMxVUyaRjmXkXqg), drawn from live names:
+- **Items → SHRIMP:** Places (Happy Supply with its low point; Transfer (Tysons) refilling at RP Tysons BOH's par), then the Stores table (store, its item, from, ordered as, status), "What each store gets", one Save. Price moved to a closed row at the bottom.
+- **Stock after:** the stores per item, "Needs you" for a broken route (sample), "Waiting for check-in" (sample).
+- **Places after:** the stores that take from a place, read-only; "Stores order it as" and the linking gone from the panel.
+- **Rosslyn BOH's phone:** Friday's Transfer (Tysons) count with "104 available at Transfer (Tysons)", Saturday's "To check in", the check-in screen (unchanged screens).
+
+Decided on them (both as recommended):
+- **A store's vendor is added in the route row** when it has none (RP Tysons BOH's Happy Supply, delivery days Thu, Sat, Mon), with the Vendors page's rules (delivery days required, the name from HQ's list). Setup stays one save.
+- **HQ can put a broken route back or end it:** "Put Transfer (Tysons) back as main vendor" (one change at the store, undoable there) or "End the route".
+
+Noticed while drawing: a delivery from Tysons would be numbered EL-0003, since every held place uses EL (from when Elpis was the only one). Left as is for now.
+
+**v21 design (walkthrough, approved by Sebastian 2026-11-05).** About two sessions, one push.
+- **A route is three fields on the store's item row:** `wh_product` (v16), `wh_place` (new; empty = HEH's own places, Happy Supply) and `wh_vendor` (new; the store vendor it's ordered under, a foreign key like `primary_vendor`: a rename follows, a removed vendor empties it, which shows as broken). On the row, not in a table, for W2a's reason: Undo restores a whole row and item numbers get reused.
+- **Every stock reader reads the route, never HQ's remembered names:** the close (`wh_held_from_log`: lines under the route's vendor, from the route's place), the phone's read (`wh_live_json`, same shape, so the phone code doesn't change), Send to Happy Supply (`mog_wh_send`: a vendor that routes to HEH's own). `wh_item_place`, `wh_store_vendor` and `wh_held_vendor` go.
+- **HQ sets routes through the catalog save** (`catalogEdit.js` `commitHqRoutes`: link, a new vendor in the row, put back, end; one undoable change per store); `mog_wh_data` carries every route, so the warehouse role sees them. Setting one needs both roles (HEH STOCK opens to warehouse, the store write needs hq).
+- **One Save, two writes:** the routes (every store or none) first, then the item's own fields; the status says which part saved.
+- **Retired, kept unread until v22** (Sebastian's pick, so re-running v20's functions stays a rollback): `wh_products.via`, `par`, `stores`. A store-held place's low point goes to 0 (the holder's par refills it). Row security on `wh_product_places`.
+- **One-time backfill:** each linked item's `wh_vendor` = its main vendor, `wh_place` = its only place (else v20's answer). Live 11-05: the TEST store's bowls and lids → Elpis as "Elpis".
+- **Tests:** `smoke_v21.sql`; older smoke rows that set routing through remembered names or `via` get their setup rewritten, their assertions kept; a new gate from the live case (`tests/wh_routes.test.js`); `wh_orders`, `wh_elpis`, `elpis_setup`, `wh_places` and `tests/preview_server.js` moved to routes. Store cache v74 so each store's editor reloads `catalogEdit.js`.
+- **Built (2026-11-05, not live):**
+  - `supabase/schema_v21.sql` (generated with asserted one-match replacements: `item_row_json`, `editor_fields_match`, `editor_apply_ops` from v16, `wh_order_phone_json` from v17, `wh_live_json`, `wh_held_from_log`, `wh_do_save`, `wh_state`, `mog_wh_send` from v20), `smoke_v21.sql` (31 rows; 8 planted defects all caught), a v21 block in `check_api.sh`. The one-time fill was checked against the live shape in PGlite (the TEST store's bowls and lids → Elpis as "Elpis"; Rosslyn and Founders → Tysons when step 1's names exist; a re-run changes nothing).
+  - Older smoke files on v21: smoke_v13 (par and stores checks dropped), smoke_v16, smoke_v17 and smoke_v20 (their links set as routes; v17's via rows now places rows; v20's "a place at a store needs the name" row gone, held under its own name), smoke_v19 (via dropped from one row). All pass in PGlite.
+  - `catalogEdit.js` `commitHqRoutes` (a route; a new vendor or a new item in the row; End; Put back; ends first, so a route can move to another item); `hqProduct`, `hqHeldLinks` and `heldMatches` gone. `hq/warehouse.js`: the item's Stores table and its one Save (routes first, then the item), `routeStatus`, Stock's Needs you and stores per item, Places read-only; Send to stores, Places' linking, the first-word guess, "Which stores can order it" and par gone. `hq/index.html` passes `storeBy`.
+  - Gates: `wh_routes` (new, the live shrimp, 7 controls); `wh_orders`, `wh_elpis`, `wh_places` on routes; `elpis_setup` without linking by name (its 4 controls for it gone); `lto`'s anchor moved.
+  - **Differs from the mockup:** a store without the item can get a new one from the row ("+ Add a new item", no par and no area), since Send to stores' add mode went with it; the new vendor's name is picked from HQ's names plus HEH's own places (pre-picked only when there's one, live "Happy Supply").
+  - Seen in the preview by script (hidden pane): SHRIMP's three routes set and saved in one go (Happy Supply added at Tysons BOH, Thu, Sat, Mon), no remembered names; Rosslyn BOH's phone reads 104 at Transfer (Tysons); Founders BOH moved to Capital showed on Stock and the item, Put back fixed it; Places listed the takers; no console or server errors.
 
 ---
 

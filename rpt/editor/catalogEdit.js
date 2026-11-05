@@ -954,6 +954,7 @@
       const eligible = (it.eligible || []).filter(x => s_(x).toLowerCase() !== low);
       if (eligible.length !== (it.eligible || []).length) it.eligible = eligible;
       if (s_(it.primaryVendor).toLowerCase() === low) it.primaryVendor = null;
+      if (s_(it.whVendor).toLowerCase() === low) delete it.whVendor;   // v21: a route's vendor goes with it (on delete set null)
     }
     w.vendors = w.vendors.filter(x => x !== v);
     return { ok: true, name: name };
@@ -1048,98 +1049,84 @@
              skipped: skipped.concat(imported.skipped) };
   }
 
-  // ---- A Happy Supply product at one store (hq/, schema v16) ---------------
-  // p = { vendor: { name, mults, cutoff } | null   the store's Happy Supply, added the way the Vendors page adds one, when it has none
-  //       vendorName                               the store's name for Happy Supply (v17: or for the product's via, its Elpis)
-  //       product: { id, name, pack, via? }        the warehouse product (via: HEH's stock held at that vendor, v17)
-  //       link: item id | ''                       an item the store has: linked, Happy Supply its main vendor (the old main
-  //                                                stays a backup), the product's pack
-  //       item: { name, notes } }                  else a new item: no par, no storage area, so it waits in Needs setup
-  // One store has one item per product. The link is the item's whProduct.
-  function hqProduct(w, p) {
+  // ---- An HQ item's routes at one store (hq/, schema v21) ------------------
+  // p = { product: { id, name, pack },
+  //       routes:  [{ itemId,                  the store's item (or newItem: { name, notes }: added, no par, no area)
+  //                   place: id | null,        where it comes from (null = HEH's own, Happy Supply)
+  //                   placeName,               for the change log
+  //                   vendor,                  the store's vendor its KMs order it under
+  //                   newVendor: { name, mults, cutoff, contact } | null }],  added first, the Vendors page's way
+  //       end:     [itemId]   the route and the link come off; the item stays as it is
+  //       putBack: [itemId] } the route's vendor becomes the item's main vendor again
+  // A route is the item's whProduct, whPlace (left out = HEH's own) and
+  // whVendor, on its row. Its vendor becomes the main vendor (the old one
+  // stays a backup) and its pack the HQ item's case. One item per HQ item.
+  function hqRoutes(w, p) {
     p = p || {};
     const prod = p.product || {};
     const pid = Number(prod.id);
-    if (!Number.isInteger(pid) || pid <= 0) throw new Error('Which product?');
+    if (!Number.isInteger(pid) || pid <= 0) throw new Error('Which HQ item?');
     const pack = s_(prod.pack);
-    const vendorsAdded = [];
-    if (p.vendor) vendorsAdded.push(saveVendor(w, Object.assign({}, p.vendor, { mode: 'add' })).name);
-    const hs = normalizeVendorOrThrow(w, p.vendorName);
-    const link = s_(p.link);
-    const other = w.items.find(it => it.whProduct != null && Number(it.whProduct) === pid && s_(it.id) !== link);
-    if (other) throw new Error('"' + s_(other.name) + '" is linked to ' + s_(prod.name) + ' here already.');
-    if (link) {
-      const it = w.items.find(x => s_(x.id) === link);
+    const out = { ok: true, product: s_(prod.name), linked: [], ended: [], putBack: [], vendorsAdded: [] };
+    const itemOf = id => {
+      const it = w.items.find(x => s_(x.id) === s_(id));
       if (!it) throw new Error('That item isn\'t at the store any more.');
-      if (it.active !== true) throw new Error('"' + s_(it.name) + '" is inactive here.');
-      const oldMain = s_(it.primaryVendor), oldPack = s_(it.pack);
-      if (!oldMain) {
-        it.primaryVendor = hs;
-        it.eligible = [hs].concat((it.eligible || []).filter(v => s_(v).toLowerCase() !== hs.toLowerCase()));
-      } else if (oldMain.toLowerCase() !== hs.toLowerCase()) {
-        if (!(it.eligible || []).some(v => s_(v).toLowerCase() === hs.toLowerCase())) setItemsVendor(w, [s_(it.id)], hs, true);
-        switchActiveVendor(w, s_(it.id), hs);
+      return it;
+    };
+    const makeMain = (it, vend) => {
+      const old = s_(it.primaryVendor);
+      if (!old) {
+        it.primaryVendor = vend;
+        it.eligible = [vend].concat((it.eligible || []).filter(v => s_(v).toLowerCase() !== vend.toLowerCase()));
+      } else if (old.toLowerCase() !== vend.toLowerCase()) {
+        if (!(it.eligible || []).some(v => s_(v).toLowerCase() === vend.toLowerCase())) setItemsVendor(w, [s_(it.id)], vend, true);
+        switchActiveVendor(w, s_(it.id), vend);
       }
+      return old && old.toLowerCase() !== vend.toLowerCase() ? old : '';
+    };
+    // Ends first: a store moving its route to another of its items unlinks the old one.
+    for (const id of (Array.isArray(p.end) ? p.end : [])) {
+      const it = itemOf(id);
+      if (it.whProduct == null || Number(it.whProduct) !== pid) throw new Error('"' + s_(it.name) + '" isn\'t linked to ' + s_(prod.name) + ' here.');
+      delete it.whProduct; delete it.whPlace; delete it.whVendor;
+      out.ended.push(s_(it.name));
+    }
+    for (const r of (Array.isArray(p.routes) ? p.routes : [])) {
+      if (r && r.newVendor) out.vendorsAdded.push(saveVendor(w, Object.assign({}, r.newVendor, { mode: 'add' })).name);
+      let it;
+      if (r && r.newItem) {   // a store without it: a new item, no par and no storage area (Needs setup), like an LTO's
+        const name = s_(r.newItem.name) || s_(prod.name);
+        const same = w.items.find(x => s_(x.name).toLowerCase() === name.toLowerCase());
+        if (same) throw new Error('The store has "' + s_(same.name) + '" already: pick it instead.');
+        const had = new Set(w.items);
+        importItems(w, { items: [{ name: name, primaryVendor: normalizeVendorOrThrow(w, r.vendor), pack: pack, notes: s_(r.newItem.notes) }] });
+        it = w.items.find(x => !had.has(x));
+        out.added = (out.added || []).concat(s_(it.name));
+      } else it = itemOf(r && r.itemId);
+      if (it.active !== true) throw new Error('"' + s_(it.name) + '" is inactive here.');
+      const other = w.items.find(x => x !== it && x.whProduct != null && Number(x.whProduct) === pid);
+      if (other) throw new Error('"' + s_(other.name) + '" is linked to ' + s_(prod.name) + ' here already.');
+      const vend = normalizeVendorOrThrow(w, r.vendor);
+      const place = r.place == null || r.place === '' ? null : Number(r.place);
+      if (place !== null && !(Number.isInteger(place) && place > 0)) throw new Error('Which place?');
+      const oldPack = s_(it.pack);
+      const oldMain = makeMain(it, vend);
       if (pack) it.pack = pack;
       it.whProduct = pid;
-      return { ok: true, mode: 'link', id: s_(it.id), name: s_(it.name), product: s_(prod.name), via: s_(prod.via), vendor: hs, vendorsAdded: vendorsAdded,
-               oldMain: oldMain && oldMain.toLowerCase() !== hs.toLowerCase() ? oldMain : '',
-               packFrom: oldPack !== s_(it.pack) ? oldPack : null, pack: s_(it.pack) };
+      if (place === null) delete it.whPlace; else it.whPlace = place;
+      it.whVendor = vend;
+      out.linked.push({ id: s_(it.id), name: s_(it.name), vendor: vend, place: s_(r.placeName) || (place === null ? 'HEH\'s own' : 'place ' + place),
+                        oldMain: oldMain, packFrom: oldPack !== s_(it.pack) ? oldPack : null, pack: s_(it.pack) });
     }
-    const name = s_(p.item && p.item.name) || s_(prod.name);
-    const same = w.items.find(x => s_(x.name).toLowerCase() === name.toLowerCase());
-    if (same) throw new Error('The store has "' + s_(same.name) + '" already: link it instead.');
-    const had = new Set(w.items);
-    importItems(w, { items: [{ name: name, primaryVendor: hs, pack: pack, notes: s_(p.item && p.item.notes) }] });
-    const it = w.items.find(x => !had.has(x));
-    it.whProduct = pid;
-    return { ok: true, mode: 'add', id: s_(it.id), name: name, product: s_(prod.name), via: s_(prod.via), vendor: hs, vendorsAdded: vendorsAdded };
-  }
-
-  // ---- HEH's stock held at a vendor, linked by name (hq/ Elpis page, v19) --
-  // An item is HEH's product when its name is the product's name (case and
-  // spaces aside). For each product: 'linked' (the item carries it),
-  // 'match' (an active item has the name, not linked yet), 'taken' (that
-  // item is linked to another product) or 'missing'.
-  const sameName = (a, b) => s_(a).replace(/\s+/g, ' ').toLowerCase() === s_(b).replace(/\s+/g, ' ').toLowerCase();
-  function heldMatches(t, products) {
-    return (products || []).map(p => {
-      const pid = Number(p.id);
-      const linked = t.items.find(it => it.whProduct != null && Number(it.whProduct) === pid);
-      if (linked) return { productId: pid, status: 'linked', itemId: s_(linked.id), itemName: s_(linked.name) };
-      const it = t.items.find(x => x.active === true && sameName(x.name, p.name));
-      if (!it) return { productId: pid, status: 'missing', itemId: '', itemName: '' };
-      return { productId: pid, status: it.whProduct != null ? 'taken' : 'match', itemId: s_(it.id), itemName: s_(it.name) };
-    });
-  }
-  // p = { vendorName: the store's vendor holding it ("Elpis Wholesale")
-  //       products: [{ id, name, pack, via }]
-  //       renames: [{ itemId, to }] }   items renamed to a product's name first
-  // Then every product whose name an active, unlinked item has is linked the
-  // way Send to stores links one (hqProduct): the holder its main vendor, the
-  // product's pack. One change at the store, undoable there.
-  function hqHeldLinks(w, p) {
-    p = p || {};
-    const renamed = [];
-    for (const r of (Array.isArray(p.renames) ? p.renames : [])) {
-      const it = w.items.find(x => s_(x.id) === s_(r.itemId));
-      if (!it) throw new Error('That item isn\'t at the store any more.');
-      const to = s_(r.to);
-      if (!to) throw new Error('A rename needs a name.');
-      const clash = w.items.find(x => x !== it && sameName(x.name, to));
-      if (clash) throw new Error('The store has "' + s_(clash.name) + '" already (' + s_(clash.id) + ').');
-      if (!sameName(it.name, to) || s_(it.name) !== to) renamed.push({ id: s_(it.id), from: s_(it.name), to: to });
-      it.name = to;
+    for (const id of (Array.isArray(p.putBack) ? p.putBack : [])) {
+      const it = itemOf(id);
+      if (it.whProduct == null || Number(it.whProduct) !== pid) throw new Error('"' + s_(it.name) + '" isn\'t linked to ' + s_(prod.name) + ' here.');
+      const vend = s_(it.whVendor);
+      if (!vend || !findVendor(w, vend)) throw new Error('"' + s_(it.name) + '" has no vendor for ' + s_(prod.name) + ' here any more: set its route again, or end it.');
+      makeMain(it, vend);
+      out.putBack.push({ name: s_(it.name), vendor: vend });
     }
-    const linked = [];
-    for (const m of heldMatches(w, p.products)) {
-      if (m.status !== 'match') continue;
-      const prod = p.products.find(x => Number(x.id) === m.productId);
-      hqProduct(w, { vendor: null, vendorName: p.vendorName, product: prod, link: m.itemId });
-      linked.push(s_(prod.name));
-    }
-    if (!linked.length && !renamed.length) throw new Error('Nothing to link here.');
-    return { ok: true, linked: linked, renamed: renamed, via: s_((p.products[0] || {}).via), vendor: normalizeVendorOrThrow(w, p.vendorName) };
+    return out;
   }
 
   // The store's active items closest to a product's name, best first, for
@@ -1363,6 +1350,7 @@
     for (const v of t.vendors) if (v.name === from) v.name = to;
     for (const it of t.items) {
       if (it.primaryVendor === from) it.primaryVendor = to;
+      if (it.whVendor === from) it.whVendor = to;   // v21: the route's vendor follows (on update cascade)
       if ((it.eligible || []).indexOf(from) >= 0) it.eligible = it.eligible.map(x => (x === from ? to : x));
     }
     for (const r of t.pickRows) if (r.vendor === from) r.vendor = to;
@@ -1618,7 +1606,7 @@
   const USER_FIELDS = {
     vendors:  ['mults', 'cutoff', 'contact'],
     areas:    ['ord'],
-    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whProduct'],
+    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whProduct', 'whPlace', 'whVendor'],
     pickRows: ['area', 'shelfOrder']
   };
   function matches(t, row, want) {
@@ -1732,23 +1720,17 @@
       if (result.vendorsRemoved.length) parts.push('removed vendor' + (result.vendorsRemoved.length === 1 ? ' ' : 's ') + result.vendorsRemoved.join(', '));
       return 'HQ rolled back ' + lto + (parts.length ? ': ' + parts.join('; ') : '');
     }
-    if (fn === 'commitHqHeldLinks') {
-      const parts = [];
-      for (const r of result.renamed) parts.push('renamed "' + r.from + '" to "' + r.to + '"');
-      if (result.linked.length) parts.push('linked ' + plural(result.linked.length, 'item') + ' to HEH\'s stock at ' + result.via + ' (' + result.linked.join(', ') + ')');
-      return 'HQ: ' + parts.join('; ');
-    }
-    if (fn === 'commitHqProduct') {
+    if (fn === 'commitHqRoutes') {
       const parts = [];
       if (result.vendorsAdded.length) parts.push('added vendor ' + result.vendorsAdded.join(', '));
-      const whose = result.via ? 'HEH\'s ' + result.product + ' at ' + result.via : 'Happy Supply\'s ' + result.product;
-      if (result.mode === 'add') parts.push('added "' + result.name + '" (' + result.id + ') from ' + whose);
-      else {
-        parts.push('linked "' + result.name + '" to ' + whose);
-        if (result.oldMain) parts.push(result.vendor + ' its main vendor, ' + result.oldMain + ' a backup');
-        if (result.packFrom !== null) parts.push('pack ' + fmt(result.packFrom) + ' → ' + result.pack);
+      if (result.added && result.added.length) parts.push('added ' + result.added.map(n => '"' + n + '"').join(', ') + ' (no par, no area)');
+      for (const x of result.linked) {
+        parts.push('"' + x.name + '" from ' + x.place + ' as ' + x.vendor + (x.oldMain ? ' (' + x.oldMain + ' a backup)' : '') +
+                   (x.packFrom !== null ? ', pack ' + fmt(x.packFrom) + ' → ' + x.pack : ''));
       }
-      return 'HQ: ' + parts.join('; ');
+      if (result.ended.length) parts.push('ended the route for ' + result.ended.join(', '));
+      for (const x of result.putBack) parts.push('"' + x.name + '" back on ' + x.vendor);
+      return ('HQ ' + result.product + ': ' + parts.join('; ')).slice(0, 300);
     }
     if (fn === 'commitHqRollout') {
       const parts = [];
@@ -1822,8 +1804,7 @@
     commitSaveVendor: (w, args, shifts, renames) => saveVendor(w, args[0], renames),
     commitHqRollout: (w, args) => hqRollout(w, args[0]),
     commitHqLto: (w, args) => hqLto(w, args[0]),
-    commitHqProduct: (w, args) => hqProduct(w, args[0]),
-    commitHqHeldLinks: (w, args) => hqHeldLinks(w, args[0]),
+    commitHqRoutes: (w, args) => hqRoutes(w, args[0]),
     commitStorageAreasDraft: (w, args, shifts, renames) => storageAreasDraft(w, args[0], renames),
     commitReorderPickPath: (w, args) => reorderPickPath(w, args[0], args[1]),
     commitPlaceBackupVendors: w => placeBackupVendors(w)
@@ -1845,7 +1826,7 @@
                 writes: Object.keys(WRITES), vendorList: vendorList, parseCsv: parseCsv,
                 multsFromDays: multsFromDays, daysFromMults: daysFromMults, matchVendor: matchVendor,
                 cleanLibrary: cleanLibrary, librarySeed: librarySeed, libraryAdd: libraryAdd, libraryLabel: libraryLabel,
-                ltoStoreState: ltoStoreState, ltoWaiting: ltoWaiting, productCandidates: productCandidates, heldMatches: heldMatches };
+                ltoStoreState: ltoStoreState, ltoWaiting: ltoWaiting, productCandidates: productCandidates };
   root.CatalogEdit = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : this);

@@ -66,27 +66,41 @@ function problems(whText) {
   const L = loadWH(whText), CE = loadCE(SRC(CE_FILE));
 
   // ---- The page's logic ----
-  const tys = { id: 3, name: 'RP Tysons', heldBy: 'Transfer (Tysons)', heldStore: 'zzt' }, elp = { id: 4, name: 'Elpis', heldBy: 'Elpis Wholesale' };
-  const ber = { id: 1, name: 'Berliner' };
-  const placed = { id: 9, name: 'Shrimp', via: 'Elpis Wholesale', places: [{ locationId: 1, lowPoint: 20 }, { locationId: 3, lowPoint: 12 }], stock: { 1: 40, 3: 10 } };
-  if (!L.fits(placed, tys) || !L.fits(placed, ber) || L.fits(placed, elp)) bad('logic: an item sits at its places, not where its v17 via points once it has places');
-  if (!L.fits({ id: 8, via: 'Elpis Wholesale', stock: {} }, elp)) bad('logic: an item with no place yet still follows its via');
+  const tys = { id: 3, name: 'RP Tysons', heldBy: 'RP Tysons', heldStore: 'zzt', active: true }, elp = { id: 4, name: 'Elpis', heldBy: 'Elpis Wholesale', active: true };
+  const ber = { id: 1, name: 'Berliner', active: true };
+  const placed = { id: 9, name: 'Shrimp', places: [{ locationId: 1, lowPoint: 20 }, { locationId: 3, lowPoint: 12 }], stock: { 1: 40, 3: 10 } };
+  if (!L.fits(placed, tys) || !L.fits(placed, ber) || L.fits(placed, elp)) bad('logic: an item sits at its places');
+  if (L.fits({ id: 8, via: 'Elpis Wholesale', stock: {} }, elp)) bad('logic: an item with no place sits nowhere (v21: its via retired)');
+  // v21: a store's route, as HQ shows it
+  const locs = [ber, tys, elp];
+  const rr = Object.assign.bind(null, {});
+  const ok = { slug: 'zzr', vendor: 'Transfer (Tysons)', mainVendor: 'Transfer (Tysons)', active: true, placeId: 3 };
+  const st = r => L.routeStatus(r, placed, locs);
+  if (!st(ok).ok) bad('logic: a route from a place that has it, under the main vendor, is fine', st(ok));
+  if (st(rr(ok, { mainVendor: 'SamuelSon' })).reason !== 'moved') bad('logic: a store that moved its main vendor breaks the route', st(rr(ok, { mainVendor: 'SamuelSon' })));
+  if (st(rr(ok, { vendor: null })).reason !== 'vendor') bad('logic: a route whose vendor was removed is broken', st(rr(ok, { vendor: null })));
+  if (st(rr(ok, { active: false })).reason !== 'inactive') bad('logic: an inactive item\'s route is broken');
+  if (st(rr(ok, { placeId: 4 })).reason !== 'place') bad('logic: a route from a place that doesn\'t have it is broken');
+  if (st(rr(ok, { slug: 'zzt' })).reason !== 'place') bad('logic: a store taking from a place it holds is broken');
+  if (!st(rr(ok, { placeId: null, vendor: 'Happy Supply', mainVendor: 'Happy Supply' })).ok) bad('logic: a route to HEH\'s own, for an item there, is fine');
+  if (L.routeStatus(rr(ok, { placeId: null }), { id: 9, places: [{ locationId: 3, lowPoint: 0 }] }, locs).reason !== 'place') bad('logic: a route to HEH\'s own for an item not there is broken');
   if (L.placeKind(ber) !== 'own' || L.placeKind(tys) !== 'store' || L.placeKind(elp) !== 'vendor') bad('logic: a place\'s kind', [L.placeKind(ber), L.placeKind(tys), L.placeKind(elp)]);
   if (!L.isLow(placed, tys) || L.isLow(placed, ber)) bad('logic: below its low point at Tysons (10 of 12), not at Berliner (40 of 20)');
   if (L.isLow({ id: 7, places: [{ locationId: 3, lowPoint: 0 }], stock: { 3: 0 } }, tys)) bad('logic: a low point of 0 is none');
-  const draft = { id: 9, version: 4, name: ' Shrimp ', pack: 'CASE (10LBs)', concept: 'roll-play', fee: '2.50', par: 0, active: true, limit: false, stores: ['zzr'],
+  const draft = { id: 9, version: 4, name: ' Shrimp ', pack: 'CASE (10LBs)', concept: 'roll-play', fee: '2.50', active: true,
                   places: [{ locationId: 1, low: '20', now: '40', reason: '' }, { locationId: 3, low: '', now: '12', reason: 'Sunday count' }, { locationId: 4, low: '1', now: '', reason: '' }] };
   const row = L.itemRow(draft);
-  if (!same(row, { name: 'Shrimp', pack: 'CASE (10LBs)', par: 0, handlingFee: 2.5, stores: [], active: true, concept: 'roll-play',
+  if (!same(row, { name: 'Shrimp', pack: 'CASE (10LBs)', handlingFee: 2.5, active: true, concept: 'roll-play',
                    places: [{ locationId: 1, lowPoint: 20 }, { locationId: 3, lowPoint: 0 }, { locationId: 4, lowPoint: 1 }], id: 9, version: 4 })) bad('logic: an item\'s save', row);
   const counts = L.itemCounts(draft, placed);
   if (!same(counts, [{ locationId: 3, lines: [{ productId: 9, cases: 12, reason: 'Sunday count' }] }])) bad('logic: an item\'s save counts only a changed Now', counts);
   const pr1 = L.placeRow({ id: 3, name: ' RP Tysons ', kind: 'store', heldBy: 'Transfer (Tysons)', heldStore: 'zzt', countHow: '', active: true });
   const pr2 = L.placeRow({ name: 'Elpis', kind: 'vendor', heldBy: 'Elpis Wholesale', heldStore: 'zzt', countHow: '', active: true });
   const pr3 = L.placeRow({ name: 'Berliner', kind: 'own', heldBy: 'x', heldStore: 'zzt', countHow: '', active: false });
-  if (!same(pr1, { name: 'RP Tysons', active: true, heldBy: 'Transfer (Tysons)', heldStore: 'zzt', countHow: 'marginedge', id: 3 })
-      || !same(pr2, { name: 'Elpis', active: true, heldBy: 'Elpis Wholesale', heldStore: null, countHow: 'report' })
-      || !same(pr3, { name: 'Berliner', active: false, heldBy: null, heldStore: null, countHow: 'hq' })) bad('logic: a place\'s save', [pr1, pr2, pr3]);
+  // v21: a place at a store sends no heldBy (the server holds it under its own name)
+  if (!same(pr1, { name: 'RP Tysons', active: true, heldStore: 'zzt', countHow: 'marginedge', id: 3 })
+      || !same(pr2, { name: 'Elpis', active: true, heldStore: null, countHow: 'report', heldBy: 'Elpis Wholesale' })
+      || !same(pr3, { name: 'Berliner', active: false, heldStore: null, countHow: 'hq', heldBy: null })) bad('logic: a place\'s save', [pr1, pr2, pr3]);
   const mv = L.moveInPayload({ id: 5, version: 2, lines: [{ ord: 1, cases: 16, casesShipped: 16 }, { ord: 2, cases: 4, casesShipped: 3 }] }, { 1: '15' });
   if (!same(mv, { id: 5, version: 2, lines: [{ ord: 1, cases: 15 }, { ord: 2, cases: 3 }] })) bad('logic: a blank line of a shipment arrives as shipped', mv);
   if (!same(L.monthSpan('2026-10'), { from: '2026-09-30', to: '2026-10-31' }) || !same(L.monthSpan('2026-03'), { from: '2026-02-28', to: '2026-03-31' })) {
@@ -118,18 +132,18 @@ function problems(whText) {
   const rt = wh('mog_wh_save', { p_kind: 'location', p_row: L.placeRow({ name: 'RP Tysons', kind: 'store', heldBy: 'Transfer (Tysons)', heldStore: 'zzt', active: true }) });
   if (!rt.ok) return out.concat(['fake: the place at a store was refused: ' + JSON.stringify(rt)]);
   const tysons = rt.data.done.id, loc = rt.data.locations.find(l => l.id === tysons);
-  if (!(loc.heldStore === 'zzt' && loc.store === 'Test Tysons BOH' && loc.countHow === 'marginedge')) bad('fake: a place at a store, by its store\'s name', loc);
-  const ri = wh('mog_wh_save', { p_kind: 'product', p_row: L.itemRow({ name: 'Shrimp 21/25 P&D', pack: 'CASE (10LBs)', concept: 'roll-play', fee: '2.50', par: 0, active: true,
-    limit: false, stores: [], places: [{ locationId: berliner, low: '20' }, { locationId: tysons, low: '12' }] }) });
+  if (!(loc.heldStore === 'zzt' && loc.store === 'Test Tysons BOH' && loc.countHow === 'marginedge' && loc.heldBy === 'RP Tysons')) bad('fake: a place at a store, held under its own name, by its store\'s name', loc);
+  const ri = wh('mog_wh_save', { p_kind: 'product', p_row: L.itemRow({ name: 'Shrimp 21/25 P&D', pack: 'CASE (10LBs)', concept: 'roll-play', fee: '2.50', active: true,
+    places: [{ locationId: berliner, low: '20' }, { locationId: tysons, low: '12' }] }) });
   if (!ri.ok) return out.concat(['fake: the item was refused: ' + JSON.stringify(ri)]);
   const shrimp = ri.data.done.id;
   wh('mog_wh_count', { p_count: { locationId: berliner, lines: [{ productId: shrimp, cases: 40, reason: 'Opening count' }] } });
   wh('mog_wh_count', { p_count: { locationId: tysons, lines: [{ productId: shrimp, cases: 6, reason: 'Opening count from MarginEdge' }] } });
   const hq = sb.handle('mog_hq_data', { p_token: tok }).data;
-  const plan = [['zzt', 'Happy Supply'], ['zzr', 'Transfer (Tysons)']].map(([slug, v]) => ({ slug, v, call: CE.call(hq.stores.find(x => x.slug === slug).tables, 'commitHqHeldLinks',
-    [{ vendorName: v, products: [{ id: shrimp, name: 'Shrimp 21/25 P&D', pack: 'CASE (10LBs)', via: 'RP Tysons' }], renames: [] }]) }));
-  const applied = sb.handle('mog_hq_apply', { p_token: tok, p_changes: plan.map(x => ({ slug: x.slug, label: x.call.label, ops: x.call.ops })),
-    p_links: plan.map(x => ({ slug: x.slug, hqName: x.v, vendor: x.v })) });
+  // v21: each store's route, with no remembered vendor names at all.
+  const plan = [['zzt', null, 'Happy Supply'], ['zzr', tysons, 'Transfer (Tysons)']].map(([slug, place, v]) => ({ slug, call: CE.call(hq.stores.find(x => x.slug === slug).tables, 'commitHqRoutes',
+    [{ product: { id: shrimp, name: 'Shrimp 21/25 P&D', pack: 'CASE (10LBs)' }, routes: [{ itemId: 'ITEM-0001', place, vendor: v }] }]) }));
+  const applied = sb.handle('mog_hq_apply', { p_token: tok, p_changes: plan.map(x => ({ slug: x.slug, label: x.call.label, ops: x.call.ops })), p_links: [] });
   if (!applied.ok) return out.concat(['fake: HQ\'s links were refused: ' + JSON.stringify(applied)]);
   const ptok = slug => sb.handle('mog_login', { p_slug: slug, p_pin: '4321' }).data.token;
   const pt = ptok('zzt'), pr = ptok('zzr');
@@ -183,13 +197,19 @@ let failed = 0;
 const WH_TEXT = SRC(WH_FILE);
 const main = problems(WH_TEXT);
 if (main.length) { failed++; console.log('FAIL  ' + main.join('\n      ')); }
-else console.log('PASS  places: an item at its places, a place\'s kind, low points, the item\'s and place\'s saves, HQ\'s check-in of a shipment, a month\'s span, ' +
+else console.log('PASS  places: an item at its places, a place\'s kind, a route\'s status, low points, the item\'s and place\'s saves, HQ\'s check-in of a shipment, a month\'s span, ' +
                  'the CSV; through the fake, the holder\'s order into its place, the taker\'s delivery from it, a count and who took what');
 
 const CONTROLS = [
-  { name: 'an item with places still follows its via',
-    find: "    if (p.places && p.places.length) return p.places.some(x => x.locationId === loc.id);   // v20: the places it sits at\n",
-    replace: "" },
+  { name: 'a store that moved its main vendor still reads fine',
+    find: "    if (String(r.mainVendor || '') !== String(r.vendor)) {",
+    replace: "    if (false) {" },
+  { name: 'a store can take from a place it holds',
+    find: "      if (L.heldStore === r.slug) return",
+    replace: "      if (false) return" },
+  { name: 'a place at a store sends its vendor name',
+    find: "    if (f.kind === 'vendor') row.heldBy = f.heldBy;",
+    replace: "    if (f.kind !== 'own') row.heldBy = f.heldBy;" },
   { name: 'a place at a store reads as a vendor\'s',
     find: "return !loc || !loc.heldBy ? 'own' : loc.heldStore ? 'store' : 'vendor';",
     replace: "return !loc || !loc.heldBy ? 'own' : 'vendor';" },

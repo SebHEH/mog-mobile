@@ -189,6 +189,14 @@ check "v20 helper: wh_available_at not exposed"     404 ''   -X POST "${J[@]}" -
 check "v20 helper: wh_hs_receive not exposed"       404 ''   -X POST "${J[@]}" -d '{"p_id":1,"p_by":"x","p_received_by":"x","p_lines":[]}' "$(rpc wh_hs_receive)"
 check "v20 helper: wh_taken not exposed"            404 ''   -X POST "${J[@]}" -d '{"p_from":"2026-10-04","p_to":"2026-11-01"}' "$(rpc wh_taken)"
 
+# schema v21 (routes on the store's item row; a bogus token only)
+check "v21 wh_send by route: bad token refused"     200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_order":{"vendor":"x","lines":[]}}' "$(rpc mog_wh_send)"
+check "v21 wh_data with routes: bad token refused"  200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus"}' "$(rpc mog_wh_data)"
+check "v21 helper: wh_routes_json not exposed"      404 ''   -X POST "${J[@]}" -d '{}' "$(rpc wh_routes_json)"
+check "v21 helper: wh_place_carries not exposed"    404 ''   -X POST "${J[@]}" -d '{"p_product":1,"p_location":1}' "$(rpc wh_place_carries)"
+check "v21 gone: wh_store_vendor"                   404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore"}' "$(rpc wh_store_vendor)"
+check "v21 gone: wh_held_vendor"                    404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_hq_name":"x"}' "$(rpc wh_held_vendor)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

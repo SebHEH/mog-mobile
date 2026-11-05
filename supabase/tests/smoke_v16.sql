@@ -34,7 +34,8 @@ returns void language sql as $$
 $$;
 
 -- A store on the app's editor and phones, counting today, whose Happy
--- Supply is "HS Co" (HQ's remembered name). Answers its sync key.
+-- Supply is "HS Co" (since v21: the vendor its items' routes to HEH's own
+-- places use). Answers its sync key.
 create or replace function pg_temp.store16(p_slug text)
 returns text language plpgsql as $$
 declare
@@ -63,7 +64,6 @@ begin
   perform public.mog_sync_set_phone_direct(p_slug, k, true);
   insert into mog.store_state (slug, cycle_date, day_of_week) values (p_slug, current_date, 'Mon')
   on conflict (slug) do update set cycle_date = excluded.cycle_date;
-  insert into mog.hq_vendor_links (slug, hq_name, vendor) values (p_slug, 'Happy Supply', 'HS Co');
   return k;
 end;
 $$;
@@ -111,8 +111,7 @@ begin
       and not has_table_privilege('anon', 'mog.wh_order_lines', 'select')
       and not has_function_privilege('anon', 'mog.wh_do_ship(text, jsonb)', 'execute')
       and not has_function_privilege('anon', 'mog.wh_live_json(text)', 'execute')
-      and not has_function_privilege('anon', 'mog.wh_available(bigint, text, date)', 'execute')
-      and not has_function_privilege('anon', 'mog.wh_store_vendor(text)', 'execute'), null);
+      and not has_function_privilege('anon', 'mog.wh_available(bigint, text, date)', 'execute'), null);
 
   perform pg_temp.clean16();
 
@@ -121,7 +120,9 @@ begin
   insert into mog.wh_locations (name, ord) values ('zz smoke 16 Tysons', 2) returning id into locB;
   insert into mog.wh_products (name, pack, par, handling_fee) values ('zz smoke 16 shrimp', '10 LB case', 12, 6) returning id into shrimp;
   insert into mog.wh_products (name, pack, par, handling_fee) values ('zz smoke 16 crab', '20 LB case', 10, 10) returning id into crab;
-  insert into mog.wh_products (name, pack, par, handling_fee, stores) values ('zz smoke 16 lobster', 'CASE', 2, 5, '{zztest16b}') returning id into lobster;
+  insert into mog.wh_products (name, pack, par, handling_fee) values ('zz smoke 16 lobster', 'CASE', 2, 5) returning id into lobster;
+  -- v21: Happy Supply sells what sits at one of HEH's own places.
+  insert into mog.wh_product_places (product_id, location_id) values (shrimp, locA), (crab, locA), (lobster, locA);
   perform mog.wh_move(me, shrimp, locA, 9, 'received', 'zz', 77.3095, null);
   perform mog.wh_move(me, crab, locA, 14, 'received', 'zz', 120, null);
   perform mog.wh_move(me, lobster, locA, 3, 'received', 'zz', 50, null);
@@ -149,7 +150,7 @@ begin
   -- ---- HQ links Shrimp to the product: Happy Supply becomes its main vendor ----
   before1 := pg_temp.row16('zztest16', 'ITEM-0001');
   after1 := before1 || jsonb_build_object('primaryVendor', 'HS Co', 'eligible', '["HS Co", "Sysco"]'::jsonb,
-                                          'pack', '10 LB case', 'whProduct', shrimp);
+                                          'pack', '10 LB case', 'whProduct', shrimp, 'whVendor', 'HS Co');
   r := public.mog_hq_apply(tok, jsonb_build_array(jsonb_build_object('slug', 'zztest16', 'label', 'HQ: linked Shrimp to Happy Supply',
          'ops', jsonb_build_array(jsonb_build_object('t', 'items', 'before', before1, 'after', after1)))), '[]'::jsonb);
   cid := (r -> 'data' -> 'changes' -> 0 ->> 'changeId')::bigint;
@@ -170,14 +171,15 @@ begin
 
   -- The rest straight in the tables (the editor path is checked above).
   before1 := pg_temp.row16('zztest16', 'ITEM-0002');
-  update mog.items set wh_product = crab where slug = 'zztest16' and item_id = 'ITEM-0002';
+  update mog.items set wh_product = crab, wh_vendor = 'HS Co' where slug = 'zztest16' and item_id = 'ITEM-0002';
   r := public.mog_editor_apply(etok, 'Edited "Crab": par 4 → 5', 'Maria',
          jsonb_build_array(jsonb_build_object('t', 'items', 'before', before1, 'after', before1 || '{"par": 5}'::jsonb)));
   perform pg_temp.chk('link: a page whose row differs only by the link gets CONFLICT, not an unlinked item',
     r ->> 'error' = 'CONFLICT' and (pg_temp.row16('zztest16', 'ITEM-0002') ->> 'whProduct')::bigint = crab, r);
+  -- v21: zztest16's Lobster is linked with no route (it stays off Happy Supply's list there).
   update mog.items set wh_product = lobster where slug = 'zztest16' and item_id = 'ITEM-0004';
-  update mog.items set primary_vendor = 'HS Co', eligible_vendors = '{HS Co}', wh_product = shrimp where slug = 'zztest16b' and item_id = 'ITEM-0001';
-  update mog.items set wh_product = lobster where slug = 'zztest16b' and item_id = 'ITEM-0004';
+  update mog.items set primary_vendor = 'HS Co', eligible_vendors = '{HS Co}', wh_product = shrimp, wh_vendor = 'HS Co' where slug = 'zztest16b' and item_id = 'ITEM-0001';
+  update mog.items set wh_product = lobster, wh_vendor = 'HS Co' where slug = 'zztest16b' and item_id = 'ITEM-0004';
 
   -- ---- The phone's read ----
   d := mog.live_json('zztest16', null) -> 'happySupply';
@@ -185,7 +187,7 @@ begin
     d ->> 'vendor' = 'HS Co' and (d -> 'items' -> 'ITEM-0001' ->> 'available')::numeric = 9
       and (d -> 'items' -> 'ITEM-0002' ->> 'available')::numeric = 14 and (d -> 'items' -> 'ITEM-0001' ->> 'productId')::bigint = shrimp
       and not (d -> 'items' ? 'ITEM-0003') and jsonb_array_length(d -> 'orders') = 0, d);
-  perform pg_temp.chk('read: a product Happy Supply sells only to other stores isn''t offered here',
+  perform pg_temp.chk('read: an item linked with no route isn''t offered here; the store with a route gets it (v21)',
     not (d -> 'items' ? 'ITEM-0004') and (mog.live_json('zztest16b', null) -> 'happySupply' -> 'items') ? 'ITEM-0004', d);
   r := public.mog_snapshot2(ptok, null, null, null, null);
   perform pg_temp.chk('read: the phone''s 10-second snapshot carries it',
@@ -224,7 +226,7 @@ begin
   r := public.mog_wh_send(ptok, '{"vendor": "Sysco", "lines": [{"itemId": "ITEM-0001", "cases": 1}]}');
   perform pg_temp.chk('send: another vendor isn''t Happy Supply', r ->> 'error' like 'REJECTED: Sysco isn''t this store''s Happy Supply%', r);
   r := public.mog_wh_send(ptok, '{"vendor": "HS Co", "lines": [{"itemId": "ITEM-0004", "cases": 1}]}');
-  perform pg_temp.chk('send: a product limited to other stores is refused', r ->> 'error' like 'REJECTED: Happy Supply doesn''t sell Lobster%', r);
+  perform pg_temp.chk('send: an item with no route is refused (v21)', r ->> 'error' like 'REJECTED: Lobster isn''t on Happy Supply''s list here%', r);
   r := public.mog_wh_send(ptok, '{"vendor": "HS Co", "lines": [{"itemId": "ITEM-0001", "cases": 0}]}');
   perform pg_temp.chk('send: 0 cases is refused', r ->> 'error' like 'REJECTED: Shrimp needs more than 0 cases%', r);
   r := public.mog_wh_send(ptok, '{"vendor": "HS Co", "lines": [{"itemId": "ITEM-0001", "cases": 1}, {"itemId": "ITEM-0001", "cases": 2}]}');

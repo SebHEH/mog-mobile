@@ -3,7 +3,7 @@
 // docs/MOG_Warehouse_Spec.md §2 "W2a design"): the client code that calls it,
 // run against the fake Supabase (fake_supabase.js mirrors v16; the SQL is
 // pinned in Postgres by supabase/tests/smoke_v16.sql). Checks:
-//   - catalogEdit.js commitHqProduct, link: the item's whProduct, Happy Supply
+//   - catalogEdit.js commitHqRoutes (v21; was commitHqProduct), a route to HEH's own: the item's whProduct and whVendor, Happy Supply
 //     its main vendor (the old main kept as a backup, with a count-list row in
 //     the item's area), the product's pack; Undo exact
 //   - add: a new item linked, no par and no area; refused when the store has
@@ -112,51 +112,66 @@ function problems(ceText, whText, phoneHtml) {
   try { CE = loadCE(ceText); } catch (e) { return ['catalogEdit.js did not load: ' + e.message]; }
   try { WH = loadWH(whText); } catch (e) { return ['warehouse.js did not load: ' + e.message]; }
   try { PH = loadPhone(phoneHtml); } catch (e) { return ['the phone\'s Happy Supply code did not load: ' + e.message]; }
-  if (CE.writes.indexOf('commitHqProduct') < 0 || typeof CE.productCandidates !== 'function') return ['commitHqProduct is not registered'];
-  const run = (tb, args) => { const c = CE.call(tb, 'commitHqProduct', [args]); return { c, a: CE.applyOps(tb, c.ops) }; };
+  if (CE.writes.indexOf('commitHqRoutes') < 0 || typeof CE.productCandidates !== 'function') return ['commitHqRoutes is not registered'];
+  const run = (tb, args) => { const c = CE.call(tb, 'commitHqRoutes', [args]); return { c, a: CE.applyOps(tb, c.ops) }; };
+  const route = (product, r) => ({ product, routes: [Object.assign({ place: null, placeName: 'Happy Supply', vendor: 'Happy Supply' }, r)] });
   const itemOf = (tb, id) => tb.items.find(x => x.id === id);
 
-  // ---- Link an item the store has ----
+  // ---- Route an item the store has to HEH's own (Happy Supply) ----
   const t = storeTables();
-  const link = run(t, { vendor: null, vendorName: 'Happy Supply', product: SHRIMP, link: 'ITEM-0003', item: { name: SHRIMP.name } });
+  const link = run(t, route(SHRIMP, { itemId: 'ITEM-0003' }));
   const s1 = itemOf(link.a, 'ITEM-0003');
-  if (link.c.result.mode !== 'link' || s1.whProduct !== 7) bad('link: the item carries the product', JSON.stringify(s1));
+  if (s1.whProduct !== 7 || s1.whVendor !== 'Happy Supply' || 'whPlace' in s1) bad('link: the item carries its route (HEH\'s own: no place)', JSON.stringify(s1));
   if (s1.primaryVendor !== 'Happy Supply' || s1.eligible.indexOf('Sysco') < 0 || s1.eligible.indexOf('Happy Supply') < 0) bad('link: Happy Supply main, Sysco a backup', JSON.stringify(s1));
   if (s1.pack !== '10 LB case' || s1.par !== 10) bad('link: the product\'s pack, the par kept', JSON.stringify(s1));
   if (!link.a.pickRows.some(r => r.vendor === 'Happy Supply' && r.id === 'ITEM-0003' && r.area === 'Freezer') ||
       !link.a.pickRows.some(r => r.vendor === 'Sysco' && r.id === 'ITEM-0003')) bad('link: a Happy Supply count-list row in its area, the Sysco one kept', JSON.stringify(link.a.pickRows));
-  if (!/^HQ: linked "SHRIMP 16-20" to Happy Supply's Shrimp 16\/20; Happy Supply its main vendor, Sysco a backup; pack CASE → 10 LB case$/.test(link.c.label)) bad('link: the change\'s label', link.c.label);
+  if (link.c.label !== 'HQ Shrimp 16/20: "SHRIMP 16-20" from Happy Supply as Happy Supply (Sysco a backup), pack CASE → 10 LB case') bad('link: the change\'s label', link.c.label);
   if (link.a.items.filter(x => !same(x, itemOf(t, x.id))).length !== 1) bad('link: another item changed');
   rules(link.a, 'link');
   if (!same(CE.applyOps(link.a, CE.inverseOps(link.c.ops)), t)) bad('link: Undo is not exact');
 
-  // ---- Add a new one ----
-  const add = run(t, { vendor: null, vendorName: 'Happy Supply', product: CRAB, link: '', item: { name: CRAB.name } });
+  // ---- A store without it: a new item ----
+  const add = run(t, route(CRAB, { itemId: '', newItem: { name: CRAB.name } }));
   const c1 = add.a.items.find(x => x.name === CRAB.name);
-  if (add.c.result.mode !== 'add' || !c1 || c1.whProduct !== 8 || c1.primaryVendor !== 'Happy Supply' || c1.par !== null || c1.pack !== '20 LB case' ||
-      add.a.pickRows.some(r => r.id === c1.id)) bad('add: a new linked item, no par and no area', JSON.stringify(c1));
-  if (add.c.label !== 'HQ: added "King crab legs 9/12" (' + (c1 && c1.id) + ') from Happy Supply\'s King crab legs 9/12') bad('add: the label', add.c.label);
+  if (!c1 || c1.whProduct !== 8 || c1.whVendor !== 'Happy Supply' || c1.primaryVendor !== 'Happy Supply' || c1.par !== null || c1.pack !== '20 LB case' ||
+      add.a.pickRows.some(r => r.id === c1.id)) bad('add: a new item with its route, no par and no area', JSON.stringify(c1));
+  if (add.c.label !== 'HQ King crab legs 9/12: added "King crab legs 9/12" (no par, no area); "King crab legs 9/12" from Happy Supply as Happy Supply') bad('add: the label', add.c.label);
   rules(add.a, 'add');
   if (!same(CE.applyOps(add.a, CE.inverseOps(add.c.ops)), t)) bad('add: Undo is not exact');
 
-  // ---- Refusals ----
-  if (!/link it instead/.test(refused(() => CE.call(t, 'commitHqProduct', [{ vendorName: 'Happy Supply', product: SHRIMP, link: '', item: { name: 'shrimp 16-20' } }])))) bad('refusal: a name the store has was added again');
-  if (!/linked to Shrimp 16\/20 here already/.test(refused(() => CE.call(link.a, 'commitHqProduct', [{ vendorName: 'Happy Supply', product: SHRIMP, link: 'ITEM-0005' }])))) bad('refusal: a product linked to two items');
-  if (!/inactive/.test(refused(() => CE.call(t, 'commitHqProduct', [{ vendorName: 'Happy Supply', product: SHRIMP, link: 'ITEM-0006' }])))) bad('refusal: an inactive item linked');
-  if (!/any more/.test(refused(() => CE.call(t, 'commitHqProduct', [{ vendorName: 'Happy Supply', product: SHRIMP, link: 'ITEM-9999' }])))) bad('refusal: a missing item linked');
-  if (!/Vendor "Nobody" is not in/.test(refused(() => CE.call(t, 'commitHqProduct', [{ vendorName: 'Nobody', product: SHRIMP, link: 'ITEM-0003' }])))) bad('refusal: an unknown vendor');
-  if (!/Which product/.test(refused(() => CE.call(t, 'commitHqProduct', [{ vendorName: 'Happy Supply', product: {}, link: 'ITEM-0003' }])))) bad('refusal: no product');
+  // ---- End, and put a moved route back ----
+  try {
+    const end = run(link.a, { product: SHRIMP, end: ['ITEM-0003'] });
+    const e1 = itemOf(end.a, 'ITEM-0003');
+    if ('whProduct' in e1 || 'whVendor' in e1 || e1.primaryVendor !== 'Happy Supply') bad('end: the link and route come off, the item stays as it is', JSON.stringify(e1));
+    const moved = CE.applyOps(link.a, CE.call(link.a, 'commitSwitchActiveVendor', ['ITEM-0003', 'Sysco']).ops);
+    const back = run(moved, { product: SHRIMP, putBack: ['ITEM-0003'] });
+    if (itemOf(back.a, 'ITEM-0003').primaryVendor !== 'Happy Supply' || itemOf(back.a, 'ITEM-0003').whVendor !== 'Happy Supply') bad('put back: the route\'s vendor is the main vendor again', JSON.stringify(itemOf(back.a, 'ITEM-0003')));
+  } catch (e) { bad('end and put back threw', e.message); }
 
-  // ---- A KM's save keeps the link; a stale row is a CONFLICT ----
+  // ---- Refusals ----
+  if (!/pick it instead/.test(refused(() => CE.call(t, 'commitHqRoutes', [route(SHRIMP, { itemId: '', newItem: { name: 'shrimp 16-20' } })])))) bad('refusal: a name the store has was added again');
+  if (!/linked to Shrimp 16\/20 here already/.test(refused(() => CE.call(link.a, 'commitHqRoutes', [route(SHRIMP, { itemId: 'ITEM-0005' })])))) bad('refusal: a product linked to two items');
+  if (!/inactive/.test(refused(() => CE.call(t, 'commitHqRoutes', [route(SHRIMP, { itemId: 'ITEM-0006' })])))) bad('refusal: an inactive item linked');
+  if (!/any more/.test(refused(() => CE.call(t, 'commitHqRoutes', [route(SHRIMP, { itemId: 'ITEM-9999' })])))) bad('refusal: a missing item linked');
+  if (!/Vendor "Nobody" is not in/.test(refused(() => CE.call(t, 'commitHqRoutes', [route(SHRIMP, { itemId: 'ITEM-0003', vendor: 'Nobody' })])))) bad('refusal: an unknown vendor');
+  if (!/Which HQ item/.test(refused(() => CE.call(t, 'commitHqRoutes', [route({}, { itemId: 'ITEM-0003' })])))) bad('refusal: no product');
+  if (!/Which place/.test(refused(() => CE.call(t, 'commitHqRoutes', [route(SHRIMP, { itemId: 'ITEM-0003', place: 'x' })])))) bad('refusal: a place that isn\'t a place');
+
+  // ---- A KM's save keeps the route; a stale row is a CONFLICT ----
   const km = CE.call(link.a, 'commitUpsertItem', [{ mode: 'edit', lookup: 'ITEM-0003', name: 'SHRIMP 16-20', vendor: 'Happy Supply', pack: '10 LB case',
                                                      par: 12, useMult: true, active: true, areaName: 'Freezer' }]);
   const afterKm = CE.applyOps(link.a, km.ops);
-  if (itemOf(afterKm, 'ITEM-0003').whProduct !== 7 || itemOf(afterKm, 'ITEM-0003').par !== 12) bad('a KM\'s save dropped the link', JSON.stringify(itemOf(afterKm, 'ITEM-0003')));
+  if (itemOf(afterKm, 'ITEM-0003').whProduct !== 7 || itemOf(afterKm, 'ITEM-0003').whVendor !== 'Happy Supply' || itemOf(afterKm, 'ITEM-0003').par !== 12) bad('a KM\'s save dropped the route', JSON.stringify(itemOf(afterKm, 'ITEM-0003')));
   const staleKm = CE.call(t, 'commitUpsertItem', [{ mode: 'edit', lookup: 'ITEM-0003', name: 'SHRIMP 16-20', vendor: 'Sysco', pack: 'CASE',
                                                     par: 11, useMult: true, active: true, areaName: 'Freezer' }]);
   const onlyLink = clone(t);
   itemOf(onlyLink, 'ITEM-0003').whProduct = 7;
   if (!/CONFLICT/.test(refused(() => CE.applyOps(onlyLink, staleKm.ops)))) bad('a row read before the link was taken (the link is not compared)');
+  const onlyVend = clone(t);
+  itemOf(onlyVend, 'ITEM-0003').whVendor = 'Sysco';
+  if (!/CONFLICT/.test(refused(() => CE.applyOps(onlyVend, staleKm.ops)))) bad('a row read before the route\'s vendor was set was taken (the route is not compared)');
 
   // ---- Candidates ----
   const cand = CE.productCandidates(t, 'Shrimp 16/20');
@@ -170,12 +185,13 @@ function problems(ceText, whText, phoneHtml) {
     const live = rt.items.filter(x => x.active === true);
     const target = live.length && rnd() < 0.7 ? pick(rnd, live) : null;
     let rc;
-    try { rc = run(rt, { vendorName: 'Happy Supply', product: { id: 50 + seed, name: 'Product ' + seed, pack: 'CASE 10' }, link: target ? target.id : '', item: { name: 'Product ' + seed } }); }
+    try { rc = run(rt, route({ id: 50 + seed, name: 'Product ' + seed, pack: 'CASE 10' }, target ? { itemId: target.id } : { itemId: '', newItem: { name: 'Product ' + seed } })); }
     catch (e) { bad('random threw', 'seed ' + seed + ': ' + e.message); continue; }
-    const id = target ? target.id : rc.c.result.id;
+    const made = target ? null : rc.a.items.find(x => !rt.items.some(y => y.id === x.id));
+    const id = target ? target.id : made && made.id;
     for (const it of rc.a.items) if (it.id !== id && !same(it, itemOf(rt, it.id))) { bad('random: another item changed', 'seed ' + seed + ' ' + it.id); break; }
     for (const r of rc.a.pickRows) if (r.id !== id && !rt.pickRows.some(x => same(x, r))) { bad('random: another count-list row changed', 'seed ' + seed); break; }
-    if (itemOf(rc.a, id).whProduct !== 50 + seed || itemOf(rc.a, id).primaryVendor !== 'Happy Supply') bad('random: the item is not linked to Happy Supply', 'seed ' + seed);
+    if (!id || itemOf(rc.a, id).whProduct !== 50 + seed || itemOf(rc.a, id).primaryVendor !== 'Happy Supply' || itemOf(rc.a, id).whVendor !== 'Happy Supply') bad('random: the item has no route to Happy Supply', 'seed ' + seed);
     rules(rc.a, 'random seed ' + seed);
     if (!same(CE.applyOps(rc.a, CE.inverseOps(rc.c.ops)), rt)) bad('random undo', 'seed ' + seed);
   }
@@ -222,17 +238,17 @@ function problems(ceText, whText, phoneHtml) {
   const tok = sb.handle('mog_hq_claim', { p_name: 'Sebastian', p_code: code, p_passphrase: 'correct horse battery' }).data.token;
   const wh = (fn, p) => sb.handle(fn, Object.assign({ p_token: tok }, p));
   const loc = wh('mog_wh_save', { p_kind: 'location', p_row: { name: 'Berliner' } }).data.done.id;
-  const pid = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Shrimp 16/20', pack: '10 LB case', par: 12, handlingFee: 6, stores: [], active: true } }).data.done.id;
+  const pid = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Shrimp 16/20', pack: '10 LB case', handlingFee: 6, active: true, places: [{ locationId: loc }] } }).data.done.id;
   wh('mog_wh_count', { p_count: { locationId: loc, lines: [{ productId: pid, cases: 9, reason: 'first count' }] } });
   const ptok = slug => sb.handle('mog_login', { p_slug: slug, p_pin: '4321' }).data.token;
   const pa = ptok('zza'), pb = ptok('zzb');
   const snap = tk => sb.handle('mog_snapshot2', { p_token: tk, p_have_version: null }).data;
   if ('happySupply' in snap(pa)) bad('fake: a store with no link reads Happy Supply');
   const hqData = sb.handle('mog_hq_data', { p_token: tok }).data;
-  const plan = ['zza', 'zzb'].map(slug => ({ slug, call: CE.call(hqData.stores.find(x => x.slug === slug).tables, 'commitHqProduct',
-    [{ vendorName: 'Happy Supply', product: { id: pid, name: 'Shrimp 16/20', pack: '10 LB case' }, link: 'ITEM-0003', item: { name: 'Shrimp 16/20' } }]) }));
-  const applied = sb.handle('mog_hq_apply', { p_token: tok, p_changes: plan.map(x => ({ slug: x.slug, label: x.call.label, ops: x.call.ops })),
-    p_links: plan.map(x => ({ slug: x.slug, hqName: 'Happy Supply', vendor: 'Happy Supply' })) });
+  // v21: routes alone, with no remembered vendor names at all.
+  const plan = ['zza', 'zzb'].map(slug => ({ slug, call: CE.call(hqData.stores.find(x => x.slug === slug).tables, 'commitHqRoutes',
+    [route({ id: pid, name: 'Shrimp 16/20', pack: '10 LB case' }, { itemId: 'ITEM-0003' })]) }));
+  const applied = sb.handle('mog_hq_apply', { p_token: tok, p_changes: plan.map(x => ({ slug: x.slug, label: x.call.label, ops: x.call.ops })), p_links: [] });
   if (!applied.ok) return out.concat(['fake: HQ\'s link was refused: ' + JSON.stringify(applied)]);
   const hs0 = snap(pa).happySupply;
   if (!hs0 || hs0.vendor !== 'Happy Supply' || !hs0.items['ITEM-0003'] || hs0.items['ITEM-0003'].available !== 9) bad('fake: the phone sees its linked item and cases available', JSON.stringify(hs0));
@@ -245,6 +261,7 @@ function problems(ceText, whText, phoneHtml) {
   if (!/isn't linked/.test(send(pa, [{ itemId: 'ITEM-0005', cases: 1 }]).error || '')) bad('fake: an unlinked item was sent');
   const orders1 = wh('mog_wh_data', {}).data.orders;
   const oa = orders1.find(o => o.slug === 'zza');
+  if (!oa) { bad('fake: the store\'s order isn\'t in Dan\'s queue'); return out; }
   const pre = WH.shipPrefill(orders1, wh('mog_wh_data', {}).data.products, oa);
   if (pre[0].cases !== 4) bad('fake: Dan\'s Ship starts with 4 (9 less Founders\' older 5)', JSON.stringify(pre));
   const ship = wh('mog_wh_ship', { p_ship: WH.shipPayload(oa, { 1: { cases: String(pre[0].cases), locationId: String(pre[0].locationId) } }) });
@@ -256,10 +273,11 @@ function problems(ceText, whText, phoneHtml) {
   for (const [what, a] of [['send', sa1], ['shipped read', { data: { happySupply: hs1 } }], ['received', rec]]) {
     if (/price|fee|cost/i.test(JSON.stringify(a.data))) bad('fake: a price reached the phone (' + what + ')');
   }
-  const ua = sb.stores.get('zza').changeLog.find(l => /^HQ: linked/.test(l.label));
+  const ua = sb.stores.get('zza').changeLog.find(l => /^HQ Shrimp/.test(l.label));
   const ed = sb.handle('mog_editor_login', { p_slug: 'zza', p_pin: '4321' });
   const un = sb.handle('mog_editor_undo', { p_token: ed.data.token, p_change_id: ua.id, p_by: 'GM' });
-  if (!un.ok || itemOf(sb.stores.get('zza').tables, 'ITEM-0003').whProduct !== undefined || 'happySupply' in snap(pa) && snap(pa).happySupply.items['ITEM-0003']) bad('fake: the store\'s Undo of HQ\'s link', JSON.stringify(un));
+  if (!un.ok || itemOf(sb.stores.get('zza').tables, 'ITEM-0003').whProduct !== undefined || itemOf(sb.stores.get('zza').tables, 'ITEM-0003').whVendor !== undefined ||
+      'happySupply' in snap(pa) && snap(pa).happySupply.items['ITEM-0003']) bad('fake: the store\'s Undo of HQ\'s route', JSON.stringify(un));
   return out;
 }
 
@@ -267,22 +285,28 @@ let failed = 0;
 const CE_TEXT = SRC(CE_FILE), WH_TEXT = SRC(WH_FILE), PHONE = SRC(PHONE_FILE);
 const main = problems(CE_TEXT, WH_TEXT, PHONE);
 if (main.length) { failed++; console.log('FAIL  ' + main.join('\n      ')); }
-else console.log('PASS  Happy Supply orders: HQ links or adds an item (Undo exact, ' + STORES + ' random stores untouched), a KM\'s save keeps the link, ' +
+else console.log('PASS  Happy Supply orders: HQ routes an item or adds one, ends and puts back (Undo exact, ' + STORES + ' random stores untouched), a KM\'s save keeps the route, ' +
                  'Ship starts with what\'s left, the phone\'s dates and payload, and Send, Ship and Mark received through the fake Supabase');
 
 const CONTROLS = [
   { file: 'ce', name: 'linking leaves the old main vendor off',
-    find: "        if (!(it.eligible || []).some(v => s_(v).toLowerCase() === hs.toLowerCase())) setItemsVendor(w, [s_(it.id)], hs, true);\n        switchActiveVendor(w, s_(it.id), hs);",
-    replace: "        it.primaryVendor = hs; it.eligible = [hs];" },
+    find: "        if (!(it.eligible || []).some(v => s_(v).toLowerCase() === vend.toLowerCase())) setItemsVendor(w, [s_(it.id)], vend, true);\n        switchActiveVendor(w, s_(it.id), vend);",
+    replace: "        it.primaryVendor = vend; it.eligible = [vend];" },
   { file: 'ce', name: 'the link is not compared',
-    find: "    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whProduct'],",
-    replace: "    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto']," },
+    find: "    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whProduct', 'whPlace', 'whVendor'],",
+    replace: "    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whPlace', 'whVendor']," },
+  { file: 'ce', name: 'the route\'s vendor is not compared',
+    find: "    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whProduct', 'whPlace', 'whVendor'],",
+    replace: "    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whProduct', 'whPlace']," },
+  { file: 'ce', name: 'a route keeps no vendor',
+    find: "      it.whVendor = vend;\n",
+    replace: "" },
   { file: 'ce', name: 'a product can be linked twice',
     find: "    if (other) throw new Error",
     replace: "    if (false) throw new Error" },
-  { file: 'ce', name: 'a new item is not linked',
-    find: "    it.whProduct = pid;\n    return { ok: true, mode: 'add'",
-    replace: "    return { ok: true, mode: 'add'" },
+  { file: 'ce', name: 'a route doesn\'t link the item',
+    find: "      it.whProduct = pid;\n      if (place === null)",
+    replace: "      if (place === null)" },
   { file: 'ce', name: 'a linked item is the default candidate',
     find: "    const best = scored.find(x => x.close && !x.linked) || null;",
     replace: "    const best = scored.find(x => x.close) || null;" },

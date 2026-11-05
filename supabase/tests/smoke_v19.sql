@@ -58,13 +58,13 @@ begin
   perform pg_temp.chk('setup: a location held by a vendor', (r ->> 'ok')::boolean, r -> 'error');
 
   -- ---- The concept ----
-  r := public.mog_wh_save(tok, 'product', '{"name": "zz smoke 19 bowls", "pack": "CASE (300)", "par": 0, "handlingFee": 0, "stores": [], "active": true, "via": "zz smoke 19 Holder", "concept": "zz-smoke19"}');
+  r := public.mog_wh_save(tok, 'product', '{"name": "zz smoke 19 bowls", "pack": "CASE (300)", "par": 0, "handlingFee": 0, "stores": [], "active": true, "concept": "zz-smoke19"}');
   bowls := (r -> 'data' -> 'done' ->> 'id')::bigint;
   perform pg_temp.chk('save: a product takes its concept, and the state reads it back',
     (r ->> 'ok')::boolean and (select concept from mog.wh_products where id = bowls) = 'zz-smoke19'
       and pg_temp.prod19(r -> 'data', bowls) ->> 'concept' = 'zz-smoke19', r -> 'error');
 
-  r := public.mog_wh_save(tok, 'product', '{"name": "zz smoke 19 lids", "pack": "CASE (300)", "par": 0, "handlingFee": 0, "stores": [], "active": true, "via": "zz smoke 19 Holder"}');
+  r := public.mog_wh_save(tok, 'product', '{"name": "zz smoke 19 lids", "pack": "CASE (300)", "par": 0, "handlingFee": 0, "stores": [], "active": true}');
   perform pg_temp.chk('save: a product with no concept is for every concept, and the state leaves the key out',
     (r ->> 'ok')::boolean and (select concept from mog.wh_products where name = 'zz smoke 19 lids') is null
       and not (pg_temp.prod19(r -> 'data', (r -> 'data' -> 'done' ->> 'id')::bigint) ? 'concept'), r -> 'error');
@@ -92,8 +92,8 @@ begin
     r ->> 'error' = 'CONFLICT' and (select concept from mog.wh_products where id = bowls) is null, r);
 
   -- ---- As before ----
-  perform pg_temp.chk('v17 unchanged: the product kept its via and its pack',
-    (select via = 'zz smoke 19 Holder' and pack = 'CASE (300)' from mog.wh_products where id = bowls), null);
+  perform pg_temp.chk('v17 unchanged: the product kept its pack (v21 retired its via)',
+    (select pack = 'CASE (300)' from mog.wh_products where id = bowls), null);
   perform pg_temp.chk('privileges: the public key still cannot reach the save itself',
     not has_function_privilege('anon', 'mog.wh_do_save(text, text, jsonb)', 'execute')
       and not has_function_privilege('anon', 'mog.wh_state(text)', 'execute')

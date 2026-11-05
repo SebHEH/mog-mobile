@@ -103,12 +103,10 @@
   }
   // ---- HEH's stock held at Elpis (schema v17, W2b) ----
   const lcs = v => String(v == null ? '' : v).toLowerCase();
-  // Does a product belong at a location: one held by a vendor takes the
-  // products ordered through that vendor (via), HEH's own the rest.
+  // Does a product sit at a place (v20's places; v21 drops the via fallback).
   function fits(p, loc) {
     if (!loc) return true;
-    if (p.places && p.places.length) return p.places.some(x => x.locationId === loc.id);   // v20: the places it sits at
-    return lcs(p.via) === lcs(loc.heldBy);
+    return !!(p.places && p.places.some(x => x.locationId === loc.id));
   }
   // A held location's stock: each product ordered through its holder (or with
   // cases there): on hand, what open deliveries hold, and what's available,
@@ -146,10 +144,10 @@
   // A product's low point at a place (0 = none), and below it there.
   function lowAt(p, locId) { const x = (p.places || []).find(y => y.locationId === locId); return x ? Number(x.lowPoint) : 0; }
   function isLow(p, loc) { const low = lowAt(p, loc.id); return low > 0 && fits(p, loc) && stockAt(p, loc.id) < low; }
-  // An item's save: its fields and its places, each with a low point.
+  // An item's save: its fields and its places, each with a low point (v21:
+  // no par and no store limit; which stores take it is each store's route).
   function itemRow(f) {
-    const row = { name: String(f.name).trim(), pack: String(f.pack || '').trim(), par: Number(f.par || 0), handlingFee: num(f.fee),
-                  stores: f.limit ? f.stores.slice() : [], active: !!f.active, concept: f.concept || '',
+    const row = { name: String(f.name).trim(), pack: String(f.pack || '').trim(), handlingFee: num(f.fee), active: !!f.active, concept: f.concept || '',
                   places: f.places.map(x => ({ locationId: x.locationId, lowPoint: num(x.low) === null ? 0 : num(x.low) })) };
     if (f.id) { row.id = f.id; row.version = f.version; }
     return row;
@@ -166,13 +164,34 @@
     }
     return out;
   }
-  // A place's save.
+  // A place's save. A place at a store is held under its own name (v21: the
+  // server names it; each route carries its store's vendor), so it sends no heldBy.
   function placeRow(f) {
     const how = f.countHow || (f.kind === 'own' ? 'hq' : f.kind === 'store' ? 'marginedge' : 'report');
-    const row = { name: String(f.name).trim(), active: !!f.active, heldBy: f.kind === 'own' ? null : f.heldBy,
-                  heldStore: f.kind === 'store' ? f.heldStore : null, countHow: how };
+    const row = { name: String(f.name).trim(), active: !!f.active, heldStore: f.kind === 'store' ? f.heldStore : null, countHow: how };
+    if (f.kind === 'own') row.heldBy = null;
+    if (f.kind === 'vendor') row.heldBy = f.heldBy;
     if (f.id) row.id = f.id;
     return row;
+  }
+  // v21: a store's route for an HQ item, as HQ shows it: fine, or broken and why.
+  //   r: one of the warehouse read's routes; p: the HQ item; locations: the places.
+  function routeStatus(r, p, locations) {
+    const locs = locations || [];
+    if (r.vendor == null) return { ok: false, reason: 'vendor', text: 'No vendor for it at the store: none set, or it was removed' };
+    if (r.active !== true) return { ok: false, reason: 'inactive', text: 'Inactive at the store' };
+    if (String(r.mainVendor || '') !== String(r.vendor)) {
+      return { ok: false, reason: 'moved', text: 'Its main vendor there is ' + (r.mainVendor || 'none') + ' now, not ' + r.vendor };
+    }
+    if (r.placeId != null) {
+      const L = locs.find(l => l.id === r.placeId);
+      if (!L || !L.active) return { ok: false, reason: 'place', text: 'Its place is closed' };
+      if (L.heldStore === r.slug) return { ok: false, reason: 'place', text: 'A store can\'t take from a place it holds' };
+      if (!p || !fits(p, L)) return { ok: false, reason: 'place', text: L.name + ' doesn\'t have it any more' };
+    } else if (!p || !locs.some(l => !l.heldBy && l.active && fits(p, l))) {
+      return { ok: false, reason: 'place', text: 'It isn\'t at HEH\'s own places' };
+    }
+    return { ok: true, reason: '', text: '' };
   }
   // HQ's check-in of a Happy Supply shipment into a place: a blank line
   // arrived as shipped.
@@ -200,7 +219,7 @@
 
   const logic = { round, avgAfter, storePrice, stockAt, owned, value, num, cs, money, countPayload, receivePayload, transferProblems,
                   shipPrefill, shipPayload, fits, heldStock, beyondSinceCount, heldPayload,
-                  placeKind, lowAt, isLow, itemRow, itemCounts, placeRow, moveInPayload, monthSpan, takenCsv };
+                  placeKind, lowAt, isLow, itemRow, itemCounts, placeRow, routeStatus, moveInPayload, monthSpan, takenCsv };
 
   // ---- The page ----
   const VIEWS = ['wh-stock', 'wh-items', 'wh-places', 'wh-incoming', 'wh-orders', 'wh-taken', 'wh-history'];
@@ -213,11 +232,11 @@
       '<div class="actions"><button type="button" class="btn primary" data-wh="count-open">Count a place</button></div></div>' +
       '<div class="status" id="whk-status" role="status"></div><div id="whk-body" class="view"></div></section>' +
     '<section class="view" id="v-wh-items" aria-labelledby="whit-h" hidden>' +
-      '<div class="page-head"><div><h1 id="whit-h">Items</h1><p>Everything HEH keeps. An item sits at one or more places, the way a store item sits on vendors\' lists: instead of a par it has a stock level and a low point at each place, and a price.</p></div>' +
+      '<div class="page-head"><div><h1 id="whit-h">Items</h1><p>Everything HEH keeps. Each item sits at one or more places, and each store that takes it has a route: its own item, the place it comes from, and the vendor its KMs order it under.</p></div>' +
       '<div class="actions"><button type="button" class="btn" data-wh="item-new">' + PLUS + 'Add item</button></div></div>' +
       '<div class="status" id="whit-status" role="status"></div><div id="whit-body" class="view"></div></section>' +
     '<section class="view" id="v-wh-places" aria-labelledby="whpl-h" hidden>' +
-      '<div class="page-head"><div><h1 id="whpl-h">Places</h1><p>Where HEH\'s stock sits, like the vendors on a store\'s Vendors page: Happy Supply\'s own, a store holding it for others, a vendor holding it. Stores order from a place under their own vendor name.</p></div>' +
+      '<div class="page-head"><div><h1 id="whpl-h">Places</h1><p>Where HEH\'s stock sits: HEH\'s own, held at a store, held by a vendor. Each place lists the stores that take from it; which store takes what is set on the item.</p></div>' +
       '<div class="actions"><button type="button" class="btn" data-wh="place-new">' + PLUS + 'Add place</button></div></div>' +
       '<div class="status" id="whpl-status" role="status"></div><div id="whpl-body" class="view"></div></section>' +
     '<section class="view" id="v-wh-incoming" aria-labelledby="whn-h" hidden>' +
@@ -247,8 +266,8 @@
                 stk: { q: '', concept: '', filter: 'all', open: null, rows: {} },
                 inc: { filter: 'open', sel: null, rcv: {}, po: null, tr: null },
                 ord: { filter: 'sent', sel: null, rows: {} },
-                items: { sel: null, draft: null, q: '', place: '', concept: '', filter: 'active', send: null },
-                places: { sel: null, draft: null, vend: {}, renames: {} },
+                items: { sel: null, draft: null, q: '', place: '', concept: '', filter: 'active' },
+                places: { sel: null, draft: null },
                 taken: { month: null, data: null, key: null },
                 hist: { product: '', location: '', moves: null, more: false, key: null } };
 
@@ -364,12 +383,12 @@
             '<div class="muted" style="font-size:12px;font-weight:500">' + esc(howOf(l) + ' · ' + (l.lastCount ? 'counted ' + day(l.lastCount) : 'not counted yet')) + '</div></th>').join('') +
           '<th style="text-align:right">In all</th></tr></thead><tbody>' +
           (list.length ? list.map(p => '<tr><td><button type="button" class="linkbtn" data-whitsel="' + p.id + '"><b>' + esc(p.name) + '</b></button>' +
-            (p.pack ? '<div class="muted" style="font-size:12px">' + esc(p.pack) + '</div>' : '') + '</td>' + places.map(l => stockCell(p, l, beyond[l.id])).join('') +
+            '<div class="muted" style="font-size:12px">' + esc([p.pack, itemStores(p)].filter(Boolean).join(' · ')) + '</div></td>' + places.map(l => stockCell(p, l, beyond[l.id])).join('') +
             '<td style="text-align:right"><b>' + placeTotal(p) + '</b></td></tr>').join('')
             : '<tr><td colspan="' + (places.length + 2) + '" class="muted">' + (d.products.length ? 'Nothing here.' : 'No items yet: add the first one on Items.') + '</td></tr>') +
           '</tbody></table></div><p class="help" style="margin-top:10px">Click an item to open it on Items, or a place to open it on Places. "Count it": a store checked in more than the records held there.</p></section>';
       }
-      html += onTheWayHtml();
+      html = needsYouHtml() + html + onTheWayHtml();
       if (W.inv.counting) html += countHtml();
       $('whk-body').innerHTML = html;
       if (W.inv.counting) updateCount();
@@ -706,12 +725,38 @@
         '<button type="button" class="btn small" data-whadd="' + kind + '" style="height:40px">Add</button></div></section>';
     }
     const ownAt = p => activeLocs().some(l => placeKind(l) === 'own' && fits(p, l));
+    // ---- Routes (schema v21): from the warehouse read, for every role ----
+    const routesOf = pid => (D().routes || []).filter(r => r.productId === pid);
+    const storeInfo = slug => (host.hq && host.hq() && host.storeBy ? host.storeBy(slug) : null) || D().stores.find(x => x.slug === slug) || { slug };
+    const storeLabel = x => { const n = x.store || x.location || x.slug; return n + (x.isTest && !/\(TEST\)\s*$/.test(n) ? ' (TEST)' : ''); };
+    const routeState = r => routeStatus(r, prodBy(r.productId), D().locations);
+    const ownNames = () => ownLocs().map(l => l.name);
+    const ownLabel = () => { const n = ownNames(); return n.length === 1 ? n[0] : 'HEH\'s own' + (n.length ? ' (' + n.join(', ') + ')' : ''); };
+    function itemStores(p) {
+      const rs = routesOf(p.id), bad = rs.filter(r => !routeState(r).ok).length;
+      return rs.length ? plural(rs.length, 'store') + (bad ? ' · ' + bad + ' broken' : '') : '';
+    }
+    // Stock's "Needs you": every broken route, so none goes unseen.
+    function needsYouHtml() {
+      const bad = (D().routes || []).map(r => ({ r, s: routeState(r) })).filter(x => !x.s.ok);
+      if (!bad.length) return '';
+      return '<section class="card" aria-labelledby="whk-n"><div class="card-head"><h2 id="whk-n">Needs you · ' + bad.length + '</h2></div>' +
+        bad.map(x => { const p = prodBy(x.r.productId);
+          return '<div class="row-between" style="margin:8px 0 0;flex-wrap:wrap;gap:8px"><span><b>' + esc(storeLabel(x.r) + ' · ' + x.r.item) + '</b> ' +
+            '<span class="muted">' + esc(x.s.text) + '</span></span><button type="button" class="linkbtn" data-whitsel="' + x.r.productId + '">Open ' + esc(p ? p.name : 'it') + '</button></div>'; }).join('') +
+        '<p class="help" style="margin-top:10px">A broken route records nothing at the close until it\'s put back or set again on the item.</p></section>';
+    }
+    const routeKey = x => JSON.stringify([x.itemId, x.place, x.vendor]);
     function itemDraft(p) {
-      if (!p) return { id: null, name: '', pack: '', concept: '', fee: '0.00', par: 0, active: true, limit: false, stores: [], places: [] };
-      return { id: p.id, version: p.version, name: p.name, pack: p.pack, concept: p.concept || '', fee: Number(p.handlingFee).toFixed(2), par: Number(p.par),
-               active: p.active, limit: p.stores.length > 0, stores: p.stores.slice(),
+      if (!p) return { id: null, name: '', pack: '', concept: '', fee: '0.00', active: true, places: [], rt: {}, rtBase: {} };
+      const rt = {}, rtBase = {};
+      for (const r of routesOf(p.id)) {
+        rtBase[r.slug] = { itemId: r.itemId, place: r.placeId == null ? '' : String(r.placeId), vendor: r.vendor || '' };
+        rt[r.slug] = Object.assign({}, rtBase[r.slug], { newName: '', days: [false, false, false, false, false, false, false], end: false, putBack: false, isNew: false });
+      }
+      return { id: p.id, version: p.version, name: p.name, pack: p.pack, concept: p.concept || '', fee: Number(p.handlingFee).toFixed(2), active: p.active,
                places: D().locations.filter(l => fits(p, l) || stockAt(p, l.id) > 0).sort((a, b) => a.id - b.id)
-                 .map(l => ({ locationId: l.id, low: String(lowAt(p, l.id)), now: String(stockAt(p, l.id)), reason: '' })) };
+                 .map(l => ({ locationId: l.id, low: String(lowAt(p, l.id)), now: String(stockAt(p, l.id)), reason: '' })), rt, rtBase };
     }
     function itemList() {
       const f = W.items, q = lcs(f.q).trim(), at = f.place ? D().locations.find(l => l.id === Number(f.place)) : null;
@@ -721,7 +766,6 @@
         .filter(p => !f.concept || !p.concept || p.concept === f.concept)
         .sort((a, b) => a.name.localeCompare(b.name));
     }
-    const itemPrice = p => (ownAt(p) ? money(storePrice(p.avgCost, p.handlingFee, D().settings.markupPct)) + ' / cs' : 'No Happy Supply price');
     function renderItems() {
       const d = D(), f = W.items, list = itemList();
       if (f.sel !== 'new' && f.sel != null && !prodBy(f.sel)) { f.sel = null; f.draft = null; }
@@ -732,19 +776,16 @@
         selectHtml('data-whitc="1" aria-label="Concept"', f.concept, conceptOpts('All concepts')) +
         pillsHtml('data-whitfl', f.filter, [['active', 'Active · ' + d.products.filter(p => p.active).length], ['low', 'Low · ' + lowList().length],
                                             ['inactive', 'Inactive · ' + d.products.filter(p => !p.active).length]]) + '</div>';
-      html += '<div class="cols"><section class="card list-card" style="flex:1 1 440px" aria-label="Items">' +
+      html += '<div class="cols"><section class="card list-card" style="flex:1 1 340px;max-width:420px" aria-label="Items">' +
         (list.length ? list.map(p => '<button type="button" class="lrow" data-whitsel="' + p.id + '"' + (p.id === f.sel ? ' aria-current="true"' : '') + '>' +
           '<span class="t"><span class="n">' + esc(p.name) + (activeLocs().some(l => isLow(p, l)) ? ' <span class="tag warn">Low</span>' : '') + '</span>' +
           '<span class="s">' + esc([p.pack, placeList().filter(l => fits(p, l)).map(l => l.name).join(', ') || 'At no place yet'].filter(Boolean).join(' · ')) + '</span></span>' +
-          '<span class="at" style="text-align:right"><b style="color:var(--ink);font-size:15px">' + placeTotal(p) + ' cs</b><br>' + esc(itemPrice(p)) + '</span></button>').join('')
+          '<span class="at" style="text-align:right"><b style="color:var(--ink);font-size:15px">' + placeTotal(p) + ' cs</b><br>' + esc(itemStores(p) || 'No store yet') + '</span></button>').join('')
           : '<div class="list-foot">' + (d.products.length ? 'Nothing here.' : 'No items yet: add the first one.') + '</div>') + '</section>';
-      html += '<section class="card panel" style="flex:1 1 420px" aria-labelledby="whit-ph">' + (f.draft ? itemPanelHtml() : '<p class="muted" style="margin:0">Pick an item, or add one.</p>') + '</section></div>';
-      if (f.send && f.send.productId !== f.sel) f.send = null;
-      if (f.send) html += sendHtml();
+      html += '<section class="card panel" style="flex:1 1 620px" aria-labelledby="whit-ph">' + (f.draft ? itemPanelHtml() : '<p class="muted" style="margin:0">Pick an item, or add one.</p>') + '</section></div>';
       html += settingsHtml();
       $('whit-body').innerHTML = html;
       if (f.draft) updateItemPanel();
-      if (f.send) updateSend();
     }
     function settingsHtml() {
       const d = D();
@@ -754,42 +795,165 @@
         '<label class="field">Delivery fee / order<input id="whs-fee" class="text" inputmode="decimal" value="' + esc(Number(d.settings.deliveryFee).toFixed(2)) + '"></label></div>' +
         '<div class="actions" style="margin-top:12px;justify-content:flex-end"><button type="button" class="btn" data-wh="settings-save">Save</button></div></section>';
     }
+    // A place held at a store refills when the holder orders up to its par (v21).
+    function holderPar(l, p) {
+      const who = l.store || l.heldStore, r = p ? (D().routes || []).find(x => x.slug === l.heldStore && x.productId === p.id) : null;
+      return r && r.par != null ? 'Par ' + Number(r.par) + ' · ' + who + '\'s' : who + '\'s par, once its item is linked';
+    }
     function itemPanelHtml() {
       const f = W.items.draft, p = f.id ? prodBy(f.id) : null, d = D(), list = itemList();
       const concepts = Array.from(new Set(d.stores.map(x => x.concept).filter(Boolean)));
       const rows = f.places.map(x => {
         const l = d.locations.find(y => y.id === x.locationId), have = p ? stockAt(p, x.locationId) : 0, nm = l ? l.name : '?';
+        const refill = l && placeKind(l) === 'store'
+          ? '<td style="width:200px;font-size:13px">' + esc(holderPar(l, p)) + '</td>'
+          : '<td style="width:96px">' + inputHtml('data-whitl="' + x.locationId + '" aria-label="' + esc(nm) + ' low point, cases"', x.low) + '</td>';
         return '<tr><td><b>' + esc(nm) + '</b><div class="muted" style="font-size:12px">' + esc(placeSub(l)) + '</div></td>' +
-          '<td style="width:96px">' + inputHtml('data-whitn="' + x.locationId + '" aria-label="' + esc(nm) + ' now, cases"', x.now) + '</td>' +
-          '<td style="width:96px">' + inputHtml('data-whitl="' + x.locationId + '" aria-label="' + esc(nm) + ' low point, cases"', x.low) + '</td>' +
+          '<td style="width:96px">' + inputHtml('data-whitn="' + x.locationId + '" aria-label="' + esc(nm) + ' now, cases"', x.now) + '</td>' + refill +
           '<td style="width:36px">' + (have > 0 ? '' : '<button type="button" class="linkbtn" data-whitx="' + x.locationId + '" aria-label="Take it off ' + esc(nm) + '">✕</button>') + '</td></tr>' +
           '<tr id="whitr-' + x.locationId + '" hidden><td colspan="4"><input class="cell-in" data-whitr="' + x.locationId + '" aria-label="Why ' + esc(nm) + ' changed" ' +
           'placeholder="Why it\'s different (Sunday count, damaged…)" value="' + esc(x.reason) + '" maxlength="200"></td></tr>';
       }).join('');
       const addable = placeList().filter(l => !f.places.some(x => x.locationId === l.id));
-      const stores = d.stores.slice().sort((a, b) => (a.isTest - b.isTest));
       return '<div class="card-head"><h2 id="whit-ph">' + (p ? esc(p.name) : 'New item') + '</h2>' + (p && list.indexOf(p) >= 0 ? '<span class="muted">Item ' + (list.indexOf(p) + 1) + ' of ' + list.length + '</span>' : '') + '</div>' +
-        '<label class="field">Name<input data-whitf="name" value="' + esc(f.name) + '" maxlength="120" placeholder="Exactly as the stores name it"></label>' +
-        '<div class="grid2"><label class="field">Pack<input data-whitf="pack" value="' + esc(f.pack) + '" maxlength="60" placeholder="e.g. CASE (10LBs)"></label>' +
-        '<label class="field">Concept' + selectHtml('data-whitf="concept"', f.concept, [['', 'Every concept']].concat(concepts.map(k => [k, host.conceptName ? host.conceptName(k) : k]))) + '</label></div>' +
+        '<div class="grid2"><label class="field">Name<input data-whitf="name" value="' + esc(f.name) + '" maxlength="120" placeholder="Exactly as the stores name it"></label>' +
+        '<label class="field">Pack<input data-whitf="pack" value="' + esc(f.pack) + '" maxlength="60" placeholder="e.g. CASE (10LBs)"></label></div>' +
+        '<label class="field" style="max-width:320px">Concept' + selectHtml('data-whitf="concept"', f.concept, [['', 'Every concept']].concat(concepts.map(k => [k, host.conceptName ? host.conceptName(k) : k]))) + '</label>' +
         '<div role="group" aria-labelledby="whit-pl"><div class="chips-label" id="whit-pl">Places</div>' +
-        '<div class="scroll"><table><thead><tr><th>Place</th><th>Now (cs)</th><th>Low point</th><th><span class="sr">Take off</span></th></tr></thead><tbody>' +
+        '<div class="scroll"><table><thead><tr><th>Place</th><th>Now (cs)</th><th>Refill at</th><th><span class="sr">Take off</span></th></tr></thead><tbody>' +
         (rows || '<tr><td colspan="4" class="muted">At no place yet: add it to one.</td></tr>') + '</tbody></table></div>' +
         (addable.length ? '<div style="margin-top:8px">' + selectHtml('data-whitadd="1" aria-label="Add to a place"', '', addable.map(l => [l.id, l.name]), '+ Add to a place') + '</div>' : '') +
-        '<p class="help" style="margin-top:6px">Changing Now saves a count for that place and asks why. Below its low point, the Stock page turns it amber.</p></div>' +
-        '<div class="note-box" id="whit-price"></div>' +
-        '<label class="field" style="max-width:200px">Handling fee / cs<input data-whitf="fee" value="' + esc(f.fee) + '" inputmode="decimal"></label>' +
-        '<div role="group" aria-labelledby="whit-who"><div class="chips-label" id="whit-who">Which stores can order it</div>' +
-        '<div class="seg" style="display:inline-flex;margin-top:8px"><button type="button" data-whitlim="0" aria-pressed="' + !f.limit + '">Every store</button>' +
-        '<button type="button" data-whitlim="1" aria-pressed="' + f.limit + '">Only these</button></div>' +
-        (f.limit ? '<div class="chips">' + stores.map(x => '<button type="button" class="chip" data-whitst="' + esc(x.slug) + '" aria-pressed="' + (f.stores.indexOf(x.slug) >= 0) + '">' + CHECK +
-          esc((x.location || x.slug) + (x.isTest && !/\(TEST\)\s*$/.test(x.location || '') ? ' (TEST)' : '')) + '</button>').join('') + '</div>' : '') + '</div>' +
+        '<p class="help" style="margin-top:6px">Changing Now saves a count for that place and asks why. A place held at a store refills when that store orders up to its par, so it has no low point of its own.</p></div>' +
+        routesHtml(f, p) +
+        '<details class="note-box"><summary><b>Price, for the monthly charges</b></summary><div id="whit-price" style="margin-top:8px"></div>' +
+        '<label class="field" style="max-width:200px;margin-top:8px">Handling fee / cs<input data-whitf="fee" value="' + esc(f.fee) + '" inputmode="decimal"></label></details>' +
         '<label class="check"><input type="checkbox" data-whitf="active"' + (f.active ? ' checked' : '') + '>Active: on counts and vendor orders</label>' +
+        '<div class="note-box" id="whit-routes-sum" hidden></div>' +
         '<div class="row-between" style="margin-top:0"><span class="muted" id="whit-sum"></span><div class="actions" style="align-items:center">' +
         (p ? '' : '<button type="button" class="linkbtn" data-wh="item-discard">Cancel</button>') +
-        (p && p.active && canSend() && !W.items.send && ownAt(p) ? '<button type="button" class="btn" data-wh="send-open">Send to stores</button>' : '') +
         '<button type="button" class="btn primary" data-wh="item-save" id="whit-go">Save</button></div></div>';
     }
+    // ---- The item's Stores table (v21) ----
+    const draftPlaces = f => f.places.map(x => D().locations.find(l => l.id === x.locationId)).filter(Boolean);
+    const holdsFor = (slug, f) => draftPlaces(f).find(l => placeKind(l) === 'store' && l.heldStore === slug) || null;
+    function storesFor(p) {
+      if (!canSend()) return [];
+      const keys = host.conceptKeys().filter(k => !p.concept || k === p.concept);
+      return [].concat.apply([], keys.map(k => host.storesOf(k))).filter(host.usable);
+    }
+    // HQ's names, plus HEH's own places' names (live: "Happy Supply") and each
+    // vendor holding a place. Pre-picked only when HEH has one own place.
+    const vendorNameOpts = () => Array.from(new Set((D().vendorNames || []).concat(ownNames(),
+      heldLocs().filter(l => placeKind(l) === 'vendor').map(l => l.heldBy))))
+      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    // A new row's starting route: the item named like it, from the one place
+    // it would take from (HEH's own for the store holding it), under the
+    // item's main vendor (a held place) or the store's vendor named like
+    // HEH's own place, else that name as a new vendor.
+    function routeDefaults(st, p, f) {
+      const c = host.CE.productCandidates(st.tables, p.name), itemId = c.best || '__new';
+      const it = st.tables.items.find(i => i.id === itemId);
+      const held = draftPlaces(f).filter(l => placeKind(l) !== 'own' && l.heldStore !== st.slug);
+      const own = draftPlaces(f).some(l => placeKind(l) === 'own');
+      const place = holdsFor(st.slug, f) ? '' : held.length === 1 ? String(held[0].id) : own ? '' : held.length ? String(held[0].id) : '';
+      let vendor = '', newName = '';
+      if (place) vendor = it && it.primaryVendor ? it.primaryVendor : '';
+      else {
+        const named = st.tables.vendors.find(v => ownNames().some(n => lcs(n) === lcs(v.name)));
+        if (named) vendor = named.name;
+        else { vendor = '__new'; newName = ownNames().length === 1 ? ownNames()[0] : ''; }
+      }
+      return { itemId, place, vendor, newName, days: [false, false, false, false, false, false, false], end: false, putBack: false, isNew: true };
+    }
+    function fromOpts(f, slug) {
+      const out = draftPlaces(f).some(l => placeKind(l) === 'own') ? [['', ownLabel()]] : [];
+      for (const l of draftPlaces(f)) if (placeKind(l) !== 'own' && l.heldStore !== slug) out.push([String(l.id), l.name]);
+      return out;
+    }
+    const placeLabel = id => (id === '' || id == null ? ownLabel() : locName(Number(id)));
+    function routeTag(f, p, slug) {
+      const x = f.rt[slug], base = f.rtBase[slug], r = routesOf(p.id).find(y => y.slug === slug);
+      if (x.end) return '<span class="tag">Ends</span> <button type="button" class="linkbtn" data-whrtundo="' + esc(slug) + '">Undo</button>';
+      if (x.putBack) return '<span class="tag blue">Puts it back</span> <button type="button" class="linkbtn" data-whrtundo="' + esc(slug) + '">Undo</button>';
+      if (x.isNew) return '<span class="tag blue">New</span> <button type="button" class="linkbtn" data-whrtdrop="' + esc(slug) + '">Remove</button>';
+      if (base && routeKey(x) !== routeKey(base)) return '<span class="tag blue">Changes</span> <button type="button" class="linkbtn" data-whrtundo="' + esc(slug) + '">Undo</button>';
+      const s = r ? routeState(r) : { ok: false, reason: 'vendor', text: '' };
+      if (s.ok) return '<span class="tag ok">Linked</span>' + (canSend() ? ' <button type="button" class="linkbtn" data-whrtend="' + esc(slug) + '">End</button>' : '');
+      return '<span class="tag warn">' + esc(s.text) + '</span>' + (canSend()
+        ? (s.reason === 'moved' ? ' <button type="button" class="linkbtn" data-whrtput="' + esc(slug) + '">Put ' + esc(r.vendor) + ' back</button>' : '') +
+          ' <button type="button" class="linkbtn" data-whrtend="' + esc(slug) + '">End</button>' : '');
+    }
+    function routeRowHtml(f, p, slug) {
+      const x = f.rt[slug], r = routesOf(p.id).find(y => y.slug === slug), info = storeInfo(slug), st = canSend() ? host.storeBy(slug) : null;
+      const holds = holdsFor(slug, f);
+      const name = '<b>' + esc(storeLabel(info)) + '</b>' + (holds ? '<div class="muted" style="font-size:12px">holds ' + esc(holds.name) + '</div>' : '');
+      if (!st || x.end || x.putBack) {
+        return '<tr><td>' + name + '</td><td>' + esc(r ? r.item + ' · ' + r.itemId : x.itemId) + '</td><td>' + esc(placeLabel(x.place)) + '</td><td>' + esc(x.vendor || '-') + '</td>' +
+          '<td style="text-align:right">' + routeTag(f, p, slug) + '</td></tr>';
+      }
+      const cands = host.CE.productCandidates(st.tables, p.name).items.map(c => c.id);
+      const items = st.tables.items.filter(i => i.active === true || i.id === x.itemId)
+        .sort((a, b) => ((cands.indexOf(a.id) < 0) - (cands.indexOf(b.id) < 0)) || (cands.indexOf(a.id) - cands.indexOf(b.id)) || a.name.localeCompare(b.name)).slice(0, 60);
+      const it = st.tables.items.find(i => i.id === x.itemId);
+      const vends = st.tables.vendors.map(v => [v.name, v.name]).concat([['__new', '+ Add a vendor']]);
+      let vendCell = selectHtml('data-whrtvend="' + esc(slug) + '" aria-label="' + esc(storeLabel(info)) + ' vendor"', x.vendor, vends, 'Pick its vendor') +
+        (x.vendor && x.vendor !== '__new' && it && it.primaryVendor && it.primaryVendor !== x.vendor ? '<div class="muted" style="font-size:12px">today: ' + esc(it.primaryVendor) + '</div>' : '');
+      let extra = '';
+      if (x.vendor === '__new') {
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dn, i) => '<button type="button" class="pill" data-whrtday="' + esc(slug) + '|' + i + '" aria-pressed="' + !!x.days[i] + '">' + dn + '</button>').join('');
+        extra = '<tr class="sub"><td colspan="5"><div class="note-box" style="margin:0"><div class="row-between" style="margin:0;flex-wrap:wrap;gap:8px">' +
+          '<label class="field" style="flex-direction:row;align-items:center;gap:10px">New vendor at ' + esc(storeLabel(info)) +
+          selectHtml('data-whrtvname="' + esc(slug) + '" aria-label="New vendor name"', x.newName, vendorNameOpts().filter(n => !st.tables.vendors.some(v => lcs(v.name) === lcs(n))).map(n => [n, n]), 'Pick the name') + '</label></div>' +
+          '<div class="actions" role="group" aria-label="Delivers on" style="margin-top:8px;flex-wrap:wrap"><span style="font-weight:600;margin-right:4px">Delivers</span>' + days + '</div>' +
+          '<p class="help" style="margin:6px 0 0">Added with this save, as its own vendor. ' + esc(p.name) + ' moves to it as its main vendor' + (it && it.primaryVendor ? '; ' + esc(it.primaryVendor) + ' stays a backup' : '') + '.</p></div></td></tr>';
+      }
+      return '<tr><td>' + name + '</td>' +
+        '<td style="min-width:190px">' + selectHtml('data-whrtitem="' + esc(slug) + '" aria-label="' + esc(storeLabel(info)) + ' item"', x.itemId,
+          items.map(i => [i.id, i.name + ' · ' + i.id]).concat([['__new', '+ Add a new item: ' + p.name]]), 'Pick its item') +
+          (x.itemId === '__new' ? '<div class="muted" style="font-size:12px">No par and no storage area yet: it waits in the store\'s Needs setup</div>' : '') +
+          (it ? '<div class="muted" style="font-size:12px">' + esc(['Par ' + (it.par == null ? '-' : Number(it.par)), it.pack].filter(Boolean).join(' · ')) + '</div>' : '') + '</td>' +
+        '<td style="min-width:150px">' + selectHtml('data-whrtfrom="' + esc(slug) + '" aria-label="' + esc(storeLabel(info)) + ' from"', x.place, fromOpts(f, slug)) + '</td>' +
+        '<td style="min-width:170px">' + vendCell + '</td><td style="text-align:right">' + routeTag(f, p, slug) + '</td></tr>' + extra;
+    }
+    function routesHtml(f, p) {
+      if (!p) return '<div><div class="chips-label">Stores</div><p class="help" style="margin-top:6px">Save the item first; then set which stores take it, and from where.</p></div>';
+      const slugs = Object.keys(f.rt).sort((a, b) => storeLabel(storeInfo(a)).localeCompare(storeLabel(storeInfo(b))));
+      const addable = storesFor(p).filter(st => !f.rt[st.slug]);
+      return '<div role="group" aria-labelledby="whit-rt"><div class="row-between" style="margin:0"><div class="chips-label" id="whit-rt">Stores</div>' +
+        '<span class="muted" style="font-size:12.5px">' + (canSend() ? 'Pick-only: each store\'s own items and vendors' : 'Set by someone with the hq role') + '</span></div>' +
+        '<div class="scroll"><table><thead><tr><th>Store</th><th>Its item</th><th>From</th><th>Ordered as</th><th style="text-align:right">Status</th></tr></thead><tbody>' +
+        (slugs.length ? slugs.map(slug => routeRowHtml(f, p, slug)).join('') : '<tr><td colspan="5" class="muted">No store takes it yet.</td></tr>') + '</tbody></table></div>' +
+        (addable.length ? '<div style="margin-top:8px">' + selectHtml('data-whrtadd="1" aria-label="Add a store"', '', addable.map(st => [st.slug, host.shortName(st)]), '+ Add a store') + '</div>' : '') +
+        '<p class="help" style="margin-top:6px">From is a place that has it, never one the store holds itself. Ordered as is the store vendor its KMs order it from: only orders to that vendor come off the place.</p></div>';
+    }
+    // Each store whose route changes: one undoable change there (commitHqRoutes).
+    function routePlan(f, p) {
+      if (!p || !canSend()) return [];
+      const out = [];
+      for (const slug of Object.keys(f.rt)) {
+        const x = f.rt[slug], base = f.rtBase[slug] || null, st = host.storeBy(slug);
+        if (!st) continue;
+        const changed = !base || routeKey(x) !== routeKey(base);
+        if (!x.end && !x.putBack && !changed) continue;
+        const args = { product: { id: p.id, name: p.name, pack: p.pack }, routes: [], end: [], putBack: [] };
+        if (x.end) args.end.push(base.itemId);
+        else if (x.putBack) args.putBack.push(base.itemId);
+        else {
+          const err = !x.itemId ? 'pick its item' : x.vendor === '__new' ? (!x.newName ? 'pick the new vendor\'s name' : !x.days.some(Boolean) ? 'pick the new vendor\'s delivery days' : '')
+            : !x.vendor ? 'pick the vendor it\'s ordered under' : !fromOpts(f, slug).some(o => o[0] === x.place) ? 'pick where it comes from' : '';
+          if (err) { out.push({ st, error: err }); continue; }
+          if (base && base.itemId && base.itemId !== x.itemId) args.end.push(base.itemId);
+          const place = x.place === '' ? null : Number(x.place);
+          args.routes.push({ itemId: x.itemId === '__new' ? '' : x.itemId, newItem: x.itemId === '__new' ? { name: p.name } : null,
+                             place, placeName: placeLabel(x.place), vendor: x.vendor === '__new' ? x.newName : x.vendor,
+                             newVendor: x.vendor === '__new' ? { name: x.newName, mults: host.CE.multsFromDays(x.days), cutoff: '', contact: {} } : null });
+        }
+        try { out.push({ st, links: [], out: host.CE.call(st.tables, 'commitHqRoutes', [args]) }); }
+        catch (e) { out.push({ st, error: e.message }); }
+      }
+      return out;
+    }
+    const itemFieldsChanged = (f, p) => !p || JSON.stringify(itemRow(f)) !== JSON.stringify(itemRow(itemDraft(p))) || itemCounts(f, p).length > 0;
     function updateItemPanel() {
       const f = W.items.draft, p = f.id ? prodBy(f.id) : null, d = D(), pct = Number(d.settings.markupPct), fee = num(f.fee);
       const own = f.places.some(x => placeKind(d.locations.find(l => l.id === x.locationId)) === 'own');
@@ -800,12 +964,11 @@
           '<div class="muted" style="font-size:12px;margin-top:2px">' + (p && p.lastReceipt ? 'From deliveries; last one ' + esc(p.lastReceipt.ref) + ', ' + esc(day(p.lastReceipt.at)) + '. Not typed here.' : 'Set by the first delivery received. Not typed here.') + '</div>' +
           (own ? '<div class="row-between" style="margin:10px 0 0"><span>Store price / cs</span><b>' + (fee === null || isNaN(fee) || fee < 0 ? '-' : money(storePrice(avg, round(fee, 2), pct))) + '</b></div>' +
                  '<div class="muted" style="font-size:12px;margin-top:2px">Average ' + money(avg) + ' + fee, markup ' + pct + '%. Locked on each line when it ships.</div>'
-               : '<div class="muted" style="font-size:12px;margin-top:8px">Not at Happy Supply\'s own places: stores take it from where it sits, and the cost is kept for the monthly charges.</div>');
+               : '<div class="muted" style="font-size:12px;margin-top:8px">Not at HEH\'s own places: stores take it from where it sits, and the cost is kept for the monthly charges.</div>');
       }
       const problems = [];
       if (!String(f.name).trim()) problems.push('give it a name');
       if (fee === null || isNaN(fee) || fee < 0) problems.push('the handling fee is a dollar amount');
-      if (f.limit && !f.stores.length) problems.push('pick at least one store, or choose Every store');
       if (!f.places.length) problems.push('add it to a place');
       for (const x of f.places) {
         const l = d.locations.find(y => y.id === x.locationId), n = num(x.now), lo = num(x.low), have = p ? stockAt(p, x.locationId) : 0;
@@ -815,9 +978,17 @@
         if (lo !== null && (isNaN(lo) || lo < 0)) problems.push(l.name + '\'s low point is a number of cases');
         if (changed && !String(x.reason || '').trim()) problems.push('say why ' + l.name + ' changed');
       }
+      const plan = routePlan(f, p);
+      for (const x of plan) if (x.error) problems.push(host.shortName(x.st) + ': ' + x.error);
+      const rs = $('whit-routes-sum'), live = plan.filter(x => !x.error && x.out.ops.length);
+      if (rs) {
+        rs.hidden = !live.length;
+        rs.innerHTML = live.length ? '<b>What each store gets</b> · one change per store, undoable in its Changes<ul style="margin:6px 0 0;padding-left:18px">' +
+          live.map(x => '<li><b>' + esc(host.shortName(x.st)) + '</b>: ' + esc(String(x.out.label).replace(/^HQ [^:]*: /, '')) + '</li>').join('') + '</ul>' : '';
+      }
       const sum = $('whit-sum'), go = $('whit-go');
-      if (sum) sum.textContent = problems.length ? upper(problems.join('; ')) + '.' : '';
-      if (go) go.disabled = problems.length > 0;
+      if (sum) sum.textContent = problems.length ? upper(problems.join('; ')) + '.' : live.length ? plural(live.length, 'store') + ' change' + (live.length === 1 ? 's' : '') : '';
+      if (go) go.disabled = problems.length > 0 || (p && !live.length && !itemFieldsChanged(f, p));
     }
     // ---- Orders (schema v16) ----
     const orders = () => D().orders || [];
@@ -918,7 +1089,7 @@
         const after = p && loc ? round(stockAt(p, loc) - cases, 2) : null;
         if (after !== null && after < 0) problems.push(locName(loc) + ' has ' + cs(stockAt(p, loc)) + ' of ' + l.product);
         if (cell) cell.innerHTML = after === null ? '<span class="muted">-</span>' : (after < 0 ? '<span class="bad">' + esc(cs(after)) + '</span>'
-          : esc(cs(after) + ' at ' + locName(loc)) + (p && Number(p.par) > 0 && owned(p) - cases < Number(p.par) ? ' <span class="tag warn">Below par</span>' : ''));
+          : esc(cs(after) + ' at ' + locName(loc)) + (p && lowAt(p, loc) > 0 && after < lowAt(p, loc) ? ' <span class="tag warn">Below its low point</span>' : ''));
         n += cases;
         if (p) total += cases * storePrice(p.avgCost, p.handlingFee, pct);
       }
@@ -948,10 +1119,11 @@
       if (!l) return { id: null, name: '', kind: 'own', heldBy: '', heldStore: '', countHow: '', active: true };
       return { id: l.id, name: l.name, kind: placeKind(l), heldBy: l.heldBy || '', heldStore: l.heldStore || '', countHow: l.countHow || '', active: l.active };
     }
-    // The stores that take from a held place: each one whose vendor HQ's name maps to.
-    function placeTakers(l) {
-      if (placeKind(l) === 'own') return null;
-      return D().stores.filter(x => x.slug !== l.heldStore && host.linkFor && host.linkFor(x.slug, l.heldBy)).map(x => x.location || x.slug);
+    // v21: the stores that take from a place, from the routes (HEH's own: the
+    // routes to HEH's own places, for the items sitting here).
+    function placeRoutes(l) {
+      const own = placeKind(l) === 'own';
+      return (D().routes || []).filter(r => r.vendor != null && (own ? r.placeId == null && fits(prodBy(r.productId) || {}, l) : r.placeId === l.id));
     }
     function renderPlaces() {
       const d = D(), f = W.places, list = placeList().concat(d.locations.filter(l => !l.active));
@@ -960,18 +1132,24 @@
       if (f.sel != null && !f.draft) f.draft = placeDraft(f.sel === 'new' ? null : d.locations.find(l => l.id === f.sel));
       let html = '<div class="cols"><section class="card list-card" style="flex:1 1 440px" aria-label="Places">' +
         (list.length ? list.map(l => {
-          const t = placeTakers(l), n = placeItems(l).length;
-          const takes = t == null ? 'Stores order it from Happy Supply' : t.length ? 'Taken by ' + t.join(', ') + ' as "' + l.heldBy + '"' : 'No store takes from it yet';
+          const names = Array.from(new Set(placeRoutes(l).map(r => storeLabel(r)))), n = placeItems(l).length;
+          const takes = names.length ? 'Taken by ' + names.join(', ') : 'No store takes from it yet';
           return '<button type="button" class="lrow" data-whplsel="' + l.id + '"' + (l.id === f.sel ? ' aria-current="true"' : '') + '><span class="t"><span class="n">' + esc(l.name) +
             (l.active ? '' : ' <span class="tag">Closed</span>') + '</span><span class="s">' + esc([placeSub(l), plural(n, 'item'), takes].join(' · ')) + '</span></span></button>';
         }).join('') : '<div class="list-foot">No places yet: add the first one.</div>') + '</section>';
       html += '<section class="card panel" style="flex:1 1 440px" aria-labelledby="whpl-ph">' + (f.draft ? placePanelHtml() : '<p class="muted" style="margin:0">Pick a place, or add one.</p>') + '</section></div>';
-      const cur = f.sel !== 'new' ? d.locations.find(l => l.id === f.sel) : null;
-      const linking = cur && placeKind(cur) !== 'own' && placeItems(cur).length > 0;
-      if (linking) html += '<section class="card" aria-labelledby="whpl-st"><div class="card-head"><h2 id="whpl-st">Stores that take from ' + esc(cur.name) + '</h2></div>' + elLinksHtml(cur) + '</section>';
       $('whpl-body').innerHTML = html;
       if (f.draft) updatePlacePanel();
-      if (linking) updateElLinks(cur);
+    }
+    function placeRoutesHtml(l) {
+      const rs = placeRoutes(l);
+      return '<div><div class="chips-label">Stores that take from it</div>' +
+        (rs.length ? '<div class="scroll"><table><tbody>' + rs.map(r => { const s = routeState(r), p = prodBy(r.productId);
+          return '<tr><td><b>' + esc(storeLabel(r)) + '</b><div class="muted" style="font-size:12px">' + esc(r.item + ' · ordered as "' + r.vendor + '"') + '</div></td>' +
+            '<td style="text-align:right">' + (s.ok ? '' : '<span class="tag warn">' + esc(s.text) + '</span> ') +
+            '<button type="button" class="linkbtn" data-whitsel="' + r.productId + '">Open ' + esc(p ? p.name : 'it') + '</button></td></tr>'; }).join('') + '</tbody></table></div>'
+          : '<p class="muted" style="margin:6px 0 0">No store takes from it yet.</p>') +
+        '<p class="help" style="margin-top:6px">Read-only here: which store takes what, from where and under which of its vendors, is set on each item.</p></div>';
     }
     function placePanelHtml() {
       const f = W.places.draft, d = D(), l = f.id ? d.locations.find(x => x.id === f.id) : null;
@@ -979,17 +1157,18 @@
       const how = f.countHow || (f.kind === 'own' ? 'hq' : f.kind === 'store' ? 'marginedge' : 'report');
       const names = (d.vendorNames || []).filter(n => lcs(n) !== 'happy supply');
       const items = l ? placeItems(l) : [];
+      const holder = f.kind === 'store' ? d.stores.find(x => x.slug === f.heldStore) : null;
       return '<div class="card-head"><h2 id="whpl-ph">' + (l ? esc(l.name) : 'New place') + '</h2></div>' +
-        '<label class="field">Name<input data-whplf="name" value="' + esc(f.name) + '" maxlength="60" placeholder="e.g. RP Tysons"></label>' +
+        '<label class="field">Name<input data-whplf="name" value="' + esc(f.name) + '" maxlength="60" placeholder="e.g. Transfer (Tysons)"></label>' +
         '<div role="group" aria-labelledby="whpl-k"><div class="chips-label" id="whpl-k">Kind</div>' + seg('data-whplk', f.kind, ['own', 'store', 'vendor'].map(k => [k, KIND_TEXT[k]])) + '</div>' +
         (f.kind === 'store' ? '<label class="field">Held at' + selectHtml('data-whplf="heldStore"', f.heldStore,
             d.stores.map(x => [x.slug, (x.location || x.slug) + (x.isTest && !/\(TEST\)\s*$/.test(x.location || '') ? ' (TEST)' : '')]), 'Pick the store') + '</label>' : '') +
-        (f.kind !== 'own' ? '<label class="field">Stores order it as' + selectHtml('data-whplf="heldBy"', f.heldBy, names.map(n => [n, n]), 'Pick the vendor name') +
-          '<span class="muted" style="font-size:13px">' + (f.kind === 'store' ? 'The vendor the other stores order it from in their order guide, like "Transfer (Tysons)".'
-            : 'The vendor that keeps it, as the stores name it, like "Elpis Wholesale".') + '</span></label>' : '') +
+        (f.kind === 'vendor' ? '<label class="field">Held by' + selectHtml('data-whplf="heldBy"', f.heldBy, names.map(n => [n, n]), 'Pick the vendor') +
+          '<span class="muted" style="font-size:13px">The vendor that keeps it, as the stores name it, like "Elpis Wholesale".</span></label>' : '') +
         '<div role="group" aria-labelledby="whpl-h"><div class="chips-label" id="whpl-h">How it\'s counted</div>' + seg('data-whplh', how, [['hq', HOW.hq], ['marginedge', HOW.marginedge], ['report', HOW.report]]) + '</div>' +
-        (f.kind === 'store' ? '<div class="note-box"><div class="row-between" style="margin:0"><span>Gets its stock from</span><b>Happy Supply</b></div>' +
-          '<div class="muted" style="font-size:12px;margin-top:2px">The store orders it from its Happy Supply; Dan ships it into this place, and it lands here when the store checks it in.</div></div>' : '') +
+        (f.kind === 'store' ? '<div class="note-box"><div class="row-between" style="margin:0"><span>Refills</span><b>Happy Supply</b></div>' +
+          '<div class="muted" style="font-size:12px;margin-top:2px">When ' + esc(holder ? holder.location || holder.slug : 'the store') + ' orders up to its par, from its route. What Dan ships lands here when the store checks it in.</div></div>' : '') +
+        (l ? placeRoutesHtml(l) : '') +
         (l ? '<div class="note-box"><div class="row-between" style="margin:0"><span>Items here</span><b>' + items.length + '</b></div>' +
           (items.length ? '<div class="muted" style="font-size:12px;margin-top:4px">' + esc(items.slice(0, 6).map(p => p.name + ' ' + stockAt(p, l.id) + (lowAt(p, l.id) ? ' (low point ' + lowAt(p, l.id) + ')' : '')).join(' · ') +
             (items.length > 6 ? ' and ' + (items.length - 6) + ' more' : '')) + '</div>' : '<div class="muted" style="font-size:12px;margin-top:4px">None yet: add items to it on Items.</div>') +
@@ -1003,203 +1182,10 @@
       const f = W.places.draft, problems = [];
       if (!String(f.name).trim()) problems.push('give it a name');
       if (f.kind === 'store' && !f.heldStore) problems.push('pick the store it sits at');
-      if (f.kind !== 'own' && !f.heldBy) problems.push('pick the name stores order it under');
+      if (f.kind === 'vendor' && !f.heldBy) problems.push('pick the vendor that holds it');
       const sum = $('whpl-sum'), go = $('whpl-go');
       if (sum) sum.textContent = problems.length ? upper(problems.join('; ')) + '.' : '';
       if (go) go.disabled = problems.length > 0;
-    }
-    // Linking stores to a held place's items, by name (catalogEdit.js
-    // heldMatches / commitHqHeldLinks, v19): never the store holding it.
-    const heldProds = loc => (loc ? D().products.filter(p => fits(p, loc)) : []);
-    function heldStores(loc) {
-      const prods = heldProds(loc), every = prods.some(p => !p.concept);
-      const keys = every ? host.conceptKeys() : Array.from(new Set(prods.map(p => p.concept)));
-      const out = [];
-      for (const k of keys) for (const st of host.storesOf(k)) if (host.usable(st) && st.slug !== loc.heldStore && out.indexOf(st) < 0) out.push(st);
-      return out.sort((a, b) => (a.isTest - b.isTest) || host.shortName(a).localeCompare(host.shortName(b)));
-    }
-    function heldStoreState(st, loc) {
-      const prods = heldProds(loc).filter(p => !p.concept || p.concept === (st.concept || ''));
-      const known = storeHs(st, loc.heldBy), picked = W.places.vend[st.slug], guess = guessVendor(st, loc.heldBy);
-      const vend = known ? known.name : picked || guess || '';
-      const ren = W.places.renames[st.slug] || {};
-      const view = host.CE.heldMatches(st.tables, prods).map(x =>
-        (x.status === 'missing' && ren[x.productId]) ? Object.assign({}, x, { status: 'rename', itemId: ren[x.productId] }) : x);
-      return { st, prods, known, vend, view, linked: view.filter(x => x.status === 'linked').length,
-               toLink: view.filter(x => x.status === 'match' || x.status === 'rename').length };
-    }
-    function heldPlan(loc) {
-      if (!loc || !canSend()) return [];
-      return heldStores(loc).map(st => heldStoreState(st, loc)).filter(x => x.vend && x.toLink > 0).map(x => {
-        const ren = W.places.renames[x.st.slug] || {};
-        const args = { vendorName: x.vend, products: x.prods.map(p => ({ id: p.id, name: p.name, pack: p.pack, via: loc.name })),
-                       renames: Object.keys(ren).map(pid => ({ itemId: ren[pid], to: prodBy(pid).name })) };
-        const links = [{ slug: x.st.slug, hqName: loc.heldBy, vendor: x.vend }];
-        try { return { st: x.st, links, out: host.CE.call(x.st.tables, 'commitHqHeldLinks', [args]) }; }
-        catch (err) { return { st: x.st, links, error: err.message }; }
-      });
-    }
-    function elLinksHtml(loc) {
-      if (!canSend()) return '<p class="help" style="margin:0">Linking stores changes their order guides, so it needs an HQ sign-in with the hq role.</p>';
-      const states = heldStores(loc).map(st => heldStoreState(st, loc));
-      const shown = states.filter(s => s.vend && s.prods.length), none = states.filter(s => !s.vend).map(s => host.shortName(s.st));
-      return '<p class="help" style="margin:0">Linked by name: on each store\'s ' + esc(loc.heldBy) + ' list, an item named exactly like a product above is HEH\'s. One line per store; only what doesn\'t match needs you.</p>' +
-        '<div class="el-lines">' + (shown.length ? shown.map(s => elStoreLine(s, loc)).join('') : '<p class="muted" style="margin:10px 0">No store here has a ' + esc(loc.heldBy) + ' vendor yet.</p>') +
-        (none.length ? '<div class="muted" style="font-size:13px;padding:10px 0">No ' + esc(loc.heldBy) + ' vendor at ' + esc(none.join(', ')) + '.</div>' : '') + '</div>' +
-        '<div class="row-between"><span class="muted" id="whelk-sum" style="max-width:660px"></span><div class="actions" style="align-items:center">' +
-        '<button type="button" class="btn primary" data-wh="el-link-go" id="whelk-go">Link</button></div></div>';
-    }
-    function elStoreLine(s, loc) {
-      const st = s.st, total = s.prods.length;
-      const name = esc(host.shortName(st)) + (st.isTest ? ' <span class="tag">TEST</span>' : '');
-      const vend = s.known ? 'Its ' + esc(loc.heldBy) + ' vendor: ' + esc(s.vend)
-        : '<span class="el-row" style="gap:8px;align-items:center">Its ' + esc(loc.heldBy) + ' vendor:' +
-          selectHtml('data-whelv="' + esc(st.slug) + '" aria-label="' + esc(host.shortName(st)) + '\'s vendor for ' + esc(loc.heldBy) + '"', s.vend, st.tables.vendors.map(v => [v.name, v.name])) + '</span>';
-      const pill = s.linked === total ? '<span class="tag ok">✓ ' + s.linked + ' of ' + total + ' linked</span>'
-        : '<span class="tag ' + (s.toLink ? 'blue' : 'warn') + '">' + (s.linked + s.toLink) + ' of ' + total + ' match' + (s.toLink ? ' · ' + s.toLink + ' to link' : '') + '</span>';
-      const vlow = lcs(s.vend), used = new Set(s.view.filter(x => x.itemId).map(x => x.itemId));
-      const cands = st.tables.items.filter(it => it.active === true && it.whProduct == null && !used.has(it.id) &&
-        (lcs(it.primaryVendor) === vlow || (it.eligible || []).some(v => lcs(v) === vlow)));
-      const fix = s.view.map(x => {
-        const p = prodBy(x.productId);
-        if (x.status === 'taken') return '<div class="el-fix">"' + esc(x.itemName) + '" is linked to another product here.</div>';
-        if (x.status === 'rename') {
-          const it = st.tables.items.find(y => y.id === x.itemId);
-          return '<div class="el-fix"><span style="flex:1 1 260px">Renames <b>' + esc(it ? it.name : x.itemId) + '</b> to <b>' + esc(p.name) + '</b> when you link.</span>' +
-            '<button type="button" class="linkbtn" data-whelru="' + esc(st.slug + '|' + p.id) + '">Undo</button></div>';
-        }
-        if (x.status !== 'missing') return '';
-        return '<div class="el-fix"><span style="flex:1 1 260px">No item named <b>' + esc(p.name) + '</b>. Rename theirs to match:</span>' +
-          (cands.length ? selectHtml('data-whelr="' + esc(st.slug + '|' + p.id) + '" aria-label="' + esc(host.shortName(st)) + ' item to rename to ' + esc(p.name) + '"', '', cands.map(it => [it.id, it.name]), 'Pick one of its ' + s.vend + ' items')
-                        : '<span class="muted">It has no other ' + esc(s.vend) + ' item.</span>') + '</div>';
-      }).join('');
-      return '<div class="el-line"><div class="row-between" style="margin:0"><span><b>' + name + '</b><span class="muted" style="display:block;font-size:13px">' + vend + '</span></span>' + pill + '</div>' + fix + '</div>';
-    }
-    function updateElLinks(loc) {
-      const go = $('whelk-go'), sum = $('whelk-sum');
-      if (!go) return;
-      const plan = heldPlan(loc), bad = plan.filter(x => x.error);
-      if (sum) sum.textContent = bad.length ? bad.map(x => host.shortName(x.st) + ': ' + x.error).join(' ')
-        : !plan.length ? 'Nothing to link: every match is linked.'
-        : 'Each store keeps ordering from its own ' + loc.heldBy + ' vendor. A rename and a link show in that store\'s Changes, undoable there.';
-      go.disabled = !plan.length || bad.length > 0;
-      go.textContent = plan.length ? 'Link ' + plural(plan.length, 'store') : 'Link';
-    }
-
-    // ---- Send a product to stores (schema v16; HQ's catalog, so the hq role) ----
-    // A Happy Supply product goes to each store's Happy Supply. One ordered
-    // through a held location's holder (v17, Elpis) goes to the store's own
-    // vendor for it: remembered as HQ's name, or picked from the store's
-    // vendors the first time (pick-only) and remembered with the change.
-    const HS = 'Happy Supply';
-    const sendHq = p => p.via || HS;
-    function storeHs(st, hq) {
-      hq = hq || HS;
-      const linked = host.linkFor(st.slug, hq);
-      if (linked) return { name: linked, remembered: true };
-      const v = st.tables.vendors.find(x => x.name.toLowerCase() === hq.toLowerCase());
-      return v ? { name: v.name, remembered: false } : null;
-    }
-    // The store's vendor whose name shares the holder's first word ("Elpis"
-    // for "Elpis Wholesale", "ELPIS"), to start the pick with; else none.
-    function guessVendor(st, hq) {
-      const w = lcs(hq).split(/[^a-z0-9]+/).filter(Boolean)[0] || '';
-      const v = w ? st.tables.vendors.find(x => lcs(x.name).split(/[^a-z0-9]+/).indexOf(w) >= 0) : null;
-      return v ? v.name : '';
-    }
-    // The vendor a product goes to at a store: { name, remembered } or null.
-    function sendVendor(st, p) {
-      const v = storeHs(st, sendHq(p));
-      if (v || !p.via) return v;
-      const r = W.items.send && W.items.send.rows[st.slug];
-      return r && r.vend ? { name: r.vend, remembered: false, picked: true } : null;
-    }
-    function sendOpen(p) {
-      const keys = host.conceptKeys().filter(k => host.storesOf(k).some(host.usable));
-      W.items.send = { productId: p.id, concept: keys[0] || null, rows: {} };
-      sendConcept(W.items.send.concept);
-    }
-    function sendConcept(k) {
-      const s = W.items.send, p = prodBy(s.productId);
-      s.concept = k; s.rows = {};
-      for (const st of host.storesOf(k).filter(host.usable)) {
-        const c = host.CE.productCandidates(st.tables, p.name);
-        s.rows[st.slug] = { on: false, mode: c.best ? 'link' : 'add', link: c.best || (c.items[0] ? c.items[0].id : ''),
-                            vend: p.via && !storeHs(st, p.via) ? guessVendor(st, p.via) : '' };
-      }
-    }
-    function sendPlan() {
-      const s = W.items.send, p = prodBy(s.productId);
-      if (!s || !p) return [];
-      return host.storesOf(s.concept).filter(host.usable).filter(st => s.rows[st.slug] && s.rows[st.slug].on).map(st => {
-        const r = s.rows[st.slug], hs = sendVendor(st, p);
-        if (!hs) return { st, links: [], error: p.via ? 'Pick which vendor is ' + p.via + ' here.' : 'Add ' + HS + ' to this store on Vendors first (with its delivery days).' };
-        const args = { vendor: null, vendorName: hs.name, product: { id: p.id, name: p.name, pack: p.pack, via: p.via || '' }, link: r.mode === 'link' ? r.link : '', item: { name: p.name } };
-        const links = [{ slug: st.slug, hqName: sendHq(p), vendor: hs.name }];
-        try { return { st, links, out: host.CE.call(st.tables, 'commitHqProduct', [args]) }; }
-        catch (err) { return { st, links, error: err.message }; }
-      });
-    }
-    function sendHtml() {
-      const s = W.items.send, p = s && prodBy(s.productId);
-      if (!s || !p) return '';
-      const hq = sendHq(p);
-      const keys = host.conceptKeys().filter(k => host.storesOf(k).some(host.usable));
-      const stores = host.storesOf(s.concept).filter(host.usable).sort((a, b) => (a.isTest - b.isTest) || String(a.side).localeCompare(String(b.side)) || host.shortName(a).localeCompare(host.shortName(b)));
-      const rows = stores.map(st => {
-        const r = s.rows[st.slug], known = storeHs(st, hq), hs = sendVendor(st, p), linked = st.tables.items.find(it => Number(it.whProduct) === p.id);
-        const allowed = !p.stores.length || p.stores.indexOf(st.slug) >= 0;
-        const name = esc(host.shortName(st)) + (st.isTest ? ' <span class="tag">TEST</span>' : '');
-        if (linked) return '<tr><td></td><td><b>' + name + '</b></td><td>' + esc(hs ? hs.name : hq) + '</td><td><span class="tag ok">Linked</span> ' + esc(linked.name) + ' (' + esc(linked.id) + ')</td></tr>';
-        if (!allowed) return '<tr><td></td><td><b>' + name + '</b></td><td colspan="2" class="muted">' + esc(p.name) + ' isn\'t sold to this store (Which stores can order it, above).</td></tr>';
-        if (!p.via && !hs) return '<tr><td></td><td><b>' + name + '</b></td><td colspan="2" class="muted">No ' + HS + ' here yet. Add it on <button type="button" class="linkbtn" data-nav="vendor">Vendors</button> first, with its delivery days.</td></tr>';
-        if (p.via && !known && !guessVendor(st, hq)) return '<tr><td></td><td><b>' + name + '</b></td><td colspan="2" class="muted">No ' + esc(hq) + ' here (no vendor by that name). Add it on <button type="button" class="linkbtn" data-nav="vendor">Vendors</button> first.</td></tr>';
-        const vendCell = known ? 'Has it: "' + esc(known.name) + '"'
-          : '<div style="display:flex;flex-direction:column;gap:6px">' +
-              selectHtml('data-whsvend="' + esc(st.slug) + '" aria-label="' + esc(host.shortName(st)) + '\'s vendor for ' + esc(hq) + '"', r.vend,
-                st.tables.vendors.map(v => [v.name, v.name]), 'Pick its vendor') +
-              '<span class="muted" style="font-size:13px">Saved as HQ\'s "' + esc(hq) + '" here</span></div>';
-        const c = host.CE.productCandidates(st.tables, p.name);
-        const opts = c.items.filter(x => !x.linked).slice(0, 30).map(x => [x.id, x.name + (x.vendor ? ' (' + x.vendor + ', ' + x.id + ')' : ' (' + x.id + ')')]);
-        const choose = '<div class="stack" style="display:flex;flex-direction:column;gap:8px">' +
-          (opts.length ? '<label class="check"><input type="radio" name="whsm-' + esc(st.slug) + '" data-whsmode="' + esc(st.slug) + '" value="link"' + (r.mode === 'link' ? ' checked' : '') + '>Link an item it has</label>' +
-            (r.mode === 'link' ? selectHtml('data-whslink="' + esc(st.slug) + '" aria-label="' + esc(host.shortName(st)) + ' item to link"', r.link, opts) +
-              '<span class="muted" style="font-size:13px">' + esc(linkNote(st, r.link, hs ? hs.name : '', p)) + '</span>' : '') : '') +
-          '<label class="check"><input type="radio" name="whsm-' + esc(st.slug) + '" data-whsmode="' + esc(st.slug) + '" value="add"' + (r.mode === 'add' || !opts.length ? ' checked' : '') + '>Add a new item: ' + esc(p.name) + '</label>' +
-          (r.mode === 'add' || !opts.length ? '<span class="muted" style="font-size:13px">' + (c.items.some(x => x.close) ? 'It has a close match: link it instead, so its par and count history stay.' : 'It waits in Needs setup with no par and no storage area, like an LTO.') + '</span>' : '') + '</div>';
-        return '<tr><td><input type="checkbox" data-whson="' + esc(st.slug) + '" aria-label="Send to ' + esc(host.shortName(st)) + '"' + (r.on ? ' checked' : '') + ' style="width:20px;height:20px"></td>' +
-          '<td><b>' + name + '</b></td><td>' + vendCell + '</td><td>' + choose + '</td></tr>';
-      }).join('');
-      return '<section class="card focus" aria-labelledby="whsend-h"><div class="card-head"><h2 id="whsend-h">Send ' + esc(p.name) + ' to stores</h2>' +
-        '<button type="button" class="linkbtn" data-wh="send-close">Close</button></div>' +
-        '<p class="help" style="margin:0">' + (p.via
-          ? 'Each ticked store gets one change it can undo in its Changes: its own item linked to this product, ' + esc(p.via) + ' its main vendor, so KMs keep ordering it from ' + esc(p.via) + ' and its par and count history stay. Or a new item with no par and no storage area. Every store or none.'
-          : 'Each ticked store gets one change it can undo in its Changes: the item with no par and no storage area, and its link to this product. Or link an item the store already has, so its par and count history stay. Every store or none.') + '</p>' +
-        '<label class="field" style="max-width:320px">Concept' + selectHtml('data-whsconcept="1"', s.concept, keys.map(k => [k, host.conceptName(k)])) + '</label>' +
-        (stores.length ? '<div class="scroll"><table><thead><tr><th><span class="sr">Send</span></th><th>Store</th><th>' + esc(p.via ? p.via + ' here' : HS) + '</th><th>The item</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
-          : emptyHtml('No stores in this concept use the app\'s editor.')) +
-        '<div class="row-between"><span class="muted" id="whsend-sum"></span><div class="actions" style="align-items:center">' +
-        '<button type="button" class="btn primary big" data-wh="send-go" id="whsend-go">Send</button></div></div>' +
-        '<div class="status" id="whsend-status" role="status"></div></section>';
-    }
-    function linkNote(st, id, vend, p) {
-      const it = st.tables.items.find(x => x.id === id);
-      if (!it || !vend) return '';
-      const parts = [];
-      if (lcs(it.primaryVendor) !== lcs(vend)) parts.push(vend + ' becomes its main vendor' + (it.primaryVendor ? ', ' + it.primaryVendor + ' stays as a backup' : ''));
-      if (p.pack && it.pack !== p.pack) parts.push('pack becomes ' + p.pack + (it.pack ? ' (was ' + it.pack + ')' : ''));
-      return parts.length ? upper(parts.join('. ')) + '.' : 'Nothing else changes.';
-    }
-    function updateSend() {
-      const plan = sendPlan(), go = $('whsend-go'), sum = $('whsend-sum');
-      const bad = plan.filter(x => x.error);
-      const named = plan.filter(x => !x.error && x.links.some(l => !host.linkFor(l.slug, l.hqName))).length;
-      if (sum) sum.textContent = !plan.length ? 'Tick the stores to send it to.'
-        : bad.length ? bad.map(x => host.shortName(x.st) + ': ' + x.error).join(' ')
-        : plural(plan.length, 'store') + ': ' + plural(plan.filter(x => x.out.result.mode === 'link').length, 'item') + ' linked, ' +
-          plural(plan.filter(x => x.out.result.mode === 'add').length, 'item') + ' added' +
-          (named ? ', ' + plural(named, 'store') + ' naming ' + sendHq(prodBy(W.items.send.productId)) : '') + '.';
-      if (go) { go.disabled = !plan.length || bad.length > 0; go.textContent = plan.length ? 'Send to ' + plural(plan.length, 'store') : 'Send'; }
     }
 
     // ---- Stock history ----
@@ -1359,36 +1345,50 @@
       if (itp) { W.items.place = itp; W.items.filter = 'active'; W.items.sel = null; W.items.draft = null; return host.go('wh-items'); }
       const itfl = t.getAttribute('data-whitfl');
       if (itfl) { W.items.filter = itfl; W.items.sel = null; W.items.draft = null; return renderItems(); }
-      if (a === 'item-new') { W.items.sel = 'new'; W.items.draft = itemDraft(null); W.items.send = null; say('whit-status', '', ''); return renderItems(); }
+      if (a === 'item-new') { W.items.sel = 'new'; W.items.draft = itemDraft(null); say('whit-status', '', ''); return renderItems(); }
       if (a === 'item-discard') { W.items.sel = null; W.items.draft = null; return renderItems(); }
       const itx = t.getAttribute('data-whitx');
       if (itx) { W.items.draft.places = W.items.draft.places.filter(x => x.locationId !== Number(itx)); return renderItems(); }
-      const lim = t.getAttribute('data-whitlim');
-      if (lim != null) { W.items.draft.limit = lim === '1'; return renderItems(); }
-      const ist = t.getAttribute('data-whitst');
-      if (ist) { const l = W.items.draft.stores, i = l.indexOf(ist); if (i >= 0) l.splice(i, 1); else l.push(ist); return renderItems(); }
+      // v21: the Stores table
+      const rtend = t.getAttribute('data-whrtend'), rtput = t.getAttribute('data-whrtput'), rtundo = t.getAttribute('data-whrtundo'), rtdrop = t.getAttribute('data-whrtdrop');
+      if (rtend) { W.items.draft.rt[rtend].end = true; return renderItems(); }
+      if (rtput) { W.items.draft.rt[rtput].putBack = true; return renderItems(); }
+      if (rtundo) { Object.assign(W.items.draft.rt[rtundo], W.items.draft.rtBase[rtundo], { vendor: W.items.draft.rtBase[rtundo].vendor, end: false, putBack: false }); return renderItems(); }
+      if (rtdrop) { delete W.items.draft.rt[rtdrop]; return renderItems(); }
+      const rtday = t.getAttribute('data-whrtday');
+      if (rtday) { const [slug, i] = rtday.split('|'); const x = W.items.draft.rt[slug]; x.days[Number(i)] = !x.days[Number(i)]; return renderItems(); }
       if (a === 'item-save') {
-        const f = W.items.draft;
-        const done = await write('mog_wh_save', { p_kind: 'product', p_row: itemRow(f) }, 'whit-status', x => 'Saved ' + x.name + '.');
-        if (!done) { if (W.conflict) W.items.draft = null; return rerender(); }
-        const counts = itemCounts(f, prodBy(done.id));
-        for (const c of counts) {
-          c.lines[0].productId = done.id;
-          const ok = await write('mog_wh_count', { p_count: c }, 'whit-status',
-            () => 'Saved ' + done.name + ' and ' + (counts.length === 1 ? 'its count' : 'its counts') + '. Each is in Stock history with its reason.');
-          if (!ok) break;
+        const f = W.items.draft, p0 = f.id ? prodBy(f.id) : null;
+        const plan = routePlan(f, p0), live = plan.filter(x => !x.error && x.out.ops.length);
+        if (plan.some(x => x.error)) return updateItemPanel();
+        const fields = itemFieldsChanged(f, p0);
+        let saved = [];
+        if (live.length) {   // the routes first: every store or none (v21)
+          const ok = await host.save(live, 'whit-status', () => {});
+          if (!ok) return updateItemPanel();
+          saved.push(plural(live.length, 'store') + ' (each can undo it in its Changes)');
         }
-        W.items.sel = done.id; W.items.draft = null;
-        return rerender();
-      }
-      if (a === 'send-open') { const p = prodBy(W.items.sel); if (p) sendOpen(p); say('whit-status', '', ''); return renderItems(); }
-      if (a === 'send-close') { W.items.send = null; return renderItems(); }
-      if (a === 'send-go') {
-        const plan = sendPlan(), p = prodBy(W.items.send.productId);
-        if (!plan.length || plan.some(x => x.error)) return;
-        const ok = await host.save(plan, 'whsend-status', () => {});
-        if (ok) { W.items.send = null; renderItems(); say('whit-status', 'good', 'Sent ' + p.name + ' to ' + plural(plan.length, 'store') + '. Each store sees it in Manage → Changes, and can undo it there.'); }
-        else updateSend();
+        if (fields) {
+          const done = await write('mog_wh_save', { p_kind: 'product', p_row: itemRow(f) }, 'whit-status', x => 'Saved ' + x.name + '.');
+          if (!done) {
+            if (saved.length) say('whit-status', 'bad', 'The stores saved, the item didn\'t: ' + ($('whit-status').textContent || '').replace(/^Not saved: /, ''));
+            if (W.conflict) W.items.draft = null;
+            return rerender();
+          }
+          const counts = itemCounts(f, prodBy(done.id));
+          for (const c of counts) {
+            c.lines[0].productId = done.id;
+            const ok = await write('mog_wh_count', { p_count: c }, 'whit-status', () => 'Saved.');
+            if (!ok) break;
+          }
+          if (counts.length) saved.push(counts.length === 1 ? 'its count (in Stock history with its reason)' : 'its counts (in Stock history with their reasons)');
+          W.items.sel = done.id;
+        }
+        if (live.length && !fields) await refresh();
+        W.items.draft = null;
+        rerender();
+        const nm = (prodBy(W.items.sel) || {}).name || f.name;
+        say('whit-status', 'good', 'Saved ' + nm + (saved.length ? ': ' + saved.join(', ') : '') + '.');
         return;
       }
       if (a === 'settings-save') {
@@ -1399,7 +1399,7 @@
       }
       // Places
       const pls = t.getAttribute('data-whplsel');
-      if (pls) { W.places.sel = Number(pls); W.places.draft = null; W.places.vend = {}; W.places.renames = {}; say('whpl-status', '', ''); return host.view() === 'wh-places' ? renderPlaces() : host.go('wh-places'); }
+      if (pls) { W.places.sel = Number(pls); W.places.draft = null; say('whpl-status', '', ''); return host.view() === 'wh-places' ? renderPlaces() : host.go('wh-places'); }
       if (a === 'place-new') { W.places.sel = 'new'; W.places.draft = placeDraft(null); say('whpl-status', '', ''); return renderPlaces(); }
       if (a === 'place-discard') { W.places.sel = null; W.places.draft = null; return renderPlaces(); }
       const plk = t.getAttribute('data-whplk');
@@ -1409,15 +1409,6 @@
       if (a === 'place-save') {
         const done = await write('mog_wh_save', { p_kind: 'location', p_row: placeRow(W.places.draft) }, 'whpl-status', x => 'Saved ' + x.name + '.');
         if (done) { W.places.sel = done.id; W.places.draft = null; } else if (W.conflict) W.places.draft = null;
-        return rerender();
-      }
-      const elru = t.getAttribute('data-whelru');
-      if (elru) { const [slug, pid] = elru.split('|'); if (W.places.renames[slug]) delete W.places.renames[slug][pid]; return renderPlaces(); }
-      if (a === 'el-link-go') {
-        const loc = D().locations.find(l => l.id === W.places.sel), plan = heldPlan(loc);
-        if (!plan.length || plan.some(x => x.error)) return;
-        const ok = await host.save(plan, 'whpl-status', () => {});
-        if (ok) { W.places.renames = {}; W.places.vend = {}; say('whpl-status', 'good', 'Linked ' + plural(plan.length, 'store') + '. Each store sees it in Manage → Changes, and can undo it there.'); }
         return rerender();
       }
       // Incoming
@@ -1534,10 +1525,17 @@
       const plf = t.getAttribute('data-whplf');
       if (plf === 'heldStore' || plf === 'heldBy') { W.places.draft[plf] = t.value; return updatePlacePanel(); }
       if (plf === 'active') { W.places.draft.active = t.checked; return updatePlacePanel(); }
-      const elv = t.getAttribute('data-whelv');
-      if (elv) { W.places.vend[elv] = t.value; delete W.places.renames[elv]; return renderPlaces(); }
-      const elr = t.getAttribute('data-whelr');
-      if (elr && t.value) { const [slug, pid] = elr.split('|'); W.places.renames[slug] = W.places.renames[slug] || {}; W.places.renames[slug][pid] = t.value; return renderPlaces(); }
+      // v21: the Stores table
+      if (t.getAttribute('data-whrtadd') && t.value) {
+        const f = W.items.draft, p = prodBy(f.id), st = host.storeBy(t.value);
+        if (p && st) f.rt[t.value] = routeDefaults(st, p, f);
+        return renderItems();
+      }
+      const rti = t.getAttribute('data-whrtitem'), rtf = t.getAttribute('data-whrtfrom'), rtv = t.getAttribute('data-whrtvend'), rtn = t.getAttribute('data-whrtvname');
+      if (rti) { W.items.draft.rt[rti].itemId = t.value; return renderItems(); }
+      if (rtf) { W.items.draft.rt[rtf].place = t.value; return renderItems(); }
+      if (rtv) { W.items.draft.rt[rtv].vendor = t.value; return renderItems(); }
+      if (rtn) { W.items.draft.rt[rtn].newName = t.value; return updateItemPanel(); }
       if (t.getAttribute('data-whtm')) { W.taken.month = t.value; return renderTaken(); }
       const po = t.getAttribute('data-whpo');
       if (po && po !== 'note') { W.inc.po[po] = Number(t.value); return po === 'locationId' ? renderIncoming() : updatePoForm(); }
@@ -1551,15 +1549,6 @@
       if (hh) { W.hist[hh] = t.value; return renderHistory(); }
       const from = t.getAttribute('data-whfrom');
       if (from) { W.ord.rows[from] = W.ord.rows[from] || {}; W.ord.rows[from].locationId = t.value; return updateShip(); }
-      if (t.getAttribute('data-whsconcept')) { sendConcept(t.value); return renderItems(); }
-      const son = t.getAttribute('data-whson');
-      if (son) { W.items.send.rows[son].on = t.checked; return updateSend(); }
-      const smode = t.getAttribute('data-whsmode');
-      if (smode) { W.items.send.rows[smode].mode = t.value; return renderItems(); }
-      const slink = t.getAttribute('data-whslink');
-      if (slink) { W.items.send.rows[slink].link = t.value; return renderItems(); }
-      const svend = t.getAttribute('data-whsvend');
-      if (svend) { W.items.send.rows[svend].vend = t.value; return renderItems(); }
     });
     document.addEventListener('input', e => {
       const t = e.target;

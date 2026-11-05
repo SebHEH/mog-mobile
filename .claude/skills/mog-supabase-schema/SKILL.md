@@ -78,9 +78,12 @@ file is run once, in order. Re-running any of them must stay harmless.
   smoke_v8's "only areas rename", 2026-11-02): point that probe at something no version accepts. A
   runner skip isn't enough: the probe now really writes, and later rows of that file fail.
 - **Older smoke files run against the newest schema** (PGlite runs every smoke file after the whole
-  chain). A version that retires a field keeps it working as a fallback, and keeps an old refusal a
-  smoke row reads, or those files fail (v20 kept `via` and v17's "that delivery isn't there",
-  2026-11-04).
+  chain), so a version that retires a field or a refusal breaks the older rows that read it. Retire
+  it fully: drop the field from every page and function, and rewrite those older rows (or have the
+  runner skip them with the reason, as it does for v1's), never keep it alive as a fallback so old
+  rows pass. v20 kept `via`, a product's `par` and "Which stores can order it" alive that way, and
+  HQ's Send to stores kept running v16's Happy-Supply-only rule beside v20's places: Sebastian's
+  shrimp link was refused (2026-11-05).
 - **A value a gate or smoke pins** (an average, a price, what's left) comes from running the SQL in
   PGlite or the page's own code, never from working it out by hand: a hand-worked 77.5926 was wrong
   (Postgres: 77.5968), and v16's gate expected 14 cases left where the code's 20 (both locations)

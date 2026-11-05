@@ -552,7 +552,7 @@
     // hq() answers only for someone with the hq role too.
     const WH = window.HQWarehouse ? window.HQWarehouse.create({ rpc, token: () => S.token, view: () => S.view, go: v => go(v),
       signedOut: msg => { keepToken(null); S.data = null; showSignin(msg); },
-      hq: () => (S.data && has('hq') ? S.data : null), CE, conceptKeys, conceptName, storesOf, shortName, usable, linkFor,
+      hq: () => (S.data && has('hq') ? S.data : null), CE, conceptKeys, conceptName, storesOf, storeBy, shortName, usable, linkFor,
       save: (plan, statusId, reset) => save(plan, statusId, reset) }) : null;
     // The LTOs page (schema v14), given the helpers it shares with this page;
     // functions declared further down are hoisted.

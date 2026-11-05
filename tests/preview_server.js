@@ -82,6 +82,7 @@ const STORES = [
   ['zzrpr', 178, 'Roll Play Rosslyn BOH', 'roll-play', false],
   ['zzrprfo', 127, 'Roll Play Rosslyn FOH', 'roll-play', false],
   ['zzrpfr', 14, 'Roll Play Founders BOH', 'roll-play', false],
+  ['zzrpt', 31, 'Roll Play Tysons BOH', 'roll-play', false],
   ['zztnyt', 244, 'Teas’n You Tysons BOH', 'teasnyou', false],
   ['zztnyr', 0, 'Teas’n You Rockville BOH', 'teasnyou', false]
 ];
@@ -184,10 +185,9 @@ function signIn(who) {
   const S = wh('mog_wh_save', { p_kind: 'supplier', p_row: { name: 'Ruby Seas' } }).id;
   // v20: each sits at both freezers, with a low point at each.
   const both = (low1, low2) => [{ locationId: A, lowPoint: low1 }, { locationId: B, lowPoint: low2 }];
-  const crab = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'King crab legs 9/12', pack: '20 LB case', par: 10, handlingFee: 25,
-    stores: ['zzrpr', 'zzrprfo', 'zzrpfr'], places: both(8, 4) } }).id;
-  const shrimp = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Shrimp 16/20', pack: '10 LB case', par: 12, handlingFee: 6, places: both(8, 3) } }).id;
-  const snow = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Snow crab clusters', pack: '30 LB case', par: 6, handlingFee: 12, places: both(5, 1) } }).id;
+  const crab = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'King crab legs 9/12', pack: '20 LB case', handlingFee: 25, places: both(8, 4) } }).id;
+  const shrimp = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Shrimp 16/20', pack: '10 LB case', handlingFee: 6, places: both(8, 3) } }).id;
+  const snow = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'Snow crab clusters', pack: '30 LB case', handlingFee: 12, places: both(5, 1) } }).id;
   const po = wh('mog_wh_po_save', { p_po: { supplierId: S, locationId: A, lines: [{ productId: crab, cases: 20, cost: 312 },
     { productId: shrimp, cases: 11, cost: 78.5 }, { productId: snow, cases: 6, cost: 145 }] } });
   wh('mog_wh_po_receive', { p_receipt: { id: po.id, version: 1, lines: [{ ord: 1, cases: 20, cost: 312 }, { ord: 2, cases: 11, cost: 78.5 },
@@ -200,10 +200,10 @@ function signIn(who) {
   wh('mog_wh_po_save', { p_po: { supplierId: S, locationId: B, lines: [{ productId: crab, cases: 4 }] } });
 }
 
-// W2b's sample (schema v17): Elpis, held by HQ's "Elpis Wholesale", with two
-// of HEH's own packaging products. The app's store and Rosslyn FOH order them
-// from their "Elpis", linked; a night's close recorded a delivery at each
-// (Rosslyn FOH's five days ago, not marked).
+// W2b's sample (schema v17; v21: places and routes): Elpis, held by "Elpis
+// Wholesale", with two of HEH's own packaging items. The app's store and
+// Rosslyn FOH route them from Elpis under their "Elpis"; a night's close
+// recorded a delivery at each (Rosslyn FOH's five days ago, not marked).
 {
   const token = signIn('warehouse').token;
   const wh = (fn, p) => {
@@ -212,8 +212,8 @@ function signIn(who) {
     return r.data.done;
   };
   const E = wh('mog_wh_save', { p_kind: 'location', p_row: { name: 'Elpis', heldBy: 'Elpis Wholesale' } }).id;
-  const bowls = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'RP Large Bowls', pack: 'CASE (300)', par: 30, handlingFee: 0, via: 'Elpis Wholesale' } }).id;
-  const lids = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'RP Large Bowl Lids', pack: 'CASE (300)', par: 30, handlingFee: 0, via: 'Elpis Wholesale' } }).id;
+  const bowls = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'RP Large Bowls', pack: 'CASE (300)', handlingFee: 0, places: [{ locationId: E }] } }).id;
+  const lids = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'RP Large Bowl Lids', pack: 'CASE (300)', handlingFee: 0, places: [{ locationId: E }] } }).id;
   wh('mog_wh_count', { p_count: { locationId: E, lines: [{ productId: bowls, cases: 40, reason: 'Elpis report' }, { productId: lids, cases: 3, reason: 'Elpis report' }] } });
   const day = n => new Date(sb.nowMs - n * 86400000).toISOString().slice(0, 10);
   for (const [slug, ago] of [[APP, 1], ['zzrprfo', 5]]) {
@@ -226,16 +226,53 @@ function signIn(who) {
       const id = 'ITEM-' + String(++n).padStart(4, '0');
       ids.push(id);
       t.items.push({ id, name, primaryVendor: 'Elpis', pack: 'CASE (300)', par: 3, active: true, useMult: true, notes: '', sku: '', category: '',
-                     eligible: ['Elpis'], seq: ++seq, whProduct: pid });
+                     eligible: ['Elpis'], seq: ++seq, whProduct: pid, whPlace: E, whVendor: 'Elpis' });
       t.pickRows.push({ vendor: 'Elpis', id, area: t.areas[0].name, shelfOrder: 1000 + n, seq: ++rowSeq });
     }
     checkCatalogTables(t);
-    sb.hqState().links.push({ slug, hqName: 'Elpis Wholesale', vendor: 'Elpis' });
     Object.assign(s, { catalog: catalogFromTables(s), version: Date.now() });
     s.log.push({ cycleDate: day(ago), seq: 900, vendor: 'Elpis', id: ids[0], name: 'RP Large Bowls', pack: 'CASE (300)', area: '', onHandPrev: 1, qty: 2, loggedAt: null },
                { cycleDate: day(ago), seq: 901, vendor: 'Elpis', id: ids[1], name: 'RP Large Bowl Lids', pack: 'CASE (300)', area: '', onHandPrev: 0, qty: slug === APP ? 4 : 1, loggedAt: null });
     sb.whHeldFromLog(slug, s, day(ago), new Date(sb.nowMs - ago * 86400000 + 3600000).toISOString());
   }
+}
+
+// W2c's shrimp, as set up live on 2026-11-04 (nothing linked yet): RP Tysons
+// BOH holds SHRIMP for Rosslyn BOH and Founders BOH, who order it from their
+// "Transfer (Tysons)"; RP Tysons orders its own from Capital and has no Happy
+// Supply vendor; Happy Supply (HEH's own) holds 30 cases. Rosslyn FOH's
+// "Transfer" is its own store-to-store vendor, not Tysons'.
+{
+  const token = signIn('both').token;
+  const wh = (fn, p) => {
+    const r = sb.handle(fn, Object.assign({ p_token: token }, p));
+    if (!r.ok) throw new Error(fn + ': ' + JSON.stringify(r));
+    return r.data.done;
+  };
+  const vendor = (t, name) => { if (!t.vendors.some(v => v.name === name)) t.vendors.push({ name, mults: [0, 1, 0, 1, 0, 1, 0], cutoff: null }); };
+  const shrimp = (slug, par, vendors, more) => {
+    const s = sb.stores.get(slug), t = s.tables;
+    for (const v of vendors.concat(more || [])) vendor(t, v);
+    const n = t.items.reduce((m, x) => Math.max(m, Number(String(x.id).replace(/\D/g, '')) || 0), 0) + 1;
+    let seq = t.items.reduce((m, x) => Math.max(m, x.seq), 0), rowSeq = t.pickRows.reduce((m, x) => Math.max(m, x.seq), 0);
+    const id = 'ITEM-' + String(n).padStart(4, '0'), area = (t.areas.find(a => a.name === 'Freezer') || t.areas[0]).name;
+    t.items.push({ id, name: 'SHRIMP', primaryVendor: vendors[0], pack: 'CASE (10LBs)', par, active: true, useMult: true, notes: '', sku: '',
+                   category: 'Protein', eligible: vendors.slice(), seq: ++seq });
+    for (const v of vendors) t.pickRows.push({ vendor: v, id, area, shelfOrder: 1000 + n, seq: ++rowSeq });
+    checkCatalogTables(t);
+    Object.assign(s, { catalog: catalogFromTables(s), version: Date.now() });
+  };
+  shrimp('zzrpt', 6, ['Capital'], ['Transfer (Rosslyn)']);
+  shrimp('zzrpr', 7.15, ['Transfer (Tysons)', 'SamuelSon']);
+  shrimp('zzrpfr', 6, ['Transfer (Tysons)', 'Capital'], ['Transfer (Rosslyn)']);
+  vendor(sb.stores.get('zzrprfo').tables, 'Transfer');
+  Object.assign(sb.stores.get('zzrprfo'), { catalog: catalogFromTables(sb.stores.get('zzrprfo')), version: Date.now() });
+  const T = wh('mog_wh_save', { p_kind: 'location', p_row: { name: 'Transfer (Tysons)', active: true, heldStore: 'zzrpt', countHow: 'marginedge' } }).id;
+  const H = wh('mog_wh_save', { p_kind: 'location', p_row: { name: 'Happy Supply', active: true, heldBy: null, heldStore: null, countHow: 'hq' } }).id;
+  const sh = wh('mog_wh_save', { p_kind: 'product', p_row: { name: 'SHRIMP', pack: 'CASE (10LBs)', handlingFee: 0, concept: 'roll-play',
+    active: true, places: [{ locationId: T, lowPoint: 20 }, { locationId: H, lowPoint: 10 }] } }).id;
+  wh('mog_wh_count', { p_count: { locationId: T, lines: [{ productId: sh, cases: 104, reason: 'Starting inventory' }] } });
+  wh('mog_wh_count', { p_count: { locationId: H, lines: [{ productId: sh, cases: 30, reason: 'Added inventory' }] } });
 }
 
 // ---- The server ------------------------------------------------------------------

@@ -262,9 +262,10 @@ mog-mobile/
 │   ├── schema_v18.sql           HQ remembers a device: mog_hq_remember (30 days from each open, the sign-in's "Remember this device" box) and mog_hq_signout (Sign out ends the sign-in on the server) (run after v17).
 │   ├── schema_v19.sql           Elpis on one page: mog.wh_products.concept (the concept whose stores carry a held product), saved by mog_wh_save, read in mog_wh_data (run after v18).
 │   ├── schema_v20.sql           HEH's stock at three places (W2c): a place's kind (held_store, count_how), mog.wh_product_places (an item's places and low points), a Happy Supply line into a place (to_location), the close and the phone by place, mog_wh_taken (run after v19).
+│   ├── schema_v21.sql           Routes: mog.items.wh_place and wh_vendor (a store item's place and the vendor it's ordered under, on its row), every stock reader by route (the close, the phone, Send), routes in mog_wh_data; via, par and stores unread until v22 (run after v20).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v20.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
+│   └── tests/                   smoke.sql … smoke_v21.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
 │                                + test_store_elpis.sql (SQL Editor: two Elpis deliveries on the TEST store, which never closes)
 │                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).

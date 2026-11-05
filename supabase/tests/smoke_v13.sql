@@ -140,28 +140,26 @@ begin
   r := public.mog_wh_save(tok, 'product', jsonb_build_object('name', pre || 'King crab 9/12', 'pack', '20 LB case', 'par', 10,
                                                              'handlingFee', 25.004, 'stores', '["zztest13", "zztest13"]'::jsonb));
   crab := (r -> 'data' -> 'done' ->> 'id')::bigint;
-  perform pg_temp.chk('save: locations (trimmed, in order), a supplier, products (no cost until a delivery, fee to the cent, stores once)',
+  -- v21 retired a product's par and stores (unread until v22): not checked here.
+  perform pg_temp.chk('save: locations (trimmed, in order), a supplier, products (no cost until a delivery, fee to the cent)',
     (select name = pre || 'Berliner' from mog.wh_locations where id = locA)
       and (select ord from mog.wh_locations where id = locB) > (select ord from mog.wh_locations where id = locA)
       and exists (select 1 from mog.wh_suppliers where id = sup and active)
-      and (select avg_cost = 0 and par = 12 and handling_fee = 6 and stores = '{}' and version = 1 and updated_by = me
+      and (select avg_cost = 0 and handling_fee = 6 and version = 1 and updated_by = me
              from mog.wh_products where id = shrimp)
-      and (select handling_fee = 25.00 and stores = '{zztest13}' from mog.wh_products where id = crab), r - 'data');
+      and (select handling_fee = 25.00 from mog.wh_products where id = crab), r - 'data');
   n := 0;
   foreach d in array array[
     jsonb_build_object('name', upper(pre) || 'SHRIMP 16/20', 'par', 1, 'handlingFee', 0),
-    jsonb_build_object('name', pre || 'Lobster', 'par', -1, 'handlingFee', 0),
-    jsonb_build_object('name', pre || 'Lobster', 'par', '12', 'handlingFee', 0),
     jsonb_build_object('name', pre || 'Lobster', 'par', 1, 'handlingFee', -1),
-    jsonb_build_object('name', pre || 'Lobster', 'par', 1, 'handlingFee', 0, 'stores', '["nosuchstore"]'::jsonb),
     jsonb_build_object('name', '  ', 'par', 1, 'handlingFee', 0),
     jsonb_build_object('name', pre || 'Lobster', 'par', 1, 'handlingFee', 0, 'active', 'yes')
   ] loop
     r := public.mog_wh_save(tok, 'product', d);
     if r ->> 'error' like 'REJECTED: %' then n := n + 1; end if;
   end loop;
-  perform pg_temp.chk('save: refused: a name twice (any case), par below 0 or not a number, a fee below 0, an unknown store, no name, a bad flag',
-    n = 7 and not exists (select 1 from mog.wh_products where name = pre || 'Lobster'), to_jsonb(n));
+  perform pg_temp.chk('save: refused: a name twice (any case), a fee below 0, no name, a bad flag (v21: par and stores retired)',
+    n = 4 and not exists (select 1 from mog.wh_products where name = pre || 'Lobster'), to_jsonb(n));
   r := public.mog_wh_save(tok, 'product', jsonb_build_object('id', shrimp, 'version', 0, 'name', pre || 'Shrimp 16/20', 'par', 12, 'handlingFee', 7));
   perform pg_temp.chk('save: an edit from an older version is a CONFLICT, the product as it was',
     r ->> 'error' = 'CONFLICT' and (select handling_fee = 6 and version = 1 from mog.wh_products where id = shrimp), r);

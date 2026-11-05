@@ -35,8 +35,8 @@ returns void language sql as $$
 $$;
 
 -- A store on the app's editor and phones, counting today. Its Happy Supply
--- is "HS Co" and its Elpis is "Elpis" (HQ's names "Happy Supply" and
--- "zz smoke 17 Holder"). Answers its sync key.
+-- is "HS Co" and its Elpis is "Elpis" (since v21: its items' routes say
+-- so). Answers its sync key.
 create or replace function pg_temp.store17(p_slug text, p_location text)
 returns text language plpgsql as $$
 declare
@@ -67,7 +67,6 @@ begin
   perform public.mog_sync_set_phone_direct(p_slug, k, true);
   insert into mog.store_state (slug, cycle_date, day_of_week) values (p_slug, current_date, 'Mon')
   on conflict (slug) do update set cycle_date = excluded.cycle_date;
-  insert into mog.hq_vendor_links (slug, hq_name, vendor) values (p_slug, 'Happy Supply', 'HS Co'), (p_slug, 'zz smoke 17 Holder', 'Elpis');
   return k;
 end;
 $$;
@@ -112,8 +111,7 @@ begin
     not has_function_privilege('anon', 'mog.wh_held_receive(bigint, text, text, jsonb)', 'execute')
       and not has_function_privilege('anon', 'mog.wh_held_from_log(text, date)', 'execute')
       and not has_function_privilege('anon', 'mog.wh_do_held_receive(text, jsonb)', 'execute')
-      and not has_function_privilege('anon', 'mog.wh_deliveries_json()', 'execute')
-      and not has_function_privilege('anon', 'mog.wh_held_vendor(text, text)', 'execute'), null);
+      and not has_function_privilege('anon', 'mog.wh_deliveries_json()', 'execute'), null);
 
   perform pg_temp.clean17();
 
@@ -144,21 +142,26 @@ begin
   r := public.mog_wh_save(tok, 'location', '{"name": "zz smoke 17 HS", "heldBy": "Happy Supply"}');
   perform pg_temp.chk('save: Happy Supply doesn''t hold a location', r ->> 'error' like 'REJECTED: Happy Supply''s own locations%', r);
 
-  r := public.mog_wh_save(tok, 'product', '{"name": "zz smoke 17 bowls", "pack": "CASE (300)", "par": 30, "handlingFee": 0, "stores": [], "active": true, "via": "ZZ SMOKE 17 HOLDER"}');
+  -- v21: a product sits at places (v20); its via is retired.
+  r := public.mog_wh_save(tok, 'product', jsonb_build_object('name', 'zz smoke 17 bowls', 'pack', 'CASE (300)', 'handlingFee', 0, 'active', true,
+         'places', jsonb_build_array(jsonb_build_object('locationId', locE))));
   bowls := (r -> 'data' -> 'done' ->> 'id')::bigint;
-  perform pg_temp.chk('save: a product ordered through the holder takes the location''s spelling',
-    (r ->> 'ok')::boolean and (select via from mog.wh_products where id = bowls) = 'zz smoke 17 Holder'
-      and exists (select 1 from jsonb_array_elements(r -> 'data' -> 'products') p where (p ->> 'id')::bigint = bowls and p ->> 'via' = 'zz smoke 17 Holder'), r);
-  r := public.mog_wh_save(tok, 'product', '{"name": "zz smoke 17 lids", "pack": "CASE (300)", "par": 30, "handlingFee": 0, "stores": [], "active": true, "via": "zz smoke 17 Holder"}');
+  perform pg_temp.chk('save: a product placed at the held location sits there',
+    (r ->> 'ok')::boolean and exists (select 1 from mog.wh_product_places where product_id = bowls and location_id = locE)
+      and exists (select 1 from jsonb_array_elements(r -> 'data' -> 'products') p where (p ->> 'id')::bigint = bowls and not (p ? 'via')), r);
+  r := public.mog_wh_save(tok, 'product', jsonb_build_object('name', 'zz smoke 17 lids', 'pack', 'CASE (300)', 'handlingFee', 0, 'active', true,
+         'places', jsonb_build_array(jsonb_build_object('locationId', locE))));
   lids := (r -> 'data' -> 'done' ->> 'id')::bigint;
-  r := public.mog_wh_save(tok, 'product', '{"name": "zz smoke 17 shrimp", "pack": "10 LB case", "par": 12, "handlingFee": 6, "stores": [], "active": true}');
+  r := public.mog_wh_save(tok, 'product', jsonb_build_object('name', 'zz smoke 17 shrimp', 'pack', '10 LB case', 'handlingFee', 6, 'active', true,
+         'places', jsonb_build_array(jsonb_build_object('locationId', locA))));
   shrimp := (r -> 'data' -> 'done' ->> 'id')::bigint;
-  perform pg_temp.chk('save: a Happy Supply product carries no via',
-    (select via from mog.wh_products where id = shrimp) is null
-      and exists (select 1 from jsonb_array_elements(r -> 'data' -> 'products') p where (p ->> 'id')::bigint = shrimp and not (p ? 'via')), null);
-  r := public.mog_wh_save(tok, 'product', '{"name": "zz smoke 17 cups", "pack": "CASE", "par": 1, "handlingFee": 0, "stores": [], "active": true, "via": "Nobody Inc"}');
-  perform pg_temp.chk('save: a via no location is held by is refused',
-    r ->> 'error' like 'REJECTED: no location is held by Nobody Inc%' and not exists (select 1 from mog.wh_products where name = 'zz smoke 17 cups'), r);
+  perform pg_temp.chk('save: a Happy Supply product sits at HEH''s own place',
+    exists (select 1 from mog.wh_product_places where product_id = shrimp and location_id = locA)
+      and not exists (select 1 from mog.wh_product_places where product_id = shrimp and location_id = locE), null);
+  r := public.mog_wh_save(tok, 'product', jsonb_build_object('name', 'zz smoke 17 cups', 'pack', 'CASE', 'handlingFee', 0, 'active', true,
+         'places', jsonb_build_array(jsonb_build_object('locationId', 999999999))));
+  perform pg_temp.chk('save: a place that isn''t there is refused',
+    r ->> 'error' like 'REJECTED: pick a place from the list%' and not exists (select 1 from mog.wh_products where name = 'zz smoke 17 cups'), r);
 
   perform mog.wh_move(me, bowls, locE, 40, 'received', 'zz', 50, null);
   perform mog.wh_move(me, lids, locE, 3, 'received', 'zz', 40, null);
@@ -166,14 +169,14 @@ begin
   perform mog.wh_move(me, shrimp, locE, 2, 'received', 'zz', 77, null);    -- stray Happy Supply stock at Elpis
 
   r := public.mog_wh_save(tok, 'product', jsonb_build_object('id', bowls, 'version', 1, 'name', 'zz smoke 17 bowls', 'pack', 'CASE (300)',
-         'par', 30, 'handlingFee', 0, 'stores', '[]'::jsonb, 'active', true, 'via', null));
-  perform pg_temp.chk('save: where stores order a product can''t change while it has stock',
-    r ->> 'error' like 'REJECTED: zz smoke 17 bowls has stock%' and (select via from mog.wh_products where id = bowls) = 'zz smoke 17 Holder', r);
+         'handlingFee', 0, 'active', true, 'places', '[]'::jsonb));
+  perform pg_temp.chk('save: a product can''t leave a place while it has stock there',
+    r ->> 'error' like 'REJECTED: zz smoke 17 bowls has stock%' and exists (select 1 from mog.wh_product_places where product_id = bowls and location_id = locE), r);
   r := public.mog_wh_save(tok, 'product', jsonb_build_object('id', bowls, 'version', 1, 'name', 'zz smoke 17 bowls', 'pack', 'CASE (300)',
-         'par', 35, 'handlingFee', 0, 'stores', '[]'::jsonb, 'active', true));
-  perform pg_temp.chk('save: a product saved without via keeps it',
-    (r ->> 'ok')::boolean and (select via from mog.wh_products where id = bowls) = 'zz smoke 17 Holder'
-      and (select par from mog.wh_products where id = bowls) = 35, r);
+         'handlingFee', 0, 'active', true));
+  perform pg_temp.chk('save: a product saved without places keeps them',
+    (r ->> 'ok')::boolean and exists (select 1 from mog.wh_product_places where product_id = bowls and location_id = locE)
+      and (select version from mog.wh_products where id = bowls) = 2, r);
   r := public.mog_wh_save(tok, 'location', jsonb_build_object('id', locE, 'name', 'zz smoke 17 Elpis', 'active', true));
   perform pg_temp.chk('save: a location saved without heldBy keeps it',
     (r ->> 'ok')::boolean and (select held_by from mog.wh_locations where id = locE) = 'zz smoke 17 Holder', r);
@@ -184,9 +187,10 @@ begin
   -- ---- Links (HQ's path is smoke_v16's; straight in the tables here) ----
   perform pg_temp.chk('read: a store with no linked item reads exactly as before',
     not (mog.live_json('zztest17', null) ? 'happySupply'), null);
-  update mog.items set wh_product = bowls where slug in ('zztest17', 'zztest17b') and item_id = 'ITEM-0001';
-  update mog.items set wh_product = lids where slug in ('zztest17', 'zztest17b') and item_id = 'ITEM-0002';
-  update mog.items set wh_product = shrimp where slug in ('zztest17', 'zztest17b') and item_id = 'ITEM-0004';
+  -- v21: each link with its route (the place, and the vendor it's ordered under).
+  update mog.items set wh_product = bowls, wh_place = locE, wh_vendor = 'Elpis' where slug in ('zztest17', 'zztest17b') and item_id = 'ITEM-0001';
+  update mog.items set wh_product = lids, wh_place = locE, wh_vendor = 'Elpis' where slug in ('zztest17', 'zztest17b') and item_id = 'ITEM-0002';
+  update mog.items set wh_product = shrimp, wh_vendor = 'HS Co' where slug in ('zztest17', 'zztest17b') and item_id = 'ITEM-0004';
 
   d := mog.live_json('zztest17', null) -> 'happySupply';
   perform pg_temp.chk('read: an Elpis item''s available is the held location''s cases; the holder''s vendor is named',
@@ -199,7 +203,7 @@ begin
   update mog.items set eligible_vendors = '{Elpis,HS Co}' where slug = 'zztest17b' and item_id = 'ITEM-0001';
   r := public.mog_wh_send(ptokb, '{"vendor": "HS Co", "lines": [{"itemId": "ITEM-0001", "cases": 1}]}');
   perform pg_temp.chk('send: an item linked to a held product isn''t Happy Supply''s',
-    r ->> 'error' like 'REJECTED: RP Large Bowls comes from zz smoke 17 Holder, not Happy Supply%', r);
+    r ->> 'error' like 'REJECTED: RP Large Bowls comes from zz smoke 17 Elpis, not Happy Supply%', r);
   r := public.mog_wh_send(ptokb, '{"vendor": "HS Co", "lines": [{"itemId": "ITEM-0004", "cases": 3}]}');
   hs1 := (r -> 'data' -> 'order' ->> 'id')::bigint;
   r := public.mog_wh_ship(tok, jsonb_build_object('id', hs1, 'version', 1, 'lines', jsonb_build_array(
@@ -269,7 +273,7 @@ begin
       and not exists (select 1 from jsonb_array_elements(r -> 'data' -> 'orders') o where (o ->> 'id')::bigint = del1)
       and exists (select 1 from jsonb_array_elements(r -> 'data' -> 'orders') o where (o ->> 'id')::bigint = hs1), null);
   perform pg_temp.chk('read: HQ''s vendor names hold the stores'' vendors, one spelling each',
-    r -> 'data' -> 'vendorNames' ? 'Elpis' and r -> 'data' -> 'vendorNames' ? 'zz smoke 17 Holder'
+    r -> 'data' -> 'vendorNames' ? 'Elpis'
       and (select count(*) from jsonb_array_elements_text(r -> 'data' -> 'vendorNames') x where lower(x) = 'elpis') = 1, null);
 
   -- ---- The store marks it received ----
