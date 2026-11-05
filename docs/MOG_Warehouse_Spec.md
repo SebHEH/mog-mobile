@@ -250,7 +250,7 @@ What W2 adds to the design above, and the answers to what was open for it. Not b
 
 **Before it can be used (not before building):**
 - Dan confirms that no store orders king crab or shrimp by the pound.
-- Dan is invited (warehouse role only) and adds products and a first count; until then W2 is checked in the preview only.
+- Dan is invited (both roles, Sebastian 2026-11-05; the spec first said warehouse only) and adds products and a first count; until then W2 is checked in the preview only.
 
 **Facts it rests on (live, 2026-11-02):** Roll Play's FOH stores order from "Elpis" a mix of branded packaging (RP bowls, lids, bags, Magnum roll boxes, utensil packets; AN broth containers) and Elpis's own catalog (tea, Karat cups, gloves); Teas'n You's stores order boba, tea, cups, lids and straws from "Elpis Wholesale" / "ELPIS". Which items are HEH's own stock is data HQ sets when it links them. One spelling for every store: "Elpis Wholesale" (Sebastian, 2026-11-02).
 

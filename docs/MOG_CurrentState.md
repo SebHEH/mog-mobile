@@ -133,7 +133,7 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - set up a store from one, or send ticked items with "Send N items to stores".
 3. **Start the warehouse** (W1 live; `docs/MOG_Warehouse_Spec.md` §2):
    - Sebastian tells Donny that schemas v13 to v16 are taken;
-   - invites Chef Dan with the warehouse role only (SQL Editor: `select mog.hq_invite('Dan', '{warehouse}');`);
+   - invites Chef Dan (done 2026-11-05, both roles);
    - Dan adds the locations, suppliers and products, then a first count per location.
 
    Then W2 (store orders). **Its spec is approved** (2026-11-02, `docs/MOG_Warehouse_Spec.md` §2 "W2 spec"):
