@@ -1357,15 +1357,15 @@ function whCarries(W, product, location) {
   if (!p || !L) return false;
   return !!(p.places && p.places.some(x => x.locationId === location));
 }
-// mog.wh_available_at (v20): Happy Supply's own locations minus sent orders,
-// or a held place's cases minus its open deliveries; the store's own order
-// for the cycle left out; never below 0.
+// mog.wh_available_at (v20): Happy Supply's own open locations (v22) minus
+// sent orders, or a held place's cases minus its open deliveries; the store's
+// own order for the cycle left out; never below 0.
 function whAvailableAt(W, product, place, slug, cycle) {
   let n = 0;
   for (const k of Object.keys(W.stock)) {
     if (Number(k.split('|')[0]) !== product) continue;
     const L = whLocation(W, Number(k.split('|')[1]));
-    if (place == null ? L.heldBy == null : L.id === place) n += W.stock[k];
+    if (place == null ? (L.heldBy == null && L.active) : L.id === place) n += W.stock[k];
   }
   for (const o of W.orders) {
     if (o.slug === slug && o.cycleDate === cycle) continue;
@@ -1416,6 +1416,7 @@ FakeSupabase.prototype.whLive = function (slug, s) {
   const cycle = s.state ? s.state.cycleDate : null;
   const linked = whRouted(s.tables ? s.tables.items : []).filter(it => {   // v21: by route
     const p = whProduct(W, it.whProduct);
+    if (it.whPlace != null) { const L = whLocation(W, it.whPlace); if (!L || !L.active) return false; }   // v22: a closed place stops it
     return it.active === true && p && p.active;
   });
   const recent = new Date(this.nowMs - 18 * 3600 * 1000).toISOString();
@@ -1435,8 +1436,9 @@ FakeSupabase.prototype.whLive = function (slug, s) {
 };
 // mog.wh_held_from_log, the close's step: the closing cycle's log lines of the
 // items whose route names a held place, ordered under the route's vendor
-// (v21), become one open delivery per place (EL-0001). A same-day re-close
-// replaces an open one or deletes it; a received one stays.
+// (v21), become one open delivery per place (EL-0001); nothing from a closed
+// place or for an inactive HQ item (v22). A same-day re-close replaces an
+// open one or deletes it; a received one stays.
 FakeSupabase.prototype.whHeldFromLog = function (slug, s, cycle, now) {
   const W = this.whState();
   let all = 0;
@@ -1445,7 +1447,8 @@ FakeSupabase.prototype.whHeldFromLog = function (slug, s, cycle, now) {
     if (rec && rec.status === 'received') continue;
     const lines = s.log.filter(g => g.cycleDate === cycle).sort((a, b) => a.seq - b.seq).map(g => {
       const it = s.tables.items.find(i => i.id === g.id), p = it && it.whProduct != null ? whProduct(W, it.whProduct) : null;
-      return p && it.whPlace === L.id && it.whVendor != null && g.vendor === it.whVendor && whCarries(W, p.id, L.id) ? { g, it, p } : null;
+      return p && it.whPlace === L.id && it.whVendor != null && g.vendor === it.whVendor && whCarries(W, p.id, L.id)
+        && p.active && L.active ? { g, it, p } : null;
     }).filter(Boolean);
     if (!lines.length) { if (rec) W.orders.splice(W.orders.indexOf(rec), 1); continue; }
     const vend = lines[0].g.vendor;
@@ -1553,7 +1556,7 @@ function whDoSend(W, slug, s, _vend, o, now) {
     if (it.whPlace != null) throw whRej(it.name + ' comes from ' + whLocation(W, it.whPlace).name + ', not Happy Supply');
     if (it.active !== true || it.whVendor !== vend) throw whRej(it.name + ' isn\'t on Happy Supply\'s list here');
     const pr = whProduct(W, it.whProduct);
-    if (!(pr.places || []).some(x => { const L = whLocation(W, x.locationId); return L && L.heldBy == null; })) {
+    if (!(pr.places || []).some(x => { const L = whLocation(W, x.locationId); return L && L.heldBy == null && L.active; })) {
       throw whRej(it.name + ' isn\'t kept at Happy Supply');
     }
     if (!pr.active) throw whRej('Happy Supply doesn\'t sell ' + it.name + ' now');

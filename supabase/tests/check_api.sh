@@ -197,6 +197,12 @@ check "v21 helper: wh_place_carries not exposed"    404 ''   -X POST "${J[@]}" -
 check "v21 gone: wh_store_vendor"                   404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore"}' "$(rpc wh_store_vendor)"
 check "v21 gone: wh_held_vendor"                    404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_hq_name":"x"}' "$(rpc wh_held_vendor)"
 
+# schema v22 (an inactive item or a closed place stops its routes; no new entry point)
+check "v22 wh_send: bad token refused"              200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_order":{"vendor":"x","lines":[]}}' "$(rpc mog_wh_send)"
+check "v22 helper: wh_held_from_log not exposed"    404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_cycle":"2026-01-01"}' "$(rpc wh_held_from_log)"
+check "v22 helper: wh_live_json not exposed"        404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore"}' "$(rpc wh_live_json)"
+check "v22 helper: wh_available_at not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_product":1,"p_place":1,"p_slug":"nosuchstore","p_cycle":"2026-01-01"}' "$(rpc wh_available_at)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

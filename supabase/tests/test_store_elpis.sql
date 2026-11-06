@@ -1,29 +1,28 @@
 -- =====================================================================
--- MOG — the TEST store's Elpis deliveries (run in the SQL Editor)
+-- MOG — the TEST store's held-place deliveries (run in the SQL Editor)
 -- =====================================================================
--- For W2b's first use on Rosslyn FOH (TEST), 'rprfotest' (2026-11-03).
--- The TEST store has no Sheet, so no 3:30 AM close ever runs there (D21).
--- This file stands in for two nights' closes: it writes the TEST store's
--- order log for the two days before today and runs the close's own step,
--- mog.wh_held_from_log, for each, so its Elpis card and HQ's Elpis page
--- get two open deliveries (EL-0001 and EL-0002 on a database with none).
--- Then mog.prepare_test_store gives it today's cycle with its phones on.
+-- For first use on Rosslyn FOH (TEST), 'rprfotest' (2026-11-03; read by
+-- route since schema v21, 2026-11-05). The TEST store has no Sheet, so no
+-- 3:30 AM close ever runs there (D21). This file stands in for two nights'
+-- closes: it writes the TEST store's order log for the two days before
+-- today and runs the close's own step, mog.wh_held_from_log, for each, so
+-- its "To check in" list and HQ's Stock page get two open deliveries per
+-- held place (Elpis, or a place held at another store).
 --
--- Run it after HQ's steps 1-4 (docs/MOG_SessionHandoff_2026_11_03.md,
--- Outstanding 2): a location held by a vendor, products ordered through
--- it, and the TEST store's items linked with Send to stores. It orders
--- every active TEST item linked to a product held there, from the TEST
--- store's vendor for that holder: 2 cases each two days ago, 1 case each
--- yesterday.
+-- Run it after HQ has routed at least one TEST item from a held place:
+-- HQ → HEH STOCK → Items → the item → its Stores table → Rosslyn FOH
+-- (TEST), from that place, under the TEST store's vendor for it. It orders
+-- every active TEST item routed from a held place, under its route's
+-- vendor: 2 cases each two days ago, 1 case each yesterday.
 --
 -- Refuses any store that isn't a test store, and stops before writing
 -- anything when there's nothing to deliver. Answers one line per step.
 --
--- What it writes stays. Re-running replaces those two days' log lines and
--- any delivery still open (a received one stays), and clears the TEST
--- store's counts and today edits again (prepare_test_store). Marking a
--- delivery received takes its cases out of the held location, so count
--- the location again afterwards.
+-- What it writes stays. Re-running replaces those two days' log lines for
+-- the routes' vendors and any delivery still open (a received one stays),
+-- and clears the TEST store's counts and today edits again
+-- (prepare_test_store). Checking a delivery in takes its cases out of the
+-- held place, so count the place again afterwards.
 -- =====================================================================
 
 create or replace function pg_temp.test_store_held_deliveries(p_slug text)
@@ -35,11 +34,8 @@ declare
   v_tz   text;
   v_day  date;
   v_on   date;
-  h      record;
-  v_vend text;
   v_n    integer;
   v_k    integer;
-  v_any  boolean := false;
 begin
   select * into s from mog.stores where slug = p_slug;
   if not found then
@@ -51,41 +47,33 @@ begin
   v_tz := coalesce(nullif(s.time_zone, ''), 'America/New_York');
   v_day := (now() at time zone v_tz)::date;
 
-  -- Everything is checked before anything is written.
-  for h in select w.id, w.name, w.held_by from mog.wh_locations w where w.held_by is not null order by w.id loop
-    v_vend := mog.wh_held_vendor(p_slug, h.held_by);
-    select count(*) into v_n
-      from mog.items i join mog.wh_products p on p.id = i.wh_product
-     where i.slug = p_slug and i.active and lower(p.via) = lower(h.held_by);
-    if v_n > 0 and v_vend is null then
-      raise exception '% has items linked to products held by % but no vendor for it: Send to stores picks it the first time',
-        s.location, h.held_by;
-    end if;
-    if v_n > 0 and not exists (select 1 from mog.vendors v where v.slug = p_slug and v.name = v_vend) then
-      raise exception '%''s vendor for % is "%", which it no longer has', s.location, h.held_by, v_vend;
-    end if;
-    v_any := v_any or v_n > 0;
-  end loop;
-  if not v_any then
-    raise exception 'Nothing to deliver: no active item at % is linked to a product held at a location with a holder (HQ steps 1-4 first)',
+  -- Checked before anything is written: the routes the close would read.
+  create temp table if not exists test_store_routes (item_id text, name text, pack text, vendor text, place bigint, product bigint)
+    on commit drop;
+  delete from test_store_routes;
+  insert into test_store_routes
+  select i.item_id, i.name, i.pack, i.wh_vendor, w.id, i.wh_product
+    from mog.items i
+    join mog.wh_locations w on w.id = i.wh_place
+   where i.slug = p_slug and i.active and i.wh_product is not null and i.wh_vendor is not null
+     and w.held_by is not null and w.held_store is distinct from p_slug
+     and mog.wh_place_carries(i.wh_product, w.id);
+  if not exists (select 1 from test_store_routes) then
+    raise exception 'Nothing to deliver: no active item at % is routed from a held place (HQ → Items → the item''s Stores table first)',
       s.location;
   end if;
 
   for v_k in reverse 2 .. 1 loop
     v_on := v_day - v_k;
     delete from mog.order_log g
-     where g.slug = p_slug and g.cycle_date = v_on
-       and g.vendor in (select mog.wh_held_vendor(p_slug, w.held_by) from mog.wh_locations w where w.held_by is not null);
+     where g.slug = p_slug and g.cycle_date = v_on and g.vendor in (select r.vendor from test_store_routes r);
     insert into mog.order_log (slug, cycle_date, seq, vendor, item_id, item_name, pack, area, on_hand_prev, qty_ordered, logged_at)
-    select p_slug, v_on, row_number() over (order by i.seq, i.item_id), x.vendor, i.item_id, i.name, i.pack,
-           coalesce((select r.area from mog.pick_rows r
-                      where r.slug = p_slug and r.vendor = x.vendor and r.item_id = i.item_id limit 1), ''),
+    select p_slug, v_on, row_number() over (order by i.seq, i.item_id), r.vendor, r.item_id, r.name, r.pack,
+           coalesce((select pr.area from mog.pick_rows pr
+                      where pr.slug = p_slug and pr.vendor = r.vendor and pr.item_id = r.item_id limit 1), ''),
            0, v_k, ((v_on + 1) + time '03:30') at time zone v_tz
-      from mog.items i
-      join mog.wh_products p on p.id = i.wh_product
-      join mog.wh_locations w on lower(w.held_by) = lower(p.via)
-      cross join lateral (select mog.wh_held_vendor(p_slug, w.held_by) as vendor) x
-     where i.slug = p_slug and i.active and x.vendor is not null;
+      from test_store_routes r
+      join mog.items i on i.slug = p_slug and i.item_id = r.item_id;
     get diagnostics v_n = row_count;
     perform mog.wh_held_from_log(p_slug, v_on);
     return next format('%s: %s order-log lines, %s', to_char(v_on, 'Dy YYYY-MM-DD'), v_n,
@@ -98,11 +86,11 @@ begin
 
   return next mog.prepare_test_store(p_slug);
   return next 'Held stock now: ' || coalesce((
-    select string_agg(p.name || ' ' || coalesce(st.cases, 0) || ' at ' || w.name, ', ' order by lower(p.name))
-      from mog.wh_products p
-      join mog.wh_locations w on lower(w.held_by) = lower(p.via)
-      left join mog.wh_stock st on st.product_id = p.id and st.location_id = w.id
-     where p.id in (select i.wh_product from mog.items i where i.slug = p_slug and i.active)), 'none');
+    select string_agg(p.name || ' ' || coalesce(st.cases, 0) || ' at ' || w.name, ', ' order by lower(p.name), w.name)
+      from (select distinct product, place from test_store_routes) r
+      join mog.wh_products p on p.id = r.product
+      join mog.wh_locations w on w.id = r.place
+      left join mog.wh_stock st on st.product_id = r.product and st.location_id = r.place), 'none');
 end;
 $$;
 

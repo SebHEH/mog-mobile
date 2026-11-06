@@ -37,7 +37,7 @@ Every change anchors to one of these layers. Pick the layer before drafting any 
 | **Hub** | `index.html`, `sw.js`, `manifest.json`, `stores.json` | Concept picker, manager mode, store registry. First thing a KM sees. |
 | **Per-store PWA** | `template/index.html`, `template/sw.js` | The store-facing app. `build.py` copies this to every `<slug>/` dir with deployment URLs injected. |
 | **Apps Script backend** | `apps-script/*.gs`, `apps-script/*.html`, `apps-script/appsscript.json` | Bound script that runs in each Sheet. Identical across all 11 deploy targets — per-store config lives in spreadsheet data, not code. |
-| **Supabase** | `supabase/schema*.sql`, `supabase/tests/` | Every store runs on it: counts, Emergency Override, the cycle and the order log, the catalog (edited in the app), recipients and People. Phones talk to it directly (`phone_direct`); each Sheet is frozen for catalog edits and gets a nightly LOG_ORDERS backup. Design records: `docs/MOG_SupabaseMigration.md` and `docs/MOG_OneApp_Spec.md` (read them before touching this layer). Schema changes are run by Sebastian or Donny in the SQL Editor (skill `mog-supabase-schema`); Claude never writes through the connector. |
+| **Supabase** | `supabase/schema*.sql`, `supabase/tests/` | Every store runs on it: counts, Emergency Override, the cycle and the order log, the catalog (edited in the app), recipients and People. Phones talk to it directly (`phone_direct`); each Sheet is frozen for catalog edits and gets a nightly LOG_ORDERS backup. Design records: `docs/MOG_SupabaseMigration.md` and `docs/MOG_OneApp_Spec.md` (read them before touching this layer). A schema change runs on the maintainer's go for that file: Claude runs the repo's `schema_vN.sql` and then its smoke file through the Supabase connector, or the maintainer pastes them in the SQL Editor (skill `mog-supabase-schema`). Every other connector call is a read. |
 | **Deploy infrastructure** | `build.py`, `deploy.py`, `apps-script/.clasp-targets.json` | How code reaches production. `.clasp-targets.json` holds both `scriptId` (for source push) and `deploymentId` (for web-app version bump) per target. `deploy.py --discover` finds deploymentIds on a fresh checkout. |
 | **Generated (do NOT edit)** | `rpr/`, `rprfo/`, `rpt/`, `rptfo/`, `rpfr/`, `rpfrf/`, `tnyt/`, `tnytf/`, `tnyr/`, `tnyrf/`, `hq/` | Output of `build.py`. Overwritten on every build. `hq/` comes from `template/hq/`. |
 
@@ -71,7 +71,7 @@ Sebastian owns the accounts; Donny is a collaborator. Both edit, deploy and run 
 | GitHub `SebHEH/mog-mobile` | Owner. May push to `main`; merges pull requests. | Collaborator. Works on a branch (`donny/<topic>`) and opens a pull request. |
 | Apps Script (11 projects, bound to Sebastian's Sheets) | Owner. | Editor on every Sheet; deploys with his own `clasp login`. |
 | Supabase org "HEH" (free plan) | Owner. | Developer: runs SQL in the SQL Editor, can't change settings. |
-| Claude's Supabase connector | Read-only URL. | Read-only URL. |
+| Claude's Supabase connector | Full access: runs as `postgres` (measured 2026-11-06). Writes only to run a schema or smoke file on his go; Pause project is blocked in claude.ai. | Read-only URL (ONBOARDING step 6), so his schema files are pasted in the SQL Editor. |
 
 Where this file or a repo skill says "Sebastian" about testing, approving, running SQL or committing, read "the maintainer running this session". Account ownership stays Sebastian's.
 
@@ -89,7 +89,7 @@ Where this file or a repo skill says "Sebastian" about testing, approving, runni
 6. **Triggers and recap emails run as whoever installed them.** Today that's Sebastian on every store (the 3:30 AM close, installed by Move this store to Supabase). Any of these moves that store's close and recap email to your account, so agree on it first:
    - re-installing a trigger (Move, or the Health Check's install fix);
    - onboarding a new store.
-7. **Supabase SQL:** either maintainer runs it in the SQL Editor, through `mog-supabase-schema`. Pull before writing the next `schema_vN.sql`, and tell the other person which number you're taking.
+7. **Supabase SQL:** runs on either maintainer's go for that file, through `mog-supabase-schema`: Claude runs it through a connector that can write, or the maintainer pastes it in the SQL Editor. Pull before writing the next `schema_vN.sql`, and tell the other person which number you're taking.
 8. **Handoffs name their author** (`**Author:**` under the session date). A second session on the same day adds a "Later session" section, as before.
 9. **Global skill lessons.** The proposal mailbox (`~/.claude/skills/_global-skill-proposals/`) is local to each computer, so only Sebastian's sessions file proposals. Donny's sessions write the lesson under the handoff's *Process lessons*, tagged `[→ global proposal]`, and Sebastian files it.
 10. **Claude's memory is per computer.** Project facts go in the repo ([docs/MOG_ProjectNotes.md](docs/MOG_ProjectNotes.md), this file, the handoffs), never only in one person's memory.
@@ -262,11 +262,12 @@ mog-mobile/
 │   ├── schema_v18.sql           HQ remembers a device: mog_hq_remember (30 days from each open, the sign-in's "Remember this device" box) and mog_hq_signout (Sign out ends the sign-in on the server) (run after v17).
 │   ├── schema_v19.sql           Elpis on one page: mog.wh_products.concept (the concept whose stores carry a held product), saved by mog_wh_save, read in mog_wh_data (run after v18).
 │   ├── schema_v20.sql           HEH's stock at three places (W2c): a place's kind (held_store, count_how), mog.wh_product_places (an item's places and low points), a Happy Supply line into a place (to_location), the close and the phone by place, mog_wh_taken (run after v19).
-│   ├── schema_v21.sql           Routes: mog.items.wh_place and wh_vendor (a store item's place and the vendor it's ordered under, on its row), every stock reader by route (the close, the phone, Send), routes in mog_wh_data; via, par and stores unread until v22 (run after v20).
+│   ├── schema_v21.sql           Routes: mog.items.wh_place and wh_vendor (a store item's place and the vendor it's ordered under, on its row), every stock reader by route (the close, the phone, Send), routes in mog_wh_data; via, par and stores unread until v23 (run after v20).
+│   ├── schema_v22.sql           An inactive HQ item or a closed place stops its routes: the close's step, the phone's read and Send skip them (no table change) (run after v21).
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v21.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
-│                                + test_store_elpis.sql (SQL Editor: two Elpis deliveries on the TEST store, which never closes)
+│   └── tests/                   smoke.sql … smoke_v22.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
+│                                + test_store_elpis.sql (SQL Editor: two nights' held-place deliveries on the TEST store, which never closes, by route since v21)
 │                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 │                                preview_server.js (not a gate): the built app, editor and HQ against the fake Supabase (preview_start "mog-preview").

@@ -178,6 +178,8 @@
   //   r: one of the warehouse read's routes; p: the HQ item; locations: the places.
   function routeStatus(r, p, locations) {
     const locs = locations || [];
+    // v22: an inactive HQ item stops every route to it (the close records nothing).
+    if (p && p.active === false) return { ok: false, reason: 'item', text: 'The item is inactive in HQ' };
     if (r.vendor == null) return { ok: false, reason: 'vendor', text: 'No vendor for it at the store: none set, or it was removed' };
     if (r.active !== true) return { ok: false, reason: 'inactive', text: 'Inactive at the store' };
     if (String(r.mainVendor || '') !== String(r.vendor)) {
@@ -192,6 +194,22 @@
       return { ok: false, reason: 'place', text: 'It isn\'t at HEH\'s own places' };
     }
     return { ok: true, reason: '', text: '' };
+  }
+  // v22: the working routes a save would stop: an item made inactive
+  // ({ productId }) stops every route to it; a place closed ({ locationId })
+  // stops the routes from it, and, for one of HEH's own, the routes to HEH's
+  // own for items no other open own place has.
+  function routesStopped(routes, products, locations, change) {
+    const locs = locations || [], prods = products || [];
+    const working = (routes || []).filter(r => routeStatus(r, prods.find(p => p.id === r.productId), locs).ok);
+    if (change.productId != null) return working.filter(r => r.productId === change.productId);
+    const L = locs.find(l => l.id === change.locationId);
+    if (!L) return [];
+    if (L.heldBy) return working.filter(r => r.placeId === L.id);
+    return working.filter(r => {
+      const p = prods.find(x => x.id === r.productId);
+      return r.placeId == null && p && fits(p, L) && !locs.some(o => o.id !== L.id && !o.heldBy && o.active && fits(p, o));
+    });
   }
   // HQ's check-in of a Happy Supply shipment into a place: a blank line
   // arrived as shipped.
@@ -219,7 +237,7 @@
 
   const logic = { round, avgAfter, storePrice, stockAt, owned, value, num, cs, money, countPayload, receivePayload, transferProblems,
                   shipPrefill, shipPayload, fits, heldStock, beyondSinceCount, heldPayload,
-                  placeKind, lowAt, isLow, itemRow, itemCounts, placeRow, routeStatus, moveInPayload, monthSpan, takenCsv };
+                  placeKind, lowAt, isLow, itemRow, itemCounts, placeRow, routeStatus, routesStopped, moveInPayload, monthSpan, takenCsv };
 
   // ---- The page ----
   const VIEWS = ['wh-stock', 'wh-items', 'wh-places', 'wh-incoming', 'wh-orders', 'wh-taken', 'wh-history'];
@@ -744,7 +762,8 @@
         bad.map(x => { const p = prodBy(x.r.productId);
           return '<div class="row-between" style="margin:8px 0 0;flex-wrap:wrap;gap:8px"><span><b>' + esc(storeLabel(x.r) + ' · ' + x.r.item) + '</b> ' +
             '<span class="muted">' + esc(x.s.text) + '</span></span><button type="button" class="linkbtn" data-whitsel="' + x.r.productId + '">Open ' + esc(p ? p.name : 'it') + '</button></div>'; }).join('') +
-        '<p class="help" style="margin-top:10px">A broken route records nothing at the close until it\'s put back or set again on the item.</p></section>';
+        '<p class="help" style="margin-top:10px">A broken route records nothing at the close until it\'s fixed on the item, the item is active again or its place reopens. ' +
+        'When a store moved its main vendor, only what it still orders under the route\'s vendor is recorded.</p></section>';
     }
     const routeKey = x => JSON.stringify([x.itemId, x.place, x.vendor]);
     function itemDraft(p) {
@@ -828,6 +847,7 @@
         '<details class="note-box"><summary><b>Price, for the monthly charges</b></summary><div id="whit-price" style="margin-top:8px"></div>' +
         '<label class="field" style="max-width:200px;margin-top:8px">Handling fee / cs<input data-whitf="fee" value="' + esc(f.fee) + '" inputmode="decimal"></label></details>' +
         '<label class="check"><input type="checkbox" data-whitf="active"' + (f.active ? ' checked' : '') + '>Active: on counts and vendor orders</label>' +
+        '<div class="note-box" id="whit-stop" hidden></div>' +
         '<div class="note-box" id="whit-routes-sum" hidden></div>' +
         '<div class="row-between" style="margin-top:0"><span class="muted" id="whit-sum"></span><div class="actions" style="align-items:center">' +
         (p ? '' : '<button type="button" class="linkbtn" data-wh="item-discard">Cancel</button>') +
@@ -985,6 +1005,13 @@
         rs.hidden = !live.length;
         rs.innerHTML = live.length ? '<b>What each store gets</b> · one change per store, undoable in its Changes<ul style="margin:6px 0 0;padding-left:18px">' +
           live.map(x => '<li><b>' + esc(host.shortName(x.st)) + '</b>: ' + esc(String(x.out.label).replace(/^HQ [^:]*: /, '')) + '</li>').join('') + '</ul>' : '';
+      }
+      const stop = $('whit-stop'), stopping = p && p.active && !f.active ? routesStopped(D().routes, d.products, d.locations, { productId: p.id }) : [];
+      if (stop) {
+        stop.hidden = !stopping.length;
+        stop.innerHTML = stopping.length ? '<b>' + esc(plural(stopping.length, 'store')) + ' take' + (stopping.length === 1 ? 's' : '') + ' it</b> (' +
+          esc(stopping.map(r => storeLabel(storeInfo(r.slug))).join(', ')) + '). Their routes stop recording at the close until it\'s active again. ' +
+          'End them on the Stores table to take it off those stores for good.' : '';
       }
       const sum = $('whit-sum'), go = $('whit-go');
       if (sum) sum.textContent = problems.length ? upper(problems.join('; ')) + '.' : live.length ? plural(live.length, 'store') + ' change' + (live.length === 1 ? 's' : '') : '';
@@ -1174,6 +1201,7 @@
             (items.length > 6 ? ' and ' + (items.length - 6) + ' more' : '')) + '</div>' : '<div class="muted" style="font-size:12px;margin-top:4px">None yet: add items to it on Items.</div>') +
           '<button type="button" class="linkbtn" data-whitplace="' + l.id + '" style="margin-top:6px">Open in Items</button></div>' : '') +
         '<label class="check"><input type="checkbox" data-whplf="active"' + (f.active ? ' checked' : '') + '>Open: on counts and vendor orders</label>' +
+        '<div class="note-box" id="whpl-stop" hidden></div>' +
         '<div class="row-between" style="margin-top:0"><span class="muted" id="whpl-sum"></span><div class="actions" style="align-items:center">' +
         (l ? '' : '<button type="button" class="linkbtn" data-wh="place-discard">Cancel</button>') +
         '<button type="button" class="btn primary" data-wh="place-save" id="whpl-go">Save</button></div></div>';
@@ -1183,6 +1211,15 @@
       if (!String(f.name).trim()) problems.push('give it a name');
       if (f.kind === 'store' && !f.heldStore) problems.push('pick the store it sits at');
       if (f.kind === 'vendor' && !f.heldBy) problems.push('pick the vendor that holds it');
+      const d = D(), l = f.id ? d.locations.find(x => x.id === f.id) : null;
+      const stopping = l && l.active && !f.active ? routesStopped(d.routes, d.products, d.locations, { locationId: l.id }) : [];
+      const stop = $('whpl-stop');
+      if (stop) {
+        stop.hidden = !stopping.length;
+        stop.innerHTML = stopping.length ? '<b>' + esc(plural(stopping.length, 'route')) + ' stop</b> (' +
+          esc(stopping.map(r => storeLabel(storeInfo(r.slug)) + ' · ' + r.item).join(', ')) + '): nothing is recorded from here at the close until it reopens. ' +
+          'Move them to another place on each item, or End them there.' : '';
+      }
       const sum = $('whpl-sum'), go = $('whpl-go');
       if (sum) sum.textContent = problems.length ? upper(problems.join('; ')) + '.' : '';
       if (go) go.disabled = problems.length > 0;

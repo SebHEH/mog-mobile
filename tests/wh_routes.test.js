@@ -20,6 +20,10 @@
 //   - the fake: the phones read each item's place (Tysons 104 for Rosslyn,
 //     HEH's own 30 for RP Tysons); the close records only the route's lines;
 //     RP Tysons' order ships into its place; a store's Undo takes HQ's change off
+//   - v22: routesStopped (what making SHRIMP inactive, or closing Tysons,
+//     Happy Supply or Elpis, would stop); SHRIMP made inactive shows every
+//     route as stopped, leaves the phones and the close, and active again
+//     records again with no store change
 // Each has a planted-defect control.
 //
 // Run bare: node tests/wh_routes.test.js
@@ -184,6 +188,31 @@ function problems(ceText, whText) {
   }
   if (!/isn't this store's Happy Supply/.test(sb.handle('mog_wh_send', { p_token: ptok('zzr'), p_order: { vendor: 'Transfer (Tysons)', lines: [{ itemId: 'ITEM-0091', cases: 1 }] } }).error || '')) bad('send: Rosslyn\'s Transfer (Tysons) taken as Happy Supply');
 
+  // ---- v22: what a save would stop, and the item made inactive, then active again ----
+  const dA = wh('mog_wh_data', {}).data;
+  const stops = change => WH.routesStopped(dA.routes, dA.products, dA.locations, change).map(r => r.slug).sort();
+  if (!same(stops({ productId: shrimp }), ['zzf', 'zzr', 'zzt'])) bad('HQ: making SHRIMP inactive stops all three stores\' routes', JSON.stringify(stops({ productId: shrimp })));
+  if (!same(stops({ locationId: tys }), ['zzf', 'zzr'])) bad('HQ: closing Tysons stops Rosslyn\'s and Founders\' routes, never RP Tysons\'', JSON.stringify(stops({ locationId: tys })));
+  if (!same(stops({ locationId: hs }), ['zzt'])) bad('HQ: closing Happy Supply, the only own place, stops RP Tysons\' route', JSON.stringify(stops({ locationId: hs })));
+  if (!same(stops({ locationId: elp }), ['zze'])) bad('HQ: closing Elpis stops the bowls\' route', JSON.stringify(stops({ locationId: elp })));
+  const setActive = on => {
+    const p = wh('mog_wh_data', {}).data.products.find(x => x.id === shrimp);
+    return wh('mog_wh_save', { p_kind: 'product', p_row: WH.itemRow({ id: p.id, version: p.version, name: p.name, pack: p.pack, concept: p.concept || '',
+      fee: String(p.handlingFee), active: on, places: p.places.map(x => ({ locationId: x.locationId, low: String(x.lowPoint) })) }) });
+  };
+  const off = setActive(false);
+  const sOff = status();
+  if (!off.ok || !['zzr', 'zzf', 'zzt'].every(k => sOff[k] && sOff[k].reason === 'item')) bad('read: an inactive SHRIMP shows every route to it as stopped (inactive in HQ)', JSON.stringify(off.ok ? sOff : off));
+  if ((live('zzr').items || {})['ITEM-0091'] || (live('zzt').items || {})['ITEM-0091']) bad('phone: an inactive SHRIMP is still counted on', JSON.stringify([live('zzr'), live('zzt')]));
+  close('zzr', [row('Transfer (Tysons)', 'ITEM-0091', 'SHRIMP', 3)], '2026-11-07', '2026-11-08');
+  if (wh('mog_wh_data', {}).data.deliveries.some(o => o.slug === 'zzr' && o.cycleDate === '2026-11-07')) bad('close: an inactive SHRIMP still comes off Tysons');
+  setActive(true);
+  close('zzr', [row('Transfer (Tysons)', 'ITEM-0091', 'SHRIMP', 3)], '2026-11-08', '2026-11-09');
+  const sOn = status();
+  if (!wh('mog_wh_data', {}).data.deliveries.some(o => o.slug === 'zzr' && o.cycleDate === '2026-11-08') || !['zzr', 'zzf', 'zzt'].every(k => sOn[k] && sOn[k].ok)) {
+    bad('close: SHRIMP active again records again, every route fine, with no store change', JSON.stringify(sOn));
+  }
+
   // ---- A store moves its main vendor; HQ puts it back ----
   const edF = sb.handle('mog_editor_login', { p_slug: 'zzf', p_pin: '4321' }).data.token;
   const sw = CE.call(sb.stores.get('zzf').tables, 'commitSwitchActiveVendor', ['ITEM-0091', 'Capital']);
@@ -233,6 +262,12 @@ const CONTROLS = [
     find: "      makeMain(it, vend);\n      out.putBack.push(", replace: "      out.putBack.push(" },
   { file: 'wh', name: 'a removed vendor reads as a fine route',
     find: "    if (r.vendor == null) return { ok: false, reason: 'vendor'", replace: "    if (false) return { ok: false, reason: 'vendor'" },
+  { file: 'wh', name: 'an inactive item reads as a fine route',
+    find: "    if (p && p.active === false) return { ok: false, reason: 'item'", replace: "    if (false) return { ok: false, reason: 'item'" },
+  { file: 'wh', name: 'closing a held place stops nothing',
+    find: "    if (L.heldBy) return working.filter(r => r.placeId === L.id);", replace: "    if (L.heldBy) return [];" },
+  { file: 'wh', name: 'closing HEH\'s own place stops nothing',
+    find: "      return r.placeId == null && p && fits(p, L) && !locs.some(", replace: "      return false && !locs.some(" },
   { file: 'wh', name: 'a place at a store sends a holder name',
     find: "    if (f.kind === 'vendor') row.heldBy = f.heldBy;", replace: "    if (f.kind !== 'own') row.heldBy = f.heldBy || 'Transfer (Rosslyn)';" }
 ];
