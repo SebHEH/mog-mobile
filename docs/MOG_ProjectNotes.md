@@ -38,8 +38,8 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - When the gates prove a change does nothing until someone uses it, "all stores now" is a fair option to offer (Sebastian chose it twice on 2026-10-18).
   - Say what changed, what the gates prove, what's visible, and the rollback.
   - A change to the order math for everyone, or a schema migration, still gets its own question.
-- **Checking a Pages push is live:**
-  - Pages takes about 30-60 s.
+- **Checking a Pages push is live:** run `.claude/skills/mog-deploy-workflow/scripts/wait_live.py` in the background (2026-11-06; it holds the rules below and checks CI's `gates` run too).
+  - Pages takes about 30-60 s, sometimes several minutes (HQ took about 4.5 on 2026-11-06).
   - Poll each store's file with a cache-busting query (`?x=$RANDOM`), in the background, and check all 10 stores.
   - Match a marker that exists only in the new build. Grep the old file first: it must return 0. On 2026-10-20, `it-panel` matched the old page's `edit-panel` and reported "live" early.
 - **`/exec` links:**

@@ -84,6 +84,10 @@ file is run once, in order. Re-running any of them must stay harmless.
   rows pass. v20 kept `via`, a product's `par` and "Which stores can order it" alive that way, and
   HQ's Send to stores kept running v16's Happy-Supply-only rule beside v20's places: Sebastian's
   shrimp link was refused (2026-11-05).
+- **Before a version drops a function, grep the whole repo for its name** (`supabase/`, `tests/`,
+  `docs/`, `template/`): a caller outside the schema chain breaks silently, because PGlite runs only
+  the schema and smoke files. v21 dropped `mog.wh_held_vendor` and left
+  `supabase/tests/test_store_elpis.sql` failing until 11-06.
 - **A value a gate or smoke pins** (an average, a price, what's left) comes from running the SQL in
   PGlite or the page's own code, never from working it out by hand: a hand-worked 77.5926 was wrong
   (Postgres: 77.5968), and v16's gate expected 14 cases left where the code's 20 (both locations)
@@ -92,10 +96,12 @@ file is run once, in order. Re-running any of them must stay harmless.
   guards.** Otherwise another field trips the CONFLICT and a planted "this field isn't compared"
   passes: smoke_v16's first link check also changed the vendor and pack, and missed the plant until
   a row differing only by the link was added (2026-11-02).
-- **A long function redefined from an earlier version is generated, not retyped:** a scratch script
-  copies the old definition from its `schema_vN.sql` and applies asserted one-match replacements
-  (schema v10's `editor_apply_ops` from v8, `catalog_from_tables` from v4). Nothing else in the
-  function can drift.
+- **A long function redefined from an earlier version is generated, not retyped:** a short scratch
+  generator imports **[`scripts/sqlgen.py`](scripts/sqlgen.py)** (`fn()` copies a definition with its
+  comment lines, `rep()` replaces only at the asserted count, `lockdown()` closes the file) and writes
+  `schema_vN.sql` (schema v10's `editor_apply_ops` from v8, `catalog_from_tables` from v4). Nothing
+  else in the function can drift. It was rewritten by hand in nine sessions (v10 to v22) before it
+  moved here; it rebuilds `schema_v22.sql` byte for byte.
 - **SQL gotchas met here:**
   - `-` binds tighter than `->` (smoke_v6);
   - `now()` never moves in one DO block (smoke_v5);
@@ -112,7 +118,11 @@ file is run once, in order. Re-running any of them must stay harmless.
      `node supabase/tests/run_pglite.mjs`. It runs the chain `schema.sql` through `schema_vN.sql`,
      every smoke file, then `schema_vN.sql` again, which must change no row; CI runs the same on
      every push. Then plant a defect or two in a scratch copy of `supabase/` (with `node_modules`
-     beside it): each must turn a smoke row to FAIL.
+     beside it): each must turn a smoke row to FAIL. **[`scripts/plant.py`](scripts/plant.py)
+     `plants.json`** does it (rewritten by hand in seven sessions, v14 to v22, before it moved here):
+     one entry per rule, with the exact `old`/`new` text, its count and the smoke `row` that must
+     fail. It runs the unplanted copy first, counts a plant only when the schema file still ran and
+     that row failed, and prints every failing row.
      - **An error running the file is not a catch:** it means the plant broke the SQL, not the
        rule, so re-plant until a named smoke row says FAIL. A plant script that counts any `FAIL`
        line reads a broken plant as caught (2026-11-02: a plant leaving two assignments to one

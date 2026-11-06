@@ -33,8 +33,16 @@ Read the change request and answer: **which layer?**
 | `apps-script/.clasp-targets.json` (add/remove deploy target, populate `deploymentId`) | Deploy infrastructure | `git commit; git push` (config-only). Next `python deploy.py` will pick it up. | `python deploy.py --dry-run` should list the new target without `FILL_ME_IN` errors. For a new store, run `python deploy.py --discover --target <slug>` to find the deploymentId. |
 | `build.py` or `deploy.py` itself | Deploy infrastructure | `git commit; git push`. Test by running the changed tool against a no-op input. | Run with `--dry-run` first, confirm output is what's expected, then run for real. |
 | `icons/*` or `docs/*` | Static assets / docs | `git commit; git push`. | For icons: verify the PWA install prompt shows the new icon on a fresh device or after clearing site data. |
-| `supabase/schema_vN.sql` (a new or changed `mog_*` function, table or column) | Supabase | **Runs FIRST, before any deploy below.** A maintainer (Sebastian or Donny, after telling the other) runs it in the Supabase SQL Editor, then `smoke_vN.sql`, then `check_api.sh`. The database ships before the code that relies on it. Then the calling code's own row in this table. Files and order: **`mog-supabase-schema`**. | Every smoke row PASS, `check_api.sh` all PASS, then a read-only `execute_sql` check on project `mnfwqmrstdeuczveyykv`. |
+| `supabase/schema_vN.sql` (a new or changed `mog_*` function, table or column) | Supabase | **Runs FIRST, before any deploy below.** On the maintainer's go for that file (after telling the other maintainer), Claude runs it through the Supabase connector, or the maintainer pastes it in the SQL Editor; then `smoke_vN.sql`, then `check_api.sh`. The database ships before the code that relies on it. Then the calling code's own row in this table. Files and order: **`mog-supabase-schema`**. | Every smoke row PASS, `check_api.sh` all PASS, then a read-only `execute_sql` check on project `mnfwqmrstdeuczveyykv`. |
 | `tests/*` | Gates | Nothing deploys. `node tests/run_all.js`, then commit with the code it gates. | All gates pass. |
+
+**After any push to `main`, check it's live with [`scripts/wait_live.py`](scripts/wait_live.py)**, in the background, instead of writing a poll script (one was written by hand for every push from 10-29 on):
+
+```bash
+python .claude/skills/mog-deploy-workflow/scripts/wait_live.py --marker "hq/warehouse.js=routesStopped" --marker "{store}/sw.js=CACHE_VERSION = 'v75'"
+```
+
+Each `--marker` is `PATH=TEXT`; `{store}` expands to all 10 stores. It refuses a marker the previous commit already has (`--base REV` to compare further back), polls every file with a cache-busting query, then waits for the CI run named `gates` on HEAD. Exit 0 live and green, 1 gates failed, 2 timed out or refused.
 
 ## Canary-first discipline (carry-forward from Sebastian's stated preference)
 
