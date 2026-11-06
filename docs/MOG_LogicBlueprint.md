@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: 8fda25e (2026-11-04) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: a609698 (2026-11-06) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -395,10 +395,11 @@ naive rebuild silently loses.*
   - A receipt larger than the records goes through: the stock goes to 0, the difference is logged as a count with a reason naming the store and the delivery, and HQ flags it until the next real count at Elpis.
   - Each received line keeps the average cost; a phone never sees a price, a fee or a cost.
   - Why: HEH pays for its branded packaging up front and stores it at Elpis; the records have to match Elpis's own report without changing how KMs order. *(Confirmed: owner 2026-11-02 and 2026-11-03, `docs/MOG_Warehouse_Spec.md` §2, "W2 spec" and "W2b design". The owner picked recording at the close over at Mark as reviewed, a receipt beyond the records going through over refusing it, the keeper marking an unmarked delivery received, and the warehouse role over a separate Elpis role. Checking in apart from ordering: owner 2026-11-04, a vendor card that showed a delivery read as one to order from.)*
-- **R34. HEH's stock sits at places, and a store's own vendor for an item decides which place its order comes from.**
-  - A place is one of three kinds: HEH's own (Happy Supply's freezers), held at a store (RP Tysons holds shrimp for itself, Rosslyn BOH and Founders BOH), or held by a vendor (Elpis). A place at a store or a vendor carries the name the other stores order it under ("Transfer (Tysons)", "Elpis Wholesale").
+- **R34. HEH's stock sits at places, and each store's route for an item decides which place its order comes from.**
+  - A place is one of three kinds: HEH's own (Happy Supply's freezers), held at a store (RP Tysons holds shrimp for itself, Rosslyn BOH and Founders BOH), or held by a vendor (Elpis).
   - An item sits at one or more places, each with a low point; below it, HQ's Stock page shows it amber. Instead of a par, an HQ item has a stock level and a low point at each place, and a price.
-  - A store's order for an item comes from the held place whose name the store uses for that item's vendor, never from a place the store holds itself; otherwise from Happy Supply's own. The night's close records a held place's deliveries the same way (R33's rules, for any held place).
+  - Each store that takes an HQ item has a route on its own item: the HQ item, the place it comes from (or HEH's own) and the store vendor its KMs order it under. HQ sets it on the item, one undoable change per store; it lives in the item's row, so the store's Undo takes it off. Never from a place the store holds itself. The night's close records a held place's deliveries from the lines ordered under the route's vendor (R33's rules, for any held place), whatever the store calls the item (schema v21, owner 2026-11-05).
+  - A route whose store moved its main vendor or removed the route's vendor, or whose item went inactive at the store, shows on HQ as broken; a removed vendor empties it, and a moved main vendor records only what is still ordered under the route's vendor.
   - A route moves stock only while its HQ item is active and its place is open: an inactive item or a closed place records nothing at the close, the phone stops counting on it and Send refuses it, until it's active or open again (schema v22, owner 2026-11-05). To take an item off a store for good, HQ ends its route.
   - A store holding a place orders the item from Happy Supply as any store would; shipping it is a move into its place, not a sale: no price, no delivery fee, in transit until the store (or HQ for it) checks it in, then in that place. Its par has to cover the stores it holds for, since its KMs count the whole freezer.
   - The holder's own use is what its counts show: a count below the records is use, an opening count (nothing on record before it) isn't. Each month HQ lists, in cases, what each store took from each place (deliveries checked in, Happy Supply orders received, the holder's own use) and the moves between places apart, which nobody is charged for.
@@ -439,7 +440,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | use-multiplier | boolean | col M. Off = order flat to par, for bulk/batch items (R20). |
 | active | boolean | col L. |
 | notes | text | col N. |
-| warehouse product | product ref or none | The Happy Supply product it comes from (R32), or HEH's product held at Elpis (R33). Set by HQ; part of the item, so Undo brings it back. |
+| warehouse route | {HQ item, place or HEH's own, store vendor} or none | Where the store takes an HQ item from and under which of its vendors (R34; schema v21). Set by HQ; part of the item, so Undo brings it back. A rename of the vendor follows; removing the vendor empties it. |
 
 #### Entity: Vendor
 | Field | Type (conceptual) | Notes |
@@ -476,7 +477,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | average cost | money per case, 4 decimals | Set and moved only by deliveries received. |
 | handling fee | money per case | Never shown to a store. |
 | stores | list of store refs | The stores that may order it; none = every store. |
-| places | list of {place, low point} | The places it sits at (R34); a store's own vendor for its item decides which one its order comes from. Replaces v17's single "via" (kept only for a product with no place yet). |
+| places | list of {place, low point} | The places it sits at (R34); each store's route decides which one its order comes from. Replaces v17's single "via" (retired in v21, dropped in v23). |
 | stock | cases per place | Never below 0. A place is HEH's own, held at a store or held by a vendor (R34), one per holder name; Happy Supply never ships from a held one. |
 | moves | list of {when, who, location, cases (+/-), kind, order or transfer number, cost, reason, cases after, average after} | Every change to stock; never edited. Kinds: received, transfer out, transfer in, count, shipped (R32; a held place's delivery is a shipped move under its EL number, R33; a Happy Supply line into a holding store's place is a transfer out, then a transfer in at its check-in, R34). |
 
