@@ -88,6 +88,7 @@ Open the same store link on a computer (a mouse and a wide window). The sidebar 
 - **Par:** set per item in Items. **Per delivery day** (the default, shown "N / day"): one day's use, multiplied by the days the order covers. **Fixed amount**: the same target every order day. Count, par and order are all in the item's pack unit (cases, bags) at every store (Sebastian, 2026-11-03).
 - **Days covered (multiplier):** from the vendor's delivery days in Vendors. Orders go in the day before each delivery and cover until the next one (Vendors shows "Monday's order arrives Tuesday and covers 3 days").
 - **Main / backup vendor:** the main vendor is where the item is ordered by default. A backup sits behind the small arrow next to the item name ("Main vendor: Sysco · Backups: Baldor"). Counting it on a backup's screen orders it from that backup.
+- **Main vendor not ordered today (app v0.32.0, 2026-11-10):** the item shows on every backup that is ordered today. Whichever list counts it keeps it; on the other lists it moves to the bottom, greyed with no count box, under "Counted on B&T's list today", and that includes the main vendor's own list. To count it somewhere else, clear its count on that list first (`template/index.html`, `listSplit_`).
 - **Today only:** an item added to a list, or a par changed, for today's order only. Manage flags it in Overview → Needs attention.
 - **Reviewed:** a check that you finished a vendor. It locks nothing, and it's saved on that phone only: another phone doesn't see it (`template/index.html`, `setReviewed`).
 - **Cutoff warning:** 90 minutes. **PIN lockout:** 5 wrong tries, 5 minutes, all the store's phones.
@@ -101,7 +102,7 @@ Open the same store link on a computer (a mouse and a wide window). The sidebar 
 - It won't catch a blank. Blank is skipped silently.
 - It doesn't share Reviewed between phones. Two KMs on two phones each see only their own checks, which is why one phone finishes the day.
 - It won't warn about an item that's on no count list. Check Overview and Items → Needs setup.
-- It won't stop the same item being counted on its main vendor and on a backup's list: both order.
+- It won't stop two phones counting the same item on two lists at the same moment: both order. Once one count is saved, the item moves to the bottom of the other lists within about 10 seconds.
 - It doesn't know what arrived, invoice prices or waste (MarginEdge does).
 - Counts typed offline that reach the server after the 3:30 AM close aren't ordered. The app says so when they arrive.
 

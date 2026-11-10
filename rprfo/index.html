@@ -941,6 +941,12 @@
     .bk-toggle:active { background: var(--bg-soft); }
     .bk-line { font-size: 12px; color: var(--text-2); margin: 3px 0 0; }
     .bk-line[hidden] { display: none; }
+    /* Rows counted on another list today (listSplit_): read-only, at the
+       bottom of the count screen under "Counted on X's list today". */
+    .area-header.else-header { color: var(--text-2); margin-top: 28px; }
+    .else-help { font-size: 12px; color: var(--text-3); margin: -2px 0 4px; }
+    .item.item-else { opacity: .55; }
+    .else-count { min-width: 44px; text-align: center; font-size: 15px; font-weight: 600; color: var(--text-2); }
 
     .stepper {
       display: flex;
@@ -3721,6 +3727,8 @@ function parFlagCutoff_(today) {
       bkToggle:         { en: 'Other vendors for this item', es: 'Otros proveedores de este artículo' },
       bkMain:           { en: 'Main vendor:', es: 'Proveedor principal:' },
       bkBackups:        { en: 'Backups:', es: 'Respaldos:' },
+      elseCounted:      { en: "Counted on {v}'s list today", es: 'Contado hoy en la lista de {v}' },
+      elseHelp:         { en: 'To count one here, clear its count on that list.', es: 'Para contarlo aquí, borra su conteo en esa lista.' },
       counted:          { en: 'counted', es: 'contados' },
       reviewOrder:      { en: 'Review order', es: 'Revisar pedido' },
       saveContinue:     { en: 'Save and continue later', es: 'Guardar y continuar después' },
@@ -5772,8 +5780,9 @@ function parFlagCutoff_(today) {
       }
     }
     // The number the count screen lists (shownItems_: each item on its main
-    // vendor's list only). Without this phone's copy of the day (Apps
-    // Script), the vendor's own items.
+    // vendor's list, or on its backups' when the main isn't ordered today;
+    // rows counted on another list left out). Without this phone's copy of
+    // the day (Apps Script), the vendor's own items.
     const shown = shownCountFor_(v.name);
     const listed = shown !== null ? shown : (v.itemCount || 0);
     metaText = listed + ' ' + t(listed === 1 ? 'item' : 'items') + cutoffSegment;
@@ -6955,7 +6964,9 @@ function parFlagCutoff_(today) {
       .map(r => String(r[1] || '').trim()));
     ctx.items.forEach(i => onList.add(i.id));
     const items = cat.items || {};
-    const shownIds = new Set(shownItems_(ctx).map(i => i.id));
+    // Rows at the bottom (counted on another list today) are on screen already.
+    const split = listSplit_(ctx);
+    const shownIds = new Set(split.shown.map(i => i.id).concat(split.elsewhere.map(e => e.item.id)));
     const backups = ctx.items.filter(i => !shownIds.has(i.id))
       .map(i => ({ id: i.id, name: i.name, pack: i.pack, primary: i.primaryVendor, backup: true }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -7051,23 +7062,114 @@ function parFlagCutoff_(today) {
     }
   }
 
-  // Which items a vendor's count screen lists (2026-11-03). Each item is on
-  // one list, its main vendor's, so going through every vendor counts it
-  // once. An item with no main vendor, or whose main vendor's list doesn't
-  // have it, is on the first of its lists in the store's vendor order. A
-  // backup row still shows when it was added to this list for today, has a
-  // count here today (nothing that will be ordered is hidden), or is kept on
-  // this phone (bkKept_). Counting a backup here orders it from this vendor,
-  // as it always has (OrderMath.gs): only what the list shows changed.
+  // Which items a vendor's count screen lists (2026-11-03, 2026-11-10). Each
+  // item is on one list, its main vendor's, so going through every vendor
+  // counts it once. An item with no main vendor, or whose main vendor's list
+  // doesn't have it, is on the first of its lists in the store's vendor
+  // order. When that list isn't ordered today, every list of it that is
+  // ordered today shows it, and whichever one counts it keeps it: an item
+  // counted on another list today moves to the bottom of this one, read-only
+  // ("Counted on X's list today"), its main vendor's list included. A backup
+  // row still shows when it was added to this list for today, has a count
+  // here (nothing that will be ordered is hidden), or is kept on this phone
+  // (bkKept_). Counting a backup here orders it from this vendor, as it
+  // always has (OrderMath.gs): only what the list shows changed.
   function shownItems_(ctx) {
+    return listSplit_(ctx).shown;
+  }
+
+  // shown: the rows this list counts. elsewhere: [{ item, vendor, onHand }],
+  // the rows counted on another list today, in list order.
+  function listSplit_(ctx) {
     const here = String(ctx.vendor || '').toLowerCase();
     const kept = bkKept_(ctx.vendor);
-    return ctx.items.filter(it => {
-      if (it.todayOnly || kept.has(it.id)) return true;
-      if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) return true;
+    const day = listDay_(ctx.vendor);
+    const shown = [], elsewhere = [];
+    for (const it of ctx.items) {
+      if (it.onHand !== null && it.onHand !== '' && it.onHand !== undefined) { shown.push(it); continue; }
       const home = homeList_(it);
-      return home === null || home.toLowerCase() === here;
+      const belongs = it.todayOnly || kept.has(it.id) || home === null || home.toLowerCase() === here ||
+        (day !== null && !day.ordered(home));
+      if (!belongs) continue;
+      const other = day !== null ? day.countedOn.get(it.id) : undefined;
+      if (other) elsewhere.push({ item: it, vendor: other.vendor, onHand: other.onHand });
+      else shown.push(it);
+    }
+    return { shown: shown, elsewhere: elsewhere };
+  }
+
+  // Today across the store's lists, for listSplit_: which vendors are ordered
+  // today (as Today lists them: every vendor under Emergency Override), and
+  // for each item the first other list ordered today that has it and has it
+  // counted, in the store's vendor order, this phone's unsaved counts
+  // included. A count left on a list that no longer has the item (moved off
+  // it today) moves nothing: that list doesn't show it. null without this
+  // phone's copy of the day (Apps Script): the lists then work as before.
+  function listDay_(vendor) {
+    if (direct.mode !== 'direct' || !direct.snap) return null;
+    if (direct.inputsFor !== direct.snap || !direct.inputs) {
+      direct.inputs = orderInputsFromSnapshot_(direct.snap);
+      direct.inputsFor = direct.snap;
+    }
+    const inputs = direct.inputs;
+    const here = String(vendor || '').toLowerCase();
+    const name = new Map(), order = new Map(), ordered = new Map();
+    inputs.vendorList.forEach((v, i) => {
+      const low = v.toLowerCase();
+      name.set(low, v);
+      order.set(low, i);
+      ordered.set(low, vendorDayMultiplier_(inputs.vendorMults, v, inputs.dayOfWeek,
+                                            inputs.emergencyOverride, inputs.vendorOverrides) > 0);
     });
+    const val = new Map();   // list (lower case) + \u0001 + item id -> on hand
+    for (const c of (direct.snap.counts || [])) val.set(String(c.vendor).toLowerCase() + '\u0001' + c.id, c.onHand);
+    for (const v of inputs.vendorList) {
+      const low = v.toLowerCase();
+      if (low === here || !ordered.get(low)) continue;
+      const draft = loadDraft(inputs.dateStr, v);
+      for (const id of Object.keys(draft)) val.set(low + '\u0001' + id, draft[id]);
+    }
+    const listed = new Set();   // what each list has today (today's adds included)
+    for (const r of inputs.pickDb) listed.add(String(r[0] === null || r[0] === undefined ? '' : r[0]).toLowerCase() + '\u0001' + String(r[1] || '').trim());
+    const countedOn = new Map();
+    for (const [k, onHand] of val) {
+      if (onHand === null || onHand === undefined || onHand === '' || !listed.has(k)) continue;
+      const cut = k.indexOf('\u0001');
+      const low = k.slice(0, cut), id = k.slice(cut + 1);
+      if (low === here || !ordered.get(low)) continue;
+      const prev = countedOn.get(id);
+      if (!prev || order.get(low) < order.get(prev.vendor.toLowerCase())) countedOn.set(id, { vendor: name.get(low), onHand: onHand });
+    }
+    return { ordered: v => ordered.get(String(v || '').toLowerCase()) === true, countedOn: countedOn };
+  }
+
+  // The bottom of a count screen (listSplit_): the rows counted on another
+  // list today, read-only (no count box), under one header per list.
+  function elsewhereHtml_(elsewhere) {
+    if (!elsewhere.length) return '';
+    const byList = new Map();
+    for (const e of elsewhere) byList.set(e.vendor, (byList.get(e.vendor) || []).concat(e));
+    let html = '', first = true;
+    for (const [vendor, rows] of byList) {
+      html += '<div class="area-header else-header">' + escapeHtml(t('elseCounted').replace('{v}', vendor)) + '</div>';
+      if (first) html += '<p class="else-help">' + escapeHtml(t('elseHelp')) + '</p>';
+      first = false;
+      for (const e of rows) {
+        html += '<div class="item item-else" data-else="' + escapeHtml(e.item.id) + '">' +
+          '<div class="item-info">' +
+            '<p class="item-name">' + escapeHtml(e.item.name) + '</p>' +
+            '<p class="item-meta">' + escapeHtml(e.item.pack || '') + '</p>' +
+          '</div>' +
+          '<span class="else-count">' + escapeHtml(fmtQty_(e.onHand)) + '</span>' +
+        '</div>';
+      }
+    }
+    return html;
+  }
+
+  // What the bottom section shows, to tell when a live refresh changed it.
+  function elseSig_(elsewhere) {
+    return elsewhere.map(e => e.item.id + '\u0002' + e.vendor + '\u0002' + e.onHand).join('\u0001');
   }
 
   // Each item's lists (the store's vendors whose count list has it), in the
@@ -7155,7 +7257,8 @@ function parFlagCutoff_(today) {
   function renderCount() {
     const ctx = state.countContext;
     const view = $('view-count');
-    const items = shownItems_(ctx);
+    const split = listSplit_(ctx);
+    const items = split.shown;
 
     let toOrder = 0;
     let counted = 0;
@@ -7249,6 +7352,10 @@ function parFlagCutoff_(today) {
         '<span class="' + pillCls + '">' + pillTxt + '</span>' +
       '</div>';
     }
+
+    // Counted on another list today: at the bottom, read-only (listSplit_).
+    html += elsewhereHtml_(split.elsewhere);
+    ctx._elseSig = elseSig_(split.elsewhere);
 
     if (direct.mode === 'direct') {
       html += '<button class="qe-add-btn" id="qe-add-btn">' + escapeHtml(t('qeAddItem')) + '</button>';
@@ -7528,9 +7635,11 @@ function parFlagCutoff_(today) {
     for (const id of changed) paintItem_(id, true);
     if (changed.length) paintProgress_();
     // A backup counted on another phone joins this list (shownItems_), and one
-    // cleared there leaves it: redraw when the list isn't what's drawn, unless
+    // cleared there leaves it; an item counted on another list moves to the
+    // bottom, or back. Redraw when the list isn't what's drawn, unless
     // someone is typing (the next tick tries again).
-    if (!focusedRow && drawnItemIds_() !== ids(shownItems_(ctx))) { renderCount(); return; }
+    const split = listSplit_(ctx);
+    if (!focusedRow && (drawnItemIds_() !== ids(split.shown) || ctx._elseSig !== elseSig_(split.elsewhere))) { renderCount(); return; }
     renderLiveBanner_();
   }
 
@@ -9342,7 +9451,7 @@ function parFlagCutoff_(today) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.31.0';
+    const versionStr = '0.32.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
