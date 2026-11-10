@@ -193,7 +193,9 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - retire the last `/exec` uses (Daily summary button, reset fallback);
    - the MarginEdge API for pack sizes.
 
-> **Dropped (do not re-add):** parallelizing `deploy.py`. Repeatedly considered and abandoned: the serial push isn't hurting, and concurrent `clasp push` adds rate-limit risk.
+> **Dropped (do not re-add):**
+> - Parallelizing `deploy.py`. Repeatedly considered and abandoned: the serial push isn't hurting, and concurrent `clasp push` adds rate-limit risk.
+> - **A daily inventory of the top items in the order guide** (Sebastian, 2026-11-10). It's counted in MarginEdge instead, on a Spot count sheet per BOH store (Spot Inventories: no effect on food cost, but they show in the Usage reports), Monday to Saturday. MarginEdge already holds the invoices (what arrived) and the company-wide recipes that turn prepped and cooked protein back into raw lb, which the order guide would have had to copy in every night. Nothing was built.
 
 ---
 
