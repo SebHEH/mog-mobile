@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-  <head>
+<head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shelf to Sheet · Founders FOH</title>
@@ -9,572 +9,127 @@
     <script src="catalogEdit.js"></script>
     <script src="meImport.js"></script>
     <script src="host.js"></script>
-    <base target="_top">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- ===================================================================
-     Shared modal styles — SINGLE SOURCE OF TRUTH for the MOG modal set.
-     Pulled into every modal <head> via  <?!= include('Styles'); ?>
-     Holds: design tokens (:root), the base reset, and the universal
-     chrome (language toggle + [?] help overlay). Per-modal layout stays
-     in each modal's own <style>; it may reference these var(--*) tokens.
-     Edit colors / radii / label sizes HERE — never re-hardcode in a modal.
-     ==================================================================== -->
-<style>
-  :root {
-    /* ── Surfaces ── */
-    --page:        #f4f5f7;   /* modal page background */
-    --card:        #fff;      /* card / panel surface */
-    --ink:         #222;      /* body text */
-    --ink-soft:    #555;      /* secondary text */
-    --ink-mute:    #888;      /* hints / muted */
-    --ink-faint:   #aaa;      /* faint labels */
-    --line:        #e0e3e8;   /* card borders */
-    --line-soft:   #eee;      /* hairline dividers */
+  <base target="_top">
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Shelf to Sheet in the app (mockup "Manage Items and Vendors redesign",
+       board 8, approved 2026-11-11, drag plus buttons): one vendor's count
+       list at a time, area by area in the store's area order. A vendor's own
+       items not on its list yet sit in a box at the top, each with an area to
+       pick; items are put in shelf order by dragging (the handle), with up,
+       down and Move to for the keyboard. The list is a draft until one Save.
+       Only in the app's editor: the Sheet dialog and the /exec editor keep
+       apps-script/ReorderPickPath.html. Reads getShelfPage, saves
+       commitReorderPickPath (catalogEdit.js, gated against PickPath.gs),
+       through host.js. -->
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', Arial, Helvetica, sans-serif; margin: 0; color: #1f1e1b; background: #fff; font-size: 14px; }
+    .lang-en .es, .lang-es .en { display: none; }
+    button, input, select { font: inherit; color: inherit; }
+    body.mge-web .web-titlebar { max-width: none; }
+    .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-    /* ── Brand ── */
-    --brand:       #1a1a2e;   /* navy — modal header (uniform across all modals) */
-    --brand-green: #1a3a2e;   /* deep green — interior section / list-card headers */
-    --accent:      #7eb8a4;   /* light teal — active-tab underline / accents */
-    --success:     #1a6b2e;   /* ok / new */
-    --success-bg:  #e6f3ec;
+    #sh-wrap { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 20px; padding: 6px 24px 32px; min-height: calc(100vh - 110px); }
+    #sh-vendors { flex: 0 1 240px; min-width: 200px; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 12px; }
+    .sh-vlabel { font-size: 12px; font-weight: 600; color: #5f5e5a; padding: 0 4px 4px; }
+    .sh-v { display: flex; align-items: center; gap: 10px; text-align: left; padding: 9px 12px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.1);
+            background: #fff; cursor: pointer; width: 100%; }
+    .sh-v:hover { background: #faf9f5; }
+    .sh-v[aria-pressed="true"] { background: var(--web-accent-soft, #e9f4ef); border-color: var(--web-accent, #2d8c6b); }
+    .sh-v-main { flex: 1 1 auto; min-width: 0; }
+    .sh-v-name { display: block; font-weight: 700; overflow-wrap: anywhere; }
+    .sh-v-sub { display: block; font-size: 12.5px; color: #6b6a65; margin-top: 2px; }
+    .sh-v-sub.warn { color: #7a4d00; }
+    .sh-dot { width: 9px; height: 9px; border-radius: 50%; background: #d98a00; flex: none; }
 
-    /* ── Semantic ── */
-    --danger:      #c0392b;   /* all destructive actions + validation errors */
-    --danger-bg:   #fde8e6;
-    --warn:        #f0a500;   /* warnings */
-    --warn-ink:    #7a5000;
-    --warn-bg:     #fff8e6;
+    #sh-main { flex: 1 1 520px; min-width: 0; max-width: 800px; display: flex; flex-direction: column; gap: 14px; }
+    .sh-msg { padding: 22px 20px; color: #5f5e5a; border: 1px solid #e6e4dd; border-radius: 14px; background: #fff; }
+    .sh-msg a { color: #1f1e1b; font-weight: 600; }
 
-    /* ── Shape + type ── */
-    --r-control:   6px;       /* inputs + buttons */
-    --r-card:      8px;       /* cards + modal/help cards */
-    --fs-label:    10px;      /* caps micro-labels */
-    --fs-body:     12px;      /* body copy */
-  }
+    .sh-notyet { border-radius: 14px; background: #fbefd6; border: 1px solid #efd29a; padding: 14px 16px 6px 20px; }
+    .sh-notyet h2 { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: #5c3a00; }
+    .sh-notyet p { margin: 0 0 6px; font-size: 13px; color: #5c3a00; }
+    .sh-notyet .sh-row { border-top: 1px solid #efd29a; background: transparent; padding-left: 0; }
+    .sh-notyet .sh-sub { color: #7a5a13; }
+    .sh-notyet label.sh-pick { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #5c3a00; }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+    .sh-group { background: #fff; border: 1px solid #e6e4dd; border-radius: 14px; overflow: hidden; }
+    .sh-group.drop-end { box-shadow: 0 0 0 2px var(--web-accent, #2d8c6b); }
+    .sh-ghead { display: flex; align-items: center; gap: 10px; padding: 12px 16px 12px 20px; background: #faf9f5; border-bottom: 1px solid #efeee9; }
+    .sh-gnum { width: 26px; height: 26px; border-radius: 8px; background: #1f1e1b; color: #fff; display: flex; align-items: center; justify-content: center;
+               font-weight: 700; font-size: 12.5px; flex: none; }
+    .sh-ghead h2 { margin: 0; font-size: 15px; font-weight: 700; }
+    .sh-gcount { font-size: 12.5px; color: #6b6a65; }
+    .sh-list { list-style: none; margin: 0; padding: 0; }
+    .sh-row { display: flex; align-items: center; gap: 12px; padding: 7px 16px 7px 10px; border-top: 1px solid #f0efea; background: #fff; position: relative; }
+    .sh-list .sh-row:first-child { border-top: 0; }
+    .sh-row.dragging { opacity: 0.45; }
+    .sh-row.drop-before { box-shadow: inset 0 3px 0 var(--web-accent, #2d8c6b); }
+    .sh-row.drop-after { box-shadow: inset 0 -3px 0 var(--web-accent, #2d8c6b); }
+    .sh-handle { width: 30px; height: 36px; border: 0; border-radius: 8px; background: transparent; display: flex; align-items: center; justify-content: center;
+                 cursor: grab; padding: 0; flex: none; color: #9a9993; }
+    .sh-handle:hover { background: #f5f4ed; color: #5f5e5a; }
+    .sh-handle svg { width: 14px; height: 20px; }
+    .sh-num { width: 24px; text-align: right; font-size: 13px; font-weight: 600; color: #6b6a65; font-variant-numeric: tabular-nums; flex: none; }
+    .sh-name { flex: 1 1 auto; min-width: 0; }
+    .sh-name b { font-weight: 600; overflow-wrap: anywhere; }
+    .sh-sub { color: #6b6a65; font-size: 12.5px; }
+    .sh-lto { display: inline-block; margin-left: 6px; font-size: 11.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #efe7f9; color: #4b2a7a; }
+    .sh-sel { height: 34px; max-width: 170px; padding: 0 8px; border-radius: 9px; border: 1px solid rgba(0,0,0,0.16); background: #fff; font-size: 13px; flex: none; }
+    .sh-ico { width: 34px; height: 34px; border-radius: 9px; border: 1px solid rgba(0,0,0,0.12); background: #fff; display: inline-flex; align-items: center;
+              justify-content: center; cursor: pointer; padding: 0; flex: none; }
+    .sh-ico svg { width: 15px; height: 15px; }
+    .sh-ico:disabled { opacity: 0.35; cursor: default; }
+    .sh-ico:hover:not(:disabled) { background: #f5f4ed; }
 
-  /* ── Language toggle ── */
-  .lang-group { display: flex; gap: 4px; align-items: center; }
-  .lang-btn {
-    padding: 3px 9px; font-size: var(--fs-label); font-weight: bold; cursor: pointer;
-    color: rgba(255,255,255,0.45); background: transparent;
-    border: 1px solid rgba(255,255,255,0.2); border-radius: var(--r-control);
-  }
-  .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
-  .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
+    .sh-empties { background: #fff; border: 1px solid #e6e4dd; border-radius: 14px; overflow: hidden; }
+    .sh-empties .sh-ghead { display: block; }
+    .sh-empties .sh-ghead h2 { font-size: 14px; }
+    .sh-empties .sh-ghead div { margin-top: 2px; font-size: 12.5px; color: #6b6a65; }
+    .sh-elist { list-style: none; margin: 0; padding: 4px 0; }
+    .sh-earea { display: flex; align-items: center; gap: 10px; margin: 4px 16px 4px 20px; padding: 8px 12px; border: 1px dashed rgba(0,0,0,0.18);
+                border-radius: 9px; font-size: 13px; }
+    .sh-earea.drop-end { border-color: var(--web-accent, #2d8c6b); border-style: solid; background: var(--web-accent-soft, #e9f4ef); }
+    .sh-earea b { font-variant-numeric: tabular-nums; color: #6b6a65; width: 20px; }
 
-  /* ── Help [?] button + overlay (shared across modals) ── */
-  .help-btn {
-    width: 22px; height: 22px; padding: 0; flex-shrink: 0;
-    border: 1px solid currentColor; border-radius: 50%;
-    background: transparent; color: inherit; opacity: 0.7;
-    font-size: 12px; font-weight: bold; line-height: 1; cursor: pointer;
-    transition: opacity 0.15s;
-  }
-  .help-btn:hover { opacity: 1; }
-  .help-overlay {
-    display: none; position: fixed; inset: 0; z-index: 100;
-    background: rgba(0,0,0,0.45);
-    align-items: flex-start; justify-content: center; padding: 14px;
-  }
-  .help-overlay.open { display: flex; }
-  .help-card {
-    background: var(--card); border-radius: var(--r-card); width: 100%; max-width: 460px;
-    max-height: 100%; display: flex; flex-direction: column;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.32); overflow: hidden;
-  }
-  .help-head {
-    background: var(--brand); color: #fff; padding: 10px 14px;
-    font-size: 13px; font-weight: bold; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .help-x { cursor: pointer; font-size: 15px; opacity: 0.8; padding: 0 4px; }
-  .help-x:hover { opacity: 1; }
-  .help-body { padding: 14px 16px; overflow-y: auto; font-size: var(--fs-body); line-height: 1.65; color: #333; }
-  .help-lead { margin-bottom: 10px; }
-  .help-step { margin-bottom: 7px; }
-  .help-tip  { background: #f0f7f4; border-left: 3px solid var(--brand-green); border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 10px; font-size: 11px; color: var(--brand-green); }
-  .help-warn { background: var(--warn-bg); border-left: 3px solid var(--warn); border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 8px; font-size: 11px; color: var(--warn-ink); }
-</style>
+    .sh-spacer { flex: 1 1 auto; }
+    #sh-bar { position: sticky; bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px 14px 20px;
+              border: 1px solid rgba(0,0,0,0.1); border-radius: 14px; background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+    #sh-bar[hidden] { display: none; }
+    .sh-sum { flex: 1 1 240px; min-width: 0; }
+    .sh-sum span { color: #5f5e5a; }
+    .sh-btn { height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.16); background: #fff; font-weight: 600; cursor: pointer; }
+    .sh-btn:hover { background: #f5f4ed; }
+    .sh-btn.primary { border: 0; background: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff); font-weight: 700; }
+    .sh-btn.primary:hover { filter: brightness(0.95); background: var(--web-accent, #2d8c6b); }
+    .sh-btn:disabled { opacity: 0.5; cursor: default; }
 
-    <script>
-      var PICK_DATA   = {};
-      var VENDOR_LIST = [];
-      // Web-app delivery context (Editor.gs injects web:true; showReorderPickPathSidebar
-      // injects web:false → everything below stays inert in the Sheet dialog).
-      var WEB_BOOT  = {"web": true, "store": "Founders FOH", "abbr": "RPFRF", "base": "index.html", "theme": {"accent": "#2d8c6b", "bannerFont": "#ffffff", "ink": "#2d8c6b"}, "concept": "roll-play"};
-      var MOG_WEB   = !!WEB_BOOT.web;
-      var MOG_STORE = WEB_BOOT.store || '';
-      var MOG_ABBR  = WEB_BOOT.abbr || '';
-      var BASE_URL  = WEB_BOOT.base || '';
-      var THEME     = WEB_BOOT.theme || {};
-      var CONCEPT   = WEB_BOOT.concept || '';
-      var MOG_TOKEN = null;   // set by the PIN gate (web mode only)
-    </script>
-    <style>
+    #sh-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); z-index: 50;
+                background: #1f1e1b; color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 14px; box-shadow: 0 10px 28px rgba(0,0,0,0.25); }
+    #sh-toast[hidden] { display: none; }
+    #sh-toast.err { background: #8a2020; }
 
-      body {
-        font-family: Arial, sans-serif;
-        font-size: 13px;
-        background: var(--page);
-        color: #222;
-      }
+    @media (max-width: 899px) {
+      #sh-wrap { padding: 6px 12px 24px; }
+      #sh-vendors { position: static; flex-basis: 100%; }
+      .sh-row { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body class="lang-en">
+  <!-- Boot vars FIRST — EditorShell (included below) reads WEB_BOOT/MOG_WEB. -->
+  <script>
+    var WEB_BOOT  = {"web": true, "store": "Founders FOH", "abbr": "RPFRF", "base": "index.html", "theme": {"accent": "#2d8c6b", "bannerFont": "#ffffff", "ink": "#2d8c6b"}, "concept": "roll-play"};
+    var MOG_WEB   = !!(WEB_BOOT && WEB_BOOT.web);
+    var MOG_STORE = (WEB_BOOT && WEB_BOOT.store)   || '';
+    var MOG_ABBR  = (WEB_BOOT && WEB_BOOT.abbr)    || '';
+    var BASE_URL  = (WEB_BOOT && WEB_BOOT.base)    || '';
+    var THEME     = (WEB_BOOT && WEB_BOOT.theme)   || {};
+    var CONCEPT   = (WEB_BOOT && WEB_BOOT.concept) || '';
+    var MOG_TOKEN = null;   // set by the PIN gate (EditorShell)
+  </script>
 
-      .lang-bar {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        background: var(--brand);
-        color: #fff;
-        padding: 4px 10px;
-        gap: 4px;
-      }
-
-
-      /* ── Sticky header ── */
-      .header {
-        background: #fff;
-        border-bottom: 2px solid var(--brand-green);
-        padding: 10px 12px;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-      }
-      .header h3 {
-        font-size: 13px;
-        color: var(--brand-green);
-        margin-bottom: 6px;
-      }
-      .vendor-select {
-        width: 100%;
-        padding: 6px 8px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: bold;
-        background: #fff;
-        color: var(--brand-green);
-      }
-      .vendor-select:focus { outline: none; border-color: var(--brand-green); }
-      .vendor-select:disabled {
-        opacity: 0.55;
-        cursor: not-allowed;
-        background: #f0f0f0;
-      }
-
-      /* ── Hints ── */
-      .hint-drag {
-        font-size: 10px;
-        color: #888;
-        padding: 4px 12px 0;
-      }
-
-      /* ── Loading ── */
-      .loading {
-        padding: 24px 12px;
-        text-align: center;
-        font-size: 12px;
-        color: #888;
-        font-style: italic;
-      }
-
-      /* Centered spinner — replaces the .loading text indicator while
-         a vendor's pick path is being fetched. */
-      .loading-state {
-        display: flex; flex-direction: column;
-        align-items: center; justify-content: center;
-        padding: 48px 20px; gap: 14px; min-height: 180px;
-      }
-      .spinner {
-        width: 36px; height: 36px;
-        border: 3px solid #e1e4e8; border-top-color: var(--success);
-        border-radius: 50%;
-        animation: spinner-rotate 0.8s linear infinite;
-      }
-      @keyframes spinner-rotate { to { transform: rotate(360deg); } }
-      .loading-label { color: #6a7280; font-size: 13px; }
-
-      /* Saving overlay — engages on #groupsContainer during commitReorderPickPath
-         so the user can't drag items that wouldn't be saved. Pair every
-         setSavingPickPath_(true) with a (false) on BOTH success and failure. */
-      #groupsContainer.saving { position: relative; }
-      #groupsContainer.saving > * { opacity: 0.4; pointer-events: none; }
-      #groupsContainer.saving::after {
-        position: absolute; inset: 0;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 18px; font-weight: bold; letter-spacing: 1px;
-        color: var(--success);
-        z-index: 5; pointer-events: none;
-      }
-      body.lang-en #groupsContainer.saving::after { content: 'SAVING\2026'; }
-      body.lang-es #groupsContainer.saving::after { content: 'GUARDANDO\2026'; }
-
-      /* ── Groups ── */
-      #groupsContainer { padding-bottom: 8px; }
-      .area-group { margin: 10px 12px 0; }
-
-      .area-header {
-        font-size: 10px;
-        font-weight: bold;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #fff;
-        background: var(--brand-green);
-        border-radius: 3px 3px 0 0;
-        padding: 5px 8px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .area-header.unassigned { background: #b36b00; }
-
-      .area-order-badge {
-        font-size: 9px;
-        background: rgba(255,255,255,0.25);
-        border-radius: 3px;
-        padding: 1px 5px;
-        flex-shrink: 0;
-      }
-
-      /* Header label takes remaining space so the + button can sit at the
-         right edge. The unassigned header has no + button so its label
-         spans the full row. */
-      .area-header-label { flex: 1; }
-
-      /* + button on assigned-section headers — opens the picker showing
-         currently-unassigned items, click one to drop it into this section. */
-      .btn-add-to-section {
-        background: rgba(255,255,255,0.18);
-        color: #fff;
-        border: 1px solid rgba(255,255,255,0.35);
-        border-radius: 3px;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: bold;
-        line-height: 1;
-        padding: 1px 8px;
-        flex-shrink: 0;
-      }
-      .btn-add-to-section:hover  { background: rgba(255,255,255,0.30); }
-      .btn-add-to-section:active { background: rgba(255,255,255,0.40); }
-      .btn-add-to-section:disabled {
-        opacity: 0.35; cursor: not-allowed;
-        background: rgba(255,255,255,0.10);
-      }
-
-      .area-body {
-        border: 1px solid #c8ddd5;
-        border-top: none;
-        border-radius: 0 0 3px 3px;
-        background: #fff;
-        min-height: 40px;
-      }
-      .area-body.unassigned-body { border-color: #f0d080; }
-
-      /* ── Item rows (click-to-move only — no drag/drop) ── */
-      .item-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 7px 8px;
-        border-bottom: 1px solid #eee;
-        user-select: none;
-        font-size: 12px;
-        background: #fff;
-      }
-      .item-row:last-child { border-bottom: none; }
-
-      .shelf-badge {
-        min-width: 26px;
-        text-align: center;
-        font-size: 10px;
-        font-weight: bold;
-        color: #bbb;
-        background: #f5f5f5;
-        border-radius: 3px;
-        padding: 2px 4px;
-        flex-shrink: 0;
-      }
-      .unassigned-badge {
-        min-width: 26px;
-        text-align: center;
-        font-size: 11px;
-        color: var(--warn);
-        flex-shrink: 0;
-      }
-      .item-name {
-        flex: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      /* Stacked button column. Two of these per row:
-         - .btn-col-section holds ← above → (move to prev/next section)
-         - .btn-col-shelf   holds ▲ above ▼ (reorder within section)
-         Each button is half the row's vertical space, mimicking the
-         visual "stacked = sign" the user requested. */
-      .btn-col {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        flex-shrink: 0;
-      }
-      .btn-move {
-        background: #fff;
-        border: 1px solid #ccc;
-        border-radius: 3px;
-        cursor: pointer;
-        font-size: 10px;
-        line-height: 1;
-        padding: 2px 6px;
-        color: #555;
-        min-width: 24px;
-      }
-      .btn-move:hover    { background: #e8e8e8; }
-      .btn-move:active   { background: #d0d0d0; }
-      .btn-move:disabled {
-        opacity: 0.3; cursor: not-allowed;
-        background: #f5f5f5;
-      }
-
-      /* The standalone ⇆ button next to each assigned row. Sized to match
-         the visual height of the stacked ▲▼ pair so the row stays balanced.
-         Tinted slightly so it reads as a section-action (different from the
-         shelf-order ▲▼). */
-      .btn-swap {
-        font-size: 14px;
-        padding: 6px 10px;
-        color: var(--brand-green);
-        background: #f0f7f4;
-        border-color: #c8ddd5;
-        line-height: 1;
-      }
-      .btn-swap:hover  { background: #d8ecdf; }
-      .btn-swap:active { background: #b8dccb; }
-
-      /* Unassigned rows get a single "place into section" button (a stub
-         picker that opens the same area-picker the section ← → use). */
-      .btn-assign {
-        background: var(--success);
-        color: #fff;
-        border: none;
-        border-radius: 3px;
-        cursor: pointer;
-        font-size: 11px;
-        font-weight: bold;
-        padding: 5px 10px;
-        flex-shrink: 0;
-      }
-      .btn-assign:hover { opacity: 0.85; }
-
-      .all-assigned {
-        font-size: 11px;
-        color: #1f6d2a;
-        padding: 10px 8px;
-        text-align: center;
-        font-style: italic;
-      }
-      .empty-hint {
-        font-size: 11px;
-        color: #bbb;
-        padding: 10px 8px;
-        text-align: center;
-        font-style: italic;
-      }
-
-      /* ── Picker modal — shown when + or "place into section" is clicked.
-         Renders an absolutely-positioned overlay listing either:
-         - all unassigned items (when adding to a section), or
-         - all sections (when assigning a single unassigned item).
-         Click an entry to commit; click outside / × to cancel. */
-      .picker-backdrop {
-        position: fixed; inset: 0;
-        background: rgba(0,0,0,0.45);
-        z-index: 100;
-        display: flex; align-items: flex-start; justify-content: center;
-        padding: 40px 16px;
-        overflow-y: auto;
-      }
-      .picker {
-        background: #fff;
-        border-radius: 6px;
-        width: 100%;
-        max-width: 360px;
-        max-height: calc(100vh - 80px);
-        display: flex; flex-direction: column;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.25);
-        overflow: hidden;
-      }
-      .picker-header {
-        background: var(--brand-green);
-        color: #fff;
-        padding: 10px 14px;
-        font-size: 12px;
-        font-weight: bold;
-        display: flex; align-items: center; gap: 8px;
-      }
-      .picker-title { flex: 1; }
-      .picker-close {
-        background: rgba(255,255,255,0.18);
-        color: #fff;
-        border: 1px solid rgba(255,255,255,0.35);
-        border-radius: 3px;
-        cursor: pointer;
-        font-size: 14px;
-        line-height: 1;
-        padding: 1px 8px;
-      }
-      .picker-close:hover { background: rgba(255,255,255,0.30); }
-      .picker-list {
-        list-style: none;
-        margin: 0; padding: 0;
-        overflow-y: auto;
-        max-height: 400px;
-      }
-      .picker-item {
-        padding: 10px 14px;
-        font-size: 12px;
-        cursor: pointer;
-        border-bottom: 1px solid #eee;
-        display: flex; align-items: center; gap: 8px;
-      }
-      .picker-item:last-child { border-bottom: none; }
-      .picker-item:hover  { background: #f0f7f4; }
-      .picker-item:active { background: #d8ecdf; }
-      .picker-item-badge {
-        font-size: 10px;
-        background: #f5f5f5;
-        color: #666;
-        border-radius: 3px;
-        padding: 1px 5px;
-        font-weight: bold;
-        flex-shrink: 0;
-      }
-      .picker-item-name { flex: 1; }
-      .picker-empty {
-        padding: 24px 14px;
-        font-size: 12px;
-        font-style: italic;
-        color: #888;
-        text-align: center;
-      }
-
-      /* ── Footer ── */
-      .footer {
-        position: sticky;
-        bottom: 0;
-        background: #f9f9f9;
-        border-top: 1px solid #ddd;
-        padding: 10px 12px 12px;
-        margin-top: 12px;
-      }
-      .btn-row { display: flex; gap: 8px; }
-      button.btn-save {
-        flex: 2;
-        padding: 9px 12px;
-        background: var(--success);
-        color: #fff;
-        border: none;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: bold;
-        cursor: pointer;
-      }
-      button.btn-close {
-        flex: 1;
-        padding: 9px 12px;
-        background: #e0e0e0;
-        color: #333;
-        border: none;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: bold;
-        cursor: pointer;
-      }
-      button:hover    { opacity: 0.85; }
-      button:disabled { opacity: 0.4; cursor: not-allowed; }
-
-      .status {
-        font-size: 11px;
-        margin-top: 8px;
-        min-height: 16px;
-        text-align: center;
-      }
-      .status.ok   { color: #1f6d2a; font-weight: bold; animation: saveFlash 0.9s ease-out; padding: 3px 8px; border-radius: 4px; display: inline-block; }
-      .status.ok::before { content: '✓ '; }
-      .status.warn { color: #9a2c2c; font-weight: bold; }
-      .status.info { color: #555; }
-      @keyframes saveFlash {
-        0%   { background: rgba(31,109,42,0.20); }
-        100% { background: transparent; }
-      }
-
-      /* ── i18n ── */
-      .es { display: none; }
-      .en { display: inline; }
-
-      /* ════════════════════════════════════════════════════════════════════
-         WEB EDITOR RE-SKIN — every rule is scoped to body.mge-web, so the
-         in-Sheet dialog (no .mge-web class) is byte-identical. Centered,
-         concept-themed, Inter-typeset web page. The --web-accent* tokens are
-         set centrally in EditorShell (per-concept); :root holds Sheet-mode
-         fallbacks. Section headers use Treatment B (soft accent tint + edge
-         bar); the "Unassigned" header stays amber (it means "not on the order
-         sheet yet"), not the brand color.
-         ════════════════════════════════════════════════════════════════════ */
-      /* Web tokens (--web-accent*, --shadow, --font, --r, --r-sm, --muted,
-         --faint) are defined once in EditorShell and inherited here. */
-      body.mge-web { font-family: var(--font); background: var(--page); --shell-width: 780px; }
-
-      /* Navy lang-bar emptied (lang/help relocated to the shared band) + hidden. */
-      body.mge-web .lang-bar { display: none; }
-
-      /* Vendor picker → its own card (the h3 is dropped; band + breadcrumb name the page). */
-      body.mge-web .header { position: static; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); max-width: min(780px, calc(100% - 48px)); margin: 18px auto 0; padding: 15px 18px; }
-      body.mge-web .header h3 { display: none; }
-      .web-vendor-lbl { display: none; }
-      body.mge-web .web-vendor-lbl { display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
-      body.mge-web .vendor-select { font-size: 14px; padding: 10px 12px; border-radius: var(--r-sm); border-color: var(--line); color: var(--web-accent-dark); }
-
-      /* Sheet keeps its inline hint; web shows the shared info-note instead. */
-      body.mge-web .hint-drag { display: none; }
-
-      /* Groups column. */
-      body.mge-web #groupsContainer { max-width: min(780px, calc(100% - 48px)); margin: 0 auto; padding-bottom: 8px; }
-      body.mge-web .area-group { margin: 14px 0 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
-
-      /* Treatment B section headers — soft accent tint + accent edge bar. */
-      body.mge-web .area-header { background: var(--web-accent-soft); color: var(--web-accent-dark); border-left: 3px solid var(--web-accent); border-radius: 0; padding: 10px 14px; }
-      body.mge-web .area-header.unassigned { background: var(--warn-bg); color: var(--warn-ink); border-left-color: var(--warn); }
-      body.mge-web .area-order-badge { background: var(--web-accent); color: #fff; }
-      body.mge-web .area-header.unassigned .area-order-badge { background: var(--warn); }
-      body.mge-web .btn-add-to-section { background: #fff; color: var(--web-accent-dark); border: 1px solid #c8ddd5; }
-      body.mge-web .btn-add-to-section:hover { background: var(--web-accent-soft); }
-
-      /* Item rows — roomier, brand-accented controls. */
-      body.mge-web .area-body { border: none; border-radius: 0; }
-      body.mge-web .item-row { padding: 11px 14px; font-size: 14px; gap: 10px; }
-      body.mge-web .item-row:hover { background: #f7faf8; }
-      body.mge-web .shelf-badge { min-width: 30px; font-size: 11px; padding: 4px 6px; border-radius: var(--r-sm); }
-      body.mge-web .btn-swap { background: var(--web-accent-soft); color: var(--web-accent-dark); border-color: #c8ddd5; font-size: 15px; padding: 7px 11px; border-radius: var(--r-sm); }
-      body.mge-web .btn-move { font-size: 11px; padding: 3px 9px; min-width: 28px; border-radius: var(--r-sm); border-color: var(--line); }
-      body.mge-web .btn-assign { background: var(--web-accent); font-size: 12px; padding: 7px 13px; border-radius: var(--r-sm); }
-
-      /* Sticky save footer — quiet back link left, accent Save right. */
-      body.mge-web .footer { position: sticky; bottom: 0; background: rgba(244,245,247,.94); border-top: 1px solid var(--line); padding: 11px 24px; margin-top: 10px; }
-      body.mge-web .footer .btn-row { max-width: 780px; margin: 0 auto; justify-content: space-between; align-items: center; }
-      body.mge-web button.btn-close { flex: 0 0 auto; background: transparent; color: var(--muted); padding: 8px 2px; }
-      body.mge-web button.btn-close:hover { color: var(--web-accent-dark); opacity: 1; }
-      body.mge-web button.btn-save { flex: 0 0 auto; background: var(--web-accent); padding: 12px 24px; border-radius: var(--r-sm); }
-      body.mge-web button.btn-save:hover { opacity: .9; }
-      /* Unsaved-changes guard is the shared EditorShell dialog (mgeGuard3_). */
-    </style>
-  </head>
-  <body class="lang-en">
   <!-- MOG editor shared shell: concept-themed PIN gate (Store-Reports style),
      device gate, breadcrumb bar, and the shared editor chrome JS. Included at
      the TOP of <body> on every editor page so its functions are defined before
@@ -2283,794 +1838,389 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
 </script>
 
 
-    <!-- Language toggle -->
-    <div class="lang-bar">
-      <button class="help-btn" onclick="toggleHelp(true)" title="Help" aria-label="Help">?</button>
-      <button class="lang-btn active" onclick="setLang('en')">EN</button>
-      <button class="lang-btn"        onclick="setLang('es')">ES</button>
-    </div>
+  <div class="web-titlebar">
+    <h1 class="web-title"><span class="en">Shelf to Sheet</span><span class="es">Estante a Hoja</span></h1>
+    <p class="web-subtitle"><span class="en">Put each area’s items in the order you count them, so the count list follows your walk past the shelves. Each vendor has its own list.</span><span class="es">Ordena los artículos de cada área en el orden en que los cuentas, para que la lista de conteo siga tu recorrido por los estantes. Cada proveedor tiene su propia lista.</span></p>
+  </div>
 
-    <!-- Unsaved-changes guard: shared EditorShell dialog (mgeGuard3_). -->
-
-    <!-- ── Help panel (toggled by the [?] header button) ── -->
-    <div id="help-overlay" class="help-overlay" onclick="if(event.target===this)toggleHelp(false)">
-      <div class="help-card">
-        <div class="help-head">
-          <span><span class="en">Shelf to Sheet — how it works</span><span class="es">Estante a Hoja — cómo funciona</span></span>
-          <span class="help-x" onclick="toggleHelp(false)">✕</span>
-        </div>
-        <div class="help-body">
-          <div class="help-lead">
-            <span class="en"><strong>Shelf to Sheet</strong> sets the order items appear on a vendor's count list — grouped by storage area, then shelf order. The goal: count the kitchen in one walk.</span>
-            <span class="es"><strong>Estante a Hoja</strong> define el orden en que los artículos aparecen en la lista de conteo de un proveedor — por área de almacén y luego por orden de estante. La meta: contar la cocina en un solo recorrido.</span>
-          </div>
-          <div class="help-step"><span class="en"><strong>1.</strong> Pick a vendor at the top.</span><span class="es"><strong>1.</strong> Elige un proveedor arriba.</span></div>
-          <div class="help-step"><span class="en"><strong>2. ▲▼</strong> reorder an item within its area (shelf order).</span><span class="es"><strong>2. ▲▼</strong> reordena un artículo dentro de su área (orden de estante).</span></div>
-          <div class="help-step"><span class="en"><strong>3. ⇆</strong> move an item to a different area.</span><span class="es"><strong>3. ⇆</strong> mueve un artículo a otra área.</span></div>
-          <div class="help-step"><span class="en"><strong>4. +</strong> on an area header adds an unassigned item to that area.</span><span class="es"><strong>4. +</strong> en el encabezado de un área agrega un artículo sin asignar.</span></div>
-          <div class="help-step"><span class="en"><strong>5.</strong> Tap <strong>Save</strong> — the vendor's count list follows the new order.</span><span class="es"><strong>5.</strong> Toca <strong>Guardar</strong> — la lista de conteo del proveedor sigue el nuevo orden.</span></div>
-          <div class="help-warn"><span class="en">⚠ Switching vendors with unsaved changes will prompt you to save or discard first.</span><span class="es">⚠ Cambiar de proveedor con cambios sin guardar te pedirá guardar o descartar primero.</span></div>
-          <div class="tour-replay-wrap"><button type="button" class="mge-tour-btn primary" onclick="replayPickPathTour()"><span class="en">↻ Replay walkthrough</span><span class="es">↻ Repetir el recorrido</span></button></div>
-        </div>
+  <div id="sh-wrap">
+    <div id="sh-vendors" role="group" aria-label="Vendor"></div>
+    <div id="sh-main">
+      <div id="sh-lists"><div class="sh-msg"><span class="en">Loading…</span><span class="es">Cargando…</span></div></div>
+      <div class="sh-spacer"></div>
+      <div id="sh-bar" role="status" hidden>
+        <span class="sh-dot" aria-hidden="true"></span>
+        <div class="sh-sum" id="sh-sum"></div>
+        <button type="button" class="sh-btn" id="sh-discard"><span class="en">Discard</span><span class="es">Descartar</span></button>
+        <button type="button" class="sh-btn primary" id="sh-save"></button>
       </div>
     </div>
+  </div>
+  <div id="sh-toast" role="status" hidden></div>
 
-    <div class="web-titlebar">
-      <h1 class="web-title"><span class="en">Shelf to Sheet</span><span class="es">Estante a Hoja</span></h1>
-      <p class="web-subtitle"><span class="en">Put each area's items in the order you actually count them, so the order sheet matches your walk through the shelves.</span><span class="es">Ordena los artículos de cada área en el orden en que realmente los cuentas, para que la hoja de pedido siga tu recorrido por los estantes.</span></p>
-    </div>
+  <script>
+    var LANG = mgeGetLang_();
+    document.body.classList.remove('lang-en', 'lang-es');
+    document.body.classList.add('lang-' + LANG);
+    var ES = (LANG === 'es');
+    function T(en, es) { return ES ? es : en; }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function plural(n, en, enMany, es, esMany) { return n + ' ' + (n === 1 ? T(en, es) : T(enMany, esMany)); }
+    function pageLink(page) { return esc((BASE_URL || 'index.html') + '?page=' + page); }
+    var ICON = {
+      up: '<path d="m6 15 6-6 6 6"/>',
+      down: '<path d="m6 9 6 6 6-6"/>'
+    };
+    function icon(name) {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>';
+    }
+    var GRIP = '<svg viewBox="0 0 14 20" fill="currentColor" aria-hidden="true"><circle cx="4" cy="4" r="1.6"/><circle cx="10" cy="4" r="1.6"/>' +
+               '<circle cx="4" cy="10" r="1.6"/><circle cx="10" cy="10" r="1.6"/><circle cx="4" cy="16" r="1.6"/><circle cx="10" cy="16" r="1.6"/></svg>';
+    function listName(v) { return T(v + '’s list', 'la lista de ' + v); }
 
-    <!-- Sticky header -->
-    <div class="header">
-      <h3>
-        <span class="en">Shelf to Sheet</span>
-        <span class="es">Estante a Hoja</span>
-      </h3>
-      <div class="web-vendor-lbl"><span class="en">Vendor</span><span class="es">Proveedor</span></div>
-      <select class="vendor-select" id="vendorSelect" onchange="onVendorChange()"></select>
-    </div>
-
-    <div class="hint-drag">
-      <span class="en">Use ▲▼ to reorder within a section, ⇆ to move an item to a different section, or + on a section header to add an unassigned item.</span>
-      <span class="es">Usa ▲▼ para reordenar dentro de una sección, ⇆ para mover un artículo a otra sección, o + en el encabezado de una sección para agregar un artículo sin asignar.</span>
-    </div>
-
-    <div id="groupsContainer"></div>
-
-    <div class="footer">
-      <div class="btn-row">
-        <button class="btn-close" onclick="doClose()">
-          <span class="en">Close</span>
-          <span class="es">Cerrar</span>
-        </button>
-        <button class="btn-save" id="saveBtn" onclick="doSave()">
-          <span class="en">Save</span>
-          <span class="es">Guardar</span>
-        </button>
-      </div>
-      <div id="status" class="status"></div>
-    </div>
-
-    <script>
-      // ── i18n ─────────────────────────────────────────────────────────────────
-      var LANG = 'en';
-
-      var T = {
-        en: {
-          loading:          'Loading ',
-          allAssigned:      '✓ All items assigned',
-          noItemsHint:      'No items yet — use + on a section to add unassigned items here.',
-          unassignedHeader: '⚠ Unassigned — use the buttons to assign each item to a section',
-          noAreaTitle:      'No storage area assigned',
-          unsavedChanges:   'Unsaved changes.',
-          saving:           'Saving…',
-          saved:            'Saved! ',
-          itemsUpdated:     ' items updated.',
-          // Section move buttons
-          moveUpTitle:      'Move up within section',
-          moveDownTitle:    'Move down within section',
-          moveSectionTitle: 'Move to a different section',
-          // Header + button
-          addToSectionTitle:'Add an unassigned item to this section',
-          // Pickers
-          pickerAddTitle:   'Add to ',
-          pickerAddEmpty:   'No unassigned items — everything is placed.',
-          pickerSectTitle:  'Place item in…',
-          pickerMoveTitle:  'Move to…',
-          pickerSectEmpty:  'No sections defined. Add storage areas in Storage Areas first.',
-          pickerMoveEmpty:  'No other sections to move to.',
-          unassignedLabel:  'Unassigned',
-          assignBtn:        'Place'
-        },
-        es: {
-          loading:          'Cargando ',
-          allAssigned:      '✓ Todos los artículos asignados',
-          noItemsHint:      'Sin artículos — usa + en una sección para agregar artículos sin asignar aquí.',
-          unassignedHeader: '⚠ Sin asignar — usa los botones para asignar cada artículo a una sección',
-          noAreaTitle:      'Sin área de almacén asignada',
-          unsavedChanges:   'Cambios sin guardar.',
-          saving:           'Guardando…',
-          saved:            '¡Guardado! ',
-          itemsUpdated:     ' artículos actualizados.',
-          // Botones de movimiento
-          moveUpTitle:      'Mover arriba dentro de la sección',
-          moveDownTitle:    'Mover abajo dentro de la sección',
-          moveSectionTitle: 'Mover a otra sección',
-          // Botón + del encabezado
-          addToSectionTitle:'Agregar un artículo sin asignar a esta sección',
-          // Selectores
-          pickerAddTitle:   'Agregar a ',
-          pickerAddEmpty:   'No hay artículos sin asignar — todo está colocado.',
-          pickerSectTitle:  'Colocar artículo en…',
-          pickerMoveTitle:  'Mover a…',
-          pickerSectEmpty:  'No hay secciones definidas. Agrega áreas de almacén en Áreas de Almacén primero.',
-          pickerMoveEmpty:  'No hay otras secciones a las cuales mover.',
-          unassignedLabel:  'Sin Asignar',
-          assignBtn:        'Colocar'
-        }
-      };
-
-      function t(key) { return T[LANG][key] || T['en'][key] || key; }
-
-      function setLang(lang) {
-        LANG = lang;
-        // Toggle ONLY the lang class — must not clobber `mge-web` (gates the web
-        // re-skin). Still drives the #groupsContainer.saving::after content.
-        document.body.classList.remove('lang-en', 'lang-es');
-        document.body.classList.add('lang-' + lang);
-        document.querySelectorAll('.lang-btn').forEach(function(btn, i) {
-          btn.classList.toggle('active', ['en','es'][i] === lang);
-        });
-        document.querySelectorAll('.en, .es').forEach(function(el) {
-          el.style.display = el.classList.contains(lang) ? 'inline' : 'none';
-        });
-        // Re-render so dynamic text (group headers, empty states) updates
-        render();
-      }
-
-      // ── State ─────────────────────────────────────────────────────────────────
-      const UNASSIGNED  = '__UNASSIGNED__';
-      // Filled from PICK_DATA at init, not here: the app's editor (template/
-      // editor/host.js) supplies PICK_DATA and VENDOR_LIST only after sign-in.
-      let currentVendor = null;
-      let groups        = [];
-      let isDirty       = false;
-
-      function byId(id) { return document.getElementById(id); }
-
-      // ── Help panel ──
-      function toggleHelp(show) {
-        byId('help-overlay').classList.toggle('open', show);
-      }
-      document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') toggleHelp(false);
+    // ---- Talking to the server: host.js answers from the catalog tables ----
+    function call(fn) {
+      var args = [].slice.call(arguments, 1);
+      return new Promise(function (resolve, reject) {
+        var r = mgeRpc_().withSuccessHandler(resolve).withFailureHandler(reject);
+        r[fn].apply(r, args);
       });
+    }
 
-      function bumpMutationTs_() {
-        // Signals to other modals' caches that data has changed and they
-        // should invalidate on next open. Stored under a shared localStorage
-        // key that must match the literal used by every reader/writer across
-        // modals — currently only ManageItems' View All cache reads it.
-        try { localStorage.setItem('mog_lastMutationTs', String(Date.now())); } catch (e) {}
+    // ---- State ----
+    // D, the draft: { notYet: [item], groups: [{ area, items: [item] }] },
+    // every area in the store's order; item = { id, name, pack, lto }.
+    var S = { vendors: [], vendor: '', D: null, base: '', busy: false, drag: null };
+
+    // ---- The draft's rules (tests/manage_pages.test.js runs these) ----
+    function shDraft(path) {
+      var groups = (path.groups || []).slice().sort(function (a, b) { return a.areaOrder - b.areaOrder; });
+      return { notYet: (path.unassigned || []).slice(),
+               groups: groups.map(function (g) { return { area: g.area, items: g.items.slice() }; }) };
+    }
+    function shList(D, g) { return g < 0 ? D.notYet : D.groups[g].items; }
+    // Moves one item: from { g, i } to { g, i } (g -1 = not on the list; i =
+    // the place it takes, counted before it leaves; past the end = the end).
+    // False when nothing moves.
+    function shMove(D, from, to) {
+      var src = shList(D, from.g), item = src[from.i];
+      if (!item) return false;
+      var dst = shList(D, to.g);
+      var at = (to.i == null || to.i > dst.length) ? dst.length : to.i;
+      if (src === dst) {
+        if (at === from.i || at === from.i + 1) return false;
+        src.splice(from.i, 1);
+        if (at > from.i) at--;
+        src.splice(at, 0, item);
+        return true;
       }
+      src.splice(from.i, 1);
+      dst.splice(at, 0, item);
+      return true;
+    }
+    // What commitReorderPickPath takes: the whole list, area by area, in order.
+    function shPayload(D) {
+      var out = [];
+      D.groups.forEach(function (g) { g.items.forEach(function (it) { out.push({ id: it.id, name: it.name, area: g.area }); }); });
+      return out;
+    }
+    function shPlaces(D) {
+      var m = {};
+      D.notYet.forEach(function (it) { m[it.id] = '#off'; });
+      D.groups.forEach(function (g) { g.items.forEach(function (it, i) { m[it.id] = g.area + '#' + i; }); });
+      return m;
+    }
+    function shSnapshot(D) { return JSON.stringify(shPlaces(D)); }
+    // How many items sit somewhere else than when the list loaded.
+    function shMoved(D, base) {
+      var now = shPlaces(D), was = JSON.parse(base || '{}'), n = 0;
+      Object.keys(now).forEach(function (id) { if (now[id] !== was[id]) n++; });
+      return n;
+    }
 
-      function setStatus(msg, type) {
-        const el   = byId('status');
-        el.textContent = msg;
-        el.className   = 'status ' + (type || '');
+    function isDirty() { return !!S.D && shSnapshot(S.D) !== S.base; }
+    function markDirty() {
+      mgeSetLeaveGuard_(isDirty() ? function (proceed) { guard(proceed); } : null);
+      renderBar(); renderVendors();
+    }
+    function guard(proceed) {
+      if (!isDirty()) { proceed(); return; }
+      mgeGuard3_({
+        title: { en: 'Save your changes?', es: '¿Guardar los cambios?' },
+        msg: { en: 'You changed ' + S.vendor + '’s list and haven’t saved it.', es: 'Cambiaste la lista de ' + S.vendor + ' y no la guardaste.' },
+        onSave: function () { save().then(function (ok) { if (ok) proceed(); }); },
+        onDiscard: function () { discard(); proceed(); }
+      });
+    }
+
+    // ---- Rendering ----
+    function renderVendors() {
+      var el = document.getElementById('sh-vendors');
+      if (!S.vendors.length) { el.innerHTML = ''; return; }
+      var dirty = isDirty();
+      el.setAttribute('aria-label', T('Vendor', 'Proveedor'));
+      el.innerHTML = '<div class="sh-vlabel">' + esc(T('Vendor', 'Proveedor')) + '</div>' + S.vendors.map(function (v) {
+        var on = v.name === S.vendor;
+        var sub = T(v.onList + ' on the list', v.onList + ' en la lista') + (v.notYet ? T(' · ' + v.notYet + ' not yet', ' · ' + v.notYet + ' sin poner') : '');
+        return '<button type="button" class="sh-v" data-vendor="' + esc(v.name) + '" aria-pressed="' + on + '">' +
+          '<span class="sh-v-main"><span class="sh-v-name">' + esc(v.name) + '</span><span class="sh-v-sub' + (v.notYet ? ' warn' : '') + '">' + esc(sub) + '</span></span>' +
+          (on && dirty ? '<span class="sh-dot" title="' + esc(T('Unsaved changes', 'Cambios sin guardar')) + '"></span>' : '') + '</button>';
+      }).join('');
+    }
+    function areaOptions(skip) {
+      return S.D.groups.map(function (g, gi) {
+        return gi === skip ? '' : '<option value="' + gi + '">' + esc(g.area) + '</option>';
+      }).join('');
+    }
+    function nameHtml(it) {
+      return '<div class="sh-name"><b>' + esc(it.name) + '</b>' + (it.pack ? '<span class="sh-sub"> · ' + esc(it.pack) + '</span>' : '') +
+        (it.lto ? '<span class="sh-lto">LTO · ' + esc(it.lto) + '</span>' : '') + '</div>';
+    }
+    function rowHtml(it, g, i, len) {
+      return '<li class="sh-row" data-g="' + g + '" data-i="' + i + '">' +
+        '<span class="sh-handle" draggable="true" aria-hidden="true" title="' + esc(T('Drag to move', 'Arrastra para mover')) + '">' + GRIP + '</span>' +
+        '<span class="sh-num">' + (i + 1) + '</span>' + nameHtml(it) +
+        '<label class="vh" for="sh-mv-' + g + '-' + i + '">' + esc(T('Move ' + it.name + ' to', 'Mover ' + it.name + ' a')) + '</label>' +
+        '<select class="sh-sel" id="sh-mv-' + g + '-' + i + '" data-move><option value="">' + esc(T('Move to…', 'Mover a…')) + '</option>' + areaOptions(g) +
+          '<option value="-1">' + esc(T('Off ' + listName(S.vendor), 'Fuera de ' + listName(S.vendor))) + '</option></select>' +
+        '<button type="button" class="sh-ico" data-step="-1" aria-label="' + esc(T('Move ' + it.name + ' up', 'Subir ' + it.name)) + '"' + (i === 0 ? ' disabled' : '') + '>' + icon('up') + '</button>' +
+        '<button type="button" class="sh-ico" data-step="1" aria-label="' + esc(T('Move ' + it.name + ' down', 'Bajar ' + it.name)) + '"' + (i === len - 1 ? ' disabled' : '') + '>' + icon('down') + '</button>' +
+        '</li>';
+    }
+    function render() {
+      var el = document.getElementById('sh-lists');
+      if (!S.vendors.length) {
+        el.innerHTML = '<div class="sh-msg">' + T('No vendors yet. Add one in <a href="' + pageLink('vendors') + '">Vendors</a>.',
+                                                   'Todavía no hay proveedores. Agrega uno en <a href="' + pageLink('vendors') + '">Proveedores</a>.') + '</div>';
+        renderBar(); return;
       }
-
-      // HTML-escape for safe interpolation in spinner labels (vendor names
-      // come from the SETUP sheet — usually safe, but defensive is cheap).
-      function esc_(s) {
-        return String(s == null ? '' : s)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
+      if (!S.D) { el.innerHTML = ''; renderBar(); return; }
+      if (!S.D.groups.length) {
+        el.innerHTML = '<div class="sh-msg">' + T('No storage areas yet. Add them in <a href="' + pageLink('areas') + '">Storage areas</a> first.',
+                                                   'Todavía no hay áreas. Agrégalas primero en <a href="' + pageLink('areas') + '">Áreas de almacenamiento</a>.') + '</div>';
+        renderBar(); return;
       }
-
-      // Centered spinner card — replaces the inline "Loading…" text in
-      // #groupsContainer while a vendor's pick path is being fetched.
-      function loadingHtml_(labelText) {
-        var label = labelText || (t('loading') + '\u2026');
-        return '<div class="loading-state">' +
-                 '<div class="spinner"></div>' +
-                 '<div class="loading-label">' + esc_(label) + '</div>' +
-               '</div>';
+      var h = '', D = S.D;
+      if (D.notYet.length) {
+        h += '<section class="sh-notyet" data-drop="-1" aria-labelledby="sh-notyet-h"><h2 id="sh-notyet-h">' +
+          esc(D.notYet.length === 1 ? T('1 ' + S.vendor + ' item isn’t on its count list yet', '1 artículo de ' + S.vendor + ' no está en su lista de conteo')
+                                    : T(D.notYet.length + ' ' + S.vendor + ' items aren’t on its count list yet', D.notYet.length + ' artículos de ' + S.vendor + ' no están en su lista de conteo')) + '</h2>' +
+          '<p>' + esc(T('Pick an area for each. It goes to the end of that area; drag it into place after.',
+                        'Elige un área para cada uno. Va al final de esa área; luego arrástralo a su lugar.')) + '</p><ul class="sh-list">' +
+          D.notYet.map(function (it, i) {
+            return '<li class="sh-row" data-g="-1" data-i="' + i + '">' +
+              '<span class="sh-handle" draggable="true" aria-hidden="true" title="' + esc(T('Drag to move', 'Arrastra para mover')) + '">' + GRIP + '</span>' +
+              nameHtml(it) +
+              '<label class="sh-pick">' + esc(T('Area', 'Área')) + '<select class="sh-sel" data-move><option value="">' + esc(T('Pick an area', 'Elige un área')) + '</option>' +
+                areaOptions(-1) + '</select></label></li>';
+          }).join('') + '</ul></section>';
       }
-
-      // Saving overlay control. Adds .saving to #groupsContainer, dimming
-      // the items + showing a centered SAVING/GUARDANDO label via CSS.
-      // Pair every (true) with a (false) on BOTH success and failure paths.
-      function setSavingPickPath_(on) {
-        const c = byId('groupsContainer');
-        if (!c) return;
-        if (on) c.classList.add('saving');
-        else    c.classList.remove('saving');
+      var empties = [];
+      D.groups.forEach(function (g, gi) {
+        if (!g.items.length) { empties.push(gi); return; }
+        h += '<section class="sh-group" data-drop="' + gi + '" aria-label="' + esc(g.area) + '"><div class="sh-ghead"><span class="sh-gnum" aria-hidden="true">' + (gi + 1) + '</span>' +
+          '<h2>' + esc(g.area) + '</h2><span class="sh-gcount">' + esc(plural(g.items.length, 'item', 'items', 'artículo', 'artículos')) + '</span></div>' +
+          '<ol class="sh-list">' + g.items.map(function (it, i) { return rowHtml(it, gi, i, g.items.length); }).join('') + '</ol></section>';
+      });
+      if (empties.length) {
+        h += '<section class="sh-empties" aria-labelledby="sh-empty-h"><div class="sh-ghead"><h2 id="sh-empty-h">' +
+          esc(T('Areas with nothing from ' + S.vendor, 'Áreas sin nada de ' + S.vendor)) + '</h2><div>' +
+          esc(T('Drag an item onto one, or pick it in Move to.', 'Arrastra un artículo a una, o elígela en Mover a.')) + '</div></div><ul class="sh-elist">' +
+          empties.map(function (gi) {
+            return '<li class="sh-earea" data-drop="' + gi + '"><b>' + (gi + 1) + '</b><span>' + esc(D.groups[gi].area) + '</span></li>';
+          }).join('') + '</ul></section>';
       }
+      el.innerHTML = h;
+      renderBar();
+    }
+    function renderBar() {
+      var bar = document.getElementById('sh-bar');
+      var dirty = isDirty();
+      bar.hidden = !dirty;
+      document.getElementById('sh-save').textContent = T('Save ' + listName(S.vendor), 'Guardar ' + listName(S.vendor));
+      if (!dirty) return;
+      var n = shMoved(S.D, S.base);
+      document.getElementById('sh-sum').innerHTML = '<b>' + esc(T('Unsaved changes to ' + listName(S.vendor), 'Cambios sin guardar en ' + listName(S.vendor))) + '</b>' +
+        '<span> · ' + esc(T(n === 1 ? '1 item moved' : n + ' items moved', n === 1 ? '1 artículo movido' : n + ' artículos movidos')) + '</span>';
+      document.getElementById('sh-save').disabled = S.busy;
+      document.getElementById('sh-discard').disabled = S.busy;
+    }
 
-      // Vendor-select lockout — disables the dropdown during any in-flight
-      // async work (load OR save) so the user can't trigger a second
-      // loadVendor while the first is mid-flight. Without this, stale
-      // responses can arrive in the wrong order and render Vendor A's
-      // items under Vendor B's label until the second response lands.
-      // Pair every (true) with a (false) on BOTH success and failure paths.
-      function setVendorSelectLocked_(on) {
-        const sel = byId('vendorSelect');
-        if (sel) sel.disabled = on;
+    // ---- Editing the draft ----
+    function move(from, to) {
+      if (shMove(S.D, from, to)) { render(); markDirty(); return true; }
+      return false;
+    }
+    function discard() {
+      if (S.loadedPath) S.D = shDraft(S.loadedPath);
+      render(); markDirty();
+    }
+
+    // ---- Dragging (the handle) ----
+    function clearDrop() {
+      document.querySelectorAll('.drop-before, .drop-after, .drop-end').forEach(function (x) { x.classList.remove('drop-before', 'drop-after', 'drop-end'); });
+    }
+    // Where a drop at this point would put the item, and the mark that shows it.
+    function dropTarget(e) {
+      var row = e.target.closest && e.target.closest('.sh-row[data-g]');
+      if (row) {
+        var r = row.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
+        var g = Number(row.getAttribute('data-g')), i = Number(row.getAttribute('data-i'));
+        return { to: { g: g, i: after ? i + 1 : i }, el: row, cls: after ? 'drop-after' : 'drop-before' };
       }
+      var zone = e.target.closest && e.target.closest('[data-drop]');
+      if (zone) return { to: { g: Number(zone.getAttribute('data-drop')), i: null }, el: zone, cls: 'drop-end' };
+      return null;
+    }
+    function wireDrag() {
+      var lists = document.getElementById('sh-lists');
+      lists.addEventListener('dragstart', function (e) {
+        var h = e.target.closest && e.target.closest('.sh-handle');
+        var row = h && h.closest('.sh-row[data-g]');
+        if (!row || S.busy) { e.preventDefault(); return; }
+        S.drag = { g: Number(row.getAttribute('data-g')), i: Number(row.getAttribute('data-i')) };
+        try {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', row.querySelector('.sh-name b').textContent);
+          e.dataTransfer.setDragImage(row, 24, 20);
+        } catch (err) { /* the browser's own drag image */ }
+        setTimeout(function () { row.classList.add('dragging'); }, 0);
+      });
+      lists.addEventListener('dragover', function (e) {
+        if (!S.drag) return;
+        var t = dropTarget(e);
+        if (!t) return;
+        e.preventDefault();
+        try { e.dataTransfer.dropEffect = 'move'; } catch (err) { /* fine */ }
+        if (!t.el.classList.contains(t.cls)) { clearDrop(); t.el.classList.add(t.cls); }
+      });
+      lists.addEventListener('dragleave', function (e) {
+        if (e.target === lists) clearDrop();
+      });
+      lists.addEventListener('drop', function (e) {
+        if (!S.drag) return;
+        var t = dropTarget(e);
+        e.preventDefault();
+        var from = S.drag;
+        S.drag = null; clearDrop();
+        if (t) move(from, t.to); else render();
+      });
+      lists.addEventListener('dragend', function () {
+        S.drag = null; clearDrop();
+        document.querySelectorAll('.sh-row.dragging').forEach(function (x) { x.classList.remove('dragging'); });
+      });
+    }
 
-      function markDirty() {
-        isDirty = true;
-        setStatus(t('unsavedChanges'), 'info');
+    // ---- Loading and saving ----
+    // A vendor's list. Unsaved edits to the one open ask first.
+    function pickVendor(name) {
+      if (name === S.vendor) return;
+      guard(function () { load(name); });
+    }
+    function load(name) {
+      S.busy = true;
+      return call('getShelfPage', name).then(function (page) {
+        S.busy = false;
+        S.vendors = page.vendors || [];
+        S.vendor = page.path ? page.path.vendor : '';
+        S.loadedPath = page.path;
+        S.D = page.path ? shDraft(page.path) : null;
+        S.base = S.D ? shSnapshot(S.D) : '';
+        render(); markDirty();
+      }, function (err) { S.busy = false; toast(errText(err), true); });
+    }
+    // Which vendor opens: the link's (?vendor=), else the first A to Z with
+    // items not on its list yet, else the first.
+    function firstVendor(vendors, want) {
+      if (want && vendors.some(function (v) { return v.name === want; })) return want;
+      for (var i = 0; i < vendors.length; i++) if (vendors[i].notYet) return vendors[i].name;
+      return vendors.length ? vendors[0].name : '';
+    }
+    function save() {
+      if (S.busy || !isDirty()) return Promise.resolve(!isDirty());
+      var payload = shPayload(S.D);
+      if (!payload.length) {
+        toast(T('Put at least one item on ' + listName(S.vendor) + ' before saving.', 'Pon al menos un artículo en ' + listName(S.vendor) + ' antes de guardar.'), true);
+        return Promise.resolve(false);
       }
-
-      // ── Build group state ──────────────────────────────────────────────────────
-      function buildGroups(data) {
-        const unassignedGroup = {
-          area:      UNASSIGNED,
-          areaOrder: -1,
-          items:     (data.unassigned || []).map(function(x) { return { id: x.id, name: x.name }; })
-        };
-        const areaGroups = data.groups.map(function(g) {
-          return { area: g.area, areaOrder: g.areaOrder, items: g.items.slice() };
+      var vendor = S.vendor;
+      S.busy = true; renderBar();
+      return call('commitReorderPickPath', vendor, payload).then(function (res) {
+        S.busy = false;
+        return load(vendor).then(function () {
+          toast(T('Saved ' + listName(vendor) + ' (' + plural(res.count, 'item', 'items', '', '') + ').',
+                  'Se guardó ' + listName(vendor) + ' (' + res.count + (res.count === 1 ? ' artículo' : ' artículos') + ').'));
+          return true;
         });
-        return [unassignedGroup].concat(areaGroups);
-      }
+      }, function (err) {
+        S.busy = false; renderBar();
+        toast(errText(err), true);
+        return false;
+      });
+    }
 
-      // ── Vendor dropdown ────────────────────────────────────────────────────────
-      function populateVendors() {
-        const sel = byId('vendorSelect');
-        // Vendors have no user-defined order — show the picker A–Z (sorted copy).
-        VENDOR_LIST.slice().sort(function(a, b) { return String(a).localeCompare(String(b)); }).forEach(function(v) {
-          const opt       = document.createElement('option');
-          opt.value       = v;
-          opt.textContent = v;
-          if (v === currentVendor) opt.selected = true;
-          sel.appendChild(opt);
-        });
-      }
+    // ---- Small things ----
+    function errText(err) {
+      var m = err && err.message ? err.message : String(err || '');
+      return m || T('Something went wrong. Try again.', 'Algo salió mal. Inténtalo de nuevo.');
+    }
+    var toastTimer = null;
+    function toast(text, isErr) {
+      var el = document.getElementById('sh-toast');
+      el.textContent = text; el.className = isErr ? 'err' : ''; el.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.hidden = true; }, isErr ? 9000 : 5000);
+    }
 
-      // ── Vendor switching ───────────────────────────────────────────────────────
-      function onVendorChange() {
-        const newVendor = byId('vendorSelect').value;
-        if (newVendor === currentVendor) return;
-
-        if (isDirty) {
-          // Revert the dropdown while the dialog is up so Cancel = stay put;
-          // Save/Don't save then proceed to the new vendor.
-          byId('vendorSelect').value = currentVendor;
-          rppGuardOpen_(function () { loadVendor(newVendor); });
-          return;
+    function wire() {
+      document.getElementById('sh-vendors').addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-vendor]'); if (b && !S.busy) pickVendor(b.getAttribute('data-vendor'));
+      });
+      var lists = document.getElementById('sh-lists');
+      lists.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-step]'); if (!b || S.busy) return;
+        var row = b.closest('.sh-row[data-g]');
+        var g = Number(row.getAttribute('data-g')), i = Number(row.getAttribute('data-i')), step = Number(b.getAttribute('data-step'));
+        if (move({ g: g, i: i }, { g: g, i: step < 0 ? i - 1 : i + 2 })) {
+          var again = document.querySelector('.sh-row[data-g="' + g + '"][data-i="' + (i + step) + '"] button[data-step="' + step + '"]');
+          if (again && !again.disabled) again.focus();
         }
-        loadVendor(newVendor);
-      }
+      });
+      lists.addEventListener('change', function (e) {
+        var sel = e.target.closest('select[data-move]'); if (!sel || sel.value === '' || S.busy) return;
+        var row = sel.closest('.sh-row[data-g]');
+        move({ g: Number(row.getAttribute('data-g')), i: Number(row.getAttribute('data-i')) }, { g: Number(sel.value), i: null });
+      });
+      wireDrag();
+      document.getElementById('sh-save').onclick = function () { save(); };
+      document.getElementById('sh-discard').onclick = function () { if (!S.busy) discard(); };
+    }
 
-      function loadVendor(vendor) {
-        currentVendor = vendor;
-        isDirty       = false;
-        byId('vendorSelect').value    = vendor;
-        byId('groupsContainer').innerHTML = loadingHtml_(t('loading') + vendor + '\u2026');
-        setStatus('');
-        setVendorSelectLocked_(true);
-
-        MIRPC()
-          .withSuccessHandler(function(data) {
-            groups = buildGroups(data);
-            render();
-            setVendorSelectLocked_(false);
-          })
-          .withFailureHandler(function(err) {
-            setVendorSelectLocked_(false);
-            setStatus(err.message || String(err), 'warn');
-            byId('groupsContainer').innerHTML = '';
-          })
-          .getPickPathForSidebar(vendor);
-      }
-
-      // ── Render ────────────────────────────────────────────────────────────────
-      function render() {
-        const container = byId('groupsContainer');
-        container.innerHTML = '';
-
-        groups.forEach(function(group, gIdx) {
-          const isUnassigned = group.area === UNASSIGNED;
-          const groupEl      = document.createElement('div');
-          groupEl.className    = 'area-group';
-          groupEl.dataset.gidx = gIdx;
-
-          // Header
-          const header    = document.createElement('div');
-          header.className = 'area-header' + (isUnassigned ? ' unassigned' : '');
-
-          const label = document.createElement('span');
-          label.className = 'area-header-label';
-
-          if (!isUnassigned) {
-            const badge       = document.createElement('span');
-            badge.className   = 'area-order-badge';
-            badge.textContent = group.areaOrder;
-            header.appendChild(badge);
-            label.textContent = group.area;
-            header.appendChild(label);
-
-            // + button — opens the unassigned-items picker for this section.
-            // Disabled when there are no unassigned items left.
-            const addBtn       = document.createElement('button');
-            addBtn.className   = 'btn-add-to-section';
-            addBtn.textContent = '+';
-            addBtn.title       = t('addToSectionTitle');
-            addBtn.disabled    = (groups[0].items.length === 0);
-            addBtn.onclick     = function() { openAddPicker(gIdx); };
-            header.appendChild(addBtn);
-          } else {
-            label.textContent = t('unassignedHeader');
-            header.appendChild(label);
-          }
-
-          groupEl.appendChild(header);
-
-          // Body — pure list, no drop zones
-          const body      = document.createElement('div');
-          body.className  = 'area-body' + (isUnassigned ? ' unassigned-body' : '');
-          body.dataset.gidx = gIdx;
-
-          if (isUnassigned && group.items.length === 0) {
-            const allDone       = document.createElement('div');
-            allDone.className   = 'all-assigned';
-            allDone.textContent = t('allAssigned');
-            body.appendChild(allDone);
-          } else if (!isUnassigned && group.items.length === 0) {
-            const hint       = document.createElement('div');
-            hint.className   = 'empty-hint';
-            hint.textContent = t('noItemsHint');
-            body.appendChild(hint);
-          } else {
-            group.items.forEach(function(item, iIdx) {
-              const row = buildItemRow(item, gIdx, iIdx, group.items.length, isUnassigned);
-              body.appendChild(row);
-            });
-          }
-
-          groupEl.appendChild(body);
-          container.appendChild(groupEl);
-        });
-      }
-
-      function buildItemRow(item, gIdx, iIdx, groupLen, isUnassigned) {
-        const row        = document.createElement('div');
-        row.className    = 'item-row';
-        row.dataset.gidx = gIdx;
-        row.dataset.iidx = iIdx;
-
-        const badge = document.createElement('span');
-        if (isUnassigned) {
-          badge.className   = 'unassigned-badge';
-          badge.textContent = '!';
-          badge.title       = t('noAreaTitle');
-        } else {
-          badge.className   = 'shelf-badge';
-          badge.textContent = (iIdx + 1) * 10;
-        }
-
-        const name       = document.createElement('span');
-        name.className   = 'item-name';
-        name.textContent = item.name;
-        name.title       = item.name;
-
-        row.appendChild(badge);
-        row.appendChild(name);
-
-        if (isUnassigned) {
-          // Unassigned rows: one button that opens the section picker.
-          const btnPlace       = document.createElement('button');
-          btnPlace.className   = 'btn-assign';
-          btnPlace.textContent = t('assignBtn');
-          btnPlace.onclick     = function() {
-            openSectionPicker(+row.dataset.gidx, +row.dataset.iidx);
-          };
-          row.appendChild(btnPlace);
-        } else {
-          // Assigned rows have two controls:
-          //   ⇆ — opens the move-to-section picker (lists all OTHER sections
-          //       plus Unassigned, since "section" includes the unassigned bucket
-          //       from the user's POV)
-          //   ▲▼ stacked — reorder within the current section
-          const btnSwap       = document.createElement('button');
-          btnSwap.className   = 'btn-move btn-swap';
-          btnSwap.textContent = '⇆';
-          btnSwap.title       = t('moveSectionTitle');
-          btnSwap.onclick     = function() {
-            openMoveSectionPicker(+row.dataset.gidx, +row.dataset.iidx);
-          };
-
-          const shelfCol = document.createElement('div');
-          shelfCol.className = 'btn-col';
-
-          const btnUp       = document.createElement('button');
-          btnUp.className   = 'btn-move';
-          btnUp.textContent = '▲';
-          btnUp.title       = t('moveUpTitle');
-          btnUp.disabled    = (iIdx === 0);
-          btnUp.onclick     = function() {
-            moveItem(+row.dataset.gidx, +row.dataset.iidx, -1);
-          };
-
-          const btnDown       = document.createElement('button');
-          btnDown.className   = 'btn-move';
-          btnDown.textContent = '▼';
-          btnDown.title       = t('moveDownTitle');
-          btnDown.disabled    = (iIdx === groupLen - 1);
-          btnDown.onclick     = function() {
-            moveItem(+row.dataset.gidx, +row.dataset.iidx, +1);
-          };
-
-          shelfCol.appendChild(btnUp);
-          shelfCol.appendChild(btnDown);
-
-          row.appendChild(btnSwap);
-          row.appendChild(shelfCol);
-        }
-
-        return row;
-      }
-
-      // ── Partial DOM updates (replace full render() for in-section moves) ──────
-      // Refresh data-iidx, shelf badge, and ▲▼ disabled states for every row
-      // in a single group's body. Used after moveItem() (within-section ▲▼ swap).
-      // Cross-section moves (← → and pickers) call render() instead because
-      // they affect multiple groups' badges and ←→ disabled states.
-      function refreshGroupDom_(gIdx) {
-        const groupEl = document.querySelector('.area-group[data-gidx="' + gIdx + '"]');
-        if (!groupEl) return;
-        const isUnassigned = groups[gIdx].area === UNASSIGNED;
-        const body = groupEl.querySelector('.area-body');
-        if (!body) return;
-        const rows = body.querySelectorAll('.item-row');
-
-        // Empty-state hint handling (for non-unassigned groups that are now empty).
-        if (rows.length === 0) {
-          if (isUnassigned && groups[gIdx].items.length === 0) {
-            if (!body.querySelector('.all-assigned')) {
-              body.innerHTML = '';
-              const allDone = document.createElement('div');
-              allDone.className = 'all-assigned';
-              allDone.textContent = t('allAssigned');
-              body.appendChild(allDone);
-            }
-          } else if (!isUnassigned && groups[gIdx].items.length === 0) {
-            if (!body.querySelector('.empty-hint')) {
-              body.innerHTML = '';
-              const hint = document.createElement('div');
-              hint.className = 'empty-hint';
-              hint.textContent = t('noItemsHint');
-              body.appendChild(hint);
-            }
-          }
-          return;
-        }
-
-        // Strip any leftover empty-state placeholders from a now-populated group.
-        const placeholder = body.querySelector('.all-assigned, .empty-hint');
-        if (placeholder) placeholder.remove();
-
-        // Update each row's stored index, shelf badge, and ▲▼ disabled states.
-        // Each assigned row has ONE .btn-col (shelf ▲▼) plus a standalone ⇆
-        // button. We only need to refresh the shelf column here — ⇆ doesn't
-        // care about index position.
-        rows.forEach(function(rowEl, idx) {
-          rowEl.dataset.gidx = gIdx;
-          rowEl.dataset.iidx = idx;
-          if (!isUnassigned) {
-            const shelfBadge = rowEl.querySelector('.shelf-badge');
-            if (shelfBadge) shelfBadge.textContent = (idx + 1) * 10;
-            const shelfCol = rowEl.querySelector('.btn-col');
-            if (shelfCol) {
-              const shelfBtns = shelfCol.querySelectorAll('.btn-move');
-              if (shelfBtns.length === 2) {
-                shelfBtns[0].disabled = (idx === 0);
-                shelfBtns[1].disabled = (idx === rows.length - 1);
-              }
-            }
-          }
-        });
-      }
-
-      // ── Move within group ──────────────────────────────────────────────────────
-      function moveItem(gIdx, iIdx, dir) {
-        const items  = groups[gIdx].items;
-        const target = iIdx + dir;
-        if (target < 0 || target >= items.length) return;
-        // Mutate state
-        const tmp     = items[iIdx];
-        items[iIdx]   = items[target];
-        items[target] = tmp;
-        // Partial DOM swap — find both rows and swap them in place.
-        const groupEl = document.querySelector('.area-group[data-gidx="' + gIdx + '"]');
-        const body    = groupEl ? groupEl.querySelector('.area-body') : null;
-        const rows    = body ? body.querySelectorAll('.item-row') : null;
-        if (rows && rows[iIdx] && rows[target]) {
-          if (dir > 0) {
-            // Move row at iIdx to AFTER row at target
-            body.insertBefore(rows[iIdx], rows[target].nextSibling);
-          } else {
-            // Move row at iIdx to BEFORE row at target
-            body.insertBefore(rows[iIdx], rows[target]);
-          }
-          refreshGroupDom_(gIdx);
-        } else {
-          render();  // safety fallback
-        }
-        markDirty();
-      }
-
-      // ── Move an assigned item to a different section (⇆ picker) ───────────────
-      // Lists all sections except the item's current one, plus an "Unassigned"
-      // option at the top so the same control can be used to unassign. Click
-      // an entry to commit the move.
-      function openMoveSectionPicker(srcGIdx, srcIIdx) {
-        // Build the list: Unassigned first (special label), then all assigned
-        // sections except the source. Each entry's idx is the target gIdx.
-        const sections = [];
-        if (srcGIdx !== 0) {
-          sections.push({
-            label: t('unassignedLabel'),
-            badge: '!',
-            idx:   0
-          });
-        }
-        for (let i = 1; i < groups.length; i++) {
-          if (i === srcGIdx) continue;
-          sections.push({
-            label: groups[i].area,
-            badge: groups[i].areaOrder,
-            idx:   i
-          });
-        }
-
-        renderPicker_(t('pickerMoveTitle'), sections, t('pickerMoveEmpty'), function(targetGIdx) {
-          const item = groups[srcGIdx].items.splice(srcIIdx, 1)[0];
-          groups[targetGIdx].items.push(item);
-          markDirty();
-          render();
-        });
-      }
-
-      // ── Section-add picker (opened by + on a section header) ───────────────────
-      // Lists currently-unassigned items. Click one to drop it into this section
-      // and close the picker.
-      function openAddPicker(targetGIdx) {
-        const unassignedItems = groups[0].items;
-        const targetGroup     = groups[targetGIdx];
-        const titleText       = t('pickerAddTitle') + targetGroup.area;
-
-        const items = unassignedItems.map(function(item, idx) {
-          return { label: item.name, idx: idx };
-        });
-
-        renderPicker_(titleText, items, t('pickerAddEmpty'), function(chosenIdx) {
-          // Splice from unassigned (group 0), push onto target.
-          const item = groups[0].items.splice(chosenIdx, 1)[0];
-          groups[targetGIdx].items.push(item);
-          markDirty();
-          render();
-        });
-      }
-
-      // ── Section picker (opened by "Place" on an unassigned row) ────────────────
-      // Lists all assigned sections. Click one to assign the item.
-      function openSectionPicker(srcGIdx, srcIIdx) {
-        // groups[0] is unassigned; assigned sections are 1..N
-        const sections = [];
-        for (let i = 1; i < groups.length; i++) {
-          sections.push({
-            label: groups[i].area,
-            badge: groups[i].areaOrder,
-            idx:   i
-          });
-        }
-
-        renderPicker_(t('pickerSectTitle'), sections, t('pickerSectEmpty'), function(targetGIdx) {
-          const item = groups[srcGIdx].items.splice(srcIIdx, 1)[0];
-          groups[targetGIdx].items.push(item);
-          markDirty();
-          render();
-        });
-      }
-
-      // Shared picker renderer. Builds an absolutely-positioned modal
-      // overlay with a list. `items` is [{label, badge?, idx}, ...].
-      // onPick(idx) fires when the user clicks an entry. Backdrop clicks
-      // and × button just close.
-      function renderPicker_(title, items, emptyMsg, onPick) {
-        // Tear down any existing picker first (defensive — should never
-        // happen since each open path calls close before re-opening).
-        closePicker_();
-
-        const backdrop = document.createElement('div');
-        backdrop.className = 'picker-backdrop';
-        backdrop.id        = 'pickerBackdrop';
-        backdrop.onclick   = function(e) {
-          if (e.target === backdrop) closePicker_();
-        };
-
-        const card       = document.createElement('div');
-        card.className   = 'picker';
-
-        const header     = document.createElement('div');
-        header.className = 'picker-header';
-
-        const titleEl    = document.createElement('span');
-        titleEl.className   = 'picker-title';
-        titleEl.textContent = title;
-
-        const closeBtn   = document.createElement('button');
-        closeBtn.className   = 'picker-close';
-        closeBtn.textContent = '✕';
-        closeBtn.onclick     = closePicker_;
-
-        header.appendChild(titleEl);
-        header.appendChild(closeBtn);
-        card.appendChild(header);
-
-        if (items.length === 0) {
-          const empty       = document.createElement('div');
-          empty.className   = 'picker-empty';
-          empty.textContent = emptyMsg;
-          card.appendChild(empty);
-        } else {
-          const list       = document.createElement('ul');
-          list.className   = 'picker-list';
-
-          items.forEach(function(it) {
-            const li         = document.createElement('li');
-            li.className     = 'picker-item';
-
-            if (it.badge != null) {
-              const badge       = document.createElement('span');
-              badge.className   = 'picker-item-badge';
-              badge.textContent = it.badge;
-              li.appendChild(badge);
-            }
-
-            const nameEl       = document.createElement('span');
-            nameEl.className   = 'picker-item-name';
-            nameEl.textContent = it.label;
-            li.appendChild(nameEl);
-
-            li.onclick = function() {
-              closePicker_();
-              onPick(it.idx);
-            };
-            list.appendChild(li);
-          });
-          card.appendChild(list);
-        }
-
-        backdrop.appendChild(card);
-        document.body.appendChild(backdrop);
-
-        // Esc key closes the picker.
-        document.addEventListener('keydown', escClosePicker_);
-      }
-
-      function closePicker_() {
-        const existing = byId('pickerBackdrop');
-        if (existing) existing.remove();
-        document.removeEventListener('keydown', escClosePicker_);
-      }
-      function escClosePicker_(e) {
-        if (e.key === 'Escape') closePicker_();
-      }
-
-      // ── Save ──────────────────────────────────────────────────────────────────
-      function doSave(callback) {
-        byId('saveBtn').disabled = true;
-        setStatus(t('saving'), 'info');
-        setSavingPickPath_(true);
-        setVendorSelectLocked_(true);
-
-        const payload = [];
-        groups.forEach(function(g) {
-          if (g.area === UNASSIGNED) return;
-          g.items.forEach(function(item) {
-            payload.push({ id: item.id, name: item.name, area: g.area });
-          });
-        });
-
-        bumpMutationTs_();
-        MIRPC()
-          .withSuccessHandler(function(res) {
-            setStatus(t('saved') + res.count + t('itemsUpdated'), 'ok');
-            byId('saveBtn').disabled = false;
-            setSavingPickPath_(false);
-            setVendorSelectLocked_(false);  // unlock before callback; callback may re-lock via loadVendor
-            isDirty = false;
-            if (typeof callback === 'function') callback();
-          })
-          .withFailureHandler(function(err) {
-            setSavingPickPath_(false);
-            setVendorSelectLocked_(false);
-            setStatus(err.message || String(err), 'warn');
-            byId('saveBtn').disabled = false;
-          })
-          .commitReorderPickPath(currentVendor, payload);
-      }
-
-      // ── Leave guard (Close + breadcrumb navigation) ───────────────────────────
-      // proceed() runs when it's safe to leave: immediately if clean, else after
-      // Save-success or Don't-save. Registered with EditorShell so breadcrumb
-      // clicks route through it too (not just the footer Close).
-      function guardLeave_(proceed) {
-        if (!isDirty) { proceed(); return; }
-        rppGuardOpen_(proceed);
-      }
-      function doClose() { guardLeave_(mgeEditorClose_); }
-
-      // Unsaved-changes guard → shared EditorShell dialog (mgeGuard3_): Save
-      // (then proceed on success), Don't save (proceed), or Cancel (stay).
-      // onProceed runs after a successful Save or after Don't save.
-      function rppGuardOpen_(onProceed) {
-        mgeGuard3_({
-          msg: { en: "Save your changes to this vendor's pick path before leaving?",
-                 es: '¿Guardar los cambios en la ruta de este proveedor antes de salir?' },
-          onSave:    function () { doSave(onProceed || null); },
-          onDiscard: function () { if (onProceed) onProceed(); }
-        });
-      }
-
-      // ── Server-call indirection (one source of truth, two hosts) ──────────────
-      // MIRPC() → shared mgeRpc_ (EditorShell); server webeditDispatch_ gates calls.
-      function MIRPC() { return mgeRpc_(); }
-
-      // ── Init ──────────────────────────────────────────────────────────────────
-      // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──
-      var PICKPATH_TOUR_STEPS = [
-        { sel: null,
-          en: { title: 'Count in one walk', body: 'This sets the order items appear on a vendor’s sheet — by area, then shelf order. Match how you walk the kitchen and counting is one pass.' },
-          es: { title: 'Cuenta en un recorrido', body: 'Esto define el orden en que los artículos aparecen en la hoja de un proveedor — por área y luego por estante. Acomódalo como recorres la cocina y cuentas en una sola pasada.' } },
-        { sel: '#vendorSelect',
-          en: { title: 'Pick a vendor', body: 'Choose whose sheet to arrange — each vendor has its own layout.' },
-          es: { title: 'Elige un proveedor', body: 'Elige de quién organizar la hoja — cada proveedor tiene su propio orden.' } },
-        { sel: '#groupsContainer',
-          en: { title: 'Arrange the items', body: 'Within an area, ▲▼ reorders; ⇆ moves an item to another area; + on an area header pulls in an unassigned one. Amber Unassigned items aren’t on the sheet yet — place them to add them.' },
-          es: { title: 'Organiza los artículos', body: 'Dentro de un área, ▲▼ reordena; ⇆ mueve un artículo a otra área; + en el encabezado trae uno sin asignar. Los ámbar Sin asignar aún no están en la hoja — colócalos para agregarlos.' } },
-        { sel: '#saveBtn',
-          en: { title: 'Save to apply', body: 'Press Save and the vendor’s sheet updates right away. Switching vendors with unsaved changes asks you first. Tap the ? up top anytime to replay this.' },
-          es: { title: 'Guarda para aplicar', body: 'Pulsa Guardar y la hoja del proveedor se actualiza al instante. Cambiar de proveedor con cambios sin guardar te pregunta primero. Toca el ? de arriba para repetir esto.' } }
-      ];
-      function startPickPathTour() { toggleHelp(false); mgeStartTour_(PICKPATH_TOUR_STEPS, { mode: 'info' }); }
-      function replayPickPathTour() { startPickPathTour(); }
-      function maybeAutoStartPickPathTour_() {
-        var seen = false;
-        try { seen = localStorage.getItem('mog_pickpath_tour_seen') === '1'; } catch (e) {}
-        if (seen) return;
-        try { localStorage.setItem('mog_pickpath_tour_seen', '1'); } catch (e) {}
-        setTimeout(startPickPathTour, 500);
-      }
-
-      function initReorderPickPath_() {
-        currentVendor = PICK_DATA.vendor;
-        groups        = PICK_DATA.groups ? buildGroups(PICK_DATA) : [];
-        populateVendors();
-        if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
-          mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
-          setBreadcrumb_(
-            [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
-            { en: 'Shelf to Sheet', es: 'Estante a Hoja' }
-          );
-          mgeSetLeaveGuard_(guardLeave_);   // breadcrumb nav honors unsaved edits
-          var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
-          var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
-        }
-        setLang(MOG_WEB ? mgeGetLang_() : 'en');
-        // Per-tool mini-tour is REPLAY-ONLY by design (via the ? help "↻ Replay" button).
-        // Home flow-tour + setup wizard cover first-run orientation. Re-enable: if (MOG_WEB) maybeAutoStartPickPathTour_();
-      }
-      if (MOG_WEB) { mgeStartGate_(initReorderPickPath_); }
-      else { initReorderPickPath_(); }
-    </script>
-  </body>
+    function startShelf_() {
+      mgeMountWebChrome_();
+      document.documentElement.classList.add('mge-web');
+      setBreadcrumb_(
+        [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+        { en: 'Shelf to Sheet', es: 'Estante a Hoja' }
+      );
+      var first = !startShelf_.wired;
+      if (!startShelf_.wired) { wire(); startShelf_.wired = true; }
+      var want = S.vendor;
+      if (first) { try { want = new URLSearchParams(location.search).get('vendor') || ''; } catch (e) { want = ''; } }
+      call('getShelfPage', '').then(function (page) {
+        S.vendors = page.vendors || [];
+        var v = firstVendor(S.vendors, want);
+        if (!v) { render(); renderVendors(); return; }
+        return load(v);
+      }).then(null, function (err) {
+        document.getElementById('sh-lists').innerHTML = '<div class="sh-msg">' +
+          esc(T('Couldn’t load Shelf to Sheet: ', 'No se pudo cargar Estante a Hoja: ') + errText(err)) + '</div>';
+      });
+    }
+    mgeStartGate_(startShelf_);
+  </script>
+</body>
 </html>

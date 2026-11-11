@@ -1,396 +1,108 @@
 <!DOCTYPE html>
 <html>
-  <head>
+<head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Storage Areas · Founders FOH</title>
+    <title>Storage areas · Founders FOH</title>
     <script>window.MOG_SUPABASE = {"url": "https://mnfwqmrstdeuczveyykv.supabase.co", "key": "sb_publishable_Rk1wXHSydLtczfnc98LJBg_yzQ0sl93", "slug": "rpfrf"}; window.MOG_EDITOR_PAGE = "areas";</script>
     <script src="orderMath.js"></script>
     <script src="catalogEdit.js"></script>
     <script src="meImport.js"></script>
     <script src="host.js"></script>
-    <base target="_top">
-    <!-- ===================================================================
-     Shared modal styles — SINGLE SOURCE OF TRUTH for the MOG modal set.
-     Pulled into every modal <head> via  <?!= include('Styles'); ?>
-     Holds: design tokens (:root), the base reset, and the universal
-     chrome (language toggle + [?] help overlay). Per-modal layout stays
-     in each modal's own <style>; it may reference these var(--*) tokens.
-     Edit colors / radii / label sizes HERE — never re-hardcode in a modal.
-     ==================================================================== -->
-<style>
-  :root {
-    /* ── Surfaces ── */
-    --page:        #f4f5f7;   /* modal page background */
-    --card:        #fff;      /* card / panel surface */
-    --ink:         #222;      /* body text */
-    --ink-soft:    #555;      /* secondary text */
-    --ink-mute:    #888;      /* hints / muted */
-    --ink-faint:   #aaa;      /* faint labels */
-    --line:        #e0e3e8;   /* card borders */
-    --line-soft:   #eee;      /* hairline dividers */
+  <base target="_top">
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Storage areas in the app (mockup "Manage Items and Vendors redesign",
+       board 7, approved 2026-11-11): the store's areas in the order the count
+       lists follow, each with its items and vendors; rename, add, delete and
+       reorder are a draft until one Save. A delete stays in the list as
+       "Deleted when you save" with Put back. Only in the app's editor: the
+       Sheet dialog and the /exec editor keep apps-script/StorageAreas.html.
+       Reads getAreasPage, saves commitStorageAreasDraft (catalogEdit.js,
+       gated against PickPath.gs), through host.js. -->
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', Arial, Helvetica, sans-serif; margin: 0; color: #1f1e1b; background: #fff; font-size: 14px; }
+    .lang-en .es, .lang-es .en { display: none; }
+    button, input { font: inherit; color: inherit; }
+    body.mge-web .web-titlebar { max-width: 828px; }
+    .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-    /* ── Brand ── */
-    --brand:       #1a1a2e;   /* navy — modal header (uniform across all modals) */
-    --brand-green: #1a3a2e;   /* deep green — interior section / list-card headers */
-    --accent:      #7eb8a4;   /* light teal — active-tab underline / accents */
-    --success:     #1a6b2e;   /* ok / new */
-    --success-bg:  #e6f3ec;
+    #ar-wrap { max-width: 828px; padding: 6px 24px 32px; display: flex; flex-direction: column; gap: 14px; min-height: calc(100vh - 110px); }
+    .ar-card { border: 1px solid #e6e4dd; border-radius: 14px; background: #fff; overflow: hidden; }
+    .ar-head { display: flex; justify-content: space-between; padding: 12px 16px 12px 20px; font-size: 12px; font-weight: 600; color: #5f5e5a; }
+    #ar-list { list-style: none; margin: 0; padding: 0; }
+    .ar-row { display: flex; align-items: center; gap: 14px; padding: 11px 16px 11px 20px; border-top: 1px solid #f0efea; }
+    .ar-row.renaming { background: var(--web-accent-soft, #e9f4ef); }
+    .ar-row.deleted { background: #fdf3f1; }
+    .ar-num { width: 28px; height: 28px; flex: none; border-radius: 8px; background: #f0eee6; display: flex; align-items: center; justify-content: center;
+              font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .ar-row.deleted .ar-num { background: #f3e1de; }
+    .ar-main { flex: 1 1 auto; min-width: 0; }
+    .ar-name { font-weight: 700; overflow-wrap: anywhere; }
+    .ar-row.deleted .ar-name { color: #8a8984; text-decoration: line-through; }
+    .ar-sub { font-size: 12.5px; color: #6b6a65; margin-top: 2px; }
+    .ar-row.deleted .ar-sub { color: #a3261a; }
+    .ar-new { display: inline-block; margin-left: 8px; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+              background: var(--web-accent-soft, #e9f4ef); vertical-align: 1px; }
+    .ar-btns { display: flex; align-items: center; gap: 6px; flex: none; }
+    .ar-ico { width: 36px; height: 36px; border-radius: 9px; border: 1px solid rgba(0,0,0,0.12); background: #fff; display: inline-flex;
+              align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+    .ar-ico svg { width: 16px; height: 16px; }
+    .ar-ico:disabled { opacity: 0.35; cursor: default; }
+    .ar-ico.danger { border-color: #e3b8b2; color: #a3261a; }
+    .ar-btn { height: 36px; padding: 0 12px; border-radius: 9px; border: 1px solid rgba(0,0,0,0.12); background: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .ar-btn:hover, .ar-ico:hover:not(:disabled) { background: #f5f4ed; }
+    .ar-btn.primary { border: 0; background: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff); font-weight: 700; }
+    .ar-btn.primary:hover { filter: brightness(0.95); background: var(--web-accent, #2d8c6b); }
+    .ar-btn.big { height: 40px; padding: 0 16px; border-radius: 10px; font-size: 14px; }
+    .ar-rename { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .ar-rename input { flex: 1 1 220px; height: 40px; padding: 0 12px; border-radius: 10px; border: 2px solid var(--web-accent, #2d8c6b); font-weight: 600; background: #fff; }
+    .ar-hint { flex-basis: 100%; font-size: 12.5px; color: #6b6a65; }
+    .ar-err { flex-basis: 100%; font-size: 12.5px; color: #a3261a; font-weight: 600; }
+    .ar-err:empty { display: none; }
+    .ar-empty { padding: 22px 20px; color: #5f5e5a; border-top: 1px solid #f0efea; }
+    .ar-add { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 16px 14px 20px; border-top: 1px solid #ecebe5; background: #faf9f5; }
+    .ar-add input { flex: 1 1 240px; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.18); background: #fff; }
+    .ar-add .ar-btn { display: inline-flex; align-items: center; gap: 6px; }
+    .ar-add .ar-btn svg { width: 15px; height: 15px; }
+    .ar-limit { font-size: 12.5px; color: #6b6a65; }
+    .ar-note { margin: 0; font-size: 13px; color: #5f5e5a; }
+    .ar-note a { color: #1f1e1b; font-weight: 600; }
+    .ar-spacer { flex: 1 1 auto; }
+    #ar-bar { position: sticky; bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px 14px 20px;
+              border: 1px solid rgba(0,0,0,0.1); border-radius: 14px; background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+    #ar-bar[hidden] { display: none; }
+    .ar-dot { width: 9px; height: 9px; border-radius: 50%; background: #d98a00; flex: none; }
+    .ar-sum { flex: 1 1 260px; min-width: 0; }
+    .ar-sum span { color: #5f5e5a; }
+    #ar-bar .ar-btn:disabled { opacity: 0.5; cursor: default; }
 
-    /* ── Semantic ── */
-    --danger:      #c0392b;   /* all destructive actions + validation errors */
-    --danger-bg:   #fde8e6;
-    --warn:        #f0a500;   /* warnings */
-    --warn-ink:    #7a5000;
-    --warn-bg:     #fff8e6;
+    #ar-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); z-index: 50;
+                background: #1f1e1b; color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 14px; box-shadow: 0 10px 28px rgba(0,0,0,0.25); }
+    #ar-toast[hidden] { display: none; }
+    #ar-toast.err { background: #8a2020; }
+    #ar-toast a { color: #fff; font-weight: 700; margin-left: 6px; }
 
-    /* ── Shape + type ── */
-    --r-control:   6px;       /* inputs + buttons */
-    --r-card:      8px;       /* cards + modal/help cards */
-    --fs-label:    10px;      /* caps micro-labels */
-    --fs-body:     12px;      /* body copy */
-  }
+    @media (max-width: 899px) {
+      #ar-wrap { padding: 6px 12px 24px; }
+      .ar-row { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body class="lang-en">
+  <!-- Boot vars FIRST — EditorShell (included below) reads WEB_BOOT/MOG_WEB. -->
+  <script>
+    var WEB_BOOT  = {"web": true, "store": "Founders FOH", "abbr": "RPFRF", "base": "index.html", "theme": {"accent": "#2d8c6b", "bannerFont": "#ffffff", "ink": "#2d8c6b"}, "concept": "roll-play"};
+    var MOG_WEB   = !!(WEB_BOOT && WEB_BOOT.web);
+    var MOG_STORE = (WEB_BOOT && WEB_BOOT.store)   || '';
+    var MOG_ABBR  = (WEB_BOOT && WEB_BOOT.abbr)    || '';
+    var BASE_URL  = (WEB_BOOT && WEB_BOOT.base)    || '';
+    var THEME     = (WEB_BOOT && WEB_BOOT.theme)   || {};
+    var CONCEPT   = (WEB_BOOT && WEB_BOOT.concept) || '';
+    var MOG_TOKEN = null;   // set by the PIN gate (EditorShell)
+  </script>
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  /* ── Language toggle ── */
-  .lang-group { display: flex; gap: 4px; align-items: center; }
-  .lang-btn {
-    padding: 3px 9px; font-size: var(--fs-label); font-weight: bold; cursor: pointer;
-    color: rgba(255,255,255,0.45); background: transparent;
-    border: 1px solid rgba(255,255,255,0.2); border-radius: var(--r-control);
-  }
-  .lang-btn.active { background: rgba(255,255,255,0.18); color: #fff; }
-  .lang-btn:hover:not(.active) { color: rgba(255,255,255,0.75); }
-
-  /* ── Help [?] button + overlay (shared across modals) ── */
-  .help-btn {
-    width: 22px; height: 22px; padding: 0; flex-shrink: 0;
-    border: 1px solid currentColor; border-radius: 50%;
-    background: transparent; color: inherit; opacity: 0.7;
-    font-size: 12px; font-weight: bold; line-height: 1; cursor: pointer;
-    transition: opacity 0.15s;
-  }
-  .help-btn:hover { opacity: 1; }
-  .help-overlay {
-    display: none; position: fixed; inset: 0; z-index: 100;
-    background: rgba(0,0,0,0.45);
-    align-items: flex-start; justify-content: center; padding: 14px;
-  }
-  .help-overlay.open { display: flex; }
-  .help-card {
-    background: var(--card); border-radius: var(--r-card); width: 100%; max-width: 460px;
-    max-height: 100%; display: flex; flex-direction: column;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.32); overflow: hidden;
-  }
-  .help-head {
-    background: var(--brand); color: #fff; padding: 10px 14px;
-    font-size: 13px; font-weight: bold; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .help-x { cursor: pointer; font-size: 15px; opacity: 0.8; padding: 0 4px; }
-  .help-x:hover { opacity: 1; }
-  .help-body { padding: 14px 16px; overflow-y: auto; font-size: var(--fs-body); line-height: 1.65; color: #333; }
-  .help-lead { margin-bottom: 10px; }
-  .help-step { margin-bottom: 7px; }
-  .help-tip  { background: #f0f7f4; border-left: 3px solid var(--brand-green); border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 10px; font-size: 11px; color: var(--brand-green); }
-  .help-warn { background: var(--warn-bg); border-left: 3px solid var(--warn); border-radius: 0 4px 4px 0; padding: 7px 10px; margin-top: 8px; font-size: 11px; color: var(--warn-ink); }
-</style>
-
-    <script>
-      var AREA_LIST = [];
-      // Web-app delivery context (Editor.gs injects web:true; showStorageAreasSidebar
-      // injects web:false → everything below stays inert in the Sheet dialog).
-      var WEB_BOOT  = {"web": true, "store": "Founders FOH", "abbr": "RPFRF", "base": "index.html", "theme": {"accent": "#2d8c6b", "bannerFont": "#ffffff", "ink": "#2d8c6b"}, "concept": "roll-play"};
-      var MOG_WEB   = !!WEB_BOOT.web;
-      var MOG_STORE = WEB_BOOT.store || '';
-      var MOG_ABBR  = WEB_BOOT.abbr || '';
-      var BASE_URL  = WEB_BOOT.base || '';
-      var THEME     = WEB_BOOT.theme || {};
-      var CONCEPT   = WEB_BOOT.concept || '';
-      var MOG_TOKEN = null;   // set by the PIN gate (web mode only)
-    </script>
-    <style>
-
-      body {
-        font-family: Arial, sans-serif;
-        font-size: 13px;
-        background: var(--page);
-        color: #222;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-      }
-
-      /* ── Header ── */
-      .header {
-        background: var(--brand);
-        color: #fff;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 14px;
-        height: 44px;
-        flex-shrink: 0;
-        z-index: 10;
-      }
-      .header-title { font-size: 13px; font-weight: bold; letter-spacing: 0.03em; }
-
-      .header-right { display: flex; align-items: center; gap: 8px; }
-
-      /* ── Body padding ── */
-      .body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
-      /* Without this, .body's flex children (list-card, action-cards) shrink
-         to fit when content exceeds .body's height instead of overflowing.
-         .list-card has overflow:hidden, so the shrunk content gets clipped
-         and .body never scrolls. flex-shrink:0 makes children stay at their
-         natural size, which pushes .body past its bounds and triggers the
-         intended overflow-y:auto scroll. */
-      .body > * { flex-shrink: 0; }
-
-      /* ── Area list card ── */
-      .list-card { background: #fff; border: 1px solid #e0e3e8; border-radius: 6px; overflow: hidden; }
-      .list-card-header {
-        background: var(--brand-green); color: #fff;
-        padding: 7px 12px; font-size: 10px; font-weight: bold;
-        letter-spacing: 0.06em; text-transform: uppercase;
-        display: flex; align-items: center; justify-content: space-between;
-      }
-      .area-count {
-        background: rgba(255,255,255,0.2); border-radius: 10px;
-        padding: 1px 7px; font-size: 9px;
-      }
-      .area-list { list-style: none; }
-      .area-item {
-        display: flex; align-items: center; gap: 8px;
-        padding: 8px 12px; border-bottom: 1px solid #f0f2f5;
-        user-select: none; transition: background 0.1s;
-      }
-      .area-item:last-child { border-bottom: none; }
-      .area-item:hover { background: #f7f9fb; }
-
-      /* Stacked ▲▼ reorder column — matches the button-based reordering used
-         in the Pick Path modal (drag-and-drop was removed for consistency). */
-      .move-col { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
-      .btn-move {
-        background: #fff; border: 1px solid #ccc; border-radius: 3px;
-        cursor: pointer; font-size: 10px; line-height: 1; padding: 2px 6px;
-        color: #555; min-width: 24px;
-      }
-      .btn-move:hover    { background: #e8e8e8; }
-      .btn-move:active   { background: #d0d0d0; }
-      .btn-move:disabled { opacity: 0.3; cursor: not-allowed; background: #f5f5f5; }
-
-      .order-badge {
-        min-width: 30px; text-align: center; font-size: 10px; font-weight: bold;
-        color: #aaa; background: #f0f0f0; border-radius: 3px; padding: 2px 5px; flex-shrink: 0;
-      }
-      .name-col { flex: 1; min-width: 0; }
-      .area-name { font-size: 12px; font-weight: bold; color: var(--brand-green); }
-      .area-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-      .btn-icon {
-        background: none; border: 1px solid #ddd; border-radius: 3px;
-        cursor: pointer; font-size: 11px; padding: 3px 7px; color: #666; line-height: 1.4;
-      }
-      .btn-icon:hover { background: #f0f0f0; border-color: #bbb; }
-      /* Destructive action — surfaces as red at rest so it never looks like
-         a neutral icon button. Hover deepens the color to confirm the affordance. */
-      .btn-icon.danger { background: #fff5f5; border-color: #e8a0a0; color: var(--danger); }
-      .btn-icon.danger:hover { background: #ffe5e5; border-color: var(--danger); }
-
-      /* Inline rename form */
-      .rename-form {
-        display: none; margin-top: 5px;
-        background: #f0f7f4; border: 1px solid #c8ddd5;
-        border-radius: 4px; padding: 6px 8px;
-        align-items: center; gap: 6px;
-      }
-      .rename-form.visible { display: flex; }
-      .rename-form input {
-        flex: 1; padding: 4px 7px; border: 1px solid #ccc;
-        border-radius: 3px; font-size: 12px;
-      }
-      .rename-form input:focus { outline: none; border-color: var(--brand-green); }
-      .btn-sm {
-        padding: 4px 9px; border: none; border-radius: 3px;
-        font-size: 11px; font-weight: bold; cursor: pointer; white-space: nowrap;
-      }
-      .btn-sm:hover { opacity: 0.85; }
-      .btn-sm-save   { background: var(--success); color: #fff; }
-      .btn-sm-cancel { background: #e0e0e0; color: #333; }
-
-      .empty-list {
-        padding: 20px; text-align: center;
-        font-size: 11px; color: #aaa; font-style: italic;
-      }
-
-      /* ── Action cards ── */
-      .action-card { background: #fff; border: 1px solid #e0e3e8; border-radius: 6px; overflow: hidden; }
-      .action-header {
-        padding: 9px 12px; font-size: 10px; font-weight: bold;
-        letter-spacing: 0.06em; text-transform: uppercase; color: #444;
-        background: #f8f9fa; border-bottom: 1px solid #e8eaed;
-        display: flex; align-items: center; justify-content: space-between;
-        cursor: pointer; user-select: none;
-      }
-      .action-header:hover { background: #f0f2f5; }
-      .chevron { font-size: 10px; color: #aaa; transition: transform 0.15s; }
-      .action-body { padding: 12px; }
-      .action-body.hidden { display: none; }
-
-      .warning-banner {
-        background: #fff3f3; border: 1px solid #e8a0a0; border-radius: 4px;
-        padding: 8px 10px; font-size: 11px; color: #7a1a1a; margin-bottom: 10px; line-height: 1.5;
-      }
-
-      /* ── Form elements ── */
-      .form-row { margin-bottom: 10px; }
-      label { display: block; font-size: 11px; font-weight: bold; color: #444; margin-bottom: 3px; }
-      input[type="text"], select {
-        width: 100%; padding: 7px 8px; border: 1px solid #ccc;
-        border-radius: 4px; font-size: 12px; background: #fff;
-      }
-      input:focus, select:focus { outline: none; border-color: var(--brand-green); }
-
-      /* ── Buttons ── */
-      .btn-row { display: flex; gap: 8px; }
-      button.btn-primary, button.btn-danger {
-        flex: 2; padding: 8px 12px; border: none; border-radius: 4px;
-        font-size: 12px; font-weight: bold; cursor: pointer;
-      }
-      button.btn-primary { background: var(--success); color: #fff; }
-      button.btn-danger  { background: var(--danger); color: #fff; }
-      button:hover    { opacity: 0.85; }
-      button:disabled { opacity: 0.4; cursor: not-allowed; }
-
-      /* ── Status ── */
-      .status { font-size: 11px; margin-top: 8px; min-height: 16px; }
-      .status.ok   { color: #1f6d2a; font-weight: bold; animation: saveFlash 0.9s ease-out; padding: 3px 8px; border-radius: 4px; display: inline-block; }
-      .status.ok::before { content: '✓ '; }
-      .status.warn { color: #9a2c2c; font-weight: bold; }
-      .status.info { color: #555; }
-      @keyframes saveFlash {
-        0%   { background: rgba(31,109,42,0.20); }
-        100% { background: transparent; }
-      }
-
-      .hint-footer {
-        font-size: 10px; color: #bbb; text-align: center; padding: 0 0 4px;
-      }
-
-      /* Sticky footer with Close button — matches the pattern used in
-         ReorderPickPath / AdminReset so every save-capable modal has a
-         clear exit affordance. Stays pinned outside the scrolling .body. */
-      .modal-footer {
-        flex: 0 0 auto;
-        background: #fff; border-top: 1px solid #e8eaed;
-        padding: 6px 12px;
-        display: flex; align-items: center; justify-content: space-between; gap: 10px;
-      }
-      button.btn-close {
-        padding: 7px 24px;
-        background: #e0e0e0; color: #333;
-        border: none; border-radius: 4px;
-        font-size: 12px; font-weight: bold; cursor: pointer;
-      }
-      button.btn-save {
-        padding: 7px 24px;
-        background: var(--success); color: #fff;
-        border: none; border-radius: 4px;
-        font-size: 12px; font-weight: bold; cursor: pointer;
-      }
-      button.btn-close:hover, button.btn-save:hover { opacity: 0.85; }
-      button.btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
-      /* Footer-row status sits left of the buttons; drop the default top
-         margin so it baselines with them. Targeted by id because setStatus()
-         rewrites the element's className (which would drop a utility class). */
-      #save-status { margin-top: 0; flex: 1; min-width: 0; text-align: center; }
-
-      /* ── Saving overlay (card-level feedback during in-flight commits).
-         Applied to whichever card initiated the action: list-card for
-         row-level ops (rename, quickDelete, reorder) and the appropriate
-         action-card for panel-level ops (Add, Delete). pointer-events:none
-         on children also prevents the user from triggering a second commit
-         (e.g. spam-clicking the Add button or another row's 🗑) while the
-         first is in flight. Pair every setSavingCard_(id, true) with a
-         (id, false) on BOTH success and failure. */
-      .list-card.saving,
-      .action-card.saving { position: relative; }
-      .list-card.saving > *,
-      .action-card.saving > * { opacity: 0.4; pointer-events: none; }
-      .list-card.saving::after,
-      .action-card.saving::after {
-        position: absolute; inset: 0;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 18px; font-weight: bold; letter-spacing: 1px;
-        color: var(--success);
-        z-index: 5; pointer-events: none;
-      }
-      body.lang-en .list-card.saving::after,
-      body.lang-en .action-card.saving::after { content: 'SAVING\2026'; }
-      body.lang-es .list-card.saving::after,
-      body.lang-es .action-card.saving::after { content: 'GUARDANDO\2026'; }
-
-      /* ── i18n ── */
-      .es { display: none; }
-      .en { display: inline; }
-
-      /* ════════════════════════════════════════════════════════════════════
-         WEB EDITOR RE-SKIN — every rule is scoped to body.mge-web, so the
-         in-Sheet dialog (no .mge-web class) is unaffected. Turns the navy
-         dialog into a centered, concept-themed, Inter-typeset web page.
-         --web-accent / --web-accent-text are set by JS from THEME.
-         ════════════════════════════════════════════════════════════════════ */
-      /* Web tokens (--web-accent*, --shadow, --font, --r, --r-sm, --muted,
-         --faint) are defined once in EditorShell and inherited here. */
-      body.mge-web { font-family: var(--font); background: var(--page); --shell-width: 760px; }
-      /* Natural page scroll (like Manage Items): the whole page scrolls so the header
-         band scrolls away instead of pinning. Scoped to mge-web — Sheet dialog unaffected. */
-      html.mge-web { height: auto; overflow-y: auto; overflow-x: hidden; }
-      body.mge-web { height: auto; min-height: 100vh; overflow: visible; }
-      body.mge-web .body { flex: 0 0 auto; overflow: visible; min-height: 0; }
-
-      /* Navy header emptied (lang/help relocated to the shared band) + hidden. */
-      body.mge-web .header { display: none; }
-
-      /* Centered ~760px column. */
-      body.mge-web .body { padding: 20px 24px 24px; gap: 16px; }
-      body.mge-web .body > * { width: 100%; max-width: 760px; margin-left: auto; margin-right: auto; }
-
-      /* Cards. */
-      body.mge-web .list-card, body.mge-web .action-card { border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); }
-      body.mge-web .list-card-header { background: #fafbfa; color: var(--muted); border-bottom: 1px solid var(--line-soft); padding: 13px 18px; font-size: 13px; letter-spacing: .04em; }
-      body.mge-web .area-count { background: var(--web-accent-soft); color: var(--web-accent-dark); font-size: 12px; }
-
-      /* Area rows — roomier for a full screen. */
-      body.mge-web .area-item { padding: 12px 18px; gap: 12px; border-bottom: 1px solid var(--line-soft); }
-      body.mge-web .area-item:hover { background: #f7faf8; }
-      body.mge-web .area-name { font-size: 15px; color: var(--ink); }
-      body.mge-web .order-badge { min-width: 34px; background: var(--page); color: var(--faint); }
-      body.mge-web .btn-move { border-color: var(--line); }
-      body.mge-web .btn-icon { width: 30px; height: 30px; }
-
-      /* Add-area: always visible (collapse header hidden), inline input + button. */
-      body.mge-web #add-card .action-header { display: none; }
-      body.mge-web #add-card .action-body { display: flex !important; flex-wrap: wrap; align-items: center; gap: 10px; background: #fafbfa; padding: 14px 18px; }
-      body.mge-web #add-card .form-row { flex: 1; min-width: 180px; margin: 0; }
-      body.mge-web #add-card .form-row label { display: none; }
-      body.mge-web #add-card .btn-row { flex: 0 0 auto; }
-      body.mge-web #add-card .btn-primary { background: var(--web-accent-soft); color: var(--web-accent-dark); }
-      body.mge-web #add-card #add-status { flex-basis: 100%; }
-
-      /* Sticky Save footer pinned to the viewport bottom (page now scrolls, so it must
-         stick or it would scroll away on a long area list). Solid bg covers content under it. */
-      body.mge-web .modal-footer { background: var(--page); border-top: 1px solid var(--line); max-width: 760px; margin: 0 auto; width: 100%; padding: 12px 24px; position: sticky; bottom: 0; z-index: 5; }
-      body.mge-web .btn-close { background: transparent; color: var(--muted); padding: 8px 2px; }
-      body.mge-web .btn-close:hover { color: var(--web-accent-dark); opacity: 1; }
-      body.mge-web .btn-save { background: var(--web-accent); padding: 11px 22px; }
-      body.mge-web .btn-save:hover { background: var(--web-accent-dark); opacity: 1; }
-      body.mge-web .hint-footer { color: var(--faint); }
-    </style>
-  </head>
-  <body class="lang-en">
   <!-- MOG editor shared shell: concept-themed PIN gate (Store-Reports style),
      device gate, breadcrumb bar, and the shared editor chrome JS. Included at
      the TOP of <body> on every editor page so its functions are defined before
@@ -2099,574 +1811,388 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
 </script>
 
 
-    <div class="header">
-      <div class="header-title">
-        <span class="en">Storage Areas</span>
-        <span class="es">Áreas de Almacén</span>
-      </div>
-      <div class="header-right">
-        <button class="help-btn" onclick="toggleHelp(true)" title="Help" aria-label="Help">?</button>
-        <div class="lang-group">
-          <button class="lang-btn active" onclick="setLang('en')">EN</button>
-          <button class="lang-btn"        onclick="setLang('es')">ES</button>
-        </div>
-      </div>
-    </div>
+  <div class="web-titlebar">
+    <h1 class="web-title"><span class="en">Storage areas</span><span class="es">Áreas de almacenamiento</span></h1>
+    <p class="web-subtitle"><span class="en">The places you count, in the order you walk them. Every vendor’s count list goes area by area in this order.</span><span class="es">Los lugares donde cuentas, en el orden en que los recorres. La lista de conteo de cada proveedor va área por área en este orden.</span></p>
+  </div>
 
-    <!-- ── Help panel (toggled by the [?] header button) ── -->
-    <div id="help-overlay" class="help-overlay" onclick="if(event.target===this)toggleHelp(false)">
-      <div class="help-card">
-        <div class="help-head">
-          <span><span class="en">Storage Areas — how it works</span><span class="es">Áreas de Almacén — cómo funciona</span></span>
-          <span class="help-x" onclick="toggleHelp(false)">✕</span>
-        </div>
-        <div class="help-body">
-          <div class="help-lead">
-            <span class="en"><strong>Storage Areas</strong> are the physical places you keep product — Walk-In, Dry Storage, Freezer, Bar. An item must live in an area to appear on an order sheet.</span>
-            <span class="es"><strong>Las Áreas de Almacén</strong> son los lugares físicos donde guardas el producto — Cámara fría, Almacén seco, Congelador, Bar. Un artículo debe estar en un área para aparecer en una hoja de pedido.</span>
-          </div>
-          <div class="help-step"><span class="en"><strong>1.</strong> Open <strong>➕ Add Area</strong>, type a name, tap <strong>Add</strong>.</span><span class="es"><strong>1.</strong> Abre <strong>➕ Agregar Área</strong>, escribe un nombre y toca <strong>Agregar</strong>.</span></div>
-          <div class="help-step"><span class="en"><strong>2.</strong> Use the <strong>▲▼</strong> buttons to order areas the way you walk the kitchen.</span><span class="es"><strong>2.</strong> Usa los botones <strong>▲▼</strong> para ordenar las áreas según recorres la cocina.</span></div>
-          <div class="help-step"><span class="en"><strong>3.</strong> <strong>✎</strong> renames an area · <strong>🗑</strong> deletes it.</span><span class="es"><strong>3.</strong> <strong>✎</strong> renombra un área · <strong>🗑</strong> la elimina.</span></div>
-          <div class="help-step"><span class="en"><strong>4.</strong> Tap <strong>Save Areas</strong> to apply — your changes are a draft until you save.</span><span class="es"><strong>4.</strong> Toca <strong>Guardar Áreas</strong> para aplicar — tus cambios son un borrador hasta que guardas.</span></div>
-          <div class="help-tip"><span class="en">💡 The area order sets the order items appear on <strong>every</strong> vendor's count list.</span><span class="es">💡 El orden de las áreas define el orden en que aparecen los artículos en la lista de conteo de <strong>cada</strong> proveedor.</span></div>
-          <div class="help-warn"><span class="en">⚠ Deleting an area takes its items off every count list until you give them an area again in <strong>Shelf to Sheet</strong>.</span><span class="es">⚠ Eliminar un área quita sus artículos de todas las listas de conteo hasta que les des un área otra vez en <strong>Estante a Hoja</strong>.</span></div>
-          <div class="tour-replay-wrap"><button type="button" class="mge-tour-btn primary" onclick="replayAreasTour()"><span class="en">↻ Replay walkthrough</span><span class="es">↻ Repetir el recorrido</span></button></div>
-        </div>
+  <div id="ar-wrap">
+    <div class="ar-card">
+      <div class="ar-head"><span><span class="en">Area</span><span class="es">Área</span></span><span id="ar-count"></span></div>
+      <ol id="ar-list"><li class="ar-empty"><span class="en">Loading…</span><span class="es">Cargando…</span></li></ol>
+      <div class="ar-add">
+        <label for="ar-new" class="vh"><span class="en">New area name</span><span class="es">Nombre del área nueva</span></label>
+        <input type="text" id="ar-new" maxlength="100" autocomplete="off">
+        <button type="button" class="ar-btn big" id="ar-add-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          <span class="en">Add area</span><span class="es">Agregar área</span>
+        </button>
+        <span class="ar-limit"><span class="en">Up to 18 areas.</span><span class="es">Hasta 18 áreas.</span></span>
+        <div class="ar-err" id="ar-add-err" role="alert"></div>
       </div>
     </div>
-
-    <div class="body">
-
-      <div class="web-titlebar">
-        <h1 class="web-title"><span class="en">Storage Areas</span><span class="es">Áreas de almacenamiento</span></h1>
-        <p class="web-subtitle"><span class="en">The places you store inventory. Items group by area on the order sheet, so list your areas in the order you walk the space.</span><span class="es">Los lugares donde guardas el inventario. Los artículos se agrupan por área en la hoja de pedido, así que ordena tus áreas según recorres el espacio.</span></p>
-      </div>
-
-      <!-- Area list -->
-      <div class="list-card" id="list-card">
-        <div class="list-card-header">
-          <span>
-            <span class="en">Areas</span>
-            <span class="es">Áreas</span>
-          </span>
-          <span class="area-count" id="area-count">0</span>
-        </div>
-        <ul class="area-list" id="area-list"></ul>
-      </div>
-
-      <!-- Add -->
-      <div class="action-card" id="add-card">
-        <div class="action-header" onclick="toggleSection('add')">
-          <span>
-            <span class="en">➕  Add Area</span>
-            <span class="es">➕  Agregar Área</span>
-          </span>
-          <span class="chevron" id="chevron-add">▼</span>
-        </div>
-        <div class="action-body" id="body-add">
-          <div class="form-row">
-            <label>
-              <span class="en">Area Name</span>
-              <span class="es">Nombre del Área</span>
-            </label>
-            <input type="text" id="add-name" />
-          </div>
-          <div class="btn-row">
-            <button class="btn-primary" id="add-btn" onclick="doAdd()">
-              <span class="en">Add Area</span>
-              <span class="es">Agregar Área</span>
-            </button>
-          </div>
-          <div id="add-status" class="status"></div>
-        </div>
-      </div>
-
-      <!-- Footer hint -->
-      <div class="hint-footer">
-        <span class="en">▲▼ to reorder · ✎ to rename · 🗑 to delete — then Save Areas to apply</span>
-        <span class="es">▲▼ para reordenar · ✎ renombrar · 🗑 eliminar — luego Guardar Áreas para aplicar</span>
-      </div>
-
+    <p class="ar-note" id="ar-note"></p>
+    <div class="ar-spacer"></div>
+    <div id="ar-bar" role="status" hidden>
+      <span class="ar-dot" aria-hidden="true"></span>
+      <div class="ar-sum" id="ar-sum"></div>
+      <button type="button" class="ar-btn big" id="ar-discard"><span class="en">Discard</span><span class="es">Descartar</span></button>
+      <button type="button" class="ar-btn big primary" id="ar-save"><span class="en">Save areas</span><span class="es">Guardar áreas</span></button>
     </div>
+  </div>
+  <div id="ar-toast" role="status" hidden></div>
 
-    <div class="modal-footer">
-      <button class="btn-close" onclick="doClose()">
-        <span class="en">Close</span>
-        <span class="es">Cerrar</span>
-      </button>
-      <span id="save-status" class="status footer-status"></span>
-      <button class="btn-save" id="save-btn" onclick="doSave()">
-        <span class="en">Save Areas</span>
-        <span class="es">Guardar Áreas</span>
-      </button>
-    </div>
+  <script>
+    var LANG = mgeGetLang_();
+    document.body.classList.remove('lang-en', 'lang-es');
+    document.body.classList.add('lang-' + LANG);
+    var ES = (LANG === 'es');
+    function T(en, es) { return ES ? es : en; }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function plural(n, en, enMany, es, esMany) { return n + ' ' + (n === 1 ? T(en, es) : T(enMany, esMany)); }
+    function pageLink(page, extra) { return esc((BASE_URL || 'index.html') + '?page=' + page + (extra || '')); }
+    var ICON = {
+      up: '<path d="m6 15 6-6 6 6"/>',
+      down: '<path d="m6 9 6 6 6-6"/>',
+      trash: '<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>'
+    };
+    function icon(name) {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>';
+    }
+    var MAX_AREAS = 18;   // catalogEdit.js storageAreasDraft (Core.gs AREA_TABLE)
 
-    <script>
-      var LANG = 'en';
+    // ---- Talking to the server: host.js answers from the catalog tables ----
+    function call(fn) {
+      var args = [].slice.call(arguments, 1);
+      return new Promise(function (resolve, reject) {
+        var r = mgeRpc_().withSuccessHandler(resolve).withFailureHandler(reject);
+        r[fn].apply(r, args);
+      });
+    }
 
-      var T = {
-        en: {
-          addPlaceholder:'e.g., Walk-In Cooler',
-          blankName:'Area name cannot be blank.', alreadyExists:'" already exists.',
-          itemsLost:' item(s) unassigned — reassign them in Shelf to Sheet.',
-          renamePh:'New name…', save:'Save', cancel:'Cancel',
-          confirmDelete:'Delete "', confirmDeleteEnd:'"? Assigned items will lose their area.',
-          noAreas:'No areas yet — add one below.',
-          unsavedChanges:'Unsaved changes.', saving:'Saving…', saved:'Saved.',
-          unsavedClose:'Save your changes to the storage areas before leaving?'
-        },
-        es: {
-          addPlaceholder:'ej. Cámara Fría',
-          blankName:'El nombre no puede estar vacío.', alreadyExists:'" ya existe.',
-          itemsLost:' artículo(s) sin área — reasígnalos en Estante a Hoja.',
-          renamePh:'Nuevo nombre…', save:'Guardar', cancel:'Cancelar',
-          confirmDelete:'¿Eliminar "', confirmDeleteEnd:'"? Los artículos asignados perderán su área.',
-          noAreas:'Sin áreas — agrega una abajo.',
-          unsavedChanges:'Cambios sin guardar.', saving:'Guardando…', saved:'Guardado.',
-          unsavedClose:'¿Guardar los cambios en las áreas de almacén antes de salir?'
-        }
+    // ---- State ----
+    // A row: { name, origName (null = new), items, vendors, onlyHere, deleted }.
+    var S = { rows: [], loaded: [], base: '', renaming: -1, renameErr: '', busy: false };
+
+    // ---- The draft's rules (tests/manage_pages.test.js runs these) ----
+    function arKept(rows) { return rows.filter(function (r) { return !r.deleted; }); }
+    function arSnapshot(rows) { return JSON.stringify(rows.map(function (r) { return [r.name, r.origName, !!r.deleted]; })); }
+    // What commitStorageAreasDraft takes: the kept areas in order, each with
+    // the area it was when the page loaded (none for a new one). An area left
+    // out is deleted.
+    function arPayload(rows) {
+      return arKept(rows).map(function (r) { return { name: r.name.trim(), origName: r.origName || null }; });
+    }
+    // Why a name can't be used ('' when it can): blank, too long, or another
+    // kept area's (any case). skip: the row being renamed.
+    function arNameProblem(rows, name, skip) {
+      var n = String(name || '').trim();
+      if (!n) return T('Give the area a name.', 'Ponle un nombre al área.');
+      if (n.length > 100) return T('Keep the name under 100 characters.', 'El nombre debe tener menos de 100 caracteres.');
+      for (var i = 0; i < rows.length; i++) {
+        if (i === skip || rows[i].deleted) continue;
+        if (rows[i].name.trim().toLowerCase() === n.toLowerCase()) return T('There is already an area called "' + rows[i].name + '".', 'Ya hay un área llamada "' + rows[i].name + '".');
+      }
+      return '';
+    }
+    // The draft against the areas as loaded: renamed, added, deleted, and
+    // whether the kept ones changed order.
+    function arSummary(rows, loaded) {
+      var kept = arKept(rows);
+      var was = loaded.map(function (r) { return r.name; });
+      var order = kept.filter(function (r) { return r.origName; }).map(function (r) { return r.origName; });
+      var stillThere = was.filter(function (n) { return order.indexOf(n) >= 0; });
+      return {
+        renamed: kept.filter(function (r) { return r.origName && r.origName !== r.name.trim(); }).length,
+        added: kept.filter(function (r) { return !r.origName; }).length,
+        deleted: rows.filter(function (r) { return r.deleted; }).length,
+        reordered: order.join('\u0001') !== stillThere.join('\u0001')
       };
+    }
+    // Up or down past the next kept area (a deleted one stays where it is).
+    function arMove(rows, i, dir) {
+      var j = i + dir;
+      while (j >= 0 && j < rows.length && rows[j].deleted) j += dir;
+      if (j < 0 || j >= rows.length) return false;
+      var r = rows[i]; rows[i] = rows[j]; rows[j] = r;
+      return true;
+    }
 
-      function t(k) { return T[LANG][k] || T.en[k] || k; }
-
-      function setLang(lang) {
-        LANG = lang;
-        // Toggle ONLY the lang class — must not clobber `mge-web` (gates the web
-        // re-skin). Still drives the body.lang-* card.saving::after content.
-        document.body.classList.remove('lang-en', 'lang-es');
-        document.body.classList.add('lang-' + lang);
-        document.querySelectorAll('.lang-btn').forEach(function(b, i) {
-          b.classList.toggle('active', ['en','es'][i] === lang);
-        });
-        document.querySelectorAll('.en,.es').forEach(function(el) {
-          el.style.display = el.classList.contains(lang) ? 'inline' : 'none';
-        });
-        byId('add-name').placeholder = t('addPlaceholder');
-        renderList();
-      }
-
-      // Each area carries origName — its name at load (or as of the last save) —
-      // as a stable identity handle so the bulk save can tell a rename apart
-      // from a delete+add. Areas added in this draft get origName:null; on a
-      // successful save, every origName is reset to the current name.
-      // Filled from AREA_LIST at init, not here: the app's editor (template/
-      // editor/host.js) supplies AREA_LIST only after sign-in.
-      var areas = [];
-      var renamingIdx = null;
-      var isDirty     = false;
-
-      function byId(id) { return document.getElementById(id); }
-
-      function bumpMutationTs_() {
-        // Signals to other modals' caches that data has changed and they
-        // should invalidate on next open. Stored under a shared localStorage
-        // key that must match the literal used by every reader/writer across
-        // modals — currently only ManageItems' View All cache reads it.
-        try { localStorage.setItem('mog_lastMutationTs', String(Date.now())); } catch (e) {}
-      }
-
-      function setStatus(key, msg, type) {
-        var el = byId(key + '-status');
-        if (!el) return;
-        el.textContent = msg;
-        el.className   = 'status ' + (type || '');
-      }
-
-      // Saving overlay control. Adds .saving to a card by id ('list-card',
-      // 'add-card', 'delete-card'), which dims its contents + locks pointer
-      // events + shows a centered SAVING/GUARDANDO label. Pair every
-      // (id, true) call with a (id, false) on BOTH success and failure paths.
-      function setSavingCard_(cardId, on) {
-        var c = byId(cardId);
-        if (!c) return;
-        if (on) c.classList.add('saving');
-        else    c.classList.remove('saving');
-      }
-
-      // ── Section toggle ────────────────────────────────────────────────────────
-      var sectionState = { add: false }; // true = collapsed
-
-      function toggleSection(key) {
-        sectionState[key] = !sectionState[key];
-        var body    = byId('body-' + key);
-        var chevron = byId('chevron-' + key);
-        body.classList.toggle('hidden', sectionState[key]);
-        chevron.style.transform = sectionState[key] ? 'rotate(-90deg)' : '';
-      }
-
-      // Apply initial collapsed states
-      Object.keys(sectionState).forEach(function(key) {
-        if (sectionState[key]) {
-          var body = byId('body-' + key);
-          var chev = byId('chevron-' + key);
-          if (body) body.classList.add('hidden');
-          if (chev) chev.style.transform = 'rotate(-90deg)';
-        }
+    // ---- Dirty and the leave guard ----
+    function pendingRename() {
+      if (S.renaming < 0) return null;
+      var inp = document.getElementById('ar-rename-input');
+      var v = inp ? inp.value.trim() : '';
+      return v && v !== S.rows[S.renaming].name ? v : null;
+    }
+    function pendingAdd() { var v = document.getElementById('ar-new').value.trim(); return v || null; }
+    function isDirty() { return arSnapshot(S.rows) !== S.base || !!pendingRename() || !!pendingAdd(); }
+    function markDirty() {
+      var dirty = isDirty();
+      mgeSetLeaveGuard_(dirty ? function (proceed) { guard(proceed); } : null);
+      renderBar();
+    }
+    function guard(proceed) {
+      if (!isDirty()) { proceed(); return; }
+      mgeGuard3_({
+        title: { en: 'Save your changes?', es: '¿Guardar los cambios?' },
+        msg: { en: 'You changed the storage areas and haven’t saved them.', es: 'Cambiaste las áreas y no las guardaste.' },
+        onSave: function () { save().then(function (ok) { if (ok) proceed(); }); },
+        onDiscard: function () { discard(); proceed(); }
       });
+    }
 
-      // ── Render list ───────────────────────────────────────────────────────────
-      function renderList() {
-        var ul  = byId('area-list');
-        var cnt = byId('area-count');
-        ul.innerHTML = '';
-        cnt.textContent = areas.length;
-
-        if (!areas.length) {
-          var li = document.createElement('li');
-          li.className   = 'empty-list';
-          li.textContent = t('noAreas');
-          ul.appendChild(li);
-          return;
+    // ---- Rendering ----
+    function subText(r) {
+      if (r.deleted) {
+        if (!r.items) return T('Deleted when you save. Nothing is in it.', 'Se elimina al guardar. No tiene nada.');
+        var s = T('Deleted when you save: its ' + r.items + (r.items === 1 ? ' item comes' : ' items come') + ' off this area on every vendor’s list.',
+              'Se elimina al guardar: ' + (r.items === 1 ? 'su artículo sale' : 'sus ' + r.items + ' artículos salen') + ' de esta área en la lista de cada proveedor.');
+        if (r.onlyHere) {
+          s += ' ' + T(r.onlyHere + (r.onlyHere === 1 ? ' has no other area, so it comes' : ' have no other area, so they come') + ' off the count lists until given one again.',
+                       r.onlyHere + (r.onlyHere === 1 ? ' no tiene otra área, así que sale' : ' no tienen otra área, así que salen') + ' de las listas de conteo hasta que tengan una.');
         }
-
-        areas.forEach(function(area, i) {
-          var li       = document.createElement('li');
-          li.className = 'area-item';
-
-          var badge       = document.createElement('span');
-          badge.className = 'order-badge';
-          badge.textContent = (i + 1) * 10;
-
-          // Name + inline rename container
-          var nameCol       = document.createElement('div');
-          nameCol.className = 'name-col';
-
-          var nameEl       = document.createElement('div');
-          nameEl.className = 'area-name';
-          nameEl.textContent = area.name;
-
-          var renameForm       = document.createElement('div');
-          renameForm.className = 'rename-form';
-          renameForm.id        = 'rf-' + i;
-
-          var renameInput         = document.createElement('input');
-          renameInput.type        = 'text';
-          renameInput.placeholder = t('renamePh');
-          renameInput.id          = 'ri-' + i;
-          renameInput.onkeydown   = (function(idx) {
-            return function(e) {
-              if (e.key === 'Enter')  submitRename(idx);
-              if (e.key === 'Escape') cancelRename(idx);
-            };
-          })(i);
-
-          var saveBtn       = document.createElement('button');
-          saveBtn.className = 'btn-sm btn-sm-save';
-          saveBtn.textContent = t('save');
-          saveBtn.onclick   = (function(idx) { return function() { submitRename(idx); }; })(i);
-
-          var cancelBtn       = document.createElement('button');
-          cancelBtn.className = 'btn-sm btn-sm-cancel';
-          cancelBtn.textContent = t('cancel');
-          cancelBtn.onclick   = (function(idx) { return function() { cancelRename(idx); }; })(i);
-
-          renameForm.appendChild(renameInput);
-          renameForm.appendChild(saveBtn);
-          renameForm.appendChild(cancelBtn);
-
-          nameCol.appendChild(nameEl);
-          nameCol.appendChild(renameForm);
-
-          // Action buttons: stacked ▲▼ reorder + rename + delete
-          var actions       = document.createElement('div');
-          actions.className = 'area-actions';
-
-          var moveCol       = document.createElement('div');
-          moveCol.className = 'move-col';
-
-          var upBtn         = document.createElement('button');
-          upBtn.className   = 'btn-move';
-          upBtn.textContent = '▲';
-          upBtn.title       = LANG === 'es' ? 'Subir' : 'Move up';
-          upBtn.disabled    = (i === 0);
-          upBtn.onclick     = (function(idx) { return function(e) { e.stopPropagation(); moveArea(idx, -1); }; })(i);
-
-          var downBtn         = document.createElement('button');
-          downBtn.className   = 'btn-move';
-          downBtn.textContent = '▼';
-          downBtn.title       = LANG === 'es' ? 'Bajar' : 'Move down';
-          downBtn.disabled    = (i === areas.length - 1);
-          downBtn.onclick     = (function(idx) { return function(e) { e.stopPropagation(); moveArea(idx, +1); }; })(i);
-
-          moveCol.appendChild(upBtn);
-          moveCol.appendChild(downBtn);
-
-          var renBtn       = document.createElement('button');
-          renBtn.className = 'btn-icon';
-          renBtn.textContent = '✎';
-          renBtn.title     = LANG === 'es' ? 'Renombrar' : 'Rename';
-          renBtn.onclick   = (function(idx) { return function(e) { e.stopPropagation(); startRename(idx); }; })(i);
-
-          var delBtn       = document.createElement('button');
-          delBtn.className = 'btn-icon danger';
-          delBtn.textContent = '🗑';
-          delBtn.title     = LANG === 'es' ? 'Eliminar' : 'Delete';
-          delBtn.onclick   = (function(idx) { return function(e) { e.stopPropagation(); quickDelete(idx); }; })(i);
-
-          actions.appendChild(moveCol);
-          actions.appendChild(renBtn);
-          actions.appendChild(delBtn);
-
-          li.appendChild(badge);
-          li.appendChild(nameCol);
-          li.appendChild(actions);
-
-          ul.appendChild(li);
-        });
+        return s;
       }
-
-      // ── Reorder via ▲▼ (draft) ────────────────────────────────────────────────
-      function moveArea(idx, dir) {
-        var target = idx + dir;
-        if (target < 0 || target >= areas.length) return;
-        var moved = areas.splice(idx, 1)[0];
-        areas.splice(target, 0, moved);
-        renderList();
-        markDirty();
+      if (!r.origName) return T('New. Nothing in it yet.', 'Nueva. Todavía no tiene nada.');
+      if (!r.items) return T('Nothing in it yet', 'Todavía no tiene nada');
+      return plural(r.items, 'item', 'items', 'artículo', 'artículos') + ' · ' +
+        T('on ' + r.vendors + (r.vendors === 1 ? ' vendor’s list' : ' vendors’ lists'),
+          'en ' + (r.vendors === 1 ? 'la lista de 1 proveedor' : 'las listas de ' + r.vendors + ' proveedores'));
+    }
+    function render() {
+      var list = document.getElementById('ar-list');
+      var kept = arKept(S.rows);
+      document.getElementById('ar-count').textContent = plural(kept.length, 'area', 'areas', 'área', 'áreas');
+      if (!S.rows.length) {
+        list.innerHTML = '<li class="ar-empty">' + esc(T('No storage areas yet. Add the places you count, like the walk-in or dry storage.',
+          'Todavía no hay áreas. Agrega los lugares donde cuentas, como el refrigerador o el almacén.')) + '</li>';
+        renderBar();
+        return;
       }
-
-      // ── Rename ────────────────────────────────────────────────────────────────
-      function startRename(idx) {
-        if (renamingIdx !== null && renamingIdx !== idx) {
-          var old = byId('rf-' + renamingIdx);
-          if (old) old.classList.remove('visible');
+      var n = 0, firstKept = -1, lastKept = -1;
+      S.rows.forEach(function (r, i) { if (!r.deleted) { if (firstKept < 0) firstKept = i; lastKept = i; } });
+      list.innerHTML = S.rows.map(function (r, i) {
+        var num = r.deleted ? '' : String(++n);
+        if (i === S.renaming) {
+          return '<li class="ar-row renaming" data-i="' + i + '"><span class="ar-num" aria-hidden="true">' + num + '</span>' +
+            '<div class="ar-rename"><label for="ar-rename-input" class="vh">' + esc(T('New name for ', 'Nombre nuevo para ') + r.name) + '</label>' +
+            '<input type="text" id="ar-rename-input" maxlength="100" value="' + esc(r.name) + '">' +
+            '<button type="button" class="ar-btn big primary" data-act="rename-ok">' + esc(T('Done', 'Listo')) + '</button>' +
+            '<button type="button" class="ar-btn big" data-act="rename-cancel">' + esc(T('Cancel', 'Cancelar')) + '</button>' +
+            '<div class="ar-err" role="alert">' + esc(S.renameErr) + '</div>' +
+            (r.origName && r.items ? '<div class="ar-hint">' + esc(T((r.items === 1 ? 'Its item keeps its' : 'Its ' + r.items + ' items keep their') + ' place under the new name.',
+                                                                     (r.items === 1 ? 'Su artículo conserva su' : 'Sus ' + r.items + ' artículos conservan su') + ' lugar con el nombre nuevo.')) + '</div>' : '') +
+            '</div></li>';
         }
-        renamingIdx = idx;
-        var form  = byId('rf-' + idx);
-        var input = byId('ri-' + idx);
-        form.classList.add('visible');
-        input.value = areas[idx].name;
-        input.focus();
-        input.select();
-      }
-
-      function cancelRename(idx) {
-        var form = byId('rf-' + idx);
-        if (form) form.classList.remove('visible');
-        renamingIdx = null;
-      }
-
-      function submitRename(idx) {
-        var input   = byId('ri-' + idx);
-        var oldName = areas[idx].name;
-        var newName = input ? input.value.trim() : '';
-        if (!newName || newName.toLowerCase() === oldName.toLowerCase()) {
-          cancelRename(idx); return;
+        var main = '<div class="ar-main"><div class="ar-name">' + esc(r.name) +
+          (!r.origName ? '<span class="ar-new">' + esc(T('New', 'Nueva')) + '</span>' : '') + '</div>' +
+          '<div class="ar-sub">' + esc(subText(r)) + '</div></div>';
+        if (r.deleted) {
+          return '<li class="ar-row deleted" data-i="' + i + '"><span class="ar-num" aria-hidden="true"></span>' + main +
+            '<div class="ar-btns"><button type="button" class="ar-btn big" data-act="restore">' + esc(T('Put back', 'Restaurar')) + '</button></div></li>';
         }
-        if (areas.some(function(a, j) { return j !== idx && a.name.toLowerCase() === newName.toLowerCase(); })) {
-          if (input) { input.style.borderColor = '#e8a0a0'; setTimeout(function() { input.style.borderColor = ''; }, 1500); }
-          return;
-        }
-        // Draft: update local state only. origName is preserved as the identity
-        // handle so the bulk save can reconcile the rename against server truth.
-        areas[idx].name = newName;
-        cancelRename(idx);
-        renderList();
-        markDirty();
-      }
+        return '<li class="ar-row" data-i="' + i + '"><span class="ar-num" aria-hidden="true">' + num + '</span>' + main +
+          '<div class="ar-btns">' +
+            '<button type="button" class="ar-ico" data-act="up" aria-label="' + esc(T('Move ' + r.name + ' up', 'Subir ' + r.name)) + '"' + (i === firstKept ? ' disabled' : '') + '>' + icon('up') + '</button>' +
+            '<button type="button" class="ar-ico" data-act="down" aria-label="' + esc(T('Move ' + r.name + ' down', 'Bajar ' + r.name)) + '"' + (i === lastKept ? ' disabled' : '') + '>' + icon('down') + '</button>' +
+            '<button type="button" class="ar-btn" data-act="rename">' + esc(T('Rename', 'Renombrar')) + '</button>' +
+            '<button type="button" class="ar-ico danger" data-act="delete" aria-label="' + esc(T('Delete ' + r.name, 'Eliminar ' + r.name)) + '">' + icon('trash') + '</button>' +
+          '</div></li>';
+      }).join('');
+      renderBar();
+    }
+    function renderBar() {
+      var bar = document.getElementById('ar-bar');
+      var dirty = isDirty();
+      bar.hidden = !dirty;
+      if (!dirty) return;
+      var s = arSummary(S.rows, S.loaded), bits = [];
+      if (s.renamed) bits.push(T(s.renamed + ' renamed', s.renamed + (s.renamed === 1 ? ' renombrada' : ' renombradas')));
+      if (s.added) bits.push(T(s.added + ' added', s.added + (s.added === 1 ? ' nueva' : ' nuevas')));
+      if (s.deleted) bits.push(T(s.deleted + ' deleted', s.deleted + (s.deleted === 1 ? ' eliminada' : ' eliminadas')));
+      if (s.reordered) bits.push(T('new order', 'nuevo orden'));
+      if (pendingRename() || pendingAdd()) bits.push(T('a name not added yet', 'un nombre sin agregar'));
+      document.getElementById('ar-sum').innerHTML = '<b>' + esc(T('Unsaved changes', 'Cambios sin guardar')) + '</b>' +
+        (bits.length ? '<span> · ' + esc(bits.join(' · ')) + '</span>' : '');
+      document.getElementById('ar-save').disabled = S.busy;
+      document.getElementById('ar-discard').disabled = S.busy;
+    }
+    function renderNote() {
+      document.getElementById('ar-note').innerHTML = T(
+        'To put the items inside an area in shelf order, use <a href="' + pageLink('pickpath') + '">Shelf to Sheet</a>. To move an item to another area, use <a href="' + pageLink('items') + '">Items</a>.',
+        'Para ordenar los artículos dentro de un área como están en los estantes, usa <a href="' + pageLink('pickpath') + '">Estante a Hoja</a>. Para mover un artículo a otra área, usa <a href="' + pageLink('items') + '">Artículos</a>.');
+    }
 
-      // ── Quick delete from list (draft) ────────────────────────────────────────
-      // Removes the row from local state only. The count of items that lose
-      // their area is computed by the server and surfaced in the Save result
-      // (not per-delete), since the actual pick-DB cleanup happens on Save.
-      function quickDelete(idx) {
-        var name = areas[idx].name;
-        mgeConfirm_({
-          msg: t('confirmDelete') + name + t('confirmDeleteEnd'),
-          danger: true,
-          confirmLabel: { en: 'Delete', es: 'Eliminar' },
-          onConfirm: function () {
-            areas.splice(idx, 1);
-            renderList();
-            markDirty();
+    // ---- Editing the draft ----
+    function startRename(i) {
+      if (S.renaming >= 0 && S.renaming !== i && !finishRename()) return;
+      S.renaming = i; S.renameErr = '';
+      render();
+      var inp = document.getElementById('ar-rename-input');
+      if (inp) { inp.focus(); inp.select(); }
+    }
+    // Takes the typed name into the draft. False (and says why) when it can't.
+    function finishRename() {
+      if (S.renaming < 0) return true;
+      var inp = document.getElementById('ar-rename-input');
+      var v = inp ? inp.value.trim() : '';
+      var r = S.rows[S.renaming];
+      if (v !== r.name) {
+        var why = arNameProblem(S.rows, v, S.renaming);
+        if (why) { S.renameErr = why; render(); var again = document.getElementById('ar-rename-input'); if (again) { again.value = v; again.focus(); } return false; }
+        r.name = v;
+      }
+      S.renaming = -1; S.renameErr = '';
+      render(); markDirty();
+      return true;
+    }
+    function cancelRename() { S.renaming = -1; S.renameErr = ''; render(); markDirty(); }
+    function addArea() {
+      var inp = document.getElementById('ar-new'), err = document.getElementById('ar-add-err');
+      var v = inp.value.trim();
+      var why = arNameProblem(S.rows, v, -1);
+      if (!why && arKept(S.rows).length >= MAX_AREAS) why = T('A store has 18 areas at most. Delete one first.', 'Una tienda tiene 18 áreas como máximo. Elimina una primero.');
+      if (why) { err.textContent = why; inp.focus(); return false; }
+      err.textContent = '';
+      S.rows.push({ name: v, origName: null, items: 0, vendors: 0, onlyHere: 0, deleted: false });
+      inp.value = '';
+      render(); markDirty();
+      return true;
+    }
+    function deleteArea(i) {
+      if (S.renaming === i) { S.renaming = -1; S.renameErr = ''; }
+      var r = S.rows[i];
+      if (!r.origName) S.rows.splice(i, 1);   // new in this draft: just goes
+      else r.deleted = true;
+      if (S.renaming > i && !r.origName) S.renaming--;
+      render(); markDirty();
+    }
+    function restoreArea(i) {
+      var r = S.rows[i];
+      var why = arNameProblem(S.rows, r.name, i);
+      if (why) { toast(T('Another area is called "' + r.name + '" now. Rename that one first.', 'Otra área se llama "' + r.name + '" ahora. Cambia ese nombre primero.'), true); return; }
+      if (arKept(S.rows).length >= MAX_AREAS) { toast(T('A store has 18 areas at most.', 'Una tienda tiene 18 áreas como máximo.'), true); return; }
+      r.deleted = false;
+      render(); markDirty();
+    }
+    function discard() {
+      S.rows = JSON.parse(JSON.stringify(S.loaded));
+      S.renaming = -1; S.renameErr = '';
+      document.getElementById('ar-new').value = '';
+      document.getElementById('ar-add-err').textContent = '';
+      render(); markDirty();
+    }
+
+    // ---- Saving ----
+    // The whole draft in one change (the typed name not added yet goes with
+    // it). Resolves true when it saved.
+    function save() {
+      if (S.busy) return Promise.resolve(false);
+      if (!finishRename()) return Promise.resolve(false);
+      if (pendingAdd() && !addArea()) return Promise.resolve(false);
+      if (arSnapshot(S.rows) === S.base) { markDirty(); return Promise.resolve(true); }
+      var payload = arPayload(S.rows);
+      S.busy = true; renderBar();
+      var before = 0;
+      return call('getUnassignedActiveItems').then(function (list) {
+        before = (list || []).length;
+        return call('commitStorageAreasDraft', payload);
+      }).then(function () {
+        return call('getUnassignedActiveItems');
+      }).then(function (after) {
+        var lost = Math.max(0, (after || []).length - before);
+        S.busy = false;
+        return reload().then(function () {
+          if (lost) {
+            toast(T('Saved. ' + lost + (lost === 1 ? ' item has' : ' items have') + ' no storage area now.',
+                    'Guardado. ' + lost + (lost === 1 ? ' artículo no tiene' : ' artículos no tienen') + ' área ahora.'),
+                  false, { href: (BASE_URL || 'index.html') + '?page=items&area=__none', text: T('Show them in Items', 'Verlos en Artículos') });
+          } else {
+            toast(T('Saved.', 'Guardado.'));
           }
+          return true;
         });
-      }
-
-      // ── Add (draft) ─────────────────────────────────────────────────────────--
-      function doAdd() {
-        var name = byId('add-name').value.trim();
-        if (!name) return setStatus('add', t('blankName'), 'warn');
-        if (areas.some(function(a) { return a.name.toLowerCase() === name.toLowerCase(); })) {
-          return setStatus('add', '"' + name + t('alreadyExists'), 'warn');
-        }
-        // Draft: append locally only. origName:null marks it as new so the bulk
-        // save creates it. order here is display-only (server assigns the final
-        // order = position*10 on save).
-        areas.push({ name: name, order: (areas.length + 1) * 10, origName: null });
-        renderList();
-        byId('add-name').value = '';
-        setStatus('add', '');
-        markDirty();
-      }
-
-      // ── Draft dirty-tracking ────────────────────────────────────────────────--
-      function markDirty() {
-        isDirty = true;
-        setStatus('save', t('unsavedChanges'), 'info');
-      }
-
-      // ── Save (bulk commit of the whole draft) ─────────────────────────────────
-      function doSave(onDone) {
-        // Send the desired final state. Each entry carries origName (identity)
-        // + name; the server reconciles renames/adds/deletes/reorder in one pass.
-        // onDone (optional) runs after a successful save — lets the close guard
-        // Save-then-close.
-        var payload = areas.map(function(a) {
-          return { origName: a.origName, name: a.name };
-        });
-        byId('save-btn').disabled = true;
-        setSavingCard_('list-card', true);
-        setStatus('save', t('saving'), 'info');
-        MIRPC()
-          .withSuccessHandler(function(res) {
-            setSavingCard_('list-card', false);
-            byId('save-btn').disabled = false;
-            // The saved state becomes the new baseline: clear new-area flags by
-            // resetting origName to the current name on every row.
-            areas.forEach(function(a) { a.origName = a.name; });
-            isDirty = false;
-            bumpMutationTs_();
-            var msg = t('saved');
-            if (res && res.inUseCount > 0) msg += ' ' + res.inUseCount + t('itemsLost');
-            setStatus('save', msg, 'ok');
-            setTimeout(function() { if (!isDirty) setStatus('save', ''); }, 3000);
-            if (typeof onDone === 'function') onDone();
-          })
-          .withFailureHandler(function(err) {
-            setSavingCard_('list-card', false);
-            byId('save-btn').disabled = false;
-            setStatus('save', err.message || String(err), 'warn');
-            refreshAreas();  // snap back to server truth
-          })
-          .commitStorageAreasDraft(payload);
-      }
-
-      // ── Leave guard (Close + breadcrumb navigation) ───────────────────────────
-      // proceed() runs when it's safe to leave: immediately if clean, else after
-      // Save-success or Don't-save. Registered with EditorShell so breadcrumb
-      // clicks route through it too (not just the footer Close).
-      //
-      // "Dirty" is more than the isDirty flag: rename and add are two-step (type,
-      // then confirm), so typed-but-unconfirmed text lives only in the input, not
-      // the draft — it would slip past isDirty and be lost silently. So the guard
-      // also fires on pending input, and Save folds that text into the draft first
-      // (Cancel leaves the open input untouched; Don't save discards it).
-      function hasPendingInput_() {
-        if (renamingIdx !== null) {
-          var ri = byId('ri-' + renamingIdx);
-          if (ri && ri.value.trim() && ri.value.trim().toLowerCase() !== areas[renamingIdx].name.toLowerCase()) return true;
-        }
-        var addEl = byId('add-name');
-        if (addEl && addEl.value.trim()) return true;
+      }, function (err) {
+        S.busy = false; renderBar();
+        toast(errText(err), true);
         return false;
-      }
-      // Fold a valid open rename / typed add-field entry into the draft (mirrors
-      // submitRename / doAdd, data only — the DOM is about to be left behind).
-      // Invalid (blank/duplicate) pending text is dropped, as those can't save.
-      function commitPendingInput_() {
-        if (renamingIdx !== null) {
-          var ri = byId('ri-' + renamingIdx);
-          if (ri) {
-            var oldName = areas[renamingIdx].name;
-            var newName = ri.value.trim();
-            var dup = areas.some(function(a, j) { return j !== renamingIdx && a.name.toLowerCase() === newName.toLowerCase(); });
-            if (newName && newName.toLowerCase() !== oldName.toLowerCase() && !dup) areas[renamingIdx].name = newName;
-          }
-        }
-        var addEl = byId('add-name');
-        if (addEl) {
-          var addName = addEl.value.trim();
-          var addDup  = areas.some(function(a) { return a.name.toLowerCase() === addName.toLowerCase(); });
-          if (addName && !addDup) areas.push({ name: addName, order: (areas.length + 1) * 10, origName: null });
-        }
-      }
-      function guardLeave_(proceed) {
-        if (!isDirty && !hasPendingInput_()) { proceed(); return; }
-        mgeGuard3_({
-          msg: t('unsavedClose'),
-          onSave:    function () { commitPendingInput_(); doSave(proceed); },  // fold pending, save, proceed
-          onDiscard: proceed
-        });
-      }
-      function doClose() { guardLeave_(editorClose); }
-      function editorClose() { mgeEditorClose_(); }
-
-      // ── Refresh from server (recovery after a failed save) ────────────────────
-      function refreshAreas(callback) {
-        MIRPC()
-          .withSuccessHandler(function(list) {
-            areas = list.map(function(a) {
-              return { name: a.name, order: a.order, origName: a.name };
-            });
-            isDirty = false;
-            renderList();
-            if (callback) callback();
-          })
-          .withFailureHandler(function(err) { console.error(err); })
-          .getStorageAreaList();
-      }
-
-      // ── Help panel ──────────────────────────────────────────────────────────
-      function toggleHelp(show) {
-        byId('help-overlay').classList.toggle('open', show);
-      }
-      document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') toggleHelp(false);
       });
-
-      // ── Server-call indirection (one source of truth, two hosts) ──────────────
-      // MIRPC() → shared mgeRpc_ (EditorShell); server webeditDispatch_ gates calls.
-      function MIRPC() { return mgeRpc_(); }
-
-      // ── Init ──────────────────────────────────────────────────────────────────
-      // ── Mini-tour (web only; shared engine in EditorShell, info mode) ──
-      var AREAS_TOUR_STEPS = [
-        { sel: null,
-          en: { title: 'Where you count', body: 'Areas are the physical spots you store product — Walk-In, Dry Storage, Freezer, Bar. An item needs an area to show on a sheet, and the area order is the order items print.' },
-          es: { title: 'Dónde cuentas', body: 'Las áreas son los lugares donde guardas el producto — Cámara, Almacén seco, Congelador, Bar. Un artículo necesita un área para aparecer en una hoja, y el orden de las áreas es el orden en que se imprimen.' } },
-        { sel: '#area-list',
-          en: { title: 'Order your areas', body: 'Use ▲▼ to put areas in the order you walk the kitchen, ✎ to rename, 🗑 to delete. Deleting one unassigns its items until you place them again in Shelf to Sheet.' },
-          es: { title: 'Ordena tus áreas', body: 'Usa ▲▼ para poner las áreas en el orden en que recorres la cocina, ✎ para renombrar, 🗑 para eliminar. Eliminar una desasigna sus artículos hasta colocarlos de nuevo en Estante a Hoja.' } },
-        { sel: '.action-header',
-          en: { title: 'Add an area', body: 'Open ➕ Add Area, type a name, and add it. New areas land at the bottom — reorder with ▲▼.' },
-          es: { title: 'Agrega un área', body: 'Abre ➕ Agregar Área, escribe un nombre y agrégala. Las nuevas quedan al final — reordénalas con ▲▼.' } },
-        { sel: '#save-btn',
-          en: { title: 'Save to apply', body: 'Your changes are a draft until you press Save Areas — then they hit the store sheet. Tap the ? up top anytime to replay this.' },
-          es: { title: 'Guarda para aplicar', body: 'Tus cambios son un borrador hasta que pulsas Guardar Áreas — entonces llegan a la hoja. Toca el ? de arriba para repetir esto.' } }
-      ];
-      function startAreasTour() { toggleHelp(false); mgeStartTour_(AREAS_TOUR_STEPS, { mode: 'info' }); }
-      function replayAreasTour() { startAreasTour(); }
-      function maybeAutoStartAreasTour_() {
-        var seen = false;
-        try { seen = localStorage.getItem('mog_areas_tour_seen') === '1'; } catch (e) {}
-        if (seen) return;
-        try { localStorage.setItem('mog_areas_tour_seen', '1'); } catch (e) {}
-        setTimeout(startAreasTour, 500);
-      }
-
-      function initStorageAreas_() {
-        areas = AREA_LIST.map(function(a) {
-          return { name: a.name, order: a.order, origName: a.name };
+    }
+    function reload() {
+      return call('getAreasPage').then(function (list) {
+        S.loaded = (list || []).map(function (a) {
+          return { name: a.name, origName: a.name, items: a.items, vendors: a.vendors, onlyHere: a.onlyHere, deleted: false };
         });
-        if (MOG_WEB) {  // web: shared header band + breadcrumb; footer "Close" → editor home
-          mgeMountWebChrome_();  // EditorShell: adds mge-web, fills band, relocates lang/help
-          document.documentElement.classList.add('mge-web');  // unlock page scroll (html.mge-web)
-          setBreadcrumb_(
-            [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
-            { en: 'Storage Areas', es: 'Áreas de almacenamiento' }
-          );
-          mgeSetLeaveGuard_(guardLeave_);   // breadcrumb nav honors unsaved edits
-          var _cen = document.querySelector('.btn-close .en'); if (_cen) _cen.textContent = '← Editor home';
-          var _ces = document.querySelector('.btn-close .es'); if (_ces) _ces.textContent = '← Inicio';
+        S.rows = JSON.parse(JSON.stringify(S.loaded));
+        S.base = arSnapshot(S.rows);
+        S.renaming = -1; S.renameErr = '';
+        render(); markDirty();
+      });
+    }
+
+    // ---- Small things ----
+    function errText(err) {
+      var m = err && err.message ? err.message : String(err || '');
+      return m || T('Something went wrong. Try again.', 'Algo salió mal. Inténtalo de nuevo.');
+    }
+    var toastTimer = null;
+    function toast(text, isErr, link) {
+      var el = document.getElementById('ar-toast');
+      el.innerHTML = esc(text) + (link ? '<a href="' + esc(link.href) + '">' + esc(link.text) + '</a>' : '');
+      el.className = isErr ? 'err' : ''; el.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.hidden = true; }, isErr || link ? 9000 : 5000);
+    }
+
+    function wire() {
+      var list = document.getElementById('ar-list');
+      list.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-act]'); if (!b || S.busy) return;
+        var li = b.closest('li[data-i]'); if (!li) return;
+        var i = Number(li.getAttribute('data-i')), act = b.getAttribute('data-act');
+        if (act === 'up' || act === 'down') {
+          if (S.renaming >= 0 && !finishRename()) return;
+          if (arMove(S.rows, i, act === 'up' ? -1 : 1)) { render(); markDirty(); }
         }
-        setLang(MOG_WEB ? mgeGetLang_() : 'en');
-        // Per-tool mini-tour is REPLAY-ONLY by design (via the ? help "↻ Replay" button).
-        // Home flow-tour + setup wizard cover first-run orientation. Re-enable: if (MOG_WEB) maybeAutoStartAreasTour_();
-      }
-      if (MOG_WEB) { mgeStartGate_(initStorageAreas_); }
-      else { initStorageAreas_(); }
-    </script>
-  </body>
+        else if (act === 'rename') startRename(i);
+        else if (act === 'rename-ok') finishRename();
+        else if (act === 'rename-cancel') cancelRename();
+        else if (act === 'delete') deleteArea(i);
+        else if (act === 'restore') restoreArea(i);
+      });
+      list.addEventListener('keydown', function (e) {
+        if (e.target.id !== 'ar-rename-input') return;
+        if (e.key === 'Enter') { e.preventDefault(); finishRename(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+      });
+      list.addEventListener('input', function (e) { if (e.target.id === 'ar-rename-input') renderBar(); });
+      var add = document.getElementById('ar-new');
+      add.placeholder = T('New area, like Dry storage', 'Área nueva, como Almacén seco');
+      add.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if (!S.busy) addArea(); } });
+      add.addEventListener('input', function () { document.getElementById('ar-add-err').textContent = ''; markDirty(); });
+      document.getElementById('ar-add-btn').onclick = function () { if (!S.busy) addArea(); };
+      document.getElementById('ar-save').onclick = function () { save(); };
+      document.getElementById('ar-discard').onclick = function () { if (!S.busy) discard(); };
+    }
+
+    function startAreas_() {
+      mgeMountWebChrome_();
+      document.documentElement.classList.add('mge-web');
+      setBreadcrumb_(
+        [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+        { en: 'Storage areas', es: 'Áreas de almacenamiento' }
+      );
+      if (!startAreas_.wired) { wire(); renderNote(); startAreas_.wired = true; }
+      reload().then(null, function (err) {
+        document.getElementById('ar-list').innerHTML = '<li class="ar-empty">' +
+          esc(T('Couldn’t load the storage areas: ', 'No se pudieron cargar las áreas: ') + errText(err)) + '</li>';
+      });
+    }
+    mgeStartGate_(startAreas_);
+  </script>
+</body>
 </html>

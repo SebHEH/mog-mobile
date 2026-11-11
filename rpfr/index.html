@@ -3002,10 +3002,6 @@ function parFlagCutoff_(today) {
         <i class="ti ti-route" aria-hidden="true"></i>
         <span><span class="lang-en">Shelf to Sheet</span><span class="lang-es">Estante a Hoja</span></span>
       </button>
-      <button class="rail-item" data-manage="healthcheck" type="button" hidden>
-        <i class="ti ti-shield-check" aria-hidden="true"></i>
-        <span><span class="lang-en">Health check</span><span class="lang-es">Chequeo</span></span>
-      </button>
       <div class="rail-spacer"></div>
       <button class="rail-item" data-manage="changes" type="button" hidden>
         <i class="ti ti-arrow-back-up" aria-hidden="true"></i>
@@ -4791,7 +4787,7 @@ function parFlagCutoff_(today) {
     // An address with #history, #settings or a Manage page (#items, ...: a
     // reload, a bookmark, or an editor page opened by itself on a computer):
     // Today loads first as always (it runs the day checks), then that opens.
-    const want = (window.location.hash || '').replace('#', '');
+    const want = managePageFor_((window.location.hash || '').replace('#', ''));
     if (want) {
       try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (e) { /* the hash just stays */ }
     }
@@ -9341,8 +9337,21 @@ function parFlagCutoff_(today) {
   // when it runs out the page asks for a fresh one through MOG_SHELL instead
   // of showing its own PIN.
   const MANAGE_PAGES_ = { overview: 'overview.html', items: 'items.html', vendors: 'vendors.html', areas: 'areas.html',
-                          pickpath: 'pickpath.html', history: 'history.html', healthcheck: 'healthcheck.html',
-                          changes: 'changes.html' };
+                          pickpath: 'pickpath.html', history: 'history.html', changes: 'changes.html' };
+  // An old address for a page that moved (a bookmark, an open tab): the
+  // Health check is part of the Overview since 2026-11-11.
+  function managePageFor_(page) { return page === 'healthcheck' ? 'overview' : page; }
+  // A Manage link's filter (host.js sends it with the page: Overview's rows
+  // open Items on a filter), passed on to the page's frame. Only these keys.
+  function manageQuery_(query) {
+    if (!query) return '';
+    let params;
+    try { params = new URLSearchParams(String(query)); } catch (e) { return ''; }
+    const out = new URLSearchParams();
+    for (const k of ['view', 'area', 'q', 'open', 'vendor']) { const v = params.get(k); if (v) out.set(k, v); }
+    const s = out.toString();
+    return s ? '&' + s : '';
+  }
 
   // Leaving an app screen for a Manage page: counts not yet saved save
   // first, and unsaved recipient edits ask, as leaving either screen does.
@@ -9377,7 +9386,7 @@ function parFlagCutoff_(today) {
     guard(function () { state.managePage = null; proceed(); });
   }
 
-  async function openManage_(page) {
+  async function openManage_(page, query) {
     if (!MANAGE_PAGES_[page] || !editorAvailable_()) return;
     if (state.currentView !== 'manage' && !(await leaveAppScreen_())) return;
     try {
@@ -9385,8 +9394,9 @@ function parFlagCutoff_(today) {
       localStorage.setItem('mog_edit_lang', state.lang);
     } catch (e) { /* the page asks the app for the token through MOG_SHELL */ }
     const frame = $('manage-frame');
-    const src = 'editor/' + MANAGE_PAGES_[page] + '?embed=1';
-    if (state.managePage !== page) {
+    const extra = manageQuery_(query);
+    const src = 'editor/' + MANAGE_PAGES_[page] + '?embed=1' + extra;
+    if (state.managePage !== page || extra) {
       if (frame.getAttribute('src') === src && frame.contentWindow) frame.contentWindow.location.replace(src);
       else frame.setAttribute('src', src);
     }
@@ -9425,7 +9435,7 @@ function parFlagCutoff_(today) {
 
   // An address changed to #<Manage page> by hand (or a link to one).
   window.addEventListener('hashchange', function () {
-    const want = (window.location.hash || '').replace('#', '');
+    const want = managePageFor_((window.location.hash || '').replace('#', ''));
     if (!MANAGE_PAGES_[want] || $('screen-main').style.display === 'none') return;
     if (state.currentView === 'manage' && state.managePage === want) return;
     leaveManage_(() => openManage_(want));
@@ -9438,7 +9448,7 @@ function parFlagCutoff_(today) {
       try { direct.token = null; await directLogin_(); return direct.token; } catch (e) { return null; }
     },
     lang: function () { return state.lang; },
-    open: function (page) { if (MANAGE_PAGES_[page]) leaveManage_(() => openManage_(page)); },
+    open: function (page, query) { if (MANAGE_PAGES_[page]) leaveManage_(() => openManage_(page, query)); },
     // The Overview's "Today's order" card: today's vendors as Today shows them.
     today: function () {
       const d = state.cache.dashboard;
@@ -9451,7 +9461,7 @@ function parFlagCutoff_(today) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.32.0';
+    const versionStr = '0.33.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =

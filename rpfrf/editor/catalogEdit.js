@@ -352,10 +352,15 @@
     return MONTHS[Number(m[2]) - 1] + ' ' + Number(m[3]) + ', ' + m[1] + ' ' + ((h % 12) || 12) + ':' + m[5] + ' ' + (h < 12 ? 'AM' : 'PM');
   }
 
+  // Health.gs's report shape. Each row also carries what the Overview words
+  // its own row from, in either language (its Needs attention, since the
+  // Health check page went into it, 2026-11): count and names for a catalog
+  // row, copies for repeated names, cycleDate for the close, minutes for the
+  // lockout.
   function getStoreHealthReport(t, status, storeName) {
     const checks = [];
-    const add = (id, label, st, detail, fix, fixId) =>
-      checks.push({ id: id, label: label, status: st, detail: detail || '', fix: fix || '', fixId: fixId || '', destructive: false });
+    const add = (id, label, st, detail, fix, fixId, more) =>
+      checks.push(Object.assign({ id: id, label: label, status: st, detail: detail || '', fix: fix || '', fixId: fixId || '', destructive: false }, more || {}));
     const st = status || {};
 
     // ── The store ──
@@ -364,20 +369,22 @@
                      : 'Phones still go through the Sheet\'s /exec web app, which is slower.',
       st.phoneDirect ? '' : 'In the Supabase SQL Editor run supabase/phones_direct.sql for this store.');
     const today = String(st.localNow || '').slice(0, 10), hhmm = String(st.localNow || '').slice(11, 16);
+    const cycle = { cycleDate: st.cycleDate || '' };
     if (!st.cycleDate) {
       add('nightly', 'Last night\'s close', 'fail', 'The store has no cycle in Supabase yet.',
-        'Open the Sheet: 📱 Mobile API → Move this store to Supabase.');
+        'Open the Sheet: 📱 Mobile API → Move this store to Supabase.', '', cycle);
     } else if (st.cycleDate >= today || hhmm < '04:00') {
-      add('nightly', 'Last night\'s close', 'pass', 'The cycle open now is ' + st.cycleDate + '; the next close is at 3:30 AM.');
+      add('nightly', 'Last night\'s close', 'pass', 'The cycle open now is ' + st.cycleDate + '; the next close is at 3:30 AM.', '', '', cycle);
     } else {
       add('nightly', 'Last night\'s close', 'fail',
         'The cycle open now is still ' + st.cycleDate + ', so last night\'s 3:30 AM close did not run.',
-        'Open the app on a phone to start the new day, then install the nightly run: in the Sheet, 📱 Mobile API → 🩺 Store Health Check → "Nightly 3:30 AM run" → Fix.');
+        'Open the app on a phone to start the new day, then install the nightly run: in the Sheet, 📱 Mobile API → 🩺 Store Health Check → "Nightly 3:30 AM run" → Fix.', '', cycle);
     }
     const mins = Math.ceil((Number(st.lockedForMs) || 0) / 60000);
     add('lockout', 'PIN lockout', mins > 0 ? 'warn' : 'pass',
       mins > 0 ? 'The PIN is locked for ' + mins + ' more minute' + (mins === 1 ? '' : 's') + ' after 5 wrong tries.' : 'No lockout.',
-      mins > 0 ? 'Clear it so the right PIN works now.' : '', mins > 0 ? 'clear_lockout' : '');
+      mins > 0 ? 'Clear it so the right PIN works now.' : '', mins > 0 ? 'clear_lockout' : '', { minutes: Math.max(mins, 0) });
+    const listed = names => ({ count: names.length, names: names });
 
     // ── The catalog ──
     const noDays = t.vendors.filter(v => !(v.mults || []).some(x => Number(x) > 0)).map(v => s_(v.name));
@@ -385,7 +392,7 @@
       noDays.length ? noDays.length + ' vendor' + (noDays.length === 1 ? ' has' : 's have') + ' no delivery days, so ' +
                       (noDays.length === 1 ? 'it orders' : 'they order') + ' nothing: ' + listOf(noDays) + '.'
                     : 'Every vendor has delivery days.',
-      noDays.length ? 'Vendors: set each one\'s delivery days.' : '');
+      noDays.length ? 'Vendors: set each one\'s delivery days.' : '', '', listed(noDays));
 
     const active = t.items.filter(it => it.active === true && s_(it.id) && s_(it.name));
     const unassigned = getUnassignedActiveItems(t);
@@ -394,21 +401,21 @@
                           ' no storage area, so ' + (unassigned.length === 1 ? 'it is' : 'they are') + ' on no count list: ' +
                           listOf(unassigned.map(u => u.name)) + '.'
                         : 'Every active item has a storage area.',
-      unassigned.length ? 'Items → Needs setup: give each a storage area.' : '');
+      unassigned.length ? 'Items → Needs setup: give each a storage area.' : '', '', listed(unassigned.map(u => u.name)));
 
     const noPar = active.filter(it => typeof it.par !== 'number').map(it => s_(it.name));
     add('items_par', 'Items with a par', noPar.length ? 'warn' : 'pass',
       noPar.length ? noPar.length + ' active item' + (noPar.length === 1 ? ' has' : 's have') + ' no par, so ' +
                      (noPar.length === 1 ? 'it is' : 'they are') + ' never ordered: ' + listOf(noPar) + '.'
                    : 'Every active item has a par.',
-      noPar.length ? 'Items → Needs setup: set each one\'s par.' : '');
+      noPar.length ? 'Items → Needs setup: set each one\'s par.' : '', '', listed(noPar));
 
     const noVendor = active.filter(it => !s_(it.primaryVendor)).map(it => s_(it.name));
     add('items_primary', 'Items with a primary vendor', noVendor.length ? 'warn' : 'pass',
       noVendor.length ? noVendor.length + ' active item' + (noVendor.length === 1 ? ' has' : 's have') +
                         ' no primary vendor (its vendor was removed): ' + listOf(noVendor) + '.'
                       : 'Every active item has a primary vendor.',
-      noVendor.length ? 'Items → Needs setup: pick a main vendor for each.' : '');
+      noVendor.length ? 'Items → Needs setup: pick a main vendor for each.' : '', '', listed(noVendor));
 
     const missing = missingBackupRows(t);
     add('backups_placed', 'Backup vendor placement', missing.length ? 'warn' : 'pass',
@@ -416,18 +423,20 @@
                        listOf(missing.map(m => m.name + ' (' + m.vendor + ')'), 6) + '.'
                      : 'Every item is on each of its vendors\' lists.',
       missing.length ? 'Place them, in their current storage area. You can undo it from Changes.' : '',
-      missing.length ? 'place_backups' : '');
+      missing.length ? 'place_backups' : '', listed(missing.map(m => m.name + ' (' + m.vendor + ')')));
 
     const byName = new Map();
     for (const it of active) {
       const k = s_(it.name).toLowerCase();
       byName.set(k, (byName.get(k) || []).concat([s_(it.name)]));
     }
-    const repeated = Array.from(byName.values()).filter(v => v.length > 1).map(v => v[0] + ' (' + v.length + ')');
+    const sharing = Array.from(byName.values()).filter(v => v.length > 1);
+    const repeated = sharing.map(v => v[0] + ' (' + v.length + ')');
     add('item_names', 'Item names', repeated.length ? 'warn' : 'pass',
       repeated.length ? 'Active items sharing a name, which is easy to mix up when counting: ' + listOf(repeated) + '.'
                       : 'Every active item has its own name.',
-      repeated.length ? 'Items: rename the extra copies, or make them inactive.' : '');
+      repeated.length ? 'Items: rename the extra copies, or make them inactive.' : '', '',
+      { count: sharing.length, names: sharing.map(v => v[0]), copies: sharing.map(v => v.length) });
 
     const summary = { pass: 0, warn: 0, fail: 0 };
     checks.forEach(c => { summary[c.status]++; });
@@ -451,6 +460,40 @@
       itemsNoPar: live.filter(it => typeof it.par !== 'number').length,
       shelfSaved: (changes || []).some(c => c && !c.undoneBy && !c.undoes && SHELF_SAVE_RE.test(String(c.label || '')))
     };
+  }
+
+  // The Overview's Needs attention rows from the Health check (its page went
+  // into the Overview, 2026-11-11): one row per check that isn't OK, in the
+  // report's order, saying what it opens (a Manage page and its filter, as
+  // ?page= link parameters) or fixes. setupOpen: the setup card is showing,
+  // so the rows it already covers (vendors' days, items' areas and pars) stay
+  // on it. The store checks that are OK come back in storeOk, for the line
+  // under the rows that always shows them.
+  const STORE_CHECKS = ['nightly', 'lockout', 'phones'];
+  const SETUP_COVERS = ['vendors_days', 'items_area', 'items_par'];
+  function healthRows(report, setupOpen) {
+    const rows = [], storeOk = [];
+    for (const c of (report && report.checks) || []) {
+      const store = STORE_CHECKS.indexOf(c.id) >= 0;
+      if (c.status === 'pass') { if (store) storeOk.push(c.id); continue; }
+      if (setupOpen && SETUP_COVERS.indexOf(c.id) >= 0) continue;
+      const names = Array.isArray(c.names) ? c.names.slice() : [];
+      let link = null;
+      if (c.id === 'vendors_days') link = names.length === 1 ? { page: 'vendors', open: names[0] } : { page: 'vendors' };
+      else if (c.id === 'items_area') link = { page: 'items', area: '__none' };
+      else if (c.id === 'items_par' || c.id === 'items_primary') link = { page: 'items', view: 'setup' };
+      else if (c.id === 'item_names' && names.length) link = { page: 'items', q: names[0] };
+      rows.push({ id: c.id, kind: store ? 'store' : 'catalog', tone: c.status === 'fail' ? 'bad' : 'warn',
+                  count: Number(c.count) || names.length, names: names, copies: Array.isArray(c.copies) ? c.copies.slice() : [],
+                  minutes: Number(c.minutes) || 0, cycleDate: c.cycleDate || '', link: link, fix: c.fixId || '' });
+    }
+    // The store's own checks in one order (the close, the PIN, the phones),
+    // the catalog's after them in the report's.
+    const rank = id => { const i = STORE_CHECKS.indexOf(id); return i < 0 ? STORE_CHECKS.length : i; };
+    const order = new Map(rows.map((r, i) => [r, i]));
+    rows.sort((a, b) => (rank(a.id) - rank(b.id)) || (order.get(a) - order.get(b)));
+    storeOk.sort((a, b) => rank(a) - rank(b));
+    return { rows: rows, storeOk: storeOk };
   }
 
   // The Health Check's fix: each missing backup row, in the item's current
@@ -1429,6 +1472,29 @@
     return { ok: true, inUseCount: inUse, deletedCount: deleted.size, savedCount: finalList.length };
   }
 
+  // The Storage areas page (the app's own since 2026-11-11; StorageAreas.html
+  // stays for the Sheet dialog and /exec): each area in its order with the
+  // active items on any vendor's list there, how many vendors' lists, and
+  // how many of those items have no other area (what a delete takes off
+  // every count list). It saves with commitStorageAreasDraft.
+  function getAreasPage(t) {
+    const active = new Set(t.items.filter(it => it.active === true && s_(it.id)).map(it => s_(it.id)));
+    const areasOf = new Map();
+    for (const r of t.pickRows) {
+      const id = s_(r.id), area = s_(r.area);
+      if (!area || !active.has(id)) continue;
+      if (!areasOf.has(id)) areasOf.set(id, new Set());
+      areasOf.get(id).add(area);
+    }
+    return getStorageAreaList(t).map(a => {
+      const rows = t.pickRows.filter(r => s_(r.area) === a.name && active.has(s_(r.id)));
+      const ids = Array.from(new Set(rows.map(r => s_(r.id))));
+      return { name: a.name, order: a.order, items: ids.length,
+               vendors: new Set(rows.map(r => s_(r.vendor).toLowerCase())).size,
+               onlyHere: ids.filter(id => areasOf.get(id).size === 1).length };
+    });
+  }
+
   // ---- Shelf to Sheet (PickPath.gs) --------------------------------------------
 
   const itemNameOf = (t, id) => { const it = t.items.find(x => x.id === id); return it ? s_(it.name) : ''; };
@@ -1488,6 +1554,32 @@
     let seq = kept.reduce((m, r) => Math.max(m, Number(r.seq) || 0), 0);
     w.pickRows = kept.concat(rows.map(r => Object.assign(r, { seq: ++seq })));
     return { ok: true, count: rows.length };
+  }
+
+  // The Shelf to Sheet page (the app's own since 2026-11-11;
+  // ReorderPickPath.html stays for the Sheet dialog and /exec): every vendor
+  // A to Z with the items on its list and its own active items not on it yet
+  // (the vendor column), and for the vendor asked for, pickPathForSidebar
+  // with each item's pack and the name of the LTO that made it (schema v14),
+  // if any. It saves with commitReorderPickPath.
+  function getShelfPage(t, vendor) {
+    const ltoName = new Map((t.ltos || []).map(l => [s_(l.id), s_(l.name)]));
+    const byId = new Map(t.items.map(it => [s_(it.id), it]));
+    const withPack = x => {
+      const it = byId.get(x.id) || {};
+      return { id: x.id, name: x.name, pack: s_(it.pack), lto: (it.lto && ltoName.get(s_(it.lto))) || '' };
+    };
+    const vendors = vendorList(t).slice().sort((a, b) => a.localeCompare(b)).map(name => {
+      const p = pickPathForSidebar(t, name);
+      return { name: name, onList: p.groups.reduce((n, g) => n + g.items.length, 0), notYet: p.unassigned.length };
+    });
+    const want = s_(vendor);
+    if (!want) return { vendors: vendors, path: null };
+    const canon = normalizeVendorOrThrow(t, want);
+    const p = pickPathForSidebar(t, canon);
+    return { vendors: vendors,
+             path: { vendor: p.vendor, unassigned: p.unassigned.map(withPack),
+                     groups: p.groups.map(g => ({ area: g.area, areaOrder: g.areaOrder, items: g.items.map(withPack) })) } };
   }
 
   // ---- CSV (Import Vendor, Import from MarginEdge) -------------------------------
@@ -1787,7 +1879,9 @@
     getStorageAreaList: t => getStorageAreaList(t),
     getVendorTableData: t => getVendorTableData(t),
     getVendorsPage: t => getVendorsPage(t),
-    getPickPathForSidebar: (t, args) => pickPathForSidebar(t, args[0])
+    getPickPathForSidebar: (t, args) => pickPathForSidebar(t, args[0]),
+    getAreasPage: t => getAreasPage(t),
+    getShelfPage: (t, args) => getShelfPage(t, args[0])
   };
   const WRITES = {
     commitUpsertItem: (w, args, shifts) => upsertItem(w, args[0] || {}, shifts),
@@ -1826,7 +1920,8 @@
                 writes: Object.keys(WRITES), vendorList: vendorList, parseCsv: parseCsv,
                 multsFromDays: multsFromDays, daysFromMults: daysFromMults, matchVendor: matchVendor,
                 cleanLibrary: cleanLibrary, librarySeed: librarySeed, libraryAdd: libraryAdd, libraryLabel: libraryLabel,
-                ltoStoreState: ltoStoreState, ltoWaiting: ltoWaiting, productCandidates: productCandidates };
+                ltoStoreState: ltoStoreState, ltoWaiting: ltoWaiting, productCandidates: productCandidates,
+                healthRows: healthRows };
   root.CatalogEdit = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : this);
