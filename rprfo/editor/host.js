@@ -1,6 +1,8 @@
-// MOG editor host: the Apps Script editor pages (Editor Home, Manage Items,
-// Manage Vendors, Storage Areas, Shelf to Sheet) running as static pages on
-// Supabase (docs/MOG_OneApp_Spec.md Phases 2 and 4).
+// MOG editor host: the editor's pages running as static pages on Supabase
+// (docs/MOG_OneApp_Spec.md Phases 2 and 4): Editor Home and Order History
+// from Apps Script, and the app's own Overview, Items, Vendors, Storage
+// areas, Shelf to Sheet and Changes. The Health check is part of the
+// Overview since 2026-11-11 (its rows, its two fixes).
 //
 // The page talks to its server only through google.script.run: the PIN gate
 // calls editorAuth / editorPing, and every tool call goes through
@@ -35,7 +37,11 @@
   const PAGE = window.MOG_EDITOR_PAGE || 'items';
   // The pages in the app, by the ?page= name the Apps Script editor uses.
   const PAGES = { editor: 'index.html', items: 'items.html', vendors: 'vendors.html', areas: 'areas.html', pickpath: 'pickpath.html',
-                  history: 'history.html', healthcheck: 'healthcheck.html', changes: 'changes.html', overview: 'overview.html' };
+                  history: 'history.html', changes: 'changes.html', overview: 'overview.html' };
+  // What a link to a Manage page may carry along (?page=items&area=__none):
+  // the filter it opens on (Items: view, area, q; Vendors: open; Shelf to
+  // Sheet: vendor). The app passes them on to the page's frame.
+  const LINK_PARAMS = ['view', 'area', 'q', 'open', 'vendor'];
 
   // Inside the app (docs/MOG_OneApp_Spec.md U2): on a computer the app is the
   // one page that loads, and this page runs in a frame beside its sidebar
@@ -158,16 +164,18 @@
     return true;
   }
 
-  // What the Apps Script page would have had baked in, from the tables. The
-  // first vendor A-Z opens Shelf to Sheet (the Sheet opens the one picked in
-  // its SETUP tab, which the app doesn't have).
+  // What the Apps Script page would have had baked in, from the tables.
+  // Editor Home's Health Check tile opens the Overview, where the Health
+  // check is now; a tool not in the app shows as coming soon.
   function fillPage() {
     if (PAGE === 'vendors') window.VENDOR_TABLE = CE.call(H.tables, 'getVendorTableData', []).result;
-    else if (PAGE === 'areas') window.AREA_LIST = CE.call(H.tables, 'getStorageAreaList', []).result;
-    else if (PAGE === 'pickpath') {
-      window.PICK_DATA = window.VENDOR_LIST.length ? CE.call(H.tables, 'getPickPathForSidebar', [window.VENDOR_LIST[0]]).result : {};
-    } else if (PAGE === 'home' && Array.isArray(window.HOME_SECTIONS)) {
-      for (const sec of window.HOME_SECTIONS) for (const c of sec.cards || []) if (!PAGES[c.page]) c.live = false;
+    else if (PAGE === 'home' && Array.isArray(window.HOME_SECTIONS)) {
+      for (const sec of window.HOME_SECTIONS) {
+        for (const c of sec.cards || []) {
+          if (c.page === 'healthcheck') Object.assign(c, { page: 'overview', en: 'Overview', es: 'Resumen' });
+          if (!PAGES[c.page]) c.live = false;
+        }
+      }
     }
   }
 
@@ -469,13 +477,22 @@
     document.addEventListener('click', function (e) {
       const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
       if (!a) return;
-      let want = null;
-      try { want = new URL(a.getAttribute('href'), location.href).searchParams.get('page'); } catch (err) { want = null; }
+      let params = null;
+      try { params = new URL(a.getAttribute('href'), location.href).searchParams; } catch (err) { params = null; }
+      const want = params && params.get('page');
       if (!want) return;
       e.preventDefault();
       e.stopPropagation();
-      SHELL.open(want === 'editor' ? 'overview' : want);
+      SHELL.open(want === 'editor' ? 'overview' : want, linkQuery(params));
     }, true);
+  }
+
+  // A link's filter, for the app to pass on: the LINK_PARAMS it carries, as
+  // a query string ('' when none).
+  function linkQuery(params) {
+    const out = new URLSearchParams();
+    for (const k of LINK_PARAMS) { const v = params.get(k); if (v) out.set(k, v); }
+    return out.toString();
   }
 
   function renderRail() {
@@ -796,6 +813,9 @@
     importItems: () => (window.MeImport ? openImport() : null),
     parFlags: parFlags,
     health: () => HOST_CALLS.getStoreHealthReport([]),
+    // The Health check's two fixes, on its Overview rows: place_backups (a
+    // logged, undoable change) and clear_lockout.
+    fix: id => HOST_CALLS.runHealthFix([id]),
     today: () => (SHELL && typeof SHELL.today === 'function' ? SHELL.today() : null),
     goToday: () => { if (SHELL && typeof SHELL.go === 'function') SHELL.go('today'); },
     store: () => H.store

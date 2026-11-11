@@ -2727,6 +2727,18 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
       var nb = document.querySelector('#it-panel .pn-body'); if (nb) nb.scrollTop = top;
     }
 
+    // A link's filter (the Overview's rows: ?view=setup, ?area=__none,
+    // ?q=<name>), once, when the page opens. setCatalog drops an area or
+    // vendor the store doesn't have.
+    function filterFromLink(search) {
+      var p;
+      try { p = new URLSearchParams(search || ''); } catch (e) { return; }
+      var view = p.get('view'), area = p.get('area'), q = p.get('q');
+      if (view && VIEWS.indexOf(view) >= 0) S.view = view;
+      if (area) S.area = area;
+      if (q) S.q = q;
+    }
+
     function startItems_() {
       mgeMountWebChrome_();
       document.documentElement.classList.add('mge-web');
@@ -2734,7 +2746,7 @@ l5 -255 100 0 99 0 0 260 0 260 120 0 120 0 0 80 0 80 -350 0 -350 0 0 -80z"/>
         [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
         { en: 'Items', es: 'Artículos' }
       );
-      if (!startItems_.wired) { wire(); startItems_.wired = true; }
+      if (!startItems_.wired) { wire(); startItems_.wired = true; filterFromLink(location.search); }
       call('getManageItemsBootstrap').then(function (b) {
         S.flags = b.flags || {}; S.minOrders = b.minOrders || 3;
         setCatalog(b.items, b.areas, b.vendorTable);

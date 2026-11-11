@@ -7,7 +7,11 @@
   <!-- The Manage home (docs/MOG_OneApp_Spec.md U4, U9): today's order, the
        catalog's counts, a setup checklist until every step is done, what
        needs attention, and the latest changes. Only in the app's editor (no
-       Apps Script twin); host.js supplies the data (__MOG_EDITOR_HOST__.overview). -->
+       Apps Script twin); host.js supplies the data (__MOG_EDITOR_HOST__.overview).
+       Since 2026-11-11 the Health check lives here (board 9 of the Manage
+       mockup): each warning is its own Needs attention row with its link or
+       fix (catalogEdit.js healthRows), and the store checks that are OK show
+       on a line under the rows. Its own page is gone from the app. -->
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Inter', Arial, Helvetica, sans-serif; margin: 0; color: #1f1e1b; background: #fff; }
@@ -57,7 +61,23 @@
     .ov-two > .ov-box { flex: 1 1 420px; min-width: 0; }
     .ov-quiet { padding: 12px 0 2px; font-size: 14px; color: #5f5e5a; }
     .ov-btns { display: flex; gap: 6px; flex: none; }
+    .ov-btn:disabled { opacity: 0.5; cursor: default; }
     .ov-ch.undone .ov-row-title { color: #8a8a85; text-decoration: line-through; font-weight: 500; }
+    .ov-attn .ov-row { flex-wrap: wrap; }
+    .ov-attn .ov-row-main { flex: 1 1 260px; }
+    .ov-count { font-size: 13px; font-weight: 700; color: #5f5e5a; }
+    .ov-store { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-top: 6px; padding: 12px 14px; border-radius: 10px;
+                background: #f1f7f3; font-size: 13px; }
+    .ov-store b { color: #1a6b48; }
+    .ov-store span { display: inline-flex; align-items: center; gap: 6px; }
+    .ov-store svg { width: 16px; height: 16px; flex: none; }
+    .ov-store .ov-when { color: #6b6a65; margin-left: auto; }
+    .ov-store.err { background: #fde4e4; }
+    .ov-store.err b { color: #8a2020; }
+    #ov-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); z-index: 50;
+                background: #1f1e1b; color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 14px; box-shadow: 0 10px 28px rgba(0,0,0,0.25); }
+    #ov-toast[hidden] { display: none; }
+    #ov-toast.err { background: #8a2020; }
   </style>
 </head>
 <body class="lang-en">
@@ -80,6 +100,7 @@
     <p class="web-subtitle" id="ov-sub"></p>
   </div>
   <div id="ov-wrap"></div>
+  <div id="ov-toast" role="status" hidden></div>
 
   <script>
     document.body.className = 'lang-' + mgeGetLang_();
@@ -90,7 +111,23 @@
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
     function ovPlural(n, en, enMany, es, esMany) { return n + ' ' + (n === 1 ? ovT(en, es) : ovT(enMany, esMany)); }
-    function ovPage(name) { return ovEsc((BASE_URL || 'index.html') + '?page=' + name); }
+    // A Manage page's link, with the filter it opens on (host.js passes it
+    // on inside the app): ovPage('items', { area: '__none' }).
+    function ovPage(name, params) {
+      var q = '';
+      Object.keys(params || {}).forEach(function (k) { if (k !== 'page' && params[k]) q += '&' + k + '=' + encodeURIComponent(params[k]); });
+      return ovEsc((BASE_URL || 'index.html') + '?page=' + name + q);
+    }
+    // The first few names, then "and N more".
+    function ovNames(names, max) {
+      max = max || 3;
+      var shown = names.slice(0, max).join(', ');
+      return names.length > max ? shown + ovT(' and ' + (names.length - max) + ' more', ' y ' + (names.length - max) + ' más') : shown;
+    }
+    function ovDay(ymd) {
+      var d = /^\d{4}-\d{2}-\d{2}$/.test(String(ymd || '')) ? new Date(ymd + 'T12:00:00') : null;
+      return d ? d.toLocaleDateString(OV_ES ? 'es-US' : 'en-US', { month: 'short', day: 'numeric' }) : String(ymd || '');
+    }
     function ovTime(hhmm) {
       var m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ''));
       if (!m) return '';
@@ -101,14 +138,15 @@
       flag: '<path d="M5 5a5 5 0 0 1 7 0a5 5 0 0 0 7 0v9a5 5 0 0 1 -7 0a5 5 0 0 0 -7 0v-9z"/><path d="M5 21v-7"/>',
       alert: '<path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/><path d="M12 16h.01"/>',
       box: '<path d="M12 3l8 4.5l0 9l-8 4.5l-8 -4.5l0 -9l8 -4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12l0 9"/><path d="M12 12l-8 -4.5"/>',
-      shield: '<path d="M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06"/><path d="M15 19l2 2l4 -4"/>'
+      lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+      check: '<path d="M5 12.5l4 4 10-10"/>'
     };
     function ovIcon(kind, name) {
       return '<span class="ov-icon ' + kind + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
         'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + OV_ICONS[name] + '</svg></span>';
     }
 
-    var OV = { flags: null, health: null };
+    var OV = { flags: null, health: null, healthErr: '' };
     function ovHost() { return window.__MOG_EDITOR_HOST__ && window.__MOG_EDITOR_HOST__.overview; }
     function ovSetupKey() { return 'mog_setup_done_' + ((window.MOG_SUPABASE && window.MOG_SUPABASE.slug) || ''); }
 
@@ -140,7 +178,9 @@
     }
 
     // The setup checklist (U9). Hidden for good once every step was done.
-    function ovSetup(c) {
+    // show: the card is on the page, so Needs attention leaves it the gaps it
+    // covers (vendors' days, items' areas and pars; Sebastian, 2026-11-11).
+    function ovSetupState(c) {
       var withDays = c.vendors.length - c.vendorsNoDays.length;
       var steps = [
         { done: c.items > 0, title: ovT('Add your items', 'Agrega tus artículos'),
@@ -150,7 +190,8 @@
         { done: c.vendors.length > 0 && c.vendorsNoDays.length === 0, title: ovT("Set each vendor's delivery days", 'Pon los días de entrega de cada proveedor'),
           sub: !c.vendors.length ? ovT('No vendors yet.', 'Todavía no hay proveedores.')
              : !c.vendorsNoDays.length ? ovT('Every vendor has delivery days.', 'Todos los proveedores tienen días de entrega.')
-             : withDays + ovT(' of ', ' de ') + c.vendors.length + ovT(' vendors have delivery days. One without never shows on Today.', ' proveedores tienen días de entrega. Uno sin ellos nunca aparece en Hoy.'),
+             : withDays + ovT(' of ', ' de ') + c.vendors.length + ovT(' vendors have delivery days; one without never shows on Today. Not yet: ', ' proveedores tienen días de entrega; uno sin ellos nunca aparece en Hoy. Faltan: ') +
+               ovNames(c.vendorsNoDays, 6) + '.',
           action: '<a class="ov-btn" href="' + ovPage('vendors') + '">' + ovT('Open Vendors', 'Abrir Proveedores') + '</a>' },
         { done: c.areas.length > 0, title: ovT('Create storage areas', 'Crea las áreas de almacenamiento'),
           sub: c.areas.length ? ovPlural(c.areas.length, 'area', 'areas', 'área', 'áreas') : ovT('The places you count, like the walk-in or dry storage.', 'Los lugares donde cuentas, como el refrigerador o el almacén.'),
@@ -159,7 +200,7 @@
           sub: c.items ? ovT(c.itemsNoArea + ' with no storage area · ' + c.itemsNoPar + ' with no par',
                              c.itemsNoArea + ' sin área · ' + c.itemsNoPar + ' sin par')
                        : ovT('Once there are items.', 'Cuando haya artículos.'),
-          action: '<a class="ov-btn" href="' + ovPage('items') + '">' + ovT('Open Items', 'Abrir Artículos') + '</a>' },
+          action: '<a class="ov-btn" href="' + ovPage('items', { view: 'setup' }) + '">' + ovT('Open Items', 'Abrir Artículos') + '</a>' },
         { done: c.shelfSaved, title: ovT('Put each area in shelf order', 'Ordena cada área como los estantes'),
           sub: ovT('Shelf to Sheet: the count list follows the shelves.', 'Estante a Hoja: la lista de conteo sigue los estantes.'),
           action: '<a class="ov-btn" href="' + ovPage('pickpath') + '">' + ovT('Open Shelf to Sheet', 'Abrir Estante a Hoja') + '</a>' }
@@ -168,7 +209,11 @@
       var remembered = false;
       try { remembered = localStorage.getItem(ovSetupKey()) === '1'; } catch (e) { remembered = false; }
       if (done === steps.length) { try { localStorage.setItem(ovSetupKey(), '1'); } catch (e) { /* shows again next time */ } }
-      if (done === steps.length || remembered) return '';
+      return { steps: steps, done: done, show: !(done === steps.length || remembered) };
+    }
+    function ovSetup(setup) {
+      if (!setup.show) return '';
+      var steps = setup.steps, done = setup.done;
       var h = '<section class="ov-box" aria-labelledby="ov-setup-h"><div class="ov-box-head"><h2 id="ov-setup-h">' +
         ovT('Set up ', 'Configura ') + ovEsc(MOG_STORE || ovT('this store', 'esta tienda')) + '</h2><span>' + done + ovT(' of ', ' de ') + steps.length +
         ovT(' done', ' listos') + '</span></div><div class="ov-bar"><div style="width:' + Math.round(100 * done / steps.length) + '%"></div></div><div>';
@@ -180,16 +225,98 @@
       return h + '</div></section>';
     }
 
-    // Needs attention: phones' one-day edits (Apply / Dismiss here, U8), Par
-    // Review, and the Health Check.
-    function ovAttention() {
-      var rows = '';
+    // A Health check row's words and what it does (its page went into the
+    // Overview, 2026-11-11): r is a catalogEdit.js healthRows row.
+    function ovHealthWords(r) {
+      var n = r.count, one = n === 1, names = ovNames(r.names);
+      var show = one ? ovT('Show it in Items', 'Verlo en Artículos') : ovT('Show them in Items', 'Verlos en Artículos');
+      switch (r.id) {
+        case 'nightly':
+          return r.cycleDate
+            ? { icon: 'alert', title: ovT('Last night’s close didn’t run', 'El cierre de anoche no se hizo'),
+                sub: ovT('The day open now is still ' + ovDay(r.cycleDate) + '. Open the app on a phone to start the new day; the nightly run is reinstalled from the Sheet’s Health Check.',
+                         'El día abierto sigue siendo ' + ovDay(r.cycleDate) + '. Abre la app en un teléfono para empezar el día nuevo; el cierre nocturno se reinstala desde el Chequeo de la hoja.') }
+            : { icon: 'alert', title: ovT('The store has no day in Supabase yet', 'La tienda todavía no tiene día en Supabase'),
+                sub: ovT('In the Sheet: Mobile API → Move this store to Supabase.', 'En la hoja: Mobile API → Move this store to Supabase.') };
+        case 'lockout':
+          return { icon: 'lock', title: ovT('The PIN is locked for ' + r.minutes + (r.minutes === 1 ? ' more minute' : ' more minutes'),
+                                            'El PIN está bloqueado ' + r.minutes + (r.minutes === 1 ? ' minuto más' : ' minutos más')),
+                   sub: ovT('After 5 wrong tries. Clear it so the right PIN works now.', 'Tras 5 intentos fallidos. Desbloquéalo para que el PIN correcto funcione ya.'),
+                   btn: ovT('Clear lockout', 'Desbloquear') };
+        case 'phones':
+          return { icon: 'alert', title: ovT('Phones still save through the Sheet', 'Los teléfonos todavía guardan a través de la hoja'),
+                   sub: ovT('Slower than saving straight to Supabase. A maintainer turns it on with supabase/phones_direct.sql.',
+                            'Más lento que guardar directo en Supabase. Un encargado lo activa con supabase/phones_direct.sql.') };
+        case 'vendors_days':
+          return one
+            ? { icon: 'alert', title: ovT(r.names[0] + ' has no delivery days', r.names[0] + ' no tiene días de entrega'),
+                sub: ovT('It never shows on Today, so nothing is ordered from it.', 'Nunca aparece en Hoy, así que no se le pide nada.'), btn: ovT('Set its days', 'Pon sus días') }
+            : { icon: 'alert', title: ovT(n + ' vendors have no delivery days', n + ' proveedores no tienen días de entrega'),
+                sub: names + ovT('. They never show on Today, so nothing is ordered from them.', '. Nunca aparecen en Hoy, así que no se les pide nada.'), btn: ovT('Set their days', 'Pon sus días') };
+        case 'items_area':
+          return { icon: 'alert', title: ovPlural(n, 'item has no storage area', 'items have no storage area', 'artículo no tiene área', 'artículos no tienen área'),
+                   sub: names + (one ? ovT('. It is on no count list.', '. No está en ninguna lista de conteo.') : ovT('. They are on no count list.', '. No están en ninguna lista de conteo.')), btn: show };
+        case 'items_par':
+          return { icon: 'alert', title: ovPlural(n, 'item has no par', 'items have no par', 'artículo no tiene par', 'artículos no tienen par'),
+                   sub: names + (one ? ovT('. It is never ordered.', '. Nunca se pide.') : ovT('. They are never ordered.', '. Nunca se piden.')), btn: show };
+        case 'items_primary':
+          return { icon: 'alert', title: ovPlural(n, 'item has no main vendor', 'items have no main vendor', 'artículo no tiene proveedor principal', 'artículos no tienen proveedor principal'),
+                   sub: names + (one ? ovT('. Its vendor was removed.', '. Su proveedor fue quitado.') : ovT('. Their vendor was removed.', '. Su proveedor fue quitado.')), btn: show };
+        case 'backups_placed':
+          return { icon: 'alert', title: ovPlural(n, 'item is missing from a backup vendor’s list', 'items are missing from a backup vendor’s list',
+                                                  'artículo falta en la lista de un proveedor de respaldo', 'artículos faltan en la lista de un proveedor de respaldo'),
+                   sub: names + ovT('. Placed in their current area; undo from Recent changes.', '. Se colocan en su área actual; se deshace en Cambios recientes.'),
+                   btn: one ? ovT('Place it', 'Colocarlo') : ovT('Place them', 'Colocarlos') };
+        case 'item_names':
+          return one
+            ? { icon: 'alert', title: ovT((r.copies[0] || 2) + ' active items are called “' + r.names[0] + '”', (r.copies[0] || 2) + ' artículos activos se llaman “' + r.names[0] + '”'),
+                sub: ovT('Easy to mix up when counting. Rename one, or make it inactive.', 'Fácil de confundir al contar. Cambia el nombre de uno, o desactívalo.'), btn: ovT('Show them in Items', 'Verlos en Artículos') }
+            : { icon: 'alert', title: ovT(n + ' names are used by more than one active item', n + ' nombres los usa más de un artículo activo'),
+                sub: names + ovT('. Easy to mix up when counting.', '. Fácil de confundir al contar.'), btn: ovT('Show the first in Items', 'Ver el primero en Artículos') };
+      }
+      return { icon: 'alert', title: r.id, sub: '' };
+    }
+    function ovHealthRowHtml(r) {
+      var w = ovHealthWords(r), act = '';
+      if (r.fix && w.btn) act = '<button type="button" class="ov-btn primary" data-fix="' + ovEsc(r.fix) + '" data-count="' + r.count + '">' + ovEsc(w.btn) + '</button>';
+      else if (r.link && w.btn) act = '<a class="ov-btn" href="' + ovPage(r.link.page, r.link) + '">' + ovEsc(w.btn) + '</a>';
+      return '<div class="ov-row">' + ovIcon(r.tone === 'bad' ? 'bad' : 'warn', w.icon) + '<div class="ov-row-main"><div class="ov-row-title">' + ovEsc(w.title) + '</div>' +
+        (w.sub ? '<div class="ov-row-sub">' + ovEsc(w.sub) + '</div>' : '') + '</div>' + (act ? '<div class="ov-btns">' + act + '</div>' : '') + '</div>';
+    }
+    // The store checks that are OK, always on show under the rows: last
+    // night's close, the PIN lockout, phones on Supabase.
+    function ovStoreLine(health) {
+      if (OV.healthErr) {
+        return '<div class="ov-store err"><b>' + ovEsc(ovT('Store checks', 'Chequeos de la tienda')) + '</b><span>' +
+          ovEsc(ovT('Couldn’t check the store: ', 'No se pudo revisar la tienda: ') + OV.healthErr) + '</span></div>';
+      }
+      if (!OV.health || !health.storeOk.length) return '';
+      var words = { nightly: ovT('Last night’s close ran', 'El cierre de anoche se hizo'),
+                    lockout: ovT('No PIN lockout', 'PIN sin bloqueo'),
+                    phones: ovT('Phones save straight to Supabase', 'Los teléfonos guardan directo en Supabase') };
+      var at = String(OV.health.generatedAt || '').split(' ').slice(-2).join(' ');
+      return '<div class="ov-store"><b>' + ovEsc(ovT('Store checks', 'Chequeos de la tienda')) + '</b>' +
+        health.storeOk.map(function (id) {
+          return '<span><svg viewBox="0 0 24 24" fill="none" stroke="#1a6b48" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            OV_ICONS.check + '</svg>' + ovEsc(words[id] || id) + '</span>';
+        }).join('') + (at ? '<span class="ov-when">' + ovEsc(ovT('Checked ', 'Revisado ') + at) + '</span>' : '') + '</div>';
+    }
+
+    // Needs attention: the store's problems first (the close, the PIN, the
+    // phones), phones' one-day edits (Apply / Dismiss here, U8), each Health
+    // check warning on its own row (its link or its fix), then Par Review.
+    function ovAttention(setupShowing) {
+      var rows = '', count = 0;
+      var health = OV.health && window.CatalogEdit ? CatalogEdit.healthRows(OV.health, setupShowing) : { rows: [], storeOk: [] };
+      health.rows.filter(function (r) { return r.kind === 'store'; }).forEach(function (r) { rows += ovHealthRowHtml(r); count++; });
       ovHost().reviews().forEach(function (r) {
+        count++;
         rows += '<div class="ov-row">' + ovIcon('warn', 'flag') + '<div class="ov-row-main"><div class="ov-row-title">' + ovEsc(ovHost().reviewLabel(r)) + '</div>' +
           '<div class="ov-row-sub">' + ovEsc(ovT('Phone edit for one day', 'Cambio de un día desde un teléfono') + ' · ' + ovHost().when(r.at) + ' · ' + (r.by || ovT('Someone', 'Alguien'))) + '</div></div>' +
           '<div class="ov-btns"><button type="button" class="ov-btn primary" data-apply="' + ovEsc(r.id) + '">' + ovT('Apply', 'Aplicar') + '</button>' +
           '<button type="button" class="ov-btn" data-dismiss="' + ovEsc(r.id) + '">' + ovT('Dismiss', 'Descartar') + '</button></div></div>';
       });
+      health.rows.filter(function (r) { return r.kind === 'catalog'; }).forEach(function (r) { rows += ovHealthRowHtml(r); count++; });
       if (OV.flags) {
         var under = 0, over = 0;
         Object.keys(OV.flags).forEach(function (id) {
@@ -197,23 +324,19 @@
           if (f === 'empty' || f === 'both') under++;
           if (f === 'over' || f === 'both') over++;
         });
-        if (under) rows += '<a class="ov-row ov-link" href="' + ovPage('items') + '">' + ovIcon('bad', 'alert') +
+        if (under) count++;
+        if (over) count++;
+        if (under) rows += '<a class="ov-row ov-link" href="' + ovPage('items', { view: 'review' }) + '">' + ovIcon('bad', 'alert') +
           '<div class="ov-row-main"><div class="ov-row-title">' + ovEsc(ovPlural(under, 'item may be running short', 'items may be running short', 'artículo podría quedarse corto', 'artículos podrían quedarse cortos')) + '</div>' +
           '<div class="ov-row-sub">' + ovT('Par Review, last 28 days', 'Revisión de pares, últimos 28 días') + '</div></div></a>';
-        if (over) rows += '<a class="ov-row ov-link" href="' + ovPage('items') + '">' + ovIcon('plain', 'box') +
+        if (over) rows += '<a class="ov-row ov-link" href="' + ovPage('items', { view: 'review' }) + '">' + ovIcon('plain', 'box') +
           '<div class="ov-row-main"><div class="ov-row-title">' + ovEsc(ovPlural(over, 'item may be over-ordered', 'items may be over-ordered', 'artículo podría pedirse de más', 'artículos podrían pedirse de más')) + '</div>' +
           '<div class="ov-row-sub">' + ovT('Par Review, last 28 days', 'Revisión de pares, últimos 28 días') + '</div></div></a>';
       }
-      if (OV.health) {
-        var s = OV.health.summary || {}, bad = (s.warn || 0) + (s.fail || 0);
-        if (bad) rows += '<a class="ov-row ov-link" href="' + ovPage('healthcheck') + '">' + ovIcon(s.fail ? 'bad' : 'warn', 'shield') +
-          '<div class="ov-row-main"><div class="ov-row-title">' + ovT('Health check: ', 'Chequeo: ') +
-          ovEsc([s.fail ? ovPlural(s.fail, 'problem', 'problems', 'problema', 'problemas') : '', s.warn ? ovPlural(s.warn, 'warning', 'warnings', 'aviso', 'avisos') : ''].filter(Boolean).join(', ')) + '</div>' +
-          '<div class="ov-row-sub">' + ovEsc(ovPlural(s.pass || 0, 'check is OK', 'checks are OK', 'chequeo está bien', 'chequeos están bien')) + '</div></div></a>';
-      }
-      var loading = !OV.flags || !OV.health;
+      var loading = !OV.flags || (!OV.health && !OV.healthErr);
       if (!rows) rows = '<div class="ov-quiet">' + (loading ? ovT('Checking…', 'Revisando…') : ovT('Nothing needs attention.', 'Nada necesita atención.')) + '</div>';
-      return '<section class="ov-box" aria-labelledby="ov-attn-h"><div class="ov-box-head"><h2 id="ov-attn-h">' + ovT('Needs attention', 'Por revisar') + '</h2></div>' + rows + '</section>';
+      return '<section class="ov-box ov-attn" aria-labelledby="ov-attn-h"><div class="ov-box-head"><h2 id="ov-attn-h">' + ovT('Needs attention', 'Por revisar') + '</h2>' +
+        (count ? '<span class="ov-count">' + count + '</span>' : '') + '</div>' + rows + ovStoreLine(health) + '</section>';
     }
 
     function ovChanges() {
@@ -245,8 +368,11 @@
                c.vendorsNoDays.length ? ovPlural(c.vendorsNoDays.length, 'has no delivery days', 'have no delivery days', 'sin días de entrega', 'sin días de entrega')
                                       : (c.vendors.length ? ovT('all have delivery days', 'todos tienen días de entrega') : ovT('none yet', 'ninguno todavía'))) +
         ovCard('areas', ovT('Storage areas', 'Áreas'), String(c.areas.length), c.areas.length ? c.areas.slice(0, 3).join(', ') + (c.areas.length > 3 ? '…' : '') : ovT('none yet', 'ninguna todavía')) +
-        '</div>' + ovSetup(c) + '<div class="ov-two">' + ovAttention() + ovChanges() + '</div>';
+        '</div>';
+      var setup = ovSetupState(c);
+      h += ovSetup(setup) + '<div class="ov-two">' + ovAttention(setup.show) + ovChanges() + '</div>';
       document.getElementById('ov-wrap').innerHTML = h;
+      document.querySelectorAll('#ov-wrap [data-fix]').forEach(function (b) { b.onclick = function () { ovFix(b); }; });
       var today = document.getElementById('ov-today');
       if (today) today.onclick = function (e) { e.preventDefault(); host.goToday(); };
       var imp = document.getElementById('ov-step-import');
@@ -257,6 +383,35 @@
     }
     // host.js calls this after a dismissed phone edit or a change, so the page keeps up.
     window.MOG_OVERVIEW_REFRESH = ovRender;
+
+    // The Health check, read again (after a fix, a change).
+    function ovLoadHealth() {
+      return ovHost().health().then(function (r) { OV.health = r; OV.healthErr = ''; },
+        function (e) { OV.health = null; OV.healthErr = (e && e.message) || String(e || ''); }).then(ovRender);
+    }
+    // A row's fix: place_backups (a logged change, undone from Recent
+    // changes) or clear_lockout.
+    function ovFix(b) {
+      var id = b.getAttribute('data-fix'), n = Number(b.getAttribute('data-count')) || 0;
+      b.disabled = true;
+      ovHost().fix(id).then(function (res) {
+        if (!res || !res.ok) throw new Error((res && res.message) || ovT('That didn’t work. Try again.', 'No funcionó. Inténtalo de nuevo.'));
+        ovToast(id === 'clear_lockout' ? ovT('The PIN lockout is cleared.', 'El PIN quedó desbloqueado.')
+          : ovT('Placed ' + n + (n === 1 ? ' item' : ' items') + ' on their backup vendors’ lists. Undo it in Recent changes.',
+                'Se colocaron ' + n + (n === 1 ? ' artículo' : ' artículos') + ' en las listas de sus proveedores de respaldo. Se deshace en Cambios recientes.'));
+        return ovLoadHealth();
+      }).catch(function (e) {
+        b.disabled = false;
+        ovToast((e && e.message) || String(e), true);
+      });
+    }
+    var ovToastTimer = null;
+    function ovToast(text, isErr) {
+      var el = document.getElementById('ov-toast');
+      el.textContent = text; el.className = isErr ? 'err' : ''; el.hidden = false;
+      clearTimeout(ovToastTimer);
+      ovToastTimer = setTimeout(function () { el.hidden = true; }, isErr ? 9000 : 5000);
+    }
 
     function startOverview_() {
       mgeMountWebChrome_();
@@ -276,7 +431,7 @@
       ovRender();
       var host = ovHost();
       host.parFlags().then(function (f) { OV.flags = f || {}; }, function () { OV.flags = {}; }).then(ovRender);
-      host.health().then(function (r) { OV.health = r; }, function () { OV.health = { summary: {} }; }).then(ovRender);
+      ovLoadHealth();
     }
     mgeStartGate_(startOverview_);
   </script>

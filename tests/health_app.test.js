@@ -62,14 +62,14 @@ function makeTab(sb, srcOf) {
   };
   ctx.window = ctx;
   ctx.MOG_SUPABASE = { url: 'https://fake.supabase.co', key: 'pub', slug: 'zzhealth' };
-  ctx.MOG_EDITOR_PAGE = 'healthcheck';
+  ctx.MOG_EDITOR_PAGE = 'overview';   // the Health check is part of the Overview since 2026-11-11
   vm.createContext(ctx);
   vm.runInContext(srcOf('apps-script/OrderMath.gs'), ctx);
   vm.runInContext(srcOf('template/editor/catalogEdit.js'), ctx);
   vm.runInContext(srcOf('template/editor/host.js'), ctx);
   const rpc = (name, ...args) => new Promise((resolve, reject) =>
     ctx.google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[name](...args));
-  return { signIn: async () => (await rpc('editorAuth', '4321')).token,
+  return { ctx, signIn: async () => (await rpc('editorAuth', '4321')).token,
            tool: async (token, fn, ...args) => (await rpc('webedit_call', token, fn, args, { envelope: 1 })).result };
 }
 
@@ -199,7 +199,8 @@ async function runSuite(srcOf) {
     const logged = (s.changeLog || []).slice(-1)[0];
     if (!fix.ok || !logged || !/Health Check/.test(logged.label)) fail('host', 'the fix was not logged: ' + JSON.stringify(fix) + ' ' + JSON.stringify(logged));
     if (!s.tables.pickRows.some(r => r.vendor === 'Sysco' && r.id === 'ITEM-0002')) fail('host', 'the fix did not reach Supabase');
-    const unlock = await tab.tool(token, 'runHealthFix', 'clear_lockout');
+    // The Overview's row runs it (host.js overview.fix).
+    const unlock = await tab.ctx.__MOG_EDITOR_HOST__.overview.fix('clear_lockout');
     if (!unlock.ok || s.lockedUntil) fail('host', 'the lockout was not cleared');
     rep = await tab.tool(token, 'getStoreHealthReport');
     if (row(rep, 'backups_placed').status !== 'pass' || row(rep, 'lockout').status !== 'pass') fail('host', 'after the fixes: ' + JSON.stringify(rep.checks.map(c => c.id + ':' + c.status)));
@@ -246,7 +247,9 @@ async function runSuite(srcOf) {
       find: "        const res = await callTool('commitPlaceBackupVendors', []);",
       replace: "        const res = CE.call(H.tables, 'commitPlaceBackupVendors', []).result;" },
     { name: 'the host\'s lockout fix does nothing', scenario: 'host', file: HOST,
-      find: "        const r = await rpc('mog_editor_clear_lockout', { p_token: H.token });", replace: "        const r = { ok: true };" }
+      find: "        const r = await rpc('mog_editor_clear_lockout', { p_token: H.token });", replace: "        const r = { ok: true };" },
+    { name: 'the Overview\'s fix button runs nothing', scenario: 'host', file: HOST,
+      find: '    fix: id => HOST_CALLS.runHealthFix([id]),', replace: "    fix: id => Promise.resolve({ ok: true, message: '' })," }
   ];
   for (const c of CONTROLS) {
     let res;

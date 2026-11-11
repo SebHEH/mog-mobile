@@ -19,9 +19,11 @@
 //   - Manage Vendors, Storage Areas (a swap, a deleted area's name reused) and
 //     Shelf to Sheet through the fake's link rules (a vendor's items let go
 //     before it goes, a renamed area carries its rows), each undone and redone
-//   - the other pages: each gets the data its Apps Script page had baked in,
-//     Editor Home sends ?page= on to the page's file, and tools not in the
-//     app show as coming soon
+//   - the other pages: Manage Vendors gets the data its Apps Script page had
+//     baked in, Editor Home sends ?page= on to the page's file, its Health
+//     Check tile opens the Overview (2026-11-11), and tools not in the app
+//     show as coming soon (Storage areas and Shelf to Sheet read their data
+//     themselves since then: tests/manage_pages.test.js)
 //   - a token in the URL goes to the gate's validate-first path
 // Planted-defect controls in host.js (and catalogEdit.js's save order) must
 // each be caught.
@@ -342,22 +344,24 @@ async function runSuite(srcOf) {
     if (JSON.stringify(vtab.ctx.VENDOR_TABLE) !== JSON.stringify(t.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => ({ name: v.name, mults: v.mults, cutoffTime: v.cutoff || null })))) {
       fail('pages', 'Manage Vendors got ' + JSON.stringify(vtab.ctx.VENDOR_TABLE));
     }
-    const atab = makeTab(sb, 'zzedit', srcOf, { page: 'areas', globals: { AREA_LIST: [] } });
-    await atab.run('editorAuth', '4321');
-    if (JSON.stringify(atab.ctx.AREA_LIST.map(a => a.name)) !== JSON.stringify(t.areas.slice().sort((a, b) => a.ord - b.ord).map(a => a.name))) {
-      fail('pages', 'Storage Areas got ' + JSON.stringify(atab.ctx.AREA_LIST));
+    // Storage areas and Shelf to Sheet (the app's own pages since
+    // 2026-11-11) read their data through webedit_call.
+    const atab = makeTab(sb, 'zzedit', srcOf, { page: 'areas' });
+    const atoken = (await atab.run('editorAuth', '4321')).token;
+    const areas = await atab.tool(atoken, 'getAreasPage');
+    if (JSON.stringify(areas.map(a => a.name)) !== JSON.stringify(t.areas.slice().sort((a, b) => a.ord - b.ord).map(a => a.name))) {
+      fail('pages', 'Storage areas read ' + JSON.stringify(areas));
     }
-    const ptab = makeTab(sb, 'zzedit', srcOf, { page: 'pickpath', globals: { PICK_DATA: {} } });
-    await ptab.run('editorAuth', '4321');
-    const firstVendor = t.vendors.map(v => v.name).sort((a, b) => a.localeCompare(b))[0];
-    if (!ptab.ctx.PICK_DATA || ptab.ctx.PICK_DATA.vendor !== firstVendor || !Array.isArray(ptab.ctx.PICK_DATA.groups)) {
-      fail('pages', 'Shelf to Sheet got ' + JSON.stringify(ptab.ctx.PICK_DATA).slice(0, 120));
+    const shelf = await atab.tool(atoken, 'getShelfPage', 'Sysco');
+    if (!shelf || !shelf.path || shelf.path.vendor !== 'Sysco' || shelf.vendors.length !== t.vendors.length) {
+      fail('pages', 'Shelf to Sheet read ' + JSON.stringify(shelf).slice(0, 120));
     }
     const sections = [{ cards: [{ page: 'items', live: true }, { page: 'pickpath', live: true }, { page: 'history', live: true },
-                                { page: 'healthcheck', live: true }, { page: 'nosuchtool', live: true }] }];
+                                { page: 'healthcheck', live: true, en: 'Store Health Check' }, { page: 'nosuchtool', live: true }] }];
     const htab = makeTab(sb, 'zzedit', srcOf, { page: 'home', globals: { HOME_SECTIONS: sections } });
     await htab.run('editorAuth', '4321');
     if (JSON.stringify(sections[0].cards.map(c => c.live)) !== '[true,true,true,true,false]') fail('pages', 'Editor Home tiles: ' + JSON.stringify(sections[0].cards));
+    if (sections[0].cards[3].page !== 'overview' || sections[0].cards[3].en !== 'Overview') fail('pages', 'the Health Check tile opens ' + sections[0].cards[3].page);
     const jump = makeTab(sb, 'zzedit', srcOf, { page: 'home', search: '?page=vendors&t=abc' });
     if (jump.ctx.__replaced !== 'vendors.html?t=abc') fail('pages', '?page=vendors went to ' + jump.ctx.__replaced);
     const hist = makeTab(sb, 'zzedit', srcOf, { page: 'home', search: '?page=history' });
@@ -431,10 +435,10 @@ const CONTROLS = [
     find: '            delete parameter.t;', replace: '' },
   { name: 'a vendor goes before its items let go of it', scenario: 'tools', file: CE_FILE,
     find: '.concat(renames, early, puts, late);', replace: '.concat(renames, early, late, puts);' },
-  { name: 'Shelf to Sheet opens with nothing', scenario: 'pages',
-    find: "    else if (PAGE === 'pickpath') {", replace: "    else if (false) {" },
+  { name: 'Editor Home\'s Health Check tile goes nowhere', scenario: 'pages',
+    find: "          if (c.page === 'healthcheck') Object.assign(c, { page: 'overview', en: 'Overview', es: 'Resumen' });", replace: '' },
   { name: 'Editor Home offers tools not in the app', scenario: 'pages',
-    find: '      for (const sec of window.HOME_SECTIONS) for (const c of sec.cards || []) if (!PAGES[c.page]) c.live = false;', replace: '' },
+    find: '          if (!PAGES[c.page]) c.live = false;', replace: '' },
   { name: 'a renamed area is sent as a delete and an add', scenario: 'tools', file: CE_FILE,
     find: "    for (const r of renames) (r.rename === 'vendors' ? renameVendor : renameArea)(b, r.from, r.to);", replace: '' },
   { name: 'a page inside the app asks for the PIN when its session runs out', scenario: 'embed',

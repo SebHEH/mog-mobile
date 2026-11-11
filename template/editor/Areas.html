@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Storage areas in the app (mockup "Manage Items and Vendors redesign",
+       board 7, approved 2026-11-11): the store's areas in the order the count
+       lists follow, each with its items and vendors; rename, add, delete and
+       reorder are a draft until one Save. A delete stays in the list as
+       "Deleted when you save" with Put back. Only in the app's editor: the
+       Sheet dialog and the /exec editor keep apps-script/StorageAreas.html.
+       Reads getAreasPage, saves commitStorageAreasDraft (catalogEdit.js,
+       gated against PickPath.gs), through host.js. -->
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', Arial, Helvetica, sans-serif; margin: 0; color: #1f1e1b; background: #fff; font-size: 14px; }
+    .lang-en .es, .lang-es .en { display: none; }
+    button, input { font: inherit; color: inherit; }
+    body.mge-web .web-titlebar { max-width: 828px; }
+    .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+    #ar-wrap { max-width: 828px; padding: 6px 24px 32px; display: flex; flex-direction: column; gap: 14px; min-height: calc(100vh - 110px); }
+    .ar-card { border: 1px solid #e6e4dd; border-radius: 14px; background: #fff; overflow: hidden; }
+    .ar-head { display: flex; justify-content: space-between; padding: 12px 16px 12px 20px; font-size: 12px; font-weight: 600; color: #5f5e5a; }
+    #ar-list { list-style: none; margin: 0; padding: 0; }
+    .ar-row { display: flex; align-items: center; gap: 14px; padding: 11px 16px 11px 20px; border-top: 1px solid #f0efea; }
+    .ar-row.renaming { background: var(--web-accent-soft, #e9f4ef); }
+    .ar-row.deleted { background: #fdf3f1; }
+    .ar-num { width: 28px; height: 28px; flex: none; border-radius: 8px; background: #f0eee6; display: flex; align-items: center; justify-content: center;
+              font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .ar-row.deleted .ar-num { background: #f3e1de; }
+    .ar-main { flex: 1 1 auto; min-width: 0; }
+    .ar-name { font-weight: 700; overflow-wrap: anywhere; }
+    .ar-row.deleted .ar-name { color: #8a8984; text-decoration: line-through; }
+    .ar-sub { font-size: 12.5px; color: #6b6a65; margin-top: 2px; }
+    .ar-row.deleted .ar-sub { color: #a3261a; }
+    .ar-new { display: inline-block; margin-left: 8px; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+              background: var(--web-accent-soft, #e9f4ef); vertical-align: 1px; }
+    .ar-btns { display: flex; align-items: center; gap: 6px; flex: none; }
+    .ar-ico { width: 36px; height: 36px; border-radius: 9px; border: 1px solid rgba(0,0,0,0.12); background: #fff; display: inline-flex;
+              align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+    .ar-ico svg { width: 16px; height: 16px; }
+    .ar-ico:disabled { opacity: 0.35; cursor: default; }
+    .ar-ico.danger { border-color: #e3b8b2; color: #a3261a; }
+    .ar-btn { height: 36px; padding: 0 12px; border-radius: 9px; border: 1px solid rgba(0,0,0,0.12); background: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .ar-btn:hover, .ar-ico:hover:not(:disabled) { background: #f5f4ed; }
+    .ar-btn.primary { border: 0; background: var(--web-accent, #2d8c6b); color: var(--web-accent-text, #fff); font-weight: 700; }
+    .ar-btn.primary:hover { filter: brightness(0.95); background: var(--web-accent, #2d8c6b); }
+    .ar-btn.big { height: 40px; padding: 0 16px; border-radius: 10px; font-size: 14px; }
+    .ar-rename { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .ar-rename input { flex: 1 1 220px; height: 40px; padding: 0 12px; border-radius: 10px; border: 2px solid var(--web-accent, #2d8c6b); font-weight: 600; background: #fff; }
+    .ar-hint { flex-basis: 100%; font-size: 12.5px; color: #6b6a65; }
+    .ar-err { flex-basis: 100%; font-size: 12.5px; color: #a3261a; font-weight: 600; }
+    .ar-err:empty { display: none; }
+    .ar-empty { padding: 22px 20px; color: #5f5e5a; border-top: 1px solid #f0efea; }
+    .ar-add { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 16px 14px 20px; border-top: 1px solid #ecebe5; background: #faf9f5; }
+    .ar-add input { flex: 1 1 240px; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.18); background: #fff; }
+    .ar-add .ar-btn { display: inline-flex; align-items: center; gap: 6px; }
+    .ar-add .ar-btn svg { width: 15px; height: 15px; }
+    .ar-limit { font-size: 12.5px; color: #6b6a65; }
+    .ar-note { margin: 0; font-size: 13px; color: #5f5e5a; }
+    .ar-note a { color: #1f1e1b; font-weight: 600; }
+    .ar-spacer { flex: 1 1 auto; }
+    #ar-bar { position: sticky; bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px 14px 20px;
+              border: 1px solid rgba(0,0,0,0.1); border-radius: 14px; background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+    #ar-bar[hidden] { display: none; }
+    .ar-dot { width: 9px; height: 9px; border-radius: 50%; background: #d98a00; flex: none; }
+    .ar-sum { flex: 1 1 260px; min-width: 0; }
+    .ar-sum span { color: #5f5e5a; }
+    #ar-bar .ar-btn:disabled { opacity: 0.5; cursor: default; }
+
+    #ar-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); z-index: 50;
+                background: #1f1e1b; color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 14px; box-shadow: 0 10px 28px rgba(0,0,0,0.25); }
+    #ar-toast[hidden] { display: none; }
+    #ar-toast.err { background: #8a2020; }
+    #ar-toast a { color: #fff; font-weight: 700; margin-left: 6px; }
+
+    @media (max-width: 899px) {
+      #ar-wrap { padding: 6px 12px 24px; }
+      .ar-row { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body class="lang-en">
+  <!-- Boot vars FIRST — EditorShell (included below) reads WEB_BOOT/MOG_WEB. -->
+  <script>
+    var WEB_BOOT  = <?!= webBootJson ?>;
+    var MOG_WEB   = !!(WEB_BOOT && WEB_BOOT.web);
+    var MOG_STORE = (WEB_BOOT && WEB_BOOT.store)   || '';
+    var MOG_ABBR  = (WEB_BOOT && WEB_BOOT.abbr)    || '';
+    var BASE_URL  = (WEB_BOOT && WEB_BOOT.base)    || '';
+    var THEME     = (WEB_BOOT && WEB_BOOT.theme)   || {};
+    var CONCEPT   = (WEB_BOOT && WEB_BOOT.concept) || '';
+    var MOG_TOKEN = null;   // set by the PIN gate (EditorShell)
+  </script>
+
+  <?!= include('EditorShell'); ?>
+
+  <div class="web-titlebar">
+    <h1 class="web-title"><span class="en">Storage areas</span><span class="es">Áreas de almacenamiento</span></h1>
+    <p class="web-subtitle"><span class="en">The places you count, in the order you walk them. Every vendor’s count list goes area by area in this order.</span><span class="es">Los lugares donde cuentas, en el orden en que los recorres. La lista de conteo de cada proveedor va área por área en este orden.</span></p>
+  </div>
+
+  <div id="ar-wrap">
+    <div class="ar-card">
+      <div class="ar-head"><span><span class="en">Area</span><span class="es">Área</span></span><span id="ar-count"></span></div>
+      <ol id="ar-list"><li class="ar-empty"><span class="en">Loading…</span><span class="es">Cargando…</span></li></ol>
+      <div class="ar-add">
+        <label for="ar-new" class="vh"><span class="en">New area name</span><span class="es">Nombre del área nueva</span></label>
+        <input type="text" id="ar-new" maxlength="100" autocomplete="off">
+        <button type="button" class="ar-btn big" id="ar-add-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          <span class="en">Add area</span><span class="es">Agregar área</span>
+        </button>
+        <span class="ar-limit"><span class="en">Up to 18 areas.</span><span class="es">Hasta 18 áreas.</span></span>
+        <div class="ar-err" id="ar-add-err" role="alert"></div>
+      </div>
+    </div>
+    <p class="ar-note" id="ar-note"></p>
+    <div class="ar-spacer"></div>
+    <div id="ar-bar" role="status" hidden>
+      <span class="ar-dot" aria-hidden="true"></span>
+      <div class="ar-sum" id="ar-sum"></div>
+      <button type="button" class="ar-btn big" id="ar-discard"><span class="en">Discard</span><span class="es">Descartar</span></button>
+      <button type="button" class="ar-btn big primary" id="ar-save"><span class="en">Save areas</span><span class="es">Guardar áreas</span></button>
+    </div>
+  </div>
+  <div id="ar-toast" role="status" hidden></div>
+
+  <script>
+    var LANG = mgeGetLang_();
+    document.body.classList.remove('lang-en', 'lang-es');
+    document.body.classList.add('lang-' + LANG);
+    var ES = (LANG === 'es');
+    function T(en, es) { return ES ? es : en; }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function plural(n, en, enMany, es, esMany) { return n + ' ' + (n === 1 ? T(en, es) : T(enMany, esMany)); }
+    function pageLink(page, extra) { return esc((BASE_URL || 'index.html') + '?page=' + page + (extra || '')); }
+    var ICON = {
+      up: '<path d="m6 15 6-6 6 6"/>',
+      down: '<path d="m6 9 6 6 6-6"/>',
+      trash: '<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>'
+    };
+    function icon(name) {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>';
+    }
+    var MAX_AREAS = 18;   // catalogEdit.js storageAreasDraft (Core.gs AREA_TABLE)
+
+    // ---- Talking to the server: host.js answers from the catalog tables ----
+    function call(fn) {
+      var args = [].slice.call(arguments, 1);
+      return new Promise(function (resolve, reject) {
+        var r = mgeRpc_().withSuccessHandler(resolve).withFailureHandler(reject);
+        r[fn].apply(r, args);
+      });
+    }
+
+    // ---- State ----
+    // A row: { name, origName (null = new), items, vendors, onlyHere, deleted }.
+    var S = { rows: [], loaded: [], base: '', renaming: -1, renameErr: '', busy: false };
+
+    // ---- The draft's rules (tests/manage_pages.test.js runs these) ----
+    function arKept(rows) { return rows.filter(function (r) { return !r.deleted; }); }
+    function arSnapshot(rows) { return JSON.stringify(rows.map(function (r) { return [r.name, r.origName, !!r.deleted]; })); }
+    // What commitStorageAreasDraft takes: the kept areas in order, each with
+    // the area it was when the page loaded (none for a new one). An area left
+    // out is deleted.
+    function arPayload(rows) {
+      return arKept(rows).map(function (r) { return { name: r.name.trim(), origName: r.origName || null }; });
+    }
+    // Why a name can't be used ('' when it can): blank, too long, or another
+    // kept area's (any case). skip: the row being renamed.
+    function arNameProblem(rows, name, skip) {
+      var n = String(name || '').trim();
+      if (!n) return T('Give the area a name.', 'Ponle un nombre al área.');
+      if (n.length > 100) return T('Keep the name under 100 characters.', 'El nombre debe tener menos de 100 caracteres.');
+      for (var i = 0; i < rows.length; i++) {
+        if (i === skip || rows[i].deleted) continue;
+        if (rows[i].name.trim().toLowerCase() === n.toLowerCase()) return T('There is already an area called "' + rows[i].name + '".', 'Ya hay un área llamada "' + rows[i].name + '".');
+      }
+      return '';
+    }
+    // The draft against the areas as loaded: renamed, added, deleted, and
+    // whether the kept ones changed order.
+    function arSummary(rows, loaded) {
+      var kept = arKept(rows);
+      var was = loaded.map(function (r) { return r.name; });
+      var order = kept.filter(function (r) { return r.origName; }).map(function (r) { return r.origName; });
+      var stillThere = was.filter(function (n) { return order.indexOf(n) >= 0; });
+      return {
+        renamed: kept.filter(function (r) { return r.origName && r.origName !== r.name.trim(); }).length,
+        added: kept.filter(function (r) { return !r.origName; }).length,
+        deleted: rows.filter(function (r) { return r.deleted; }).length,
+        reordered: order.join('\u0001') !== stillThere.join('\u0001')
+      };
+    }
+    // Up or down past the next kept area (a deleted one stays where it is).
+    function arMove(rows, i, dir) {
+      var j = i + dir;
+      while (j >= 0 && j < rows.length && rows[j].deleted) j += dir;
+      if (j < 0 || j >= rows.length) return false;
+      var r = rows[i]; rows[i] = rows[j]; rows[j] = r;
+      return true;
+    }
+
+    // ---- Dirty and the leave guard ----
+    function pendingRename() {
+      if (S.renaming < 0) return null;
+      var inp = document.getElementById('ar-rename-input');
+      var v = inp ? inp.value.trim() : '';
+      return v && v !== S.rows[S.renaming].name ? v : null;
+    }
+    function pendingAdd() { var v = document.getElementById('ar-new').value.trim(); return v || null; }
+    function isDirty() { return arSnapshot(S.rows) !== S.base || !!pendingRename() || !!pendingAdd(); }
+    function markDirty() {
+      var dirty = isDirty();
+      mgeSetLeaveGuard_(dirty ? function (proceed) { guard(proceed); } : null);
+      renderBar();
+    }
+    function guard(proceed) {
+      if (!isDirty()) { proceed(); return; }
+      mgeGuard3_({
+        title: { en: 'Save your changes?', es: '¿Guardar los cambios?' },
+        msg: { en: 'You changed the storage areas and haven’t saved them.', es: 'Cambiaste las áreas y no las guardaste.' },
+        onSave: function () { save().then(function (ok) { if (ok) proceed(); }); },
+        onDiscard: function () { discard(); proceed(); }
+      });
+    }
+
+    // ---- Rendering ----
+    function subText(r) {
+      if (r.deleted) {
+        if (!r.items) return T('Deleted when you save. Nothing is in it.', 'Se elimina al guardar. No tiene nada.');
+        var s = T('Deleted when you save: its ' + r.items + (r.items === 1 ? ' item comes' : ' items come') + ' off this area on every vendor’s list.',
+              'Se elimina al guardar: ' + (r.items === 1 ? 'su artículo sale' : 'sus ' + r.items + ' artículos salen') + ' de esta área en la lista de cada proveedor.');
+        if (r.onlyHere) {
+          s += ' ' + T(r.onlyHere + (r.onlyHere === 1 ? ' has no other area, so it comes' : ' have no other area, so they come') + ' off the count lists until given one again.',
+                       r.onlyHere + (r.onlyHere === 1 ? ' no tiene otra área, así que sale' : ' no tienen otra área, así que salen') + ' de las listas de conteo hasta que tengan una.');
+        }
+        return s;
+      }
+      if (!r.origName) return T('New. Nothing in it yet.', 'Nueva. Todavía no tiene nada.');
+      if (!r.items) return T('Nothing in it yet', 'Todavía no tiene nada');
+      return plural(r.items, 'item', 'items', 'artículo', 'artículos') + ' · ' +
+        T('on ' + r.vendors + (r.vendors === 1 ? ' vendor’s list' : ' vendors’ lists'),
+          'en ' + (r.vendors === 1 ? 'la lista de 1 proveedor' : 'las listas de ' + r.vendors + ' proveedores'));
+    }
+    function render() {
+      var list = document.getElementById('ar-list');
+      var kept = arKept(S.rows);
+      document.getElementById('ar-count').textContent = plural(kept.length, 'area', 'areas', 'área', 'áreas');
+      if (!S.rows.length) {
+        list.innerHTML = '<li class="ar-empty">' + esc(T('No storage areas yet. Add the places you count, like the walk-in or dry storage.',
+          'Todavía no hay áreas. Agrega los lugares donde cuentas, como el refrigerador o el almacén.')) + '</li>';
+        renderBar();
+        return;
+      }
+      var n = 0, firstKept = -1, lastKept = -1;
+      S.rows.forEach(function (r, i) { if (!r.deleted) { if (firstKept < 0) firstKept = i; lastKept = i; } });
+      list.innerHTML = S.rows.map(function (r, i) {
+        var num = r.deleted ? '' : String(++n);
+        if (i === S.renaming) {
+          return '<li class="ar-row renaming" data-i="' + i + '"><span class="ar-num" aria-hidden="true">' + num + '</span>' +
+            '<div class="ar-rename"><label for="ar-rename-input" class="vh">' + esc(T('New name for ', 'Nombre nuevo para ') + r.name) + '</label>' +
+            '<input type="text" id="ar-rename-input" maxlength="100" value="' + esc(r.name) + '">' +
+            '<button type="button" class="ar-btn big primary" data-act="rename-ok">' + esc(T('Done', 'Listo')) + '</button>' +
+            '<button type="button" class="ar-btn big" data-act="rename-cancel">' + esc(T('Cancel', 'Cancelar')) + '</button>' +
+            '<div class="ar-err" role="alert">' + esc(S.renameErr) + '</div>' +
+            (r.origName && r.items ? '<div class="ar-hint">' + esc(T((r.items === 1 ? 'Its item keeps its' : 'Its ' + r.items + ' items keep their') + ' place under the new name.',
+                                                                     (r.items === 1 ? 'Su artículo conserva su' : 'Sus ' + r.items + ' artículos conservan su') + ' lugar con el nombre nuevo.')) + '</div>' : '') +
+            '</div></li>';
+        }
+        var main = '<div class="ar-main"><div class="ar-name">' + esc(r.name) +
+          (!r.origName ? '<span class="ar-new">' + esc(T('New', 'Nueva')) + '</span>' : '') + '</div>' +
+          '<div class="ar-sub">' + esc(subText(r)) + '</div></div>';
+        if (r.deleted) {
+          return '<li class="ar-row deleted" data-i="' + i + '"><span class="ar-num" aria-hidden="true"></span>' + main +
+            '<div class="ar-btns"><button type="button" class="ar-btn big" data-act="restore">' + esc(T('Put back', 'Restaurar')) + '</button></div></li>';
+        }
+        return '<li class="ar-row" data-i="' + i + '"><span class="ar-num" aria-hidden="true">' + num + '</span>' + main +
+          '<div class="ar-btns">' +
+            '<button type="button" class="ar-ico" data-act="up" aria-label="' + esc(T('Move ' + r.name + ' up', 'Subir ' + r.name)) + '"' + (i === firstKept ? ' disabled' : '') + '>' + icon('up') + '</button>' +
+            '<button type="button" class="ar-ico" data-act="down" aria-label="' + esc(T('Move ' + r.name + ' down', 'Bajar ' + r.name)) + '"' + (i === lastKept ? ' disabled' : '') + '>' + icon('down') + '</button>' +
+            '<button type="button" class="ar-btn" data-act="rename">' + esc(T('Rename', 'Renombrar')) + '</button>' +
+            '<button type="button" class="ar-ico danger" data-act="delete" aria-label="' + esc(T('Delete ' + r.name, 'Eliminar ' + r.name)) + '">' + icon('trash') + '</button>' +
+          '</div></li>';
+      }).join('');
+      renderBar();
+    }
+    function renderBar() {
+      var bar = document.getElementById('ar-bar');
+      var dirty = isDirty();
+      bar.hidden = !dirty;
+      if (!dirty) return;
+      var s = arSummary(S.rows, S.loaded), bits = [];
+      if (s.renamed) bits.push(T(s.renamed + ' renamed', s.renamed + (s.renamed === 1 ? ' renombrada' : ' renombradas')));
+      if (s.added) bits.push(T(s.added + ' added', s.added + (s.added === 1 ? ' nueva' : ' nuevas')));
+      if (s.deleted) bits.push(T(s.deleted + ' deleted', s.deleted + (s.deleted === 1 ? ' eliminada' : ' eliminadas')));
+      if (s.reordered) bits.push(T('new order', 'nuevo orden'));
+      if (pendingRename() || pendingAdd()) bits.push(T('a name not added yet', 'un nombre sin agregar'));
+      document.getElementById('ar-sum').innerHTML = '<b>' + esc(T('Unsaved changes', 'Cambios sin guardar')) + '</b>' +
+        (bits.length ? '<span> · ' + esc(bits.join(' · ')) + '</span>' : '');
+      document.getElementById('ar-save').disabled = S.busy;
+      document.getElementById('ar-discard').disabled = S.busy;
+    }
+    function renderNote() {
+      document.getElementById('ar-note').innerHTML = T(
+        'To put the items inside an area in shelf order, use <a href="' + pageLink('pickpath') + '">Shelf to Sheet</a>. To move an item to another area, use <a href="' + pageLink('items') + '">Items</a>.',
+        'Para ordenar los artículos dentro de un área como están en los estantes, usa <a href="' + pageLink('pickpath') + '">Estante a Hoja</a>. Para mover un artículo a otra área, usa <a href="' + pageLink('items') + '">Artículos</a>.');
+    }
+
+    // ---- Editing the draft ----
+    function startRename(i) {
+      if (S.renaming >= 0 && S.renaming !== i && !finishRename()) return;
+      S.renaming = i; S.renameErr = '';
+      render();
+      var inp = document.getElementById('ar-rename-input');
+      if (inp) { inp.focus(); inp.select(); }
+    }
+    // Takes the typed name into the draft. False (and says why) when it can't.
+    function finishRename() {
+      if (S.renaming < 0) return true;
+      var inp = document.getElementById('ar-rename-input');
+      var v = inp ? inp.value.trim() : '';
+      var r = S.rows[S.renaming];
+      if (v !== r.name) {
+        var why = arNameProblem(S.rows, v, S.renaming);
+        if (why) { S.renameErr = why; render(); var again = document.getElementById('ar-rename-input'); if (again) { again.value = v; again.focus(); } return false; }
+        r.name = v;
+      }
+      S.renaming = -1; S.renameErr = '';
+      render(); markDirty();
+      return true;
+    }
+    function cancelRename() { S.renaming = -1; S.renameErr = ''; render(); markDirty(); }
+    function addArea() {
+      var inp = document.getElementById('ar-new'), err = document.getElementById('ar-add-err');
+      var v = inp.value.trim();
+      var why = arNameProblem(S.rows, v, -1);
+      if (!why && arKept(S.rows).length >= MAX_AREAS) why = T('A store has 18 areas at most. Delete one first.', 'Una tienda tiene 18 áreas como máximo. Elimina una primero.');
+      if (why) { err.textContent = why; inp.focus(); return false; }
+      err.textContent = '';
+      S.rows.push({ name: v, origName: null, items: 0, vendors: 0, onlyHere: 0, deleted: false });
+      inp.value = '';
+      render(); markDirty();
+      return true;
+    }
+    function deleteArea(i) {
+      if (S.renaming === i) { S.renaming = -1; S.renameErr = ''; }
+      var r = S.rows[i];
+      if (!r.origName) S.rows.splice(i, 1);   // new in this draft: just goes
+      else r.deleted = true;
+      if (S.renaming > i && !r.origName) S.renaming--;
+      render(); markDirty();
+    }
+    function restoreArea(i) {
+      var r = S.rows[i];
+      var why = arNameProblem(S.rows, r.name, i);
+      if (why) { toast(T('Another area is called "' + r.name + '" now. Rename that one first.', 'Otra área se llama "' + r.name + '" ahora. Cambia ese nombre primero.'), true); return; }
+      if (arKept(S.rows).length >= MAX_AREAS) { toast(T('A store has 18 areas at most.', 'Una tienda tiene 18 áreas como máximo.'), true); return; }
+      r.deleted = false;
+      render(); markDirty();
+    }
+    function discard() {
+      S.rows = JSON.parse(JSON.stringify(S.loaded));
+      S.renaming = -1; S.renameErr = '';
+      document.getElementById('ar-new').value = '';
+      document.getElementById('ar-add-err').textContent = '';
+      render(); markDirty();
+    }
+
+    // ---- Saving ----
+    // The whole draft in one change (the typed name not added yet goes with
+    // it). Resolves true when it saved.
+    function save() {
+      if (S.busy) return Promise.resolve(false);
+      if (!finishRename()) return Promise.resolve(false);
+      if (pendingAdd() && !addArea()) return Promise.resolve(false);
+      if (arSnapshot(S.rows) === S.base) { markDirty(); return Promise.resolve(true); }
+      var payload = arPayload(S.rows);
+      S.busy = true; renderBar();
+      var before = 0;
+      return call('getUnassignedActiveItems').then(function (list) {
+        before = (list || []).length;
+        return call('commitStorageAreasDraft', payload);
+      }).then(function () {
+        return call('getUnassignedActiveItems');
+      }).then(function (after) {
+        var lost = Math.max(0, (after || []).length - before);
+        S.busy = false;
+        return reload().then(function () {
+          if (lost) {
+            toast(T('Saved. ' + lost + (lost === 1 ? ' item has' : ' items have') + ' no storage area now.',
+                    'Guardado. ' + lost + (lost === 1 ? ' artículo no tiene' : ' artículos no tienen') + ' área ahora.'),
+                  false, { href: (BASE_URL || 'index.html') + '?page=items&area=__none', text: T('Show them in Items', 'Verlos en Artículos') });
+          } else {
+            toast(T('Saved.', 'Guardado.'));
+          }
+          return true;
+        });
+      }, function (err) {
+        S.busy = false; renderBar();
+        toast(errText(err), true);
+        return false;
+      });
+    }
+    function reload() {
+      return call('getAreasPage').then(function (list) {
+        S.loaded = (list || []).map(function (a) {
+          return { name: a.name, origName: a.name, items: a.items, vendors: a.vendors, onlyHere: a.onlyHere, deleted: false };
+        });
+        S.rows = JSON.parse(JSON.stringify(S.loaded));
+        S.base = arSnapshot(S.rows);
+        S.renaming = -1; S.renameErr = '';
+        render(); markDirty();
+      });
+    }
+
+    // ---- Small things ----
+    function errText(err) {
+      var m = err && err.message ? err.message : String(err || '');
+      return m || T('Something went wrong. Try again.', 'Algo salió mal. Inténtalo de nuevo.');
+    }
+    var toastTimer = null;
+    function toast(text, isErr, link) {
+      var el = document.getElementById('ar-toast');
+      el.innerHTML = esc(text) + (link ? '<a href="' + esc(link.href) + '">' + esc(link.text) + '</a>' : '');
+      el.className = isErr ? 'err' : ''; el.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.hidden = true; }, isErr || link ? 9000 : 5000);
+    }
+
+    function wire() {
+      var list = document.getElementById('ar-list');
+      list.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-act]'); if (!b || S.busy) return;
+        var li = b.closest('li[data-i]'); if (!li) return;
+        var i = Number(li.getAttribute('data-i')), act = b.getAttribute('data-act');
+        if (act === 'up' || act === 'down') {
+          if (S.renaming >= 0 && !finishRename()) return;
+          if (arMove(S.rows, i, act === 'up' ? -1 : 1)) { render(); markDirty(); }
+        }
+        else if (act === 'rename') startRename(i);
+        else if (act === 'rename-ok') finishRename();
+        else if (act === 'rename-cancel') cancelRename();
+        else if (act === 'delete') deleteArea(i);
+        else if (act === 'restore') restoreArea(i);
+      });
+      list.addEventListener('keydown', function (e) {
+        if (e.target.id !== 'ar-rename-input') return;
+        if (e.key === 'Enter') { e.preventDefault(); finishRename(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+      });
+      list.addEventListener('input', function (e) { if (e.target.id === 'ar-rename-input') renderBar(); });
+      var add = document.getElementById('ar-new');
+      add.placeholder = T('New area, like Dry storage', 'Área nueva, como Almacén seco');
+      add.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if (!S.busy) addArea(); } });
+      add.addEventListener('input', function () { document.getElementById('ar-add-err').textContent = ''; markDirty(); });
+      document.getElementById('ar-add-btn').onclick = function () { if (!S.busy) addArea(); };
+      document.getElementById('ar-save').onclick = function () { save(); };
+      document.getElementById('ar-discard').onclick = function () { if (!S.busy) discard(); };
+    }
+
+    function startAreas_() {
+      mgeMountWebChrome_();
+      document.documentElement.classList.add('mge-web');
+      setBreadcrumb_(
+        [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
+        { en: 'Storage areas', es: 'Áreas de almacenamiento' }
+      );
+      if (!startAreas_.wired) { wire(); renderNote(); startAreas_.wired = true; }
+      reload().then(null, function (err) {
+        document.getElementById('ar-list').innerHTML = '<li class="ar-empty">' +
+          esc(T('Couldn’t load the storage areas: ', 'No se pudieron cargar las áreas: ') + errText(err)) + '</li>';
+      });
+    }
+    mgeStartGate_(startAreas_);
+  </script>
+</body>
+</html>

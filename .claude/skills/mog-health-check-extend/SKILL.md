@@ -15,6 +15,17 @@ The Store Health Check (`apps-script/Health.gs` + `apps-script/HealthCheck.html`
 
 When you find a class of store corruption, the durable fix isn't just repairing the one store — it's **teaching the Health Check to detect it** so the other 8 (and every future store) get flagged. This skill is that recipe.
 
+## Two Health Checks: the Sheet's and the app's
+
+Every store's editor moved to the app (2026-10-20), so **most new checks belong in the app's**, not `Health.gs`:
+
+- **The app's** (a moved store): `template/editor/catalogEdit.js` `getStoreHealthReport` reads the catalog tables plus `mog_editor_status`, in `Health.gs`'s report shape. Since 2026-11-11 it has **no page of its own**: each check that isn't OK is a row in the **Overview's Needs attention** (spec U12), and the passing store checks show on a line under the rows. A new check there needs all four:
+  1. `add(id, label, status, detail, fix, fixId, more)` in `getStoreHealthReport`, with `more` carrying what the row words itself from (`listed(names)` gives `count` and `names`).
+  2. Its row in `catalogEdit.js` `healthRows`: the Items or Vendors filter it opens (`link`, keys `view`/`area`/`q`/`open`, the only ones the app and `host.js` pass on), whether it's a store check (`STORE_CHECKS`), and whether the setup card covers it (`SETUP_COVERS`).
+  3. Its words in `template/editor/Overview.html` `ovHealthWords`, **in English and Spanish** (a check with no case shows its bare id). A fix button: a `fixId` handled in `host.js` `HOST_CALLS.runHealthFix` (the Overview calls it through `overview.fix`).
+  4. Gates: `health_app` (the check's rule) and `manage_pages` (its row and link).
+- **The Sheet's** (`Health.gs` + `HealthCheck.html`, the Sheet dialog and `/exec`): the rest of this skill. Only for the Sheet's own structure (tabs, Script Properties, triggers).
+
 ## Two moving parts
 
 - **The check** — a read-only probe inside `getStoreHealthReport_()` (`Health.gs`). Reports status + a human sentence, and *names* a repair.

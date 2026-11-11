@@ -593,8 +593,15 @@
         [{ en: 'Editor home', es: 'Inicio del editor', href: (BASE_URL || '') + '?page=editor' }],
         { en: 'Vendors', es: 'Proveedores' }
       );
+      var first = !startVendors_.wired;
       if (!startVendors_.wired) { wire(); startVendors_.wired = true; }
-      reload().then(function () { S.loaded = true; }, function (err) {
+      reload().then(function () {
+        S.loaded = true;
+        // A link that names a vendor (the Overview's "Set its days"): its panel, once.
+        var want = null;
+        try { want = first ? new URLSearchParams(location.search).get('open') : null; } catch (e) { want = null; }
+        if (want && byName(want)) openVendor(want);
+      }, function (err) {
         document.getElementById('vd-tbody').innerHTML = '<tr><td class="vd-empty" colspan="5">' +
           esc(T('Couldn’t load the vendors: ', 'No se pudieron cargar los proveedores: ') + errText(err)) + '</td></tr>';
       });

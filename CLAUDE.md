@@ -202,13 +202,16 @@ mog-mobile/
 │   │                            HEH's stock held at Elpis, the deliveries the close records, Mark received for a store.
 │   └── editor/                  The editor on Supabase (one-app Phases 2 and 4): catalogEdit.js (Manage Items, Manage Vendors,
 │                                Storage Areas and Shelf to Sheet over the catalog tables, gated against Items.gs / Vendors.gs /
-│                                PickPath.gs) + host.js (runs those Apps Script pages and Editor Home as static pages) + meImport.js
+│                                PickPath.gs) + host.js (runs the pages and Editor Home as static pages) + meImport.js
 │                                (Import from MarginEdge: vendors, then items, then one logged save). host.js also answers Order
-│                                History, the Par Review flags (OrderMath.gs, copied in as orderMath.js) and the Health Check
-│                                (catalogEdit.js getStoreHealthReport) from Supabase. Items.html, Vendors.html, Overview.html and Changes.html are
-│                                pages only the app has (Manage Items since the 2026-10-20 redesign, with its bulk bar; Vendors
-│                                since 2026-11-01, with each vendor's contact; the Manage home; the change log). ManageItems.html
-│                                and ManageVendors.html stay for the Sheet dialog and /exec only. On a computer every page runs
+│                                History, the Par Review flags (OrderMath.gs, copied in as orderMath.js) and the Health check
+│                                (catalogEdit.js getStoreHealthReport, shown as the Overview's rows through healthRows) from
+│                                Supabase. Items.html, Vendors.html, Areas.html, ShelfToSheet.html, Overview.html and Changes.html
+│                                are pages only the app has (Manage Items since the 2026-10-20 redesign, with its bulk bar; Vendors
+│                                since 2026-11-01, with each vendor's contact; Storage areas and Shelf to Sheet since 2026-11-11,
+│                                Shelf to Sheet with drag; the Manage home, with the Health check in its Needs attention since
+│                                2026-11-11; the change log). The Apps Script ManageItems, ManageVendors, StorageAreas,
+│                                ReorderPickPath and HealthCheck pages stay for the Sheet dialog and /exec only. On a computer every page runs
 │                                inside the app, in a frame beside its sidebar (?embed=1, spec U2). build.py publishes it at
 │                                <slug>/editor/ for a store marked "editor": "supabase" (every store), and --preview for a test store.
 ├── apps-script/                 APPS SCRIPT SOURCE.
@@ -232,9 +235,9 @@ mog-mobile/
 │   ├── ManageItems.html         Item editor modal (Sheet dialog + /exec web; the app uses template/editor/Items.html).
 │   ├── ManageVendors.html       Vendor editor modal (dual-host).
 │   ├── OrderHistory.html        Past orders modal (dual-host, read-only).
-│   ├── ReorderPickPath.html     Shelf-to-Sheet / reorder pick-path modal (dual-host).
-│   ├── StorageAreas.html        Storage area config modal (dual-host).
-│   ├── HealthCheck.html         Store Health Check modal (dual-host: Sheet dialog + ?page=healthcheck).
+│   ├── ReorderPickPath.html     Shelf-to-Sheet / reorder pick-path modal (Sheet dialog + /exec; the app uses template/editor/ShelfToSheet.html).
+│   ├── StorageAreas.html        Storage area config modal (Sheet dialog + /exec; the app uses template/editor/Areas.html).
+│   ├── HealthCheck.html         Store Health Check modal (Sheet dialog + ?page=healthcheck; in the app it's the Overview's rows).
 │   ├── Setup.html               First-run store-setup wizard (?page=setup).
 │   ├── EditorShell.html         Shared web-editor chrome (band, breadcrumb, PIN gate, tour engine, mge* helpers).
 │   ├── EditorHome.html          Web-editor home dashboard (tool tiles).

@@ -64,10 +64,17 @@ EDITOR_PAGES  = {'index.html':    ('EditorHome', 'Editor', 'home'),
                  # vendor's contact, schema v10); apps-script/ManageVendors.html
                  # stays for the Sheet dialog and the /exec editor.
                  'vendors.html':  ('editor:Vendors', 'Vendors', 'vendors'),
-                 'areas.html':    ('StorageAreas', 'Storage Areas', 'areas'),
-                 'pickpath.html': ('ReorderPickPath', 'Shelf to Sheet', 'pickpath'),
+                 # Storage areas and Shelf to Sheet too since 2026-11-11;
+                 # StorageAreas.html and ReorderPickPath.html stay for the
+                 # Sheet dialog and the /exec editor.
+                 'areas.html':    ('editor:Areas', 'Storage areas', 'areas'),
+                 'pickpath.html': ('editor:ShelfToSheet', 'Shelf to Sheet', 'pickpath'),
                  'history.html':  ('OrderHistory', 'Order History', 'history'),
-                 'healthcheck.html': ('HealthCheck', 'Store Health Check', 'healthcheck'),
+                 # The Health check is part of the Overview since 2026-11-11
+                 # (its rows, catalogEdit.js healthRows); HealthCheck.html
+                 # stays for the Sheet dialog and /exec only. build.py never
+                 # deletes a file, so its old healthcheck.html came out of
+                 # each store's editor/ with that change.
                  # Pages only the app's editor has (no Apps Script twin) come
                  # from template/editor/ ('editor:<name>').
                  'changes.html':  ('editor:Changes', 'Changes', 'changes'),
