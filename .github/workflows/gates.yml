@@ -28,3 +28,10 @@ jobs:
       # must change no row.
       - run: npm ci
       - run: node supabase/tests/run_pglite.mjs
+      # supabase/backup_role.sql (the nightly backup's read-only login), run as a
+      # non-superuser like Supabase's postgres.
+      - run: node supabase/tests/backup_role_pglite.mjs
+      # supabase/night_schedule.sql (the nightly close's schedule, Sheet retirement
+      # step 2) with stand-ins for Vault, pg_net and pg_cron, and the morning's
+      # shadow check (supabase/tests/night_shadow_check.sql).
+      - run: node supabase/tests/night_schedule_pglite.mjs

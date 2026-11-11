@@ -18,7 +18,7 @@ Usage (from the repo root):
             provision_stores.sql, and not a repo file or folder.
   concept   the exact stores.json concept string: a CONCEPT_TO_THEME key in
             build.py (else the app is unthemed), a hub CONCEPT_VISUALS key
-            (else a generic icon), and a Dashboard.gs CONCEPT_THEMES key (else
+            (else a generic icon), and a Concepts.gs CONCEPT_THEMES key (else
             the setup wizard and the Sheet menus refuse it).
   scriptid  an Apps Script project ID (not a deployment ID or a Sheet ID).
   sheetid   a Google Sheet ID; a pasted Sheet URL is accepted and the ID printed.
@@ -94,7 +94,7 @@ def concept_to_theme():
 
 
 def server_concepts():
-    """The concepts a store can be set to: Dashboard.gs CONCEPT_THEMES' keys,
+    """The concepts a store can be set to: Concepts.gs CONCEPT_THEMES' keys,
     'default' aside. The wizard and both Sheet menus accept exactly these
     (Editor.gs commitStoreSetup, Admin.gs; tests/concepts.test.js)."""
     return [k for k in build_module().read_concept_themes() if k != 'default']
@@ -166,7 +166,7 @@ def check_concept(concept):
     if theme in server_concepts():   # build.py's theme slugs are the server's concept values
         notes.append('setup wizard: can save this concept')
     else:
-        problems.append('Dashboard.gs CONCEPT_THEMES has no "' + theme + '", so the setup wizard and the Sheet '
+        problems.append('Concepts.gs CONCEPT_THEMES has no "' + theme + '", so the setup wizard and the Sheet '
                         'menus refuse it. Add it there (with its name) before onboarding.')
     used = sorted({s['concept'] for s in stores_list() if straight(s.get('concept', '')) == straight(concept)})
     if used and concept not in used:

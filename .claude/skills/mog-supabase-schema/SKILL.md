@@ -88,6 +88,13 @@ file is run once, in order. Re-running any of them must stay harmless.
   `docs/`, `template/`): a caller outside the schema chain breaks silently, because PGlite runs only
   the schema and smoke files. v21 dropped `mog.wh_held_vendor` and left
   `supabase/tests/test_store_elpis.sql` failing until 11-06.
+- **PGlite runs as a superuser; Supabase's `postgres` isn't** (rolsuper false; createrole,
+  createdb, replication and bypassrls true; measured 2026-11-11). A file that creates or alters a
+  role, or changes an owner or a role attribute, is tested in PGlite as a non-superuser stand-in
+  with those four powers that owns `mog`, as
+  [`supabase/tests/backup_role_pglite.mjs`](../../../supabase/tests/backup_role_pglite.mjs) does
+  (CI runs it). `backup_role.sql` passed PGlite as superuser and failed live: Postgres lets only a
+  superuser name the SUPERUSER attribute at all, even as `nosuperuser`.
 - **A value a gate or smoke pins** (an average, a price, what's left) comes from running the SQL in
   PGlite or the page's own code, never from working it out by hand: a hand-worked 77.5926 was wrong
   (Postgres: 77.5968), and v16's gate expected 14 cases left where the code's 20 (both locations)
@@ -109,7 +116,16 @@ file is run once, in order. Re-running any of them must stay harmless.
     (schema v17: `record "l" is not assigned yet`); name records apart from every alias;
   - the vendor list sorts with `und-x-icu` to match `localeCompare` (schema_v4, pinned by smoke_v4);
   - a regex over a SQL file counts commented-out rows, so strip `--` first (`mog-add-store`'s
-    `validate.py`).
+    `validate.py`);
+  - a `language sql` function's body is checked when it's created, so every function it calls
+    must be defined above it in the file (a plpgsql body is checked only when it runs): v23's
+    `night_shadow_done` called `night_note`, defined below it, and the file stopped there.
+- **A SQL file PGlite can't run** (it needs `pg_cron`, `pg_net` or Vault) still gets a PGlite
+  test: stand-ins shaped like Supabase's for the calls it makes, the file's own `create extension`
+  lines left out, everything else run as written, and the test in CI
+  ([`supabase/tests/night_schedule_pglite.mjs`](../../../supabase/tests/night_schedule_pglite.mjs),
+  2026-11-11). Keep such a file out of the `schema_vN.sql` chain: what PGlite can run goes in the
+  schema file and its smoke file, the scheduling in its own file run once.
 
 ## Ship order
 

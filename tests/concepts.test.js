@@ -4,7 +4,7 @@
 // all of them (2026-10-19: the wizard offered ĂN and Lei'd but the server
 // refused them, and Lei'd was spelled three ways).
 //
-// The list is Dashboard.gs CONCEPT_THEMES (knownConcepts_), each with its
+// The list is Concepts.gs CONCEPT_THEMES (knownConcepts_), each with its
 // display `name`. Checked against it:
 //   - the setup wizard (Setup.html): its concept list, display names and accents
 //   - the app (template/index.html): CONCEPT_NAMES_ and a [data-theme] block each
@@ -96,7 +96,7 @@ function run(srcOf) {
   const themes = vm.runInContext('CONCEPT_THEMES', probe.ctx);
   const name = {};
   for (const c of known) {
-    if (!themes[c].name) bad('Dashboard.gs: CONCEPT_THEMES[\'' + c + '\'] has no name');
+    if (!themes[c].name) bad('Concepts.gs: CONCEPT_THEMES[\'' + c + '\'] has no name');
     name[c] = themes[c].name;
   }
   if (known.indexOf('default') >= 0) bad('knownConcepts_ includes default');
@@ -113,7 +113,7 @@ function run(srcOf) {
   for (const c of known) {
     if (setupName[c] !== name[c]) bad('Setup.html names ' + c + ' "' + setupName[c] + '", the server "' + name[c] + '"');
     if (!setupTheme[c] || String(setupTheme[c].accent).toLowerCase() !== String(themes[c].accent).toLowerCase()) {
-      bad('Setup.html accent for ' + c + ' differs from Dashboard.gs');
+      bad('Setup.html accent for ' + c + ' differs from Concepts.gs');
     }
   }
 
@@ -222,7 +222,7 @@ const CONTROLS = [
     find: "'an': 'ĂN', 'leid': 'Lei’d Poke' };", replace: "'an': 'AN', 'leid': 'Lei’d Poke' };" },
   { name: 'the editor band stripping "an" for ĂN', file: 'apps-script/EditorShell.html',
     find: "'an': 'ăn',", replace: "'an': 'an'," },
-  { name: 'a concept dropped from the server list', file: 'apps-script/Dashboard.gs',
+  { name: 'a concept dropped from the server list', file: 'apps-script/Concepts.gs',
     find: "  'leid':      { name: \"Lei’d Poke\",", replace: "  'leidx':     { name: \"Lei’d Poke\"," },
   { name: 'a store with a straight-apostrophe concept', file: 'stores.json', first: true,
     find: '"concept": "Teas’n You",', replace: '"concept": "Teas\'n You",' }

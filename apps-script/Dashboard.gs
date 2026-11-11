@@ -43,37 +43,9 @@ const DASH_COLORS = {
 };
 
 
-// Per-concept dashboard branding. `accent` is the background fill that
-// replaces DASH_COLORS.NAVY on the banner + tiles (chosen dark enough for
-// white text); `bannerFont` is applied to the banner text only (tiles keep
-// white text for legibility). `accent` is the BAND/BANNER background fill;
-// `bannerFont` is the text drawn on it; `ink` is the dark color used wherever a
-// dark fill (light text) or dark-text-on-white reading is needed — the tiles,
-// the reset strip, and the recap email's vendor headers + "× qty" numbers.
-// `ink` defaults to `accent` (correct for dark accents like RP teal / navy), so
-// those concepts are unchanged. TNY is gold-forward: a gold band with charcoal
-// text, while tiles + email ink stay charcoal so everything stays legible. Same
-// palette mirrors the PWA + the KM web editor (which reads accent/bannerFont).
-// Static table — identical across all stores; the per-store choice comes from
-// the MOG_CONCEPT property. Its keys (minus 'default') are the concepts a store
-// can be set to (knownConcepts_), and `name` is how the Sheet menus show each
-// one: the same spelling as stores.json and the app (tests/concepts.test.js).
-// The order is the Sheet menus' numbering, so 1 and 2 stay Roll Play and Teas'n You.
-const CONCEPT_THEMES = {
-  'roll-play': { name: "Roll Play",  accent: "#2d8c6b", bannerFont: "#ffffff" },                  // RP teal-dark + white
-  'teasnyou':  { name: "Teas’n You", accent: "#D4A574", bannerFont: "#1a1a1a", ink: "#1a1a1a" },  // TNY Kintsugi gold band + charcoal ink
-  'an':        { name: "ĂN",         accent: "#3C1124", bannerFont: "#ffffff" },                  // ĂN Night Market burgundy (brand-kit primary/header color)
-  'leid':      { name: "Lei’d Poke", accent: "#b51579", bannerFont: "#ffffff" },                  // Lei'd dark magenta (white reads on the dark shade)
-  'default':   { accent: DASH_COLORS.NAVY, bannerFont: DASH_COLORS.WHITE }
-};
-
-// The concepts a store can be set to, in the Sheet menus' order.
-function knownConcepts_() {
-  return Object.keys(CONCEPT_THEMES).filter(function (k) { return k !== 'default'; });
-}
-function isKnownConcept_(concept) {
-  return knownConcepts_().indexOf(String(concept || '')) >= 0;
-}
+// CONCEPT_THEMES, knownConcepts_ and isKnownConcept_ live in Concepts.gs
+// (moved 2026-11-11, unchanged): Supabase's nightly close bundles that file
+// for the recap email's band colours, and it can't bundle this one.
 
 // Resolves this store's dashboard theme from the MOG_CONCEPT script property
 // (set via setupMobileApi_ / Set Store Concept). Falls back to the default
@@ -82,12 +54,7 @@ function isKnownConcept_(concept) {
 var _dashThemeCache = null;
 function dashTheme_() {
   if (_dashThemeCache) return _dashThemeCache;
-  var concept = String(
-    PropertiesService.getScriptProperties().getProperty(PROP_CONCEPT) || ""
-  ).trim().toLowerCase();
-  var t = CONCEPT_THEMES[concept] || CONCEPT_THEMES['default'];
-  // `ink` defaults to `accent` so dark-accent concepts (RP/navy) are unchanged.
-  _dashThemeCache = { accent: t.accent, bannerFont: t.bannerFont, ink: t.ink || t.accent };
+  _dashThemeCache = conceptTheme_(PropertiesService.getScriptProperties().getProperty(PROP_CONCEPT));   // Concepts.gs
   return _dashThemeCache;
 }
 

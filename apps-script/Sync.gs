@@ -504,8 +504,7 @@ function appendLogBackup_(orderDate, timestamp, rows) {
 // Inline recap send from rows already in hand: the fallback when the async
 // send can't be scheduled. Deduped like every other recap path.
 function sendRecapRowsNow_(orderDate, rows) {
-  const props = PropertiesService.getScriptProperties();
-  if ((props.getProperty(PROP_LAST_RECAP_SENT_DATE) || '') === orderDate) return { sent: 0, alreadySent: true };
+  if (recapSentAlready_(orderDate)) return { sent: 0, alreadySent: true };
   const recap = recapFromLogRows_(rows, orderDate);
   const recipients = readRecipients_().filter(function (r) { return r.active && r.email; });
   if (!recipients.length || !recap.sections.length) return { sent: 0 };
@@ -514,7 +513,7 @@ function sendRecapRowsNow_(orderDate, rows) {
     try { sendRecapEmail_(r.email, recap.sections, recap.cycleDate, recap.totalItems); sent++; }
     catch (e) { Logger.log('Recap send failed for ' + r.email + ': ' + (e.stack || e)); }
   }
-  if (sent > 0) props.setProperty(PROP_LAST_RECAP_SENT_DATE, orderDate);
+  if (sent > 0) markRecapSent_(orderDate);
   return { sent: sent };
 }
 
@@ -532,6 +531,7 @@ function nightlyMaintenance_() {
   MOG_SKIP_CATALOG_QUEUE_ = true;   // step 2 pushes anyway
   const cfg = supabaseConfig_();
   if (!cfg.connected) return;
+  if (cfg.switched && nightMovedToDb_()) return;
   // A store whose editor moved before recipients moved with it (tnyr) gets
   // its one copy here, before the close sends the email; after that this
   // changes nothing (docs/MOG_OneApp_Spec.md T2).
@@ -546,6 +546,24 @@ function nightlyMaintenance_() {
   }
   try { pushCatalogNow_(); } catch (e) { Logger.log('Nightly catalog push failed: ' + e.message); }
   try { pushPinsNow_(); } catch (e) { Logger.log('Nightly PIN push failed: ' + e.message); }
+}
+
+// Once Supabase closes this store itself (mog.stores.close_direct, Sheet
+// retirement step 2, docs/MOG_SheetRetirement_Spec.md R9, R10), this trigger
+// retires: it deletes itself, tells Supabase when (mog.stores.sheet_trigger_off_at),
+// and the night's close, recap, PIN push and LOG_ORDERS copy stay with Supabase.
+// A trigger runs as whoever installed it, so only its own run can delete it.
+// Supabase unreachable: false, and the night runs here as before (a close
+// Supabase made first is refused as CYCLE_MOVED, so nothing happens twice).
+function nightMovedToDb_() {
+  let night;
+  try { night = supabaseSync_('mog_sync_night', {}); }
+  catch (e) { Logger.log('Nightly: could not ask Supabase who closes this store: ' + e.message); return false; }
+  if (!night.closeDirect) return false;
+  dropTriggersFor_('nightlyMaintenance_');
+  try { supabaseSync_('mog_sync_night', { p_trigger_off: true }); }
+  catch (e) { Logger.log('Nightly: trigger removed; telling Supabase failed: ' + e.message); }
+  return true;
 }
 
 // ---- What moves with the editor (docs/MOG_OneApp_Spec.md T1, T2) -------------

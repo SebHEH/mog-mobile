@@ -47,7 +47,6 @@ function emailRecapLocked_(payload) {
   ensureRecipientsHeader_();
   migrateGmEmailToRecipients_();
 
-  const props = PropertiesService.getScriptProperties();
   const force = !!(payload && payload.force);
   // The day being emailed. A store that counts in Supabase keeps its day
   // there (the same date buildRecapSections_ stamps on the email); the
@@ -56,12 +55,11 @@ function emailRecapLocked_(payload) {
   const currentCycleDate = supabaseConfig_().switched
     ? supabaseSnapshot_().state.cycleDate
     : getActiveOrderDate_().dateStr;
-  const lastSent = props.getProperty(PROP_LAST_RECAP_SENT_DATE) || '';
 
   // Auto-send dedupe: if this cycle was already emailed, return a
   // structured no-op so the caller can show "already sent" state
   // without surfacing an error. Manual sends bypass via force.
-  if (!force && lastSent === currentCycleDate) {
+  if (!force && recapSentAlready_(currentCycleDate)) {
     return {
       cycleDate:    currentCycleDate,
       vendorCount:  0,
@@ -108,7 +106,7 @@ function emailRecapLocked_(payload) {
   // Total-failure case (every send threw): leave the flag alone so the
   // next legitimate attempt isn't gated by a failed cycle.
   if (failed.length < recipients.length) {
-    props.setProperty(PROP_LAST_RECAP_SENT_DATE, cycleDate);
+    markRecapSent_(cycleDate);
   }
 
   return {
@@ -289,6 +287,34 @@ function buildRecapFromLog_(orderDate) {
 }
 
 
+// ── Once per cycle ───────────────────────────────────────────────────────
+// A cycle's recap goes out once, whoever sends it: the Daily summary here, this
+// Sheet's 3:30 AM close, or (once the store's close_direct is on) Supabase's
+// nightly close (docs/MOG_SheetRetirement_Spec.md, R8). On a store that counts
+// in Supabase the flag is mog.store_state.recap_sent_for, which both sides read
+// and write; the Script Property is kept too, so the check still holds when
+// Supabase can't be reached. Either one naming the cycle means it went out.
+function recapSentAlready_(cycleDate) {
+  if (!cycleDate) return false;
+  const local = PropertiesService.getScriptProperties().getProperty(PROP_LAST_RECAP_SENT_DATE) || '';
+  if (local === cycleDate) return true;
+  if (!supabaseConfig_().switched) return false;
+  try {
+    return (supabaseSync_('mog_sync_night', {}).recapSentFor || '') === cycleDate;
+  } catch (e) {
+    Logger.log('Recap flag from Supabase failed, using this Sheet\'s: ' + e.message);
+    return false;
+  }
+}
+
+function markRecapSent_(cycleDate) {
+  PropertiesService.getScriptProperties().setProperty(PROP_LAST_RECAP_SENT_DATE, cycleDate);
+  if (!supabaseConfig_().switched) return;
+  try { supabaseSync_('mog_sync_set_recap_sent', { p_cycle: cycleDate }); }
+  catch (e) { Logger.log('Recap flag to Supabase failed (this Sheet keeps it): ' + e.message); }
+}
+
+
 // Hands the recap send off to a one-shot time-based trigger so a reset returns
 // immediately instead of blocking the KM on one Gmail round-trip per recipient.
 // Clears any earlier sendPendingRecap_ trigger first — Apps Script caps triggers
@@ -341,7 +367,7 @@ function sendPendingRecap_() {
 
   // Already delivered for this cycle by some other path (a manual send, or the
   // synchronous fallback in commitLogAndReset_ when trigger creation failed).
-  if ((props.getProperty(PROP_LAST_RECAP_SENT_DATE) || '') === pending.cycleDate) {
+  if (recapSentAlready_(pending.cycleDate)) {
     finish();
     return;
   }
@@ -369,7 +395,7 @@ function sendPendingRecap_() {
     Logger.log('sendPendingRecap_ error: ' + (e.stack || e));
   }
 
-  if (sent > 0) props.setProperty(PROP_LAST_RECAP_SENT_DATE, pending.cycleDate);
+  if (sent > 0) markRecapSent_(pending.cycleDate);
 
   const attempts = (Number(pending.attempts) || 0) + 1;
   if (sent > 0 || nothingToDo || attempts >= RECAP_SEND_MAX_TRIES) {
@@ -392,105 +418,20 @@ function sendPendingRecap_() {
 function sendRecapEmail_(recipient, sections, cycleDate, totalItems) {
   const props    = PropertiesService.getScriptProperties();
   const location = props.getProperty(PROP_LOCATION) || '';
-  const subject  = '[' + location + '] Daily order recap — ' + cycleDate +
-                   ' (' + sections.length + ' vendors, ' + totalItems + ' items)';
-
-  // Plain text — copy/paste-friendly, easy to scan from a phone. Mirrors the HTML:
-  // "suggested" framing + the "Item × qty (pack)" line order, On Hand trailing.
-  let body = 'SUGGESTED DAILY ORDER\n=====================\n\n';
-  body += 'Suggested amounts based on today\'s On Hand — review before placing each order.\n\n';
-  body += 'Location: ' + location + '\n';
-  body += 'Date:     ' + cycleDate + '\n';
-  body += 'Vendors:  ' + sections.length + '\n';
-  body += 'Items:    ' + totalItems + '\n\n';
-
-  for (const sec of sections) {
-    body += '-- ' + sec.vendor.toUpperCase() + ' --\n';
-    for (const line of sec.lines) {
-      const onHand = (line.onHand === null || line.onHand === '') ? '—' : line.onHand;
-      body += '  ' + line.name + ' × ' + line.qty + (line.pack ? ' (' + line.pack + ')' : '');
-      body += '   [on hand: ' + onHand + ']\n';
-    }
-    body += '\n';
-  }
-
-  // HTML — brand-aligned recap. Email clients strip <style>/:root/var(), so all
-  // colors are inlined as LITERAL hexes. The header band + accents are themed
-  // PER STORE CONCEPT via dashTheme_() (MOG_CONCEPT property — same palette as the
-  // Sheet dashboard, so email and dashboard stay coordinated):
-  //   roll-play → teal-dark #2d8c6b + white · teasnyou → charcoal #1a1a1a + gold
-  //   #D4A574 · unset/unknown → navy #1a1a2e + white (matches the modal --brand).
-  // dashTheme_() lives in Dashboard.gs but shares global scope at runtime.
   const theme    = (typeof dashTheme_ === 'function')
                      ? dashTheme_()
                      : { accent: '#1a1a2e', bannerFont: '#ffffff' };
-  const bandBg   = theme.accent;        // header band background (concept color)
-  const bandText = theme.bannerFont;    // band title (white, or TNY charcoal)
-  // Sub-line tone that reads on the band: light gray on a dark band, muted dark
-  // on a light (e.g. TNY gold) band — picked from the band's luminance.
-  let _bandHex = String(bandBg).replace('#', '');
-  if (_bandHex.length === 3) _bandHex = _bandHex[0]+_bandHex[0]+_bandHex[1]+_bandHex[1]+_bandHex[2]+_bandHex[2];
-  const bandLum  = parseInt(_bandHex.substr(0,2),16)*0.299 + parseInt(_bandHex.substr(2,2),16)*0.587 + parseInt(_bandHex.substr(4,2),16)*0.114;
-  const bandSub  = (bandLum > 150) ? '#6b5f43'
-                 : (String(bandText).toLowerCase() === '#ffffff') ? '#dcdce6' : '#cfcfcf';
-  const headInk  = theme.ink;           // vendor headers + the "× qty" number (dark — reads on white)
-
-  let html = '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:640px;margin:0 auto;color:#1f2937">';
-
-  // Header band (store + date + counts) — concept-themed. Single-cell table for
-  // client safety (Gmail/iOS render a table-cell background more reliably than a div).
-  html += '<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 14px">';
-  html += '<tr><td style="background:' + bandBg + ';padding:18px 20px;border-radius:8px">';
-  html += '<div style="color:' + bandText + ';font-size:22px;font-weight:700;line-height:1.2">' + escapeHtml_(location) + '</div>';
-  html += '<div style="color:' + bandText + ';font-size:15px;font-weight:600;margin-top:4px">Suggested daily order</div>';
-  html += '<div style="color:' + bandSub + ';font-size:12px;margin-top:6px">' + cycleDate + ' &middot; ' + sections.length + ' vendors &middot; ' + totalItems + ' items</div>';
-  html += '</td></tr></table>';
-
-  // Clarity caption — these are SUGGESTED amounts, not a placed order.
-  html += '<p style="color:#444;font-size:13px;margin:0 0 18px;line-height:1.45">';
-  html += 'Suggested order amounts based on today’s On Hand counts. ';
-  html += 'Review each before placing the order through the vendor’s normal channel.';
-  html += '</p>';
-
-  for (const sec of sections) {
-    html += '<h3 style="color:' + headInk + ';margin:20px 0 6px;font-size:16px;border-bottom:2px solid ' + headInk + ';padding-bottom:6px">' + escapeHtml_(sec.vendor) + '</h3>';
-    html += '<table style="width:100%;border-collapse:collapse;font-size:14px">';
-    html += '<tr style="background:#f4f5f7">';
-    html += '<th style="padding:7px 8px;text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#888">Suggested order</th>';
-    html += '<th style="padding:7px 8px;text-align:right;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#aab0b6">On hand</th>';
-    html += '</tr>';
-    for (const line of sec.lines) {
-      const onHand = (line.onHand === null || line.onHand === '') ? '—' : line.onHand;
-      // One readable line: "Item Name × 3 (Pack)" — name in body ink, the × qty
-      // bold in the concept accent (the action number), pack muted in parens.
-      html += '<tr>';
-      html += '<td style="padding:9px 8px;border-bottom:1px solid #eef0f2;line-height:1.4">';
-      html += '<span style="color:#1f2937">' + escapeHtml_(line.name) + '</span>';
-      html += '<strong style="color:' + headInk + ';white-space:nowrap;font-size:15px">&nbsp;&times; ' + line.qty + '</strong>';
-      if (line.pack) {
-        html += '<span style="color:#9aa0a6;font-size:13px">&nbsp;(' + escapeHtml_(line.pack) + ')</span>';
-      }
-      html += '</td>';
-      html += '<td style="padding:9px 8px;border-bottom:1px solid #eef0f2;text-align:right;color:#aab0b6;font-size:12px;white-space:nowrap">' + onHand + '</td>';
-      html += '</tr>';
-    }
-    html += '</table>';
-  }
-
-  html += '<p style="color:#888;font-size:12px;margin-top:22px;border-top:1px solid #e5e7eb;padding-top:12px">';
-  html += 'This is a recap of suggested orders. Place each vendor\'s order through their normal channel ';
-  html += '(portal, app, phone, email). Order History will populate when reset runs tomorrow.';
-  html += '</p>';
-  html += '</div>';
+  // Subject, text and HTML: RecapEmail.gs, shared with Supabase's nightly close.
+  const m = recapEmailContent_(location, theme, sections, cycleDate, totalItems);
 
   // No CC anymore — each recipient gets their own individual email.
   // The recipient list is configured in SETUP AB-AE and read by
   // api_emailRecap_, which calls this helper once per active recipient.
   MailApp.sendEmail({
     to:       recipient,
-    subject:  subject,
-    body:     body,
-    htmlBody: html,
+    subject:  m.subject,
+    body:     m.text,
+    htmlBody: m.html,
     name:     'Master Ordering Guide'
   });
 }
@@ -551,13 +492,7 @@ function test_recapEmailToSelf() {
 }
 
 
-function escapeHtml_(s) {
-  return String(s || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+// escapeHtml_ lives in RecapEmail.gs (moved 2026-11-11).
 
 
 /***********************

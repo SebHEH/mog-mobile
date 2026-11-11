@@ -26,7 +26,7 @@ Replace the path here with the newest handoff at the end of each session that sh
 - **Deploy**:
   - PWA: GitHub Pages auto-deploys from `main`. Edit `template/` → run `python build.py` → commit + push.
   - Apps Script: `clasp` via `deploy.py` (at repo root, alongside `build.py`). Edit `apps-script/<file>` → run `python deploy.py` (bound-sidebar-only changes) or `python deploy.py --redeploy` (any MOGApi.gs / `api_*` change — bumps each store's web-app `/exec` URL too). Push reaches all 11 targets (10 stores + the template) in ~40s; `--redeploy` adds ~3s/target.
-- **Build / test**: CI (`.github/workflows/gates.yml`) runs `node tests/run_all.js` on every push and pull request, then the real SQL in PGlite (`npm ci`, then `node supabase/tests/run_pglite.mjs`: every schema file, every smoke test). `python build.py --dry-run` previews PWA build. `python deploy.py --dry-run` previews Apps Script deploy (combine with `--redeploy` to preview the redeploy phase too). `node tests/run_all.js` runs the order-math gates: the real `.gs` code under Node, no dependencies (see `tests/README.md`). Run it before deploying any change to `OrderMath.gs`, the count/dashboard path in `MOGApi.gs`, or `Sync.gs`. Everything else is verified manually (open the live URL, run an order).
+- **Build / test**: CI (`.github/workflows/gates.yml`) runs `node tests/run_all.js` on every push and pull request, then the real SQL in PGlite (`npm ci`, then `node supabase/tests/run_pglite.mjs`: every schema file, every smoke test; then `node supabase/tests/backup_role_pglite.mjs` and `node supabase/tests/night_schedule_pglite.mjs`). `python build.py --dry-run` previews PWA build. `python deploy.py --dry-run` previews Apps Script deploy (combine with `--redeploy` to preview the redeploy phase too). `node tests/run_all.js` runs the order-math gates: the real `.gs` code under Node, no dependencies (see `tests/README.md`). Run it before deploying any change to `OrderMath.gs`, the count/dashboard path in `MOGApi.gs`, or `Sync.gs`. Everything else is verified manually (open the live URL, run an order).
 
 ## Layer routing
 
@@ -37,7 +37,7 @@ Every change anchors to one of these layers. Pick the layer before drafting any 
 | **Hub** | `index.html`, `sw.js`, `manifest.json`, `stores.json` | Concept picker, manager mode, store registry. First thing a KM sees. |
 | **Per-store PWA** | `template/index.html`, `template/sw.js` | The store-facing app. `build.py` copies this to every `<slug>/` dir with deployment URLs injected. |
 | **Apps Script backend** | `apps-script/*.gs`, `apps-script/*.html`, `apps-script/appsscript.json` | Bound script that runs in each Sheet. Identical across all 11 deploy targets — per-store config lives in spreadsheet data, not code. |
-| **Supabase** | `supabase/schema*.sql`, `supabase/tests/` | Every store runs on it: counts, Emergency Override, the cycle and the order log, the catalog (edited in the app), recipients and People. Phones talk to it directly (`phone_direct`); each Sheet is frozen for catalog edits and gets a nightly LOG_ORDERS backup. Design records: `docs/MOG_SupabaseMigration.md` and `docs/MOG_OneApp_Spec.md` (read them before touching this layer). A schema change runs on the maintainer's go for that file: Claude runs the repo's `schema_vN.sql` and then its smoke file through the Supabase connector, or the maintainer pastes them in the SQL Editor (skill `mog-supabase-schema`). Every other connector call is a read. |
+| **Supabase** | `supabase/schema*.sql`, `supabase/tests/` | Every store runs on it: counts, Emergency Override, the cycle and the order log, the catalog (edited in the app), recipients and People. Phones talk to it directly (`phone_direct`); each Sheet is frozen for catalog edits and gets a nightly LOG_ORDERS backup. The whole database is dumped off-site every night by the private repo `SebHEH/mog-backup` (`supabase/backup_role.sql`'s read-only `mog_backup`; restore steps in its README). Design records: `docs/MOG_SupabaseMigration.md` and `docs/MOG_OneApp_Spec.md` (read them before touching this layer). A schema change runs on the maintainer's go for that file: Claude runs the repo's `schema_vN.sql` and then its smoke file through the Supabase connector, or the maintainer pastes them in the SQL Editor (skill `mog-supabase-schema`). Every other connector call is a read. |
 | **Deploy infrastructure** | `build.py`, `deploy.py`, `apps-script/.clasp-targets.json` | How code reaches production. `.clasp-targets.json` holds both `scriptId` (for source push) and `deploymentId` (for web-app version bump) per target. `deploy.py --discover` finds deploymentIds on a fresh checkout. |
 | **Generated (do NOT edit)** | `rpr/`, `rprfo/`, `rpt/`, `rptfo/`, `rpfr/`, `rpfrf/`, `tnyt/`, `tnytf/`, `tnyr/`, `tnyrf/`, `hq/` | Output of `build.py`. Overwritten on every build. `hq/` comes from `template/hq/`. |
 
@@ -223,13 +223,16 @@ mog-mobile/
 │   ├── PickPath.gs              Storage areas + reorder pick path (+ purge core).
 │   ├── ResetLog.gs              Reset / order-log snapshot / daily recap.
 │   ├── History.gs               Order history modal + par-review flags.
-│   ├── Dashboard.gs             HOME dashboard builder + per-concept theming.
+│   ├── Dashboard.gs             HOME dashboard builder (its theme from Concepts.gs).
+│   ├── Concepts.gs              CONCEPT_THEMES and conceptTheme_ (moved out of Dashboard.gs 2026-11-11). Pure: Supabase's nightly close runs it too.
 │   ├── Editor.gs                KM web editor: doGet page routing, PIN gate/token, webedit_call dispatch, per-tool web renderers.
 │   ├── Health.gs                Store Health Check — read-only diagnostic (getStoreHealthReport) + web fixes (runHealthFix).
-│   ├── Recap.gs                 Daily recap email (build + send) + recipients list in SETUP AB-AE (split from MOGApi.gs 2026-07-24).
+│   ├── Recap.gs                 Daily recap email (send + the once-per-cycle flag, shared with Supabase since v23) + recipients list in SETUP AB-AE.
+│   ├── RecapEmail.gs            The recap email's subject, text and HTML (moved out of Recap.gs 2026-11-11). Pure: Supabase's nightly close runs it too.
 │   ├── Admin.gs                 Run-once admin/config fns (setupMobileApi_ via the Sheet menu, PINs, concept) + editor-run test fns (split from MOGApi.gs 2026-07-24).
 │   ├── OrderMath.gs             The order math + the PWA's two payload builders. Pure functions, run VERBATIM by the PWA too (gated by tests/).
-│   ├── Sync.gs                  Supabase sync: catalog/PIN push, the Move this store to Supabase menu item, nightly 3:30 AM run, cycle close in Supabase, parity + timing tests.
+│   ├── Sync.gs                  Supabase sync: catalog/PIN push, the Move this store to Supabase menu item, nightly 3:30 AM run (retires itself once the store's
+│                                close_direct is on, v23), cycle close in Supabase, parity + timing tests.
 │   ├── DbApi.gs                 /exec's count path for a store that counts in Supabase (same answers as the Sheet handlers, no Sheet I/O).
 │   ├── AdminReset.html          Admin reset modal.
 │   ├── ManageItems.html         Item editor modal (Sheet dialog + /exec web; the app uses template/editor/Items.html).
@@ -267,11 +270,21 @@ mog-mobile/
 │   ├── schema_v20.sql           HEH's stock at three places (W2c): a place's kind (held_store, count_how), mog.wh_product_places (an item's places and low points), a Happy Supply line into a place (to_location), the close and the phone by place, mog_wh_taken (run after v19).
 │   ├── schema_v21.sql           Routes: mog.items.wh_place and wh_vendor (a store item's place and the vendor it's ordered under, on its row), every stock reader by route (the close, the phone, Send), routes in mog_wh_data; via, par and stores unread until v23 (run after v20).
 │   ├── schema_v22.sql           An inactive HQ item or a closed place stops its routes: the close's step, the phone's read and Send skip them (no table change) (run after v21).
+│   ├── schema_v23.sql           Sheet retirement step 2: mog.stores.close_direct, the once-per-cycle recap flag in mog.store_state, mog.night_log, mog.close_cycle
+│                                (v17's close without the key), the nightly function's mog.night_* SQL, mog_sync_night / mog_sync_set_recap_sent (run after v22).
+│   ├── night_schedule.sql       Run once after v23: pg_cron + pg_net, the Vault secret, mog.night_tick every 15 minutes, mog.night_test (a test email).
+│   ├── functions/close/         The Edge Function `close` (index.ts: the secret, the database, Resend; core.mjs: the close, the recap, the shadow;
+│                                shared.mjs: OrderMath.gs + Concepts.gs + RecapEmail.gs, GENERATED by build.py). Deployed on the maintainer's go.
 │   ├── provision_stores.sql     One query for every store's connect code (pasted into each Sheet's Move this store to Supabase prompt).
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
-│   └── tests/                   smoke.sql … smoke_v22.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
+│   ├── backup_role.sql          The nightly backup's read-only login, mog_backup (pasted by a maintainer in the SQL Editor: it shows the
+│                                new password once, for the private repo SebHEH/mog-backup's secret). Re-running rotates the password.
+│   └── tests/                   smoke.sql … smoke_v23.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
 │                                + test_store_elpis.sql (SQL Editor: two nights' held-place deliveries on the TEST store, which never closes, by route since v21)
-│                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it).
+│                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it)
+│                                + backup_role_pglite.mjs (backup_role.sql as a non-superuser like Supabase's postgres; CI runs it)
+│                                + night_schedule_pglite.mjs (night_schedule.sql with stand-ins for Vault, pg_net, pg_cron; CI runs it)
+│                                + night_shadow_check.sql (reads only: the night's shadows against Apps Script's log, and the night log).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 │                                preview_server.js (not a gate): the built app, editor and HQ against the fake Supabase (preview_start "mog-preview").
 ├── docs/

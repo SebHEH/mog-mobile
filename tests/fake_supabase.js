@@ -362,36 +362,9 @@ class FakeSupabase {
         return ok({ saved: this.upsert(s, cycle, null, p.p_rows), cycleDate: cycle });
       }
 
-      case 'mog_sync_close_cycle': {
-        if (!p.p_closing || !p.p_new_cycle || p.p_new_cycle < p.p_closing || DAYS.indexOf(p.p_new_dow) < 0) {
-          return err('a closing date, a new cycle date on or after it, and a Mon..Sun day are required');
-        }
-        if (!Array.isArray(p.p_rows)) return err('a rows array is required');
-        if (!s.state) return err('STORE_NOT_SYNCED');
-        if (s.state.cycleDate !== p.p_closing) return ok({ closed: false, reason: 'CYCLE_MOVED', cycleDate: s.state.cycleDate });
-        s.log = s.log.filter(r => r.cycleDate !== p.p_closing);
-        let seq = 0, n = 0;
-        for (const e of p.p_rows) {
-          seq++;
-          const vendor = String(e.vendor || '').trim(), id = String(e.id || '').trim(), qty = toOnHand(e.qty);
-          if (!vendor || !id || !(qty > 0)) continue;
-          s.log.push({ cycleDate: p.p_closing, seq, vendor, id, name: e.name || '', pack: e.pack || '', area: e.area || '',
-                       onHandPrev: toOnHand(e.onHandPrev), qty, loggedAt: p.p_logged_at });
-          n++;
-        }
-        // v17: the deliveries of HEH's stock held at Elpis, from the log just
-        // written; a failure there never stops the close (heldError).
-        let heldError = null;
-        if (this.hq && this.hq.wh && this.hq.wh.locations.some(l => l.heldBy != null)) {
-          const keep = clone(this.hq.wh);
-          try { this.whHeldFromLog(p.p_slug, s, p.p_closing, new Date(this.nowMs).toISOString()); }
-          catch (e) { this.hq.wh = keep; heldError = e.message; }
-        }
-        s.state = { cycleDate: p.p_new_cycle, dayOfWeek: p.p_new_dow, emergencyOverride: false,
-                    vendorPicks: {}, todaysLog: clone(p.p_todays_log || []) };
-        if (p.p_new_cycle === p.p_closing) s.counts.delete(p.p_new_cycle);
-        return ok(Object.assign({ closed: true, logged: n, closedCycle: p.p_closing, cycleDate: p.p_new_cycle }, heldError ? { heldError } : {}));
-      }
+      // schema_v23.sql: the key check in front of mog.close_cycle (closeCycleCore).
+      case 'mog_sync_close_cycle':
+        return this.closeCycleCore(p.p_slug, s, p);
 
       case 'mog_sync_get_log':
         return ok({ date: p.p_date, rows: s.log.filter(r => r.cycleDate === p.p_date).sort((a, b) => a.seq - b.seq)
@@ -482,6 +455,18 @@ class FakeSupabase {
         return ok({ alreadySwitched: false, startedEmpty: !!p.p_start_empty, catalogVersion: this.editorPublish(s) });
       }
 
+      // schema_v23.sql: who closes this store, the recap flag, the trigger's retirement.
+      case 'mog_sync_night':
+        if (p.p_trigger_off && s.closeDirect) s.sheetTriggerOffAt = new Date(this.nowMs).toISOString();
+        return ok({ closeDirect: !!s.closeDirect, recapSentFor: s.state ? (s.recapSentFor || null) : null,
+                    sheetTriggerOffAt: s.sheetTriggerOffAt || null });
+      case 'mog_sync_set_recap_sent':
+        if (!p.p_cycle) return err('a cycle date is required');
+        if (!s.state) return err('STORE_NOT_SYNCED');
+        s.recapSentFor = p.p_cycle;
+        if (s.recapDue === p.p_cycle) { s.recapDue = null; s.recapNextAt = null; }
+        return ok({ recapSentFor: p.p_cycle });
+
       case 'mog_sync_get_status':
         return ok({ phoneDirect: s.phoneDirect, editorDirect: s.editorDirect, hasCycle: !!s.state,
                     tablesSeeded: !!(s.tables && s.tables.vendors.length), catalogVersion: s.version,
@@ -498,6 +483,158 @@ class FakeSupabase {
       }
     }
     return err('fake: unknown function ' + fn);
+  }
+
+  // schema_v23.sql mog.close_cycle: v17's close, without the key (both closers).
+  closeCycleCore(slug, s, p) {
+    const ok = data => ({ ok: true, data });
+    const err = error => ({ ok: false, error });
+    if (!p.p_closing || !p.p_new_cycle || p.p_new_cycle < p.p_closing || DAYS.indexOf(p.p_new_dow) < 0) {
+      return err('a closing date, a new cycle date on or after it, and a Mon..Sun day are required');
+    }
+    if (!Array.isArray(p.p_rows)) return err('a rows array is required');
+    if (!s.state) return err('STORE_NOT_SYNCED');
+    if (s.state.cycleDate !== p.p_closing) return ok({ closed: false, reason: 'CYCLE_MOVED', cycleDate: s.state.cycleDate });
+    s.log = s.log.filter(r => r.cycleDate !== p.p_closing);
+    let seq = 0, n = 0;
+    for (const e of p.p_rows) {
+      seq++;
+      const vendor = String(e.vendor || '').trim(), id = String(e.id || '').trim(), qty = toOnHand(e.qty);
+      if (!vendor || !id || !(qty > 0)) continue;
+      s.log.push({ cycleDate: p.p_closing, seq, vendor, id, name: e.name || '', pack: e.pack || '', area: e.area || '',
+                   onHandPrev: toOnHand(e.onHandPrev), qty, loggedAt: p.p_logged_at });
+      n++;
+    }
+    // v17: the deliveries of HEH's stock held at Elpis, from the log just
+    // written; a failure there never stops the close (heldError).
+    let heldError = null;
+    if (this.hq && this.hq.wh && this.hq.wh.locations.some(l => l.heldBy != null)) {
+      const keep = clone(this.hq.wh);
+      try { this.whHeldFromLog(p.p_slug, s, p.p_closing, new Date(this.nowMs).toISOString()); }
+      catch (e) { this.hq.wh = keep; heldError = e.message; }
+    }
+    s.state = { cycleDate: p.p_new_cycle, dayOfWeek: p.p_new_dow, emergencyOverride: false,
+                vendorPicks: {}, todaysLog: clone(p.p_todays_log || []) };
+    if (p.p_new_cycle === p.p_closing) s.counts.delete(p.p_new_cycle);
+    return ok(Object.assign({ closed: true, logged: n, closedCycle: p.p_closing, cycleDate: p.p_new_cycle }, heldError ? { heldError } : {}));
+  }
+
+  // ---- schema_v23.sql: the nightly function's SQL (mog.night_*) ------------
+  // "Local" is UTC here, like every date in the fake (today(), the fixtures);
+  // smoke_v23.sql pins the real time zones and daylight saving.
+  nightLocal(atMs) {
+    const d = new Date(atMs).toISOString();
+    return { date: d.slice(0, 10), time: d.slice(11, 16) };
+  }
+  nightNote(slug, step, cycle, okFlag, detail) {
+    if (!this.stores.has(slug)) return;
+    (this.nightLog || (this.nightLog = [])).push({ id: (this.nightLog.length + 1), slug, step, cycleDate: cycle || null,
+                                                   ok: !!okFlag, detail: clone(detail || {}), at: new Date(this.nowMs).toISOString() });
+  }
+  nightDue(atMs) {
+    const at = atMs == null ? this.nowMs : atMs;
+    const L = this.nightLocal(at);
+    const slugs = Array.from(this.stores.keys()).sort();
+    const out = [];
+    for (const slug of slugs) {
+      const s = this.stores.get(slug);
+      if (s.closeDirect && s.state && s.catalog && s.state.cycleDate < L.date && L.time >= '03:30') out.push({ slug, step: 'close' });
+    }
+    for (const slug of slugs) {
+      const s = this.stores.get(slug);
+      if (s.state && s.recapDue && (s.recapTries || 0) < 3 && (s.recapNextAt == null || s.recapNextAt <= at)) out.push({ slug, step: 'recap' });
+    }
+    for (const slug of slugs) {
+      const s = this.stores.get(slug);
+      if (!s.closeDirect && !s.isTest && s.state && s.catalog && s.state.cycleDate < L.date && L.time >= '03:00' && L.time < '03:20'
+          && !(this.nightLog || []).some(g => g.slug === slug && g.step === 'shadow' && g.cycleDate === s.state.cycleDate)) {
+        out.push({ slug, step: 'shadow' });
+      }
+    }
+    return out;
+  }
+  nightPlan(slug, step, atMs) {
+    if (step !== 'close' && step !== 'shadow') throw new Error('night_plan: the step is close or shadow, not ' + step);
+    if (!this.nightDue(atMs).some(d => d.slug === slug && d.step === step)) return { due: false };
+    const snap = this.snapshot(slug, this.stores.get(slug), null, 'sync');
+    if (!snap.ok) return { due: false, reason: snap.error };
+    return { due: true, snapshot: snap.data };
+  }
+  nightLogRows(s, date) {
+    return s.log.filter(r => r.cycleDate === date).sort((a, b) => a.seq - b.seq)
+      .map(r => ({ vendor: r.vendor, id: r.id, name: r.name, pack: r.pack, area: r.area,
+                   onHandPrev: r.onHandPrev, qty: r.qty, loggedAt: r.loggedAt }));
+  }
+  nightClose(slug, closing, newCycle, newDow, rows, at, ms) {
+    const s = this.stores.get(slug);
+    const r = (s && s.closeDirect)
+      ? this.closeCycleCore(slug, s, { p_slug: slug, p_closing: closing, p_new_cycle: newCycle, p_new_dow: newDow, p_rows: rows,
+                                       p_todays_log: [], p_logged_at: at })
+      : { ok: false, error: 'NOT_CLOSE_DIRECT' };
+    const d = r.data || {};
+    let recap = null;
+    if (d.closed) {
+      recap = 'nothing ordered';
+      if (d.logged > 0) {
+        if (s.recapSentFor === closing) recap = 'already sent';
+        else { s.recapDue = closing; s.recapTries = 0; s.recapNextAt = null; recap = 'due'; }
+      }
+    }
+    const detail = { closed: d.closed, logged: d.logged, reason: d.reason, cycleDate: d.cycleDate, heldError: d.heldError,
+                     error: r.error, recap, ms };
+    for (const k of Object.keys(detail)) if (detail[k] === undefined || detail[k] === null) delete detail[k];
+    this.nightNote(slug, 'close', closing, !!r.ok, detail);
+    return Object.assign(clone(r), { recapDue: recap === 'due' });
+  }
+  nightRecapClaim(slug, atMs) {
+    const s = this.stores.get(slug);
+    const at = atMs == null ? this.nowMs : atMs;
+    if (!s || !s.state || !s.recapDue) return { due: false };
+    if (s.recapSentFor === s.recapDue) { s.recapDue = null; s.recapNextAt = null; return { due: false, reason: 'already sent' }; }
+    if ((s.recapTries || 0) >= 3) return { due: false, reason: 'tried 3 times' };
+    if (s.recapNextAt != null && s.recapNextAt > at) return { due: false, reason: 'next try later' };
+    s.recapTries = (s.recapTries || 0) + 1;
+    s.recapNextAt = at + 15 * 60000;
+    const prof = s.profile || {};
+    return { due: true, cycle: s.recapDue, attempt: s.recapTries,
+             location: s.location != null ? s.location : (prof.location || (s.catalog && s.catalog.location) || ''),
+             concept: s.concept != null ? s.concept : (prof.concept || (s.catalog && s.catalog.concept) || ''),
+             rows: this.nightLogRows(s, s.recapDue),
+             recipients: (s.recipients || []).filter(r => r.active === true && String(r.email || '') !== '')
+               .map(r => ({ name: r.name, email: r.email })) };
+  }
+  nightRecapDone(slug, cycle, sent, failed, detail) {
+    const s = this.stores.get(slug);
+    let state;
+    if (sent > 0) {
+      s.recapSentFor = cycle;
+      if (s.recapDue === cycle) { s.recapDue = null; s.recapNextAt = null; }
+      state = 'sent';
+    } else if (detail && detail.nothing) {
+      if (s.recapDue === cycle) { s.recapDue = null; s.recapNextAt = null; }
+      state = 'nothing to send';
+    } else if ((s.recapTries || 0) >= 3) {
+      state = 'gave up';
+    } else {
+      state = 'try again';
+    }
+    this.nightNote(slug, 'recap', cycle, sent > 0 || !!(detail && detail.nothing),
+                   Object.assign(clone(detail || {}), { sent, failed, state }));
+    return { state };
+  }
+  nightShadowDone(slug, cycle, rows, ms) {
+    const s = this.stores.get(slug);
+    const counts = Array.from(this.countsIn(s, cycle).values());
+    this.nightNote(slug, 'shadow', cycle, true, Object.assign({ rows: clone(rows || []) }, ms == null ? {} : { ms },
+                                                              counts.length ? { countsAt: 'fake' } : {}));
+  }
+  nightTestData(slug, date) {
+    const s = this.stores.get(slug);
+    if (!s) return { ok: false, error: 'UNKNOWN_STORE' };
+    const prof = s.profile || {};
+    return { ok: true, location: s.location != null ? s.location : (prof.location || (s.catalog && s.catalog.location) || ''),
+             concept: s.concept != null ? s.concept : (prof.concept || (s.catalog && s.catalog.concept) || ''),
+             rows: this.nightLogRows(s, date) };
   }
 
   // The five PWA functions (schema.sql + schema_v3.sql): a 12-hour session

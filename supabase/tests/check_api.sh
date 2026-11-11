@@ -203,6 +203,17 @@ check "v22 helper: wh_held_from_log not exposed"    404 ''   -X POST "${J[@]}" -
 check "v22 helper: wh_live_json not exposed"        404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore"}' "$(rpc wh_live_json)"
 check "v22 helper: wh_available_at not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_product":1,"p_place":1,"p_slug":"nosuchstore","p_cycle":"2026-01-01"}' "$(rpc wh_available_at)"
 
+# schema v23 (the nightly close in Supabase; a bogus sync key only)
+check "v23 night_log table: not reachable"          404 ''   "$URL/rest/v1/night_log"
+check "v23 sync_night: bad key refused"             200 'BAD_SYNC_KEY' -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus"}' "$(rpc mog_sync_night)"
+check "v23 sync_night: bad key can't stamp"         200 'BAD_SYNC_KEY' -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_trigger_off":true}' "$(rpc mog_sync_night)"
+check "v23 set_recap_sent: bad key refused"         200 'BAD_SYNC_KEY' -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_cycle":"2026-01-01"}' "$(rpc mog_sync_set_recap_sent)"
+check "v23 close_cycle wrapper: bad key refused"    200 'BAD_SYNC_KEY' -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_closing":"2026-01-01","p_new_cycle":"2026-01-02","p_new_dow":"Fri","p_rows":[],"p_todays_log":[]}' "$(rpc mog_sync_close_cycle)"
+check "v23 helper: close_cycle not exposed"         404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_closing":"2026-01-01","p_new_cycle":"2026-01-02","p_new_dow":"Fri","p_rows":[],"p_todays_log":[]}' "$(rpc close_cycle)"
+check "v23 helper: night_due not exposed"           404 ''   -X POST "${J[@]}" -d '{}' "$(rpc night_due)"
+check "v23 helper: night_close not exposed"         404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_closing":"2026-01-01","p_new_cycle":"2026-01-02","p_new_dow":"Fri","p_rows":[]}' "$(rpc night_close)"
+check "v23 helper: night_recap_claim not exposed"   404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore"}' "$(rpc night_recap_claim)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

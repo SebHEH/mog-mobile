@@ -1,6 +1,6 @@
 # MOG: retiring each store's Google Sheet (spec)
 
-**Status:** approved by Sebastian, 2026-11-11 (spec-first: R1, R3, R4 and R5 picked as recommended; R2 and R6 to R11 approved as stated). Nothing is built. Step 1 starts with an architectural walkthrough. It replaces the stub in [MOG_Warehouse_Spec.md](MOG_Warehouse_Spec.md) §3, which links here.
+**Status:** approved by Sebastian, 2026-11-11 (spec-first: R1, R3, R4 and R5 picked as recommended; R2 and R6 to R11 approved as stated). Step 1 (the backup) is built and live (2026-11-11, "Step 1, built" below). Step 2 is built and gated, with schema v23 live and the rest not yet ("Step 2" below); steps 3 to 5 are not started. It replaces the stub in [MOG_Warehouse_Spec.md](MOG_Warehouse_Spec.md) §3, which links here.
 **Read with:** [MOG_SupabaseMigration.md](MOG_SupabaseMigration.md) (D9: the Sheet is retired from the app's path), [MOG_OneApp_Spec.md](MOG_OneApp_Spec.md).
 
 ---
@@ -98,10 +98,88 @@ Each step ships on its own. Sizes are estimates.
 
 About 4 to 5 sessions. Schema numbers are taken when each step is built.
 
+### Step 1, built (2026-11-11)
+
+Walkthrough approved as recommended: the restore checked every night, the password generated in the SQL and shown once, the role created on the live database.
+
+- **What runs:** the private repo [SebHEH/mog-backup](https://github.com/SebHEH/mog-backup) (its README has the restore steps). A GitHub Action runs every day at 09:47 UTC (4:47 AM New York in winter, 5:47 AM in summer, after every close), by hand, and on a push to its workflow or scripts.
+  1. It connects as `mog_backup` through the session pooler (IPv4) and checks it is that role and read-only.
+  2. It dumps the `mog` and `public` schemas with `pg_dump` 17 and keeps the dump as the run's artifact for 90 days.
+  3. It restores the dump into a throwaway Postgres 17 on the runner and compares it line for line with the live database: each function's definition and grants, each table's grants, the constraints, RLS, and every table's row count.
+  4. Any difference turns the run red, and GitHub emails Sebastian.
+- **The role:** [supabase/backup_role.sql](../supabase/backup_role.sql), run by Sebastian in the SQL Editor. It gives `mog_backup` login, BYPASSRLS (every `mog` table has RLS on with no policies), at most 2 connections and read-only by default, plus SELECT on every `mog` table and sequence, now and later.
+  - It generates the password and shows it once: a typed password would land in the Postgres log (`log_statement = ddl`). Re-running the file rotates it.
+  - [supabase/tests/backup_role_pglite.mjs](../supabase/tests/backup_role_pglite.mjs) (in CI) runs it as a non-superuser like Supabase's `postgres`.
+- **Measured on the first green run (#4):**
+  - Postgres 17.6: 36 tables, 17,609 rows; the dump is 710 KB and took 17 s; the restore took 1 s; the artifact is 745 KB.
+  - About 67 MB of the 500 MB artifact storage held at once, and about 60 of the 2,000 minutes a month.
+- **Met on the way** (runs #1 to #3, each fixed and kept in the scripts):
+  - `nosuperuser` in the role file: only a superuser may name that attribute, and PGlite runs as one (lesson in `mog-supabase-schema`).
+  - A trailing newline in the secret, picked up from the SQL Editor's grid: the script drops whitespace and describes a malformed secret without showing it.
+  - The dump's `CREATE SCHEMA public` stops any restore, since every Postgres has that schema: a restore leaves that one entry out.
+  - Supabase and the runner sort text differently: the comparison sorts byte by byte.
+- **Restore tested:** every run restores its own dump (success criterion 4). A restore into a new Supabase project uses the same steps (the README).
+- **Not checked yet:** the first scheduled night, 2026-11-12.
+- **Unchanged:** the Sheets' LOG_ORDERS copy runs until step 2. No Apps Script, store or schema version changed.
+
+### Step 2: built and gated, not live yet (2026-11-11)
+
+**Measured first:**
+- `OrderMath.gs` loads unchanged as a strict ES module and closes a 600-item, 30-vendor store in 16 to 47 ms of CPU (Node, the same V8 as Deno), against the 2 s limit. rpr's live snapshot, the biggest, is 51 KB.
+- Edge Functions (Supabase docs): 2 s CPU, 150 s wall clock, 256 MB, no `vm`, ports 25 and 587 closed. `SUPABASE_DB_URL` is built in, so the function calls `mog.*` directly and adds no public endpoint.
+- Resend (resend.com, 11-11):
+  - the free plan is 3,000 emails a month and 100 a day;
+  - the API takes 10 requests a second;
+  - an `Idempotency-Key` header is kept 24 hours;
+  - its records go on `send` and `resend._domainkey`, so hehfood.com's Google Workspace SPF and MX are untouched;
+  - hehfood.com's DNS is on Cloudflare, which Resend can fill in by itself.
+- **The Daily summary already sets the once-per-cycle flag** (sent at 1:05 PM on 11-05 at Rosslyn BOH, at 4:01 PM on 11-01 at Tysons FOH), and that night's recap is then skipped. In step 2 it still runs in Apps Script, so the flag is shared.
+
+**Decided in the walkthrough (Sebastian, 2026-11-11):**
+- Apps Script's three recap paths read and write the flag in Supabase as well as the Script Property.
+- Each store's 3:30 AM trigger deletes itself the first night its `close_direct` is on, and stamps `mog.stores.sheet_trigger_off_at`.
+- The recap comes from `Master Ordering Guide <noreply@hehfood.com>`, with no Reply-To.
+- Every night, each store Apps Script still closes gets a shadow run between 3:00 and 3:20 AM, compared each morning with what Apps Script logged.
+
+**How it runs:**
+1. Every 15 minutes `pg_cron` runs `mog.night_tick()` ([supabase/night_schedule.sql](../supabase/night_schedule.sql)). When `mog.night_due()` names something, it posts once to the Edge Function `close` with Vault's secret.
+2. The function ([supabase/functions/close/](../supabase/functions/close/)) does each due item in turn:
+   - **Close:** a store with `close_direct` on, its cycle behind, from 3:30 AM its time. It reads the sync snapshot, runs `OrderMath.gs`, then calls `mog.night_close`, which is v17's close unchanged (`mog.close_cycle`).
+   - **Recap:** claimed once per 15 minutes, at most 3 tries. It's built by `RecapEmail.gs` and sent through Resend, one email per active recipient, with an idempotency key per cycle and person.
+   - **Shadow:** worked out and kept in `mog.night_log` only.
+3. Every close, recap, shadow and test leaves a row in `mog.night_log`.
+
+**Built:**
+- [supabase/schema_v23.sql](../supabase/schema_v23.sql), with smoke_v23: 48 rows; 11 planted defects all caught.
+- [supabase/night_schedule.sql](../supabase/night_schedule.sql), with [night_schedule_pglite.mjs](../supabase/tests/night_schedule_pglite.mjs) in CI (stand-ins for Vault, `pg_net` and `pg_cron`).
+- The function.
+- [apps-script/Concepts.gs](../apps-script/Concepts.gs) and [RecapEmail.gs](../apps-script/RecapEmail.gs), moved unchanged.
+- `Recap.gs` (the shared flag) and `Sync.gs` (`nightMovedToDb_`).
+- The gate `tests/night_close.test.js`:
+  - 30 stores closed both ways, with the same rows, log, cycle and emails byte for byte;
+  - 60 email cases against the pre-move `sendRecapEmail_`;
+  - 7 once-per-cycle scenarios;
+  - 13 planted defects.
+
+**Live so far:** schema v23, run 2026-11-11 on Sebastian's go: smoke_v23 48/48, probe 142/142. `close_direct` is off at all 10 stores.
+
+**Still to do, each on Sebastian's go:**
+1. ~~Run v23, then smoke_v23.~~ Done 2026-11-11.
+2. Deploy the function (approved 11-11, not run yet).
+3. Resend: signup, DNS, and the key into Edge Functions → Secrets.
+4. Run `night_schedule.sql`.
+5. Send a test email to Sebastian.
+6. Deploy Apps Script: rprfo, then all 11.
+7. Run the shadow nights.
+8. Turn on rprfo's `close_direct` for three nights.
+9. Turn it on for the other nine.
+
 ## Not verified
 
-- The trigger list in each of the 11 Apps Script projects (only the recap's sender was measured).
+- The trigger list in each of the 11 Apps Script projects (only the recap's sender was measured). Step 2's triggers remove themselves, so the list matters only for anything else installed.
 - Whether anyone opens a store's Sheet today.
-- `OrderMath.gs` and the recap builder running unchanged in Supabase's Deno runtime.
-- Resend's free-tier numbers (from memory; confirm at signup).
-- GitHub Actions artifact retention on a private repo (90 days assumed).
+- ~~`OrderMath.gs` and the recap builder running unchanged in Supabase's Deno runtime.~~ Measured as a strict ES module in Node (same V8 as Deno), 2026-11-11. The first Deno run itself is the test email and the first shadow.
+- ~~Resend's free-tier numbers.~~ Confirmed on resend.com 2026-11-11 (Step 2 above).
+- Whether `SUPABASE_DB_URL` reaches the database from the function (IPv6 direct host or the pooler): the first test email shows it.
+- Whether each store's Script Property location matches `mog.stores.location`. Matched in the subjects sent for rpr, rprfo, rpfr, rpt and tnytf; the other five have sent no recap since 10-28.
+- ~~GitHub Actions artifact retention on a private repo (90 days assumed).~~ Settled 2026-11-11: a private repo keeps artifacts 1 to 400 days (GitHub docs); the backup sets 90.
