@@ -25,7 +25,7 @@
 |---|---|---|---|
 | 1 | Concept library | about 1 session | HQ (built) |
 | 2 | Warehouse W1, W2 (stores already on MOG, and Dan) | about 2 sessions | HQ people and roles |
-| 3 | Stores without a Google Sheet | 2 to 3 sessions; its own spec first | nothing |
+| 3 | Stores without a Google Sheet | 4 to 5 sessions; spec approved 2026-11-11 ([MOG_SheetRetirement_Spec.md](MOG_SheetRetirement_Spec.md)) | nothing |
 | 4 | Chasin' Tails and NUE join MOG; warehouse W3 (chargebacks) | 1 to 2 sessions | 1, 2, 3 |
 
 Until step 4, Chasin' Tails and NUE keep ordering through Daniel's artifact.
@@ -414,18 +414,12 @@ Noticed while drawing: a delivery from Tysons would be numbered EL-0003, since e
 
 Sebastian's goal: create a store entirely in Supabase, with no Sheet copy and no per-store setup, for the next Roll Play, Lei'd Poke, Chasin' Tails or NUE store.
 
-**What a store's Sheet still does today,** each needing a new home first:
-1. the 3:30 AM close and the order log (an Apps Script trigger per store, running `OrderMath.gs`);
-2. the daily recap email (Apps Script's mail);
-3. the nightly LOG_ORDERS backup;
-4. setup: PIN, profile, concept, recipients (the `?page=setup` wizard and "Move this store to Supabase");
-5. two leftover `/exec` uses on the phone (the Daily summary button, the reset fallback).
-
-**Key decision for its own spec:** where the close and the email run without a Sheet. Either:
-- **one central Apps Script project** (no Sheet per store) that closes every Sheet-less store, reusing today's code;
-- or **Supabase itself:** a scheduled function running the order math, and email through a mail service. Fully Supabase, but new pieces and an email account.
-
-It's a multi-session foundation, and it would also let the existing stores drop their Sheets later.
+**Spec approved 2026-11-11: [MOG_SheetRetirement_Spec.md](MOG_SheetRetirement_Spec.md)** (the inventory of what each Sheet still does, with file and function; the decisions; the order of work). It retires the Sheets of the 10 existing stores too. In short:
+- **The close:** a Supabase Edge Function running `OrderMath.gs` verbatim, started by `pg_cron` every 15 minutes for the stores that are due.
+- **The recap email:** Resend, from a hehfood.com address (Sebastian adds the DNS records).
+- **The backup** (replaces LOG_ORDERS): a nightly dump of every `mog` table to a private GitHub repo, kept 90 days.
+- **A new store:** HQ → Stores → New store, PINs set there too.
+- **Order:** the backup, the close and email (canary rprfo, then all), the phone off `/exec`, PINs and New store, then retire the triggers and deploy targets. About 4 to 5 sessions. The Sheets stay in Drive as an archive.
 
 ## 4. Chasin' Tails and NUE
 
