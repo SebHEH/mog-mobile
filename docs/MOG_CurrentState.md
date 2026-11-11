@@ -24,7 +24,14 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - rpr and rprfo had orders, and their recaps went to their Supabase recipients;
   - the other stores had nothing ordered, so no email (by design).
 
-**2026-11-11 (later): Sheet retirement step 2 is built and gated; schema v23 is live, the rest isn't** (the close and the recap email in Supabase; `docs/MOG_SheetRetirement_Spec.md`, "Step 2"). v23 ran through the connector on Sebastian's go: smoke_v23 48/48, probe 142/142. `close_direct` is off at all 10 stores, so nothing a store sees changed. Paused there: the function's deploy and `night_schedule.sql` were approved and haven't run.
+**2026-11-11 (later): Sheet retirement step 2 is built; v23, the function and the schedule are live, no store has switched** (the close and the recap email in Supabase; `docs/MOG_SheetRetirement_Spec.md`, "Step 2").
+- **Live, on Sebastian's go:**
+  - schema v23: smoke_v23 48/48, probe 142/142;
+  - the Edge Function `close` (version 1, JWT check off): refuses a call without Vault's secret (401), and an authenticated run answered `{"ok":true,"ran":[]}`;
+  - `night_schedule.sql`: `pg_cron` job `mog-night`, every 15 minutes.
+- **Not yet:**
+  - `close_direct` is off at all 10 stores, so Apps Script still closes every store and sends every recap;
+  - the first shadows run at 3:00 AM on 11-12.
 - **Approved in the walkthrough:** Apps Script shares the once-per-cycle flag through Supabase (the Daily summary stays in Apps Script until step 3); each store's 3:30 AM trigger retires itself the first night its `close_direct` is on; recaps from `noreply@hehfood.com`, no Reply-To; a nightly shadow (3:00 to 3:20 AM) of every store Apps Script still closes, compared each morning with `supabase/tests/night_shadow_check.sql`.
 - **Built:**
   - `supabase/schema_v23.sql` (smoke_v23, 11 planted defects caught) and `supabase/night_schedule.sql` (`pg_cron`, `pg_net`, the Vault secret);

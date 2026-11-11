@@ -64,6 +64,17 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
     - It reaches the database through the session pooler as `mog_backup.mnfwqmrstdeuczveyykv` at `aws-1-us-west-2.pooler.supabase.com:5432`. The direct host is IPv6 only, and GitHub's runners have no IPv6.
   - **SQL that creates or alters a role is tested as a non-superuser.** Supabase's `postgres` isn't a superuser and PGlite's is; `nosuperuser` failed live on 2026-11-11 (`mog-supabase-schema`).
   - **A value copied from the SQL Editor's result grid can carry a trailing newline** (the backup's secret did, 2026-11-11).
+- **The nightly close in Supabase (Sheet retirement step 2, live 2026-11-11; `docs/MOG_SheetRetirement_Spec.md`, "Step 2").**
+  - **What runs:** `pg_cron` job `mog-night` every 15 minutes runs `mog.night_tick()`. When `mog.night_due()` names a close, a recap or a shadow, it posts once to the Edge Function `close` with Vault's secret `mog_night_secret`.
+  - **Where to look:**
+    - `mog.night_log`: one row per close, recap, shadow or test;
+    - `net._http_response`: the function's answers, kept 6 hours;
+    - `cron.job_run_details`: each tick;
+    - the morning check is [supabase/tests/night_shadow_check.sql](../supabase/tests/night_shadow_check.sql).
+  - **A store switches** with `update mog.stores set close_direct = true where slug = '...'`. Its Apps Script trigger deletes itself the next night and stamps `mog.stores.sheet_trigger_off_at`. Switching back is `close_direct = false`, then Move this store to Supabase to re-install the trigger.
+  - **Stop everything:** `select cron.unschedule('mog-night');`.
+  - **Deploying the function is a deploy:** on the maintainer's go, through the connector's `deploy_edge_function`, with the three files in `supabase/functions/close/` as they are in the repo. Deploy with `verify_jwt` false, because the function checks the secret itself.
+  - **`RESEND_API_KEY`** lives only in Edge Functions → Secrets, set by Sebastian; never in chat or the repo.
 
 ## HQ control (schema v11)
 

@@ -1,6 +1,6 @@
 # MOG: retiring each store's Google Sheet (spec)
 
-**Status:** approved by Sebastian, 2026-11-11 (spec-first: R1, R3, R4 and R5 picked as recommended; R2 and R6 to R11 approved as stated). Step 1 (the backup) is built and live (2026-11-11, "Step 1, built" below). Step 2 is built and gated, with schema v23 live and the rest not yet ("Step 2" below); steps 3 to 5 are not started. It replaces the stub in [MOG_Warehouse_Spec.md](MOG_Warehouse_Spec.md) §3, which links here.
+**Status:** approved by Sebastian, 2026-11-11 (spec-first: R1, R3, R4 and R5 picked as recommended; R2 and R6 to R11 approved as stated). Step 1 (the backup) is built and live (2026-11-11, "Step 1, built" below). Step 2 is built and gated: schema v23, the function and the schedule are live, and no store has switched yet ("Step 2" below). Steps 3 to 5 are not started. It replaces the stub in [MOG_Warehouse_Spec.md](MOG_Warehouse_Spec.md) §3, which links here.
 **Read with:** [MOG_SupabaseMigration.md](MOG_SupabaseMigration.md) (D9: the Sheet is retired from the app's path), [MOG_OneApp_Spec.md](MOG_OneApp_Spec.md).
 
 ---
@@ -161,13 +161,19 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
   - 7 once-per-cycle scenarios;
   - 13 planted defects.
 
-**Live so far:** schema v23, run 2026-11-11 on Sebastian's go: smoke_v23 48/48, probe 142/142. `close_direct` is off at all 10 stores.
+**Live so far (2026-11-11, each on Sebastian's go):**
+- schema v23: smoke_v23 48/48, probe 142/142.
+- The Edge Function `close` (version 1, JWT check off):
+  - refuses a call without the secret, with a wrong one, and by GET (401, 401, 405), which also shows it boots in Deno and reaches the database;
+  - a run with Vault's secret through `pg_net` answered HTTP 200 `{"ok":true,"ran":[]}`.
+- `night_schedule.sql`: `pg_cron` 1.6 and `pg_net` on, the secret made in Vault, job `mog-night` every 15 minutes.
+- `close_direct` is off at all 10 stores.
 
 **Still to do, each on Sebastian's go:**
 1. ~~Run v23, then smoke_v23.~~ Done 2026-11-11.
-2. Deploy the function (approved 11-11, not run yet).
+2. ~~Deploy the function.~~ Done 2026-11-11.
 3. Resend: signup, DNS, and the key into Edge Functions → Secrets.
-4. Run `night_schedule.sql`.
+4. ~~Run `night_schedule.sql`.~~ Done 2026-11-11.
 5. Send a test email to Sebastian.
 6. Deploy Apps Script: rprfo, then all 11.
 7. Run the shadow nights.
