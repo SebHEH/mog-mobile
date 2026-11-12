@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: a609698 (2026-11-06) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: 2aff545 (2026-11-12) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -404,6 +404,13 @@ naive rebuild silently loses.*
   - A store holding a place orders the item from Happy Supply as any store would; shipping it is a move into its place, not a sale: no price, no delivery fee, in transit until the store (or HQ for it) checks it in, then in that place. Its par has to cover the stores it holds for, since its KMs count the whole freezer.
   - The holder's own use is what its counts show: a count below the records is use, an opening count (nothing on record before it) isn't. Each month HQ lists, in cases, what each store took from each place (deliveries checked in, Happy Supply orders received, the holder's own use) and the moves between places apart, which nobody is charged for.
   - Why: HEH holds shrimp at RP Tysons for the other Roll Plays, and its paper goods at Elpis; HQ has to show how much is where and who took what without changing how KMs order. *(Confirmed: owner 2026-11-04, `docs/MOG_Warehouse_Spec.md` §2, "W2c spec" and "W2c design". The owner picked HEH's stock until a store takes it over RP Tysons buying it, RP Tysons ordering it on the phone over Dan restocking it, its own use from its MarginEdge count, cases only for now, and a table of items by place with Items and Places shaped like a store's Manage.)*
+- **R35. A multi-vendor item is counted on one list a day: its home list, or a backup's when its main vendor isn't ordered today.**
+  - An item lists on its home count list only: its main vendor's list when that list carries it, else the first of its lists in vendor order. Its other vendors stay behind an arrow on the row (app v0.30.0, PR #7).
+  - When the home list's vendor isn't ordered today (`vendorDayMultiplier_` is 0; under Emergency Override every vendor is ordered), the item lists on every backup list that is ordered today and carries it (app v0.32.0, owner 2026-11-10).
+  - Once one of those lists saves a count for it (a saved count, or a draft on that phone), the other lists show it read-only at the bottom, "Counted on [vendor]'s list today", with that count. Clearing the count there brings it back. A count only moves it when that list still carries the item, so a stale count on a list it left moves nothing.
+  - An item counted on a list, added for today only, or kept on a backup by hand always shows on that list.
+  - Not prevented: two phones counting it on two lists before either saves; both order it, and the second list moves it down within about 10 seconds.
+  - Why: a backup is there to cover a day the main vendor doesn't deliver, and ordering the same item from two vendors on one day doubles it. *(Confirmed: owner 2026-11-10 picked read-only rows, the rule on every list including the main vendor's, and the wording; `template/index.html` `listSplit_` / `listDay_`, gate `count_lists`.)*
 
 ---
 

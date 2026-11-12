@@ -119,7 +119,7 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
   - The dump's `CREATE SCHEMA public` stops any restore, since every Postgres has that schema: a restore leaves that one entry out.
   - Supabase and the runner sort text differently: the comparison sorts byte by byte.
 - **Restore tested:** every run restores its own dump (success criterion 4). A restore into a new Supabase project uses the same steps (the README).
-- **Not checked yet:** the first scheduled night, 2026-11-12.
+- **The first scheduled night (11-12) never started:** GitHub picked up the schedule only after a push to the repo. Run #5, started by hand on 11-12, passed (37 tables, 17,766 rows, matched). **Not checked yet:** the 11-13 scheduled run (09:47 UTC). A backup watchdog (an email when no good backup is newer than 30 hours) is designed in step 2's session and waits for Sebastian's go.
 - **Unchanged:** the Sheets' LOG_ORDERS copy runs until step 2. No Apps Script, store or schema version changed.
 
 ### Step 2: built and gated, not live yet (2026-11-11)

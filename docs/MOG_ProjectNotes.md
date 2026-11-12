@@ -12,6 +12,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **The order math lives only in `apps-script/OrderMath.gs`.** The server runs it and `build.py` copies it verbatim into the app. Never re-implement it in SQL or as a hand copy (the 08-03 bug class).
 - **The Sheet dialogs are being phased out** (2026-07-21). Don't invest in modal visual polish. Behavior fixes in the dual-host `.html` pages still matter.
 - **Computer pages (the editor, HQ) use the order guide's computer look with the HEH brand,** and a choice among known values is pick-only: a dropdown or chips, never a free-text box beside a list, which invites a new misspelled vendor (Sebastian, 2026-11-01, on HQ's first library page). A new screen gets a mockup in that look before it's built.
+- **Check MarginEdge before speccing a count, report or recipe feature.** It already holds every invoice (what arrived), the company-wide recipes that turn prepped and cooked items back into raw, and Spot count sheets that feed its Usage reports. The daily inventory was dropped mid-spec for that reason (Sebastian, 2026-11-10; CurrentState, Dropped).
 - **Loading bars and transition screens** were parked until every store moved to Supabase. That happened 2026-10-20, so they're now a polish candidate.
 - **Secrets:**
   - Apps Script reaches Supabase with a per-store sync key, never the service-role key. Anyone who can edit a store's Sheet can read its Script Properties, so a leaked key reaches one store.
@@ -38,6 +39,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - **A deploy that changes nothing a live store does runs without a question** (Sebastian, 2026-11-12; CLAUDE.md, Working conventions 2): code behind a switch that's off (like `close_direct`), a canary of it, the close function while no store is switched. Do it, then say what changed, what the gates prove, what's visible, and the rollback.
   - **Still ask first:** turning on any store's `close_direct`, or any other cutover. A change to the order math for everyone, or a schema migration, also gets its own question.
   - Nobody is told before a deploy or SQL: whoever continues pulls the latest (Sebastian, 2026-11-12).
+- **`build.py` has no `--help`:** any run, `--help` included, builds every store (2026-11-10). Use `--dry-run` to see what it would write.
 - **Checking a Pages push is live:** run `.claude/skills/mog-deploy-workflow/scripts/wait_live.py` in the background (2026-11-06; it holds the rules below and checks CI's `gates` run too).
   - Pages takes about 30-60 s, sometimes several minutes (HQ took about 4.5 on 2026-11-06).
   - Poll each store's file with a cache-busting query (`?x=$RANDOM`), in the background, and check all 10 stores.
@@ -57,6 +59,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - **No hook guards it** (Sebastian's call, 2026-11-06); the rule is the guard. In claude.ai the connector's write tools are on Always allow except Pause project, which is blocked (it would take every store offline).
   - **Backups: a nightly off-site dump since 2026-11-11** (the free plan has none of its own; `docs/MOG_SheetRetirement_Spec.md`, "Step 1, built").
     - **What it is:** the private repo `SebHEH/mog-backup` dumps the `mog` and `public` schemas every day at 09:47 UTC and keeps 90 days of dumps as run artifacts. Each run restores its dump into a throwaway Postgres 17 and checks it matches the live database. A red run emails Sebastian.
+    - **Its first scheduled night (11-12) never started:** GitHub picked up the new repo's schedule only after a push to it. Check a new scheduled workflow's first night instead of assuming it ran.
     - **Rows back after a wrong write:** download the last good night's artifact, restore it into a scratch database, and write the fix as a one-off data file the maintainer has seen. Steps in that repo's README, "Restore": every restore leaves out the dump's `CREATE SCHEMA public`.
     - **Still true:** a function change rolls back by re-running its previous definition. Some data keeps its own history too: warehouse stock moves, each store's change log and Undo, and each Sheet's LOG_ORDERS copy (until Sheet retirement step 2).
   - **`mog_backup`, the backup's login** ([supabase/backup_role.sql](../supabase/backup_role.sql)): read-only, BYPASSRLS, at most 2 connections. Its password lives only in that repo's secret `MOG_BACKUP_PASSWORD`.
