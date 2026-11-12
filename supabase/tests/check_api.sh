@@ -214,6 +214,15 @@ check "v23 helper: night_due not exposed"           404 ''   -X POST "${J[@]}" -
 check "v23 helper: night_close not exposed"         404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore","p_closing":"2026-01-01","p_new_cycle":"2026-01-02","p_new_dow":"Fri","p_rows":[]}' "$(rpc night_close)"
 check "v23 helper: night_recap_claim not exposed"   404 ''   -X POST "${J[@]}" -d '{"p_slug":"nosuchstore"}' "$(rpc night_recap_claim)"
 
+# schema v24 (the backup watchdog; the retired warehouse columns' copy). Nothing new is public.
+check "v24 backup_watch table: not reachable"       404 ''   "$URL/rest/v1/backup_watch"
+check "v24 backup_heartbeats table: not reachable"  404 ''   "$URL/rest/v1/backup_heartbeats"
+check "v24 wh_products_retired: not reachable"      404 ''   "$URL/rest/v1/wh_products_retired"
+check "v24 helper: backup_heartbeat not exposed"    404 ''   -X POST "${J[@]}" -d '{"p_run":"zz","p_tables":1,"p_rows":1,"p_bytes":1}' "$(rpc backup_heartbeat)"
+check "v24 helper: backup_status not exposed"       404 ''   -X POST "${J[@]}" -d '{}' "$(rpc backup_status)"
+check "v24 helper: backup_alert_claim not exposed"  404 ''   -X POST "${J[@]}" -d '{}' "$(rpc backup_alert_claim)"
+check "v24 helper: backup_test_data not exposed"    404 ''   -X POST "${J[@]}" -d '{}' "$(rpc backup_test_data)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

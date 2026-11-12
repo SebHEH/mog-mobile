@@ -43,7 +43,12 @@ const db = {
               one(sql`select mog.night_shadow_done(${slug}, ${cycle}::date, ${sql.json(rows as any)}, ${Math.round(ms)}::integer) as r`),
   testData:   (slug: string, date: string) => one(sql`select mog.night_test_data(${slug}, ${date}::date) as r`),
   note:       (slug: string, step: string, cycle: string | null, ok: boolean, detail: unknown) =>
-              one(sql`select mog.night_note(${slug}, ${step}, ${cycle}::date, ${ok}, ${sql.json(detail as any)}) as r`)
+              one(sql`select mog.night_note(${slug}, ${step}, ${cycle}::date, ${ok}, ${sql.json(detail as any)}) as r`),
+  // The backup watchdog (schema_v24.sql).
+  backupClaim: () => one(sql`select mog.backup_alert_claim() as r`),
+  backupDone:  (kind: string, ok: boolean, detail: unknown) =>
+              one(sql`select mog.backup_alert_done(${kind}, ${ok}, ${sql.json(detail as any)}) as r`),
+  backupTest:  () => one(sql`select mog.backup_test_data() as r`)
 };
 
 // One email per POST to the mail relay (core.mjs relayMailer).

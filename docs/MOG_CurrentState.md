@@ -14,7 +14,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
 - **Each Sheet** is frozen for catalog edits. It still holds the Apps Script: the 3:30 AM close, the recap email, the onboarding moves. It also gets a nightly LOG_ORDERS backup.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions (newest first):** app v0.33.0 / store cache v76 (Manage finished, live on all 10 stores 2026-11-11, 38 gates); schema v23 (live 2026-11-11, see Sheet retirement step 2 below); v22 (live 2026-11-06), v21 (routes, live 2026-11-05, store cache v74). Every older version with its smoke and probe counts: `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
+- **Versions (newest first):** schema v24 (the backup watchdog and the via/par/stores drop: built and gated 2026-11-12, **not run live yet**, below); app v0.33.0 / store cache v76 (Manage finished, live on all 10 stores 2026-11-11, 41 gates since v24); schema v23 (live 2026-11-11, see Sheet retirement step 2 below); v22 (live 2026-11-06), v21 (routes, live 2026-11-05, store cache v74). Every older version with its smoke and probe counts: `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
 - **The three stores that moved empty:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
@@ -53,6 +53,11 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   5. the Apps Script deploy: rprfo **done 11-12** (@114), the other 10 after rprfo's night checks out;
   6. shadow nights;
   7. rprfo's `close_direct` on for three nights, then the other nine.
+
+**2026-11-12 (afternoon): schema v24 built, not live** (Sebastian's go at 12:15 PM; a headless Grok Bot run; `docs/MOG_SheetRetirement_Spec.md`, "The backup watchdog").
+- **Built and gated:** the backup watchdog (a heartbeat from SebHEH/mog-backup after each good backup; an email through the mail relay when none is newer than 30 hours, once a day) and the drop of `mog.wh_products.via`, `par` and `stores` (copied first to `mog.wh_products_retired`; the drop stops if any function still names them). PGlite all pass, smoke_v24 28/28, 41 gates.
+- **Defaults taken:** the watch starts when v24 runs; the address is `mog.backup_watch.alert_to`, set once in the SQL Editor (never in the repo).
+- **Not done (that run had no Supabase connector, `gh` or Supabase CLI):** the backup's last good run checked, v24 and smoke_v24 run live, `night_schedule.sql` re-run, the address set, the function redeployed, the one test email. Steps in `~/.claude/handoffs/OPEN_ITEMS.md` and the run's report.
 
 **Older pinned entries (2026-11-11 Manage finished, the nightly backup, and everything back to 2026-11-01):** `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
 ### Next-session candidates

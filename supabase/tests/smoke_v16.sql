@@ -118,9 +118,10 @@ begin
   -- ---- The warehouse: two locations, three products ----
   insert into mog.wh_locations (name, ord) values ('zz smoke 16 Berliner', 1) returning id into locA;
   insert into mog.wh_locations (name, ord) values ('zz smoke 16 Tysons', 2) returning id into locB;
-  insert into mog.wh_products (name, pack, par, handling_fee) values ('zz smoke 16 shrimp', '10 LB case', 12, 6) returning id into shrimp;
-  insert into mog.wh_products (name, pack, par, handling_fee) values ('zz smoke 16 crab', '20 LB case', 10, 10) returning id into crab;
-  insert into mog.wh_products (name, pack, par, handling_fee) values ('zz smoke 16 lobster', 'CASE', 2, 5) returning id into lobster;
+  -- v24: a product's par is gone (retired in v21, dropped in v24).
+  insert into mog.wh_products (name, pack, handling_fee) values ('zz smoke 16 shrimp', '10 LB case', 6) returning id into shrimp;
+  insert into mog.wh_products (name, pack, handling_fee) values ('zz smoke 16 crab', '20 LB case', 10) returning id into crab;
+  insert into mog.wh_products (name, pack, handling_fee) values ('zz smoke 16 lobster', 'CASE', 5) returning id into lobster;
   -- v21: Happy Supply sells what sits at one of HEH's own places.
   insert into mog.wh_product_places (product_id, location_id) values (shrimp, locA), (crab, locA), (lobster, locA);
   perform mog.wh_move(me, shrimp, locA, 9, 'received', 'zz', 77.3095, null);

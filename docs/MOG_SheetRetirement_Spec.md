@@ -122,6 +122,22 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
 - **The first scheduled night (11-12) never started:** GitHub picked up the schedule only after a push to the repo. Run #5, started by hand on 11-12, passed (37 tables, 17,766 rows, matched). **Not checked yet:** the 11-13 scheduled run (09:47 UTC). A backup watchdog (an email when no good backup is newer than 30 hours) is designed in step 2's session and waits for Sebastian's go.
 - **Unchanged:** the Sheets' LOG_ORDERS copy runs until step 2. No Apps Script, store or schema version changed.
 
+### The backup watchdog: built in schema v24, not live yet (2026-11-12)
+
+Approved by Sebastian on 11-12 ("Yes, build the watchdog in v24 and include the via/par/stores drop"), built by a headless Grok Bot run. Its two open decisions were taken as the recommended defaults:
+- **When the watch starts:** the moment `schema_v24.sql` runs (`mog.backup_watch.watch_from`). Until the first heartbeat the clock counts from there, so a heartbeat step that never works still alerts after 30 hours. Setting `watch_from = now()` restarts it.
+- **Where the address lives:** `mog.backup_watch.alert_to`, one row in the database, set once by a maintainer. Not in this public repo, not in Vault or the function's secrets. Empty means no alert at all.
+
+How it runs:
+1. **Heartbeat:** after the restore check matched, SebHEH/mog-backup's new last step (`scripts/heartbeat.sh`) calls `mog.backup_heartbeat(run, tables, rows, bytes)` as `mog_backup`, in a read-write transaction it opens for that one call. It is the role's only write (security definer; `schema_v24.sql` and `backup_role.sql` grant it). Before v24 is live the step only warns.
+2. **The check:** `mog.backup_status` reads the newest heartbeat. When nothing good is newer than 30 hours and an address is set, `mog.night_due` names `{ slug: null, step: 'backup' }`, so the 15-minute tick posts to the Edge Function `close` as for any night step.
+3. **The email:** the function claims it (`mog.backup_alert_claim`), sends one email through the mail relay (subject "MOG backup: no good backup for N hours", the newest good run in New York time, the Actions link), and keeps the outcome (`mog.backup_alert_done`). It comes again once a day while it lasts, or an hour after a failed send.
+4. **The test:** `select mog.backup_watch_test();` (in `night_schedule.sql`) sends a "[TEST]" copy to the same address only. Its outcome is in `mog.backup_watch.last_test_*`.
+
+Built and gated: `supabase/schema_v24.sql`, `smoke_v24.sql` (28 rows; 9 of 10 planted defects caught, the tenth a doubled rule the table's check also holds), `check_api.sh`'s v24 block, `night_schedule.sql` (`mog.backup_watch_test`), the function's `runBackup` and `runBackupTest` (`core.mjs`, `index.ts`), the fake's copies, gate `tests/backup_watch.test.js` (9 controls), `backup_role_pglite.mjs` (the heartbeat refused read-only, written read-write, nothing else writable) and `night_schedule_pglite.mjs` (the test post, a due alert makes the tick post).
+
+Stop it: `update mog.backup_watch set alert_to = null;`.
+
 ### Step 2: built and gated, not live yet (2026-11-11)
 
 **Measured first:**

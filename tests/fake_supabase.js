@@ -161,6 +161,10 @@ class FakeSupabase {
     this.failFns = new Set(); // names of mog_* functions whose requests fail like a network error
     this.httpFor = {};        // fn -> HTTP status to answer instead (404 = a schema that isn't installed)
     this.tokenSeq = 0;
+    // schema_v24.sql: the backup watchdog (mog.backup_watch's one row, mog.backup_heartbeats).
+    this.backupWatch = { watchFrom: nowMs, alertTo: null, staleHours: 30, lastAlertAt: null, lastAlertOk: null,
+                         lastAlertDetail: null, lastTestAt: null, lastTestOk: null, lastTestDetail: null };
+    this.backupBeats = [];
   }
 
   // UTC date of "now": the fixtures' dates are UTC and so is the fake formatDate.
@@ -551,7 +555,56 @@ class FakeSupabase {
         out.push({ slug, step: 'shadow' });
       }
     }
+    if (this.backupStatus(at).due) out.push({ slug: null, step: 'backup' });   // v24
     return out;
+  }
+
+  // ---- schema_v24.sql: the backup watchdog (mog.backup_*) ------------------
+  // Times are ms here and ISO strings in the answers, as they cross the wire.
+  backupHeartbeat(run, tables, rows, bytes) {
+    if (typeof run !== 'string' || run !== run.trim() || run.length < 1 || run.length > 100) throw new Error('backup_heartbeat: the run id is 1 to 100 characters');
+    if (!(tables >= 1) || !(rows >= 0) || !(bytes >= 1)) throw new Error('backup_heartbeat: tables, rows and bytes must be counts from a real dump');
+    const beat = { id: this.backupBeats.length + 1, at: this.nowMs, run, tables, rows, bytes };
+    this.backupBeats.push(beat);
+    return { ok: true, id: beat.id, at: new Date(beat.at).toISOString() };
+  }
+  backupStatus(atMs) {
+    const at = atMs == null ? this.nowMs : atMs;
+    const w = this.backupWatch;
+    if (!w) return { due: false, stale: false, hasAddress: false };
+    const h = this.backupBeats.slice().sort((a, b) => b.at - a.at || b.id - a.id)[0] || null;
+    const since = h ? Math.max(h.at, w.watchFrom) : w.watchFrom;
+    const stale = since < at - w.staleHours * 3600000;
+    const iso = ms => (ms == null ? null : new Date(ms).toISOString());
+    return { newest: h ? iso(h.at) : null, run: h ? h.run : null, watchFrom: iso(w.watchFrom), since: iso(since),
+             hours: Math.round((at - since) / 360000) / 10, staleHours: w.staleHours, stale, hasAddress: w.alertTo != null,
+             lastAlertAt: iso(w.lastAlertAt), lastAlertOk: w.lastAlertOk,
+             due: w.alertTo != null && stale
+                  && (w.lastAlertAt == null
+                      || (w.lastAlertOk === true && w.lastAlertAt <= at - 24 * 3600000)
+                      || (w.lastAlertOk !== true && w.lastAlertAt <= at - 3600000)) };
+  }
+  backupAlertClaim(atMs) {
+    const at = atMs == null ? this.nowMs : atMs;
+    const st = this.backupStatus(at);
+    if (!st.due) return { due: false };
+    Object.assign(this.backupWatch, { lastAlertAt: at, lastAlertOk: null, lastAlertDetail: null });
+    return Object.assign(st, { due: true, to: this.backupWatch.alertTo, claimedAt: new Date(at).toISOString() });
+  }
+  backupAlertDone(kind, okFlag, detail, atMs) {
+    const w = this.backupWatch;
+    if (kind === 'alert') {
+      if (w.lastAlertAt != null) Object.assign(w, { lastAlertOk: !!okFlag, lastAlertDetail: clone(detail || {}) });
+    } else if (kind === 'test') {
+      Object.assign(w, { lastTestAt: atMs == null ? this.nowMs : atMs, lastTestOk: !!okFlag, lastTestDetail: clone(detail || {}) });
+    } else {
+      throw new Error('backup_alert_done: the kind is alert or test, not ' + kind);
+    }
+    return { ok: true };
+  }
+  backupTestData(atMs) {
+    if (!this.backupWatch || this.backupWatch.alertTo == null) return { ok: false, error: 'NO_ADDRESS' };
+    return Object.assign(this.backupStatus(atMs), { ok: true, to: this.backupWatch.alertTo });
   }
   nightPlan(slug, step, atMs) {
     if (step !== 'close' && step !== 'shadow') throw new Error('night_plan: the step is close or shadow, not ' + step);

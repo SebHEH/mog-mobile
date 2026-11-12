@@ -50,6 +50,10 @@ await db.exec(`
               where n.nspname = 'mog' and c.relkind = 'S' and pg_get_userbyid(c.relowner) <> 'sb_postgres' loop
       execute format('alter sequence mog.%I owner to sb_postgres', r.relname);
     end loop;
+    -- Live, postgres made (so owns) every function; the role file grants on this one.
+    if to_regprocedure('mog.backup_heartbeat(text, integer, bigint, bigint)') is not null then
+      alter function mog.backup_heartbeat(text, integer, bigint, bigint) owner to sb_postgres;
+    end if;
   end $$;`);
 const mirrorOk = (await db.query(`select (select rolsuper from pg_roles where rolname = 'sb_postgres') s,
   (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'mog' and c.relkind in ('r','S') and pg_get_userbyid(c.relowner) <> 'sb_postgres') o`)).rows[0];
@@ -115,7 +119,21 @@ ok(typeof n === 'number', 'as mog_backup: select from mog.stores works');
 let refused = '';
 try { await db.exec(`insert into mog.stores (slug) values ('zz_never')`); } catch (e) { refused = e.message; }
 ok(/read-only|permission denied/.test(refused), 'as mog_backup: an insert is refused (' + refused + ')');
+// Schema v24's watchdog: the heartbeat is the one write, and only in a transaction opened read-write
+// (SebHEH/mog-backup's scripts/heartbeat.sh does exactly this).
+let hbRo = '';
+try { await db.exec(`select mog.backup_heartbeat('zz role run', 37, 100, 1000)`); } catch (e) { hbRo = e.message; }
+ok(/read-only/.test(hbRo), 'as mog_backup: the heartbeat is refused in the default read-only transaction (' + hbRo + ')');
+let hbRw = '';
+try { await db.exec(`start transaction read write; select mog.backup_heartbeat('zz role run', 37, 100, 1000); commit;`); } catch (e) { hbRw = e.message; try { await db.exec('rollback'); } catch (_) { /* none open */ } }
+ok(!hbRw, 'as mog_backup: the heartbeat writes in a read-write transaction' + (hbRw ? ' (' + hbRw + ')' : ''));
+let hbDirect = '', hbClaim = '';
+try { await db.exec(`start transaction read write; insert into mog.backup_heartbeats (run_id, tables, row_total, dump_bytes) values ('zz', 1, 1, 1); commit;`); } catch (e) { hbDirect = e.message; try { await db.exec('rollback'); } catch (_) { /* none open */ } }
+try { await db.exec(`start transaction read write; select mog.backup_alert_claim(); commit;`); } catch (e) { hbClaim = e.message; try { await db.exec('rollback'); } catch (_) { /* none open */ } }
+ok(/permission denied/.test(hbDirect) && /permission denied/.test(hbClaim), 'as mog_backup: a direct insert and the alert claim are refused');
 await db.exec(`reset role; reset default_transaction_read_only;`);
+ok((await db.query(`select count(*)::int n from mog.backup_heartbeats where run_id = 'zz role run'`)).rows[0].n === 1, 'the heartbeat row is there, once');
+await db.exec(`delete from mog.backup_heartbeats where run_id = 'zz role run'`);
 
 // Run as another role: refused before any change.
 await db.exec(`create role zz_other; drop function pg_temp.mog_backup_role();`);

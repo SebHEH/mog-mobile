@@ -154,7 +154,9 @@ begin
   shrimp := (r -> 'data' -> 'done' ->> 'id')::bigint;
   perform pg_temp.chk('item: the retired par, stores and via are never written; a place at a store has no low point of its own',
     (r ->> 'ok')::boolean
-      and (select par = 0 and stores = '{}' and via is null from mog.wh_products where id = shrimp)
+      -- v24 dropped the columns: read through the row, so this holds before and after
+      and (select coalesce((to_jsonb(p) ->> 'par')::numeric, 0) = 0 and coalesce(to_jsonb(p) -> 'stores', '[]'::jsonb) = '[]'::jsonb
+                  and to_jsonb(p) ->> 'via' is null from mog.wh_products p where p.id = shrimp)
       and (select low_point from mog.wh_product_places where product_id = shrimp and location_id = locH) = 10
       and (select low_point from mog.wh_product_places where product_id = shrimp and location_id = locT) = 0
       and not exists (select 1 from jsonb_array_elements(r -> 'data' -> 'products') p

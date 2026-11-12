@@ -107,6 +107,19 @@ const treq = await one(`select body from net.requests order by id desc limit 1`)
 ok(JSON.stringify(treq.body) === JSON.stringify({ to: 'me@example.com', date: '2026-11-09', slug: 'zzsched', step: 'test' }),
    'night_test posts the test step: ' + JSON.stringify(treq.body));
 
+// The backup watchdog (schema v24): its test posts the backup_test step with the secret, and a
+// due alert makes the tick post like any other night step.
+await one(`select mog.backup_watch_test() as id`);
+const breq = await one(`select r.body, r.headers ->> 'x-mog-night' = s.secret as secret_sent
+                          from net.requests r, vault.secrets s where s.name = 'mog_night_secret' order by r.id desc limit 1`);
+ok(breq.secret_sent && JSON.stringify(breq.body) === JSON.stringify({ step: 'backup_test' }), 'backup_watch_test posts the backup_test step: ' + JSON.stringify(breq.body));
+await db.exec(`update mog.store_state set recap_due = null where slug = 'zzsched';
+               update mog.backup_watch set alert_to = 'me@example.com', watch_from = now() - interval '31 hours' where id;`);
+const nb = (await one(`select count(*)::int n from net.requests`)).n;
+const tb = await one(`select mog.night_tick() as id`);
+ok(tb.id !== null && (await one(`select count(*)::int n from net.requests`)).n === nb + 1, 'a due backup alert: the tick posts once');
+await db.exec(`update mog.backup_watch set alert_to = null, watch_from = now() where id;`);
+
 // The log trim.
 await db.exec(`insert into mog.night_log (slug, at, step, ok) values ('zzsched', now() - interval '91 days', 'close', true),
                                                                    ('zzsched', now() - interval '31 days', 'shadow', true),
@@ -124,8 +137,9 @@ ok(!err2 && after.s === before && after.j === 1, 're-run: no error, the same sec
 // Nothing here for anon.
 const priv = await one(`select has_function_privilege('anon', 'mog.night_tick()', 'execute') a,
                                has_function_privilege('anon', 'mog.night_secret_ok(text)', 'execute') b,
-                               has_function_privilege('anon', 'mog.night_test(text, date, text)', 'execute') c`);
-ok(!priv.a && !priv.b && !priv.c, 'anon can call none of night_tick, night_secret_ok, night_test');
+                               has_function_privilege('anon', 'mog.night_test(text, date, text)', 'execute') c,
+                               has_function_privilege('anon', 'mog.backup_watch_test()', 'execute') d`);
+ok(!priv.a && !priv.b && !priv.c && !priv.d, 'anon can call none of night_tick, night_secret_ok, night_test, backup_watch_test');
 
 // supabase/tests/night_shadow_check.sql: a shadow that matches Apps Script's log, and one that doesn't.
 await db.exec(`

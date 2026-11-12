@@ -201,10 +201,107 @@ async function runTest(db, mail, body) {
   return { ok: !!(res && res.ok), subject: email.subject, error: res && res.ok ? null : res && res.error };
 }
 
-// The function's whole job. body.step 'test' sends a test email; anything
-// else does whatever mog.night_due names, closes first, one at a time, each
-// in its own try so one store's failure leaves the others alone (and is
-// logged; it's due again on the next tick).
+// ---- The backup watchdog (schema v24) -------------------------------------
+// SebHEH/mog-backup writes a heartbeat after each good, matched backup; when
+// none is newer than 30 hours, mog.night_due names { step: 'backup' } and
+// this sends one email to the watch's address (mog.backup_watch.alert_to),
+// at most once a day while it lasts (once an hour after a failed send).
+
+export const BACKUP_ACTIONS_URL = 'https://github.com/SebHEH/mog-backup/actions/workflows/backup.yml';
+const NY = 'America/New_York';
+
+// "Thu Nov 12, 5:49 AM" in New York time, as every MOG time is read.
+export function nyTime(iso) {
+  const d = new Date(String(iso || ''));
+  if (isNaN(d.getTime())) return '';
+  const p = {};
+  for (const x of new Intl.DateTimeFormat('en-US', { timeZone: NY, weekday: 'short', month: 'short', day: 'numeric',
+                                                     hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(d)) {
+    p[x.type] = x.value;
+  }
+  return p.weekday + ' ' + p.month + ' ' + p.day + ', ' + p.hour + ':' + p.minute + ' ' + String(p.dayPeriod || '').toUpperCase();
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// The alert (or, with test, the test of it) from mog.backup_status's answer:
+// { subject, text, html }.
+export function backupAlertEmail(st, test) {
+  st = st || {};
+  const hours = Number(st.hours);
+  const hoursText = isFinite(hours) ? (Math.round(hours * 10) / 10) + ' hours' : 'an unknown time';
+  const newest = st.newest
+    ? 'The newest good backup: ' + nyTime(st.newest) + ' New York time (run ' + st.run + ').'
+    : 'No good backup has been recorded since the watch started, ' + nyTime(st.watchFrom) + ' New York time.';
+  let subject, lines;
+  if (test) {
+    subject = '[TEST] MOG backup watchdog: the newest good backup is ' + hoursText + ' old';
+    lines = [
+      'This is a test of the MOG backup watchdog. Nothing is wrong because of this email.',
+      newest,
+      st.stale ? 'That is past the ' + st.staleHours + '-hour limit: a real alert is due too.'
+               : 'An alert goes to this address when no good backup is newer than ' + st.staleHours + ' hours.',
+      'The nightly backup: ' + BACKUP_ACTIONS_URL
+    ];
+  } else {
+    subject = 'MOG backup: no good backup for ' + hoursText;
+    lines = [
+      'The nightly backup of MOG\'s database (SebHEH/mog-backup) has not finished a good, matched run for ' + hoursText + '.',
+      newest,
+      'What to do: open Actions, Nightly backup: ' + BACKUP_ACTIONS_URL,
+      'A red run shows what failed. No run at all means the schedule did not start: press Run workflow.',
+      'This email comes again once a day until a good backup lands.'
+    ];
+  }
+  const text = lines.join('\n\n') + '\n';
+  const html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a">' +
+    lines.map(l => '<p>' + escHtml(l).replace(escHtml(BACKUP_ACTIONS_URL),
+      '<a href="' + BACKUP_ACTIONS_URL + '">' + escHtml(BACKUP_ACTIONS_URL) + '</a>') + '</p>').join('') + '</div>';
+  return { subject, text, html };
+}
+
+// The alert mog.night_due named: claimed first (so a second run doesn't send
+// it too), sent, then its outcome kept.
+async function runBackup(db, mail) {
+  const claim = await db.backupClaim();
+  if (!claim || !claim.due) return { step: 'backup', due: false };
+  const email = backupAlertEmail(claim, false);
+  let res;
+  try {
+    res = await mail.send({ name: RECAP_NAME, to: claim.to, subject: email.subject, text: email.text, html: email.html,
+                            idempotencyKey: 'mog-backup-alert/' + String(claim.claimedAt || '') });
+  } catch (e) {
+    res = { ok: false, error: message(e) };
+  }
+  const ok = !!(res && res.ok);
+  await db.backupDone('alert', ok, ok ? { sent: 1, hours: claim.hours } : { error: String((res && res.error) || 'failed').slice(0, 200) });
+  return { step: 'backup', sent: ok ? 1 : 0, hours: claim.hours, error: ok ? null : String((res && res.error) || 'failed') };
+}
+
+// A test of the alert, to the watch's own address only (body: { step:
+// 'backup_test' }; night_schedule.sql's mog.backup_watch_test()).
+async function runBackupTest(db, mail) {
+  const data = await db.backupTest();
+  if (!data || !data.ok) return { ok: false, error: (data && data.error) || 'no data' };
+  const email = backupAlertEmail(data, true);
+  let res;
+  try {
+    res = await mail.send({ name: RECAP_NAME, to: data.to, subject: email.subject, text: email.text, html: email.html });
+  } catch (e) {
+    res = { ok: false, error: message(e) };
+  }
+  const ok = !!(res && res.ok);
+  await db.backupDone('test', ok, ok ? { sent: 1 } : { error: String((res && res.error) || 'failed').slice(0, 200) });
+  return { ok, subject: email.subject, error: ok ? null : res && res.error };
+}
+
+// The function's whole job. body.step 'test' sends a test email, and
+// 'backup_test' a test of the backup alert; anything else does whatever
+// mog.night_due names, closes first, one at a time, each in its own try so
+// one store's failure leaves the others alone (and is logged; it's due again
+// on the next tick).
 //   opts.now()   the run's clock as a Date (tests set it)
 //   opts.clock() milliseconds, for timings and the run's budget
 export async function runNight(db, mail, body, opts) {
@@ -213,6 +310,7 @@ export async function runNight(db, mail, body, opts) {
   const clock = opts.clock || (() => Date.now());
   body = body || {};
   if (body.step === 'test') return runTest(db, mail, body);
+  if (body.step === 'backup_test') return runBackupTest(db, mail);
 
   const started = clock();
   const due = (await db.due()) || [];
@@ -223,6 +321,7 @@ export async function runNight(db, mail, body, opts) {
       if (d.step === 'close') ran.push(await runClose(db, mail, d.slug, now().toISOString(), clock));
       else if (d.step === 'recap') ran.push(await runRecap(db, mail, d.slug));
       else if (d.step === 'shadow') ran.push(await runShadow(db, d.slug, clock));
+      else if (d.step === 'backup') ran.push(await runBackup(db, mail));
     } catch (e) {
       ran.push({ slug: d.slug, step: d.step, error: message(e) });
       try { await db.note(d.slug, d.step, null, false, { error: message(e) }); } catch (e2) { /* the run's answer still has it */ }

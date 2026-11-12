@@ -11,7 +11,9 @@
 -- the schema chain: PGlite has no pg_cron, pg_net or Vault. Re-running is
 -- safe: the extensions and the secret are made only if missing, the
 -- functions are replaced, and cron.schedule with the same name replaces the
--- job.
+-- job. Re-run it after schema_v24.sql: that adds mog.backup_watch_test()
+-- (the backup watchdog's test email); the tick itself is unchanged, since
+-- v24's mog.night_due names the watchdog's alert like any other night step.
 --
 -- The secret: 32 random bytes, made here inside Vault, never shown, never
 -- typed, never in this repo. The tick reads it from Vault and sends it as
@@ -96,9 +98,28 @@ as $$
     timeout_milliseconds := 60000);
 $$;
 
+-- A test of the backup watchdog's alert (schema_v24.sql), to the watch's own
+-- address (mog.backup_watch.alert_to) only: the function's 'backup_test'
+-- step. Run by a maintainer: select mog.backup_watch_test();
+-- The outcome lands in mog.backup_watch.last_test_at / _ok / _detail.
+create or replace function mog.backup_watch_test()
+returns bigint
+language sql volatile security definer
+set search_path = ''
+as $$
+  select net.http_post(
+    url := 'https://mnfwqmrstdeuczveyykv.supabase.co/functions/v1/close',
+    body := jsonb_build_object('step', 'backup_test'),
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-mog-night', (select s.decrypted_secret from vault.decrypted_secrets s where s.name = 'mog_night_secret')),
+    timeout_milliseconds := 60000);
+$$;
+
 revoke all on function mog.night_secret_ok(text) from public, anon, authenticated;
 revoke all on function mog.night_tick() from public, anon, authenticated;
 revoke all on function mog.night_test(text, date, text) from public, anon, authenticated;
+revoke all on function mog.backup_watch_test() from public, anon, authenticated;
 
 select cron.schedule('mog-night', '*/15 * * * *', 'select mog.night_tick()');
 

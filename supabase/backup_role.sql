@@ -22,7 +22,10 @@
 -- including tables a later schema file adds (default privileges). BYPASSRLS because every mog table
 -- has row level security on with no policies: without it pg_dump stops, or reads no rows. No write
 -- grant anywhere, and its transactions are read-only by default. The mog_* functions' grants are
--- unchanged (pg_dump reads a function's definition from the catalog, it never calls it).
+-- unchanged (pg_dump reads a function's definition from the catalog, it never calls it), with one
+-- exception from schema v24: EXECUTE on mog.backup_heartbeat, the watchdog's "good backup" row,
+-- which the nightly run writes after its restore check matched (in a read-write transaction it
+-- opens for that one call; schema_v24.sql grants it too when the role already exists).
 --
 -- UNDO: drop owned by mog_backup; drop role mog_backup;
 -- (then delete the secret; the nightly run goes red until the role is back).
@@ -57,6 +60,9 @@ begin
   grant select on all sequences in schema mog to mog_backup;
   alter default privileges for role postgres in schema mog grant select on tables to mog_backup;
   alter default privileges for role postgres in schema mog grant select on sequences to mog_backup;
+  if to_regprocedure('mog.backup_heartbeat(text, integer, bigint, bigint)') is not null then
+    grant execute on function mog.backup_heartbeat(text, integer, bigint, bigint) to mog_backup;
+  end if;
 
   return pw;
 end
