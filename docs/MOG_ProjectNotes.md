@@ -155,6 +155,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - Use `127.0.0.1`, never `localhost`, which hung (IPv6). The Daily summary button still goes to `/exec` and fails there: that's the harness, not the app.
 - **When the session isn't open in a window, the browser pane is hidden at 0×0.**
   - Screenshots and clicks time out, but `find`, `form_input` and `javascript_tool` work.
+  - The app's PIN box: `form_input` sets the value without firing its `input` event, so Sign in stays disabled. Set `#pin-input`'s value by script, dispatch `input`, then click `#pin-submit` (2026-11-11).
   - The app shows its phone layout. Drive it by script and say the layout itself is unseen.
 - **A screenshot can show the page as it was before a click that worked** (2026-11-02: a saved count looked unsaved). Read the state with `javascript_tool` or `read_page` before deciding a click failed, and never click again on a screenshot's word alone: a second Save can write twice.
 - **The app's first read after signing in is a plain snapshot:** presence, People and Happy Supply (schema v16) arrive with the first 10-second read. Wait about 12 seconds before reading the Today cards by script.
