@@ -64,7 +64,7 @@ Carry these across every session:
 
 ## Two maintainers (Sebastian and Donny)
 
-Sebastian owns the accounts; Donny is a collaborator. Both edit, deploy and run SQL, usually not at the same time: say when you start, and before you deploy or run SQL. Donny's setup and his session prompts: [ONBOARDING.md](ONBOARDING.md).
+Sebastian owns the accounts; Donny is a collaborator. Both edit, deploy and run SQL. Whoever continues pulls the latest first; the repo doesn't track who is working on it, and nobody has to be told before a deploy or SQL (Sebastian, 2026-11-12). Donny's setup and his session prompts: [ONBOARDING.md](ONBOARDING.md).
 
 | Surface | Sebastian | Donny |
 |---|---|---|
@@ -84,12 +84,11 @@ Where this file or a repo skill says "Sebastian" about testing, approving, runni
    - `deploy.py` fetches `origin/main` and refuses when this copy is missing commits from it.
    - A deploy to every store runs only from `main` with `apps-script/` committed.
    - A canary (`--target rprfo`) may run from a branch.
-   - Tell the other person before a fan-out.
 5. **Who the web app runs as.** `appsscript.json` has `executeAs: USER_DEPLOYING`, so after a `--redeploy` a store's `/exec` likely runs as whoever redeployed. That isn't measured yet. Before your first `--redeploy`, consent once in every store's project (ONBOARDING.md step 4), then redeploy the canary and check its `/exec` answers.
-6. **Triggers and recap emails run as whoever installed them.** Today that's Sebastian on every store (the 3:30 AM close, installed by Move this store to Supabase). Any of these moves that store's close and recap email to your account, so agree on it first:
+6. **Triggers and recap emails run as whoever installed them.** Today that's Sebastian on every store (the 3:30 AM close, installed by Move this store to Supabase). Any of these moves that store's close and recap email to your account:
    - re-installing a trigger (Move, or the Health Check's install fix);
    - onboarding a new store.
-7. **Supabase SQL:** runs on either maintainer's go for that file, through `mog-supabase-schema`: Claude runs it through a connector that can write, or the maintainer pastes it in the SQL Editor. Pull before writing the next `schema_vN.sql`, and tell the other person which number you're taking.
+7. **Supabase SQL:** runs on either maintainer's go for that file, through `mog-supabase-schema`: Claude runs it through a connector that can write, or the maintainer pastes it in the SQL Editor. Pull before writing the next `schema_vN.sql`.
 8. **Handoffs name their author** (`**Author:**` under the session date). A second session on the same day adds a "Later session" section, as before.
 9. **Global skill lessons.** The proposal mailbox (`~/.claude/skills/_global-skill-proposals/`) is local to each computer, so only Sebastian's sessions file proposals. Donny's sessions write the lesson under the handoff's *Process lessons*, tagged `[→ global proposal]`, and Sebastian files it.
 10. **Claude's memory is per computer.** Project facts go in the repo ([docs/MOG_ProjectNotes.md](docs/MOG_ProjectNotes.md), this file, the handoffs), never only in one person's memory.
@@ -143,7 +142,7 @@ Repo-local skills in `./.claude/skills/` ARE owned by this repo — edit those i
 ## Working conventions
 
 1. Architectural walkthrough before any non-trivial implementation. Sebastian explicitly prefers being walked through changes step-by-step (see [feedback_explicit_safe_steps](#) in memory).
-2. **Canary first, fan out second.** For multi-target deploys (clasp to 11 targets, build.py to 10 store dirs), push to one canary, wait for Sebastian to smoke-test, then push to the rest.
+2. **Canary first, fan out second.** For multi-target deploys (clasp to 11 targets, build.py to 10 store dirs), push to one canary, wait for Sebastian to smoke-test, then push to the rest. **A deploy that changes nothing a live store does needs no question** (code behind a switch that's off, a canary of it, the close function while no store has `close_direct` on): run it, then report what ran, what the gates prove and the rollback. **Still ask first** before turning on any store's `close_direct` or any other cutover (Sebastian, 2026-11-12).
 3. **Verification is opening the live URL or running the function** — not "no errors in tooling output." Sebastian validates by using the thing.
 4. Read the actual file before editing — assume it may have drifted since the last session.
 5. No "🤖 Generated with Claude Code" footers on commit messages.

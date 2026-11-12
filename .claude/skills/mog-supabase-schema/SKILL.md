@@ -27,7 +27,7 @@ Versions line). A change ships as a new `schema_vN.sql`, never as an edit to a f
 file is run once, in order. Re-running any of them must stay harmless.
 
 **Two maintainers run SQL** (CLAUDE.md, Two maintainers): `git pull` before writing the next
-`schema_vN.sql`, and tell the other person which number you're taking, so you never both write v10.
+`schema_vN.sql`, so you never both write v10.
 - A number isn't held for a person: whoever writes the next schema file first takes the next number
   (pull, check `supabase/`) and tells the other. A number in a work order is a guess, not a booking
   (Sebastian, 2026-11-02).

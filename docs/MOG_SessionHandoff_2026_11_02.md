@@ -84,12 +84,11 @@
    3. Start the four libraries (Libraries → pick concept and side → Start from a store → Save as the library): Roll Play BOH from Rosslyn BOH, Roll Play FOH from Rosslyn FOH, Teas'n You BOH from Tysons BOH, Teas'n You FOH from Rockville FOH.
    4. Clean them: "At one store only" finds store-only items.
    5. Set up one store from its library. Rockville BOH is empty; Tysons BOH is being set up by its KMs and is the Teas'n You BOH seed.
-2. **Tell Donny:** schema v12 is taken, so his audit fix moves to v13. The work order says so; whether he's been told isn't recorded.
-3. **Happy Supply:** add it to the Roll Play stores through HQ Roll out, once its delivery days are known. Then the warehouse W1 and W2 (spec §2).
-4. **Commit the local test tools** (proposal card in this session):
+2. **Happy Supply:** add it to the Roll Play stores through HQ Roll out, once its delivery days are known. Then the warehouse W1 and W2 (spec §2).
+3. **Commit the local test tools** (proposal card in this session):
    - the PGlite SQL runner;
    - the fake-Supabase preview, built a third time this session, this time for `/hq/` on port 8772.
-5. **Still open:** the HQ token can change any catalog row at any store and now any library, so invite only maintainers until a narrower role exists. Also everything in `docs/MOG_CurrentState.md`'s candidates 3-9, plus the 11-01 handoff's contact gaps and the Downloads CSV with passwords.
+4. **Still open:** the HQ token can change any catalog row at any store and now any library, so invite only maintainers until a narrower role exists. Also everything in `docs/MOG_CurrentState.md`'s candidates 3-9, plus the 11-01 handoff's contact gaps and the Downloads CSV with passwords.
 
 ## Files touched this chat
 
@@ -162,7 +161,6 @@ HQ and begin the warehouse (docs/MOG_Warehouse_Spec.md §2) with an architectura
 **STILL OUTSTANDING (since 2026-11-02, the session above):**
 - Undo the TEST rollout "Horse Pho" (rprfotest, change 237): still not undone, checked live this afternoon.
 - Start the four libraries: none started (no rows in `mog.libraries`).
-- Tell Donny which schema number is taken: now v13.
 
 **Next session focus:** invite Chef Dan with the warehouse role and enter the first count; then W2 (store orders).
 
@@ -228,18 +226,17 @@ HQ and begin the warehouse (docs/MOG_Warehouse_Spec.md §2) with an architectura
 
 ### Outstanding (carry forward)
 
-1. **Sebastian:** tell Donny v13 is taken.
-2. **Sebastian:** invite Chef Dan when ready.
+1. **Sebastian:** invite Chef Dan when ready.
    - **Supabase SQL Editor:** `select mog.hq_invite('Dan', '{warehouse}');`, then give him the code.
    - He adds the locations (Berliner, Tysons freezer), suppliers and products, then a first count per location.
    - Never give Dan the hq role: an HQ sign-in can change every store.
-3. **Before W2 (store orders):**
+2. **Before W2 (store orders):**
    - Dan confirms that no store orders crab or shrimp by the pound (a linked item orders in the product's case).
    - Sebastian decides whether a store order needs an Approve step (the mockup has New, Approved, Shipped; the spec has sent, shipped, received).
    - Price detail: a store's price uses the average to 4 decimals, so it can differ by a cent from the 2-decimal figures shown.
-4. **W1 has no Undo.** A wrong delivery cost needs a maintainer in the SQL Editor; `mog.wh_moves` keeps each cost, so the average can be replayed.
-5. **The fake-Supabase preview** was rebuilt a fourth time, for the warehouse, and is still not committed (CurrentState candidate 3). Done later the same day: PR 6, the last section.
-6. **From the session above:** the Horse Pho undo and the four libraries (STILL OUTSTANDING, top of this section).
+3. **W1 has no Undo.** A wrong delivery cost needs a maintainer in the SQL Editor; `mog.wh_moves` keeps each cost, so the average can be replayed.
+4. **The fake-Supabase preview** was rebuilt a fourth time, for the warehouse, and is still not committed (CurrentState candidate 3). Done later the same day: PR 6, the last section.
+5. **From the session above:** the Horse Pho undo and the four libraries (STILL OUTSTANDING, top of this section).
 
 ### Files touched (later session)
 
@@ -287,8 +284,8 @@ Plus this handoff's commit, and `0cf9aee` (the session before, pushed with these
 Read docs/MOG_CurrentState.md and the "Later session" of docs/MOG_SessionHandoff_2026_11_02.md first, and run git pull.
 Happy Supply W1 (schema v13) is live and empty: HQ roles (hq, warehouse), the warehouse's stock,
 vendor orders in, transfers, counts; CI now runs the real SQL in PGlite; 28 gates.
-STILL OUTSTANDING: undo the TEST rollout "Horse Pho" on rprfotest, start the four libraries,
-tell Donny v13 is taken. Ask first whether Chef Dan is invited (warehouse role only) and has
+STILL OUTSTANDING: undo the TEST rollout "Horse Pho" on rprfotest, start the four libraries.
+Ask first whether Chef Dan is invited (warehouse role only) and has
 entered a first count. Then either help with that, or start W2 (store orders,
 docs/MOG_Warehouse_Spec.md §2) with an architectural walkthrough: it needs Dan's answer on
 pound-ordered items and Sebastian's call on an Approve step.
@@ -368,8 +365,8 @@ Read docs/MOG_CurrentState.md and the two "Later session" blocks of docs/MOG_Ses
 Happy Supply W1 (schema v13) is live and empty; CI runs the real SQL in PGlite; 28 gates.
 To click through the app, the editor, HQ or Happy Supply, use preview_start "mog-preview"
 (tests/preview_server.js, fake Supabase, PIN 1111); never build another preview in the scratchpad.
-STILL OUTSTANDING: undo the TEST rollout "Horse Pho" on rprfotest, start the four libraries,
-tell Donny v13 is taken. Ask first whether Chef Dan is invited (warehouse role only) and has
+STILL OUTSTANDING: undo the TEST rollout "Horse Pho" on rprfotest, start the four libraries.
+Ask first whether Chef Dan is invited (warehouse role only) and has
 entered a first count. Then either help with that, or start W2 (store orders,
 docs/MOG_Warehouse_Spec.md §2) with an architectural walkthrough: it needs Dan's answer on
 pound-ordered items and Sebastian's call on an Approve step.
@@ -392,7 +389,6 @@ pound-ordered items and Sebastian's call on an Approve step.
   - Teas'n You BOH: 137 items from Tysons BOH (1:50 PM).
   - Roll Play BOH: holds only Horse Meat, put there by a rollout's library box (removed this session).
   - The two FOH libraries aren't started.
-- **Donny:** not told yet that v13 and now v14 are taken.
 
 **Next session focus:** the store's Items page (session 2 of `docs/MOG_LTO_Spec.md`): new LTO items at the very top until they have a par and an area, the LTO chip, the panel note.
 
@@ -512,7 +508,7 @@ Plus this handoff's commits (skills, then docs).
 ```
 Read docs/MOG_CurrentState.md, docs/MOG_LTO_Spec.md and the last "Later session" of docs/MOG_SessionHandoff_2026_11_02.md first, and run git pull.
 LTOs' HQ side is live (schema v14, commit 6fee3a1): New LTO, the LTOs page, End / Roll back / Make it standard; items carry their LTO in mog.items.lto; 29 gates.
-STILL OUTSTANDING: undo the old test rollouts by hand (Horse Pho on rprfotest; Fall Chicken Pho at rpr, rpfr, rpt), remove Horse Meat from the Roll Play BOH library, tell Donny v14 is taken.
+STILL OUTSTANDING: undo the old test rollouts by hand (Horse Pho on rprfotest; Fall Chicken Pho at rpr, rpfr, rpt), remove Horse Meat from the Roll Play BOH library.
 Ask first whether Sebastian sent a live TEST LTO and rolled it back. Then build session 2: the store's Items page shows each new LTO's items at the very top until they have a par and a storage area (banner, pinned rows, "LTO · name" chip, panel note), from the approved "Store · Items" board on the MOG HQ redesign canvas; getAllItemsForView already gives each row its lto. Walk through it first; use preview_start "mog-preview" to check it.
 ```
 
@@ -529,7 +525,6 @@ Ask first whether Sebastian sent a live TEST LTO and rolled it back. Then build 
 
 **STILL OUTSTANDING (since earlier today):**
 - Horse Pho on Rosslyn FOH (TEST) (change 237) is still not undone.
-- Donny hasn't been told that v13, v14 and now v15 are taken.
 
 **Next session focus:** use what shipped (a live TEST LTO and its Roll back, clearing the Teas'n You BOH test library, lining up vendor names), then either clean the libraries or start W2 spec-first.
 
@@ -594,11 +589,10 @@ Ask first whether Sebastian sent a live TEST LTO and rolled it back. Then build 
    2. Pick one spelling per vendor, then rename at each store (Manage → Vendors → the vendor → Name): B&T at Founders BOH, Rosslyn and Tysons BOH, Rockville BOH; Elpis at Rosslyn FOH, Founders FOH, Tysons FOH, Rockville BOH and FOH.
    3. A live TEST LTO: HQ → New LTO → Rosslyn FOH (TEST) → Send; check its Items banner; then HQ → LTOs → Roll back.
    4. Undo Horse Pho in Rosslyn FOH (TEST)'s Manage → Changes (change 237).
-2. **Tell Donny** that schemas v13, v14 and v15 are taken.
-3. **Seen on a screen:** the Items banner, the HQ tick boxes and the Vendors rename were driven by script in a hidden pane; their layout hasn't been looked at.
-4. **W2, spec-first** (`docs/MOG_Warehouse_Spec.md` §2, "Open for W2"): live stock for the people ordering, Elpis (held stock vs its own items, who records its shipments), plus Dan's pound question and the Approve step. Chef Dan still isn't invited.
-5. **Small:** a store can't merge two vendors (a taken name is refused); renaming LTO-added vendors leaves them behind on Roll back; an offline phone still holding the old name can save a count under it after a rename (orphaned, not read).
-6. **From the sessions above, unchanged:** start and clean the libraries, confirm the repo's origin in the desktop app, `gh`.
+2. **Seen on a screen:** the Items banner, the HQ tick boxes and the Vendors rename were driven by script in a hidden pane; their layout hasn't been looked at.
+3. **W2, spec-first** (`docs/MOG_Warehouse_Spec.md` §2, "Open for W2"): live stock for the people ordering, Elpis (held stock vs its own items, who records its shipments), plus Dan's pound question and the Approve step. Chef Dan still isn't invited.
+4. **Small:** a store can't merge two vendors (a taken name is refused); renaming LTO-added vendors leaves them behind on Roll back; an offline phone still holding the old name can save a count under it after a rename (orphaned, not read).
+5. **From the sessions above, unchanged:** start and clean the libraries, confirm the repo's origin in the desktop app, `gh`.
 
 ### Files touched (later session 4)
 
@@ -637,7 +631,7 @@ Plus this handoff's commits.
 ```
 Read docs/MOG_CurrentState.md and the last "Later session" of docs/MOG_SessionHandoff_2026_11_02.md first, and run git pull.
 Live since abce087: new LTO items pinned at the top of each store's Items page, tick boxes on HQ's Libraries (Remove, Send N items to stores without an LTO), and vendor rename on the Vendors page (schema v15: items, lists, counts, today's edits and HQ's names follow); 30 gates.
-Ask first what Sebastian saw: did the Teas'n You BOH test library clear, were the B&T and Elpis names lined up, and did a live TEST LTO show its Items banner and roll back? STILL OUTSTANDING: Horse Pho on rprfotest, tell Donny v13 to v15 are taken.
+Ask first what Sebastian saw: did the Teas'n You BOH test library clear, were the B&T and Elpis names lined up, and did a live TEST LTO show its Items banner and roll back? STILL OUTSTANDING: Horse Pho on rprfotest.
 Then either help clean the libraries, or start W2 (store orders) spec-first: live stock for the people ordering Happy Supply and Elpis, who records Elpis's shipments, Dan's pound question, the Approve step (docs/MOG_Warehouse_Spec.md §2, "Open for W2"). Use preview_start "mog-preview" (or "mog-preview-alt") to check anything you build.
 ```
 
@@ -743,7 +737,6 @@ Then either help clean the libraries, or start W2 (store orders) spec-first: liv
 1. **Sebastian, live:**
    1. Rename Elpis to "Elpis Wholesale" in Manage → Vendors at Rosslyn FOH, Founders FOH, RP Tysons FOH and TnY Tysons FOH.
    2. Undo Horse Pho in Rosslyn FOH (TEST)'s Manage → Changes (change 237).
-   3. Tell Donny that schemas v13 to v16 are taken.
 2. **First use of W2a, on the TEST store first:**
    - The warehouse holds no products or stock yet (Dan isn't invited).
    - Add a product and a first count in HQ → Happy Supply, and add Happy Supply to Rosslyn FOH (TEST) in HQ → Vendors, with its delivery days.
@@ -795,6 +788,6 @@ Plus this handoff's commit.
 ```
 Read docs/MOG_CurrentState.md and the last "Later session" of docs/MOG_SessionHandoff_2026_11_02.md first, and run git pull.
 Happy Supply W2a is live (schema v16, commit 37588dd): HQ links store items to warehouse products (Send to stores), the phone shows cases available and sends to Happy Supply, Dan ships from HQ's Orders page, the store marks it received; 31 gates. No store has a link yet, and the warehouse holds no products.
-Ask first whether Sebastian tried it on the TEST store (Vendors → Happy Supply with delivery days, a product and a count, Send to stores, a phone order, Ship, Mark received) and renamed Elpis at the four stores. STILL OUTSTANDING: Horse Pho on rprfotest, tell Donny v13 to v16 are taken.
+Ask first whether Sebastian tried it on the TEST store (Vendors → Happy Supply with delivery days, a product and a count, Send to stores, a phone order, Ship, Mark received) and renamed Elpis at the four stores. STILL OUTSTANDING: Horse Pho on rprfotest.
 Then build W2b, HEH's stock held at Elpis (docs/MOG_Warehouse_Spec.md §2, "W2 spec": Elpis as a location, the store's receipt lowers it, unmarked deliveries listed), starting with an architectural walkthrough and mockups. Use preview_start "mog-preview" to check it.
 ```

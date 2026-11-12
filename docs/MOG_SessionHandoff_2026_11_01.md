@@ -89,24 +89,23 @@
    2. Do a test rollout on the TEST store (rprfotest).
    3. Then add Happy Supply to every Roll Play store you use, with Chef Daniel's contact ((717) 992-9628, Daniel@hehfood.com, "Send the order guide to the Facebook chat") and its delivery days, which aren't known yet.
    4. Donny gets his own invite.
-2. **Tell Donny:** schema v10 and v11 are taken; the audit work order's fix moves to the next free version (the work order now says so).
-3. **Not seen on a screen yet** (the browser pane was hidden; all checks were by script):
+2. **Not seen on a screen yet** (the browser pane was hidden; all checks were by script):
    - the Vendors page layout;
    - the phone's Contact pill and sheet on a real phone (Rosslyn BOH and Founders BOH have contacts now);
    - the HQ page.
-4. **Contact gaps:**
+3. **Contact gaps:**
    - Rosslyn's Chef Center has no phone (Jayson at (571) 226-6010 is likely the same rep);
    - Rosslyn's B&T Distributions has no contact;
    - Founders still lacks Samuel and Sons, which needs its delivery days.
-5. **Is Founders FOH (rpfrf) in use?** Unconfirmed; the notes list it as unused.
-6. **The vendor sheet CSV** in Downloads holds plaintext passwords, several reused. Move them to a password manager, delete the CSV, and change the reused ones.
-7. **Still open from before:**
+4. **Is Founders FOH (rpfrf) in use?** Unconfirmed; the notes list it as unused.
+5. **The vendor sheet CSV** in Downloads holds plaintext passwords, several reused. Move them to a password manager, delete the CSV, and change the reused ones.
+6. **Still open from before:**
    - Donny's onboarding (Sebastian's invites, Donny's one-store deploy measuring who `/exec` runs as);
    - the Items page live check;
    - the 2026-10-20 recap fixes held;
    - the audit work order's batches A-D;
    - the held-back logic items (`docs/MOG_CurrentState.md`).
-8. **Before inviting anyone beyond the maintainers to HQ:** add a narrower role, or check `mog_hq_apply`'s ops server-side. Today an HQ token can change any catalog row at any store.
+7. **Before inviting anyone beyond the maintainers to HQ:** add a narrower role, or check `mog_hq_apply`'s ops server-side. Today an HQ token can change any catalog row at any store.
 
 ## Files touched this chat
 
@@ -164,6 +163,6 @@ first, and run git pull. Vendor contacts (schema v10) and HQ control (schema v11
 app v0.27.0 / cache v68; 26 gates. Next is the concept library (spec step 1): one list per concept
 and side, seeded from a store Sebastian picks and cleaned in HQ, which a new store's order guide
 starts from. Begin with an architectural walkthrough, ask which store seeds each library, and take
-the next free schema number (check supabase/ and tell Donny). Ask first whether Sebastian has
+the next free schema number (check supabase/). Ask first whether Sebastian has
 signed in to HQ and run a test rollout on the TEST store.
 ```

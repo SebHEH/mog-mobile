@@ -89,12 +89,12 @@ Running `authorizeSupabase` reads nothing and changes nothing in the store. It o
 
 ## 5. Your first deploy: one store, as a test
 
-Do this once, after step 4 and after telling Sebastian:
+Do this once, after step 4:
 
 1. Run `python deploy.py --redeploy --target rprfo`.
 2. Ask Claude: *"Probe rprfo's /exec the way mog-exec-repoint does."* The GET and the POST should both answer.
-3. If anything fails, tell Sebastian. He puts rprfo back on his account by running the same command from his computer.
-4. If it works, tell Sebastian, and add a line to [docs/MOG_ProjectNotes.md](docs/MOG_ProjectNotes.md) under *Deploys and rollout*: "A redeploy by Donny works (tested on rprfo, <date>)".
+3. If anything fails, rprfo goes back on Sebastian's account when the same command runs from his computer.
+4. If it works, add a line to [docs/MOG_ProjectNotes.md](docs/MOG_ProjectNotes.md) under *Deploys and rollout*: "A redeploy by Donny works (tested on rprfo, <date>)".
 
 ## 6. Start of every session: paste this
 
@@ -107,7 +107,6 @@ Start a MOG session (I'm Donny):
 3. From docs/MOG_CurrentState.md and the latest handoff, tell me in bullets what's in flight and
    what's next.
 4. Ask me what I'm working on today, then create the branch donny/<short-topic> from main.
-Remind me to tell Sebastian before I deploy to every store or run SQL in Supabase.
 ```
 
 ## 7. End of a session: paste this
@@ -120,7 +119,7 @@ Wrap up my MOG session (I'm Donny):
 3. Commit everything on this branch with a clear message, then push it (git push -u origin <branch>).
 4. Give me the link to open the pull request:
    https://github.com/SebHEH/mog-mobile/compare/main...<branch>?expand=1
-5. List exactly what I deployed and what SQL I ran this session, so I can tell Sebastian.
+5. List exactly what I deployed and what SQL I ran this session, in the handoff.
 ```
 
 Sebastian reviews and merges the pull request. GitHub runs the gates on it (`.github/workflows/gates.yml`).
@@ -134,6 +133,5 @@ The full version is in [CLAUDE.md](CLAUDE.md), section **Two maintainers**.
 - **Deploys:**
   - A canary (`--target rprfo`) can run from your branch.
   - A deploy to every store runs from an up-to-date `main` (`deploy.py` refuses otherwise).
-  - Tell Sebastian first.
-- **SQL:** through the `mog-supabase-schema` skill. Pull first, and tell Sebastian which `schema_vN` number you're taking. Claude never writes to the database; you run SQL in the Supabase SQL Editor.
-- **Agree with Sebastian first** before you onboard a store, run *Move this store to Supabase*, or reinstall a trigger. Whoever does it ends up owning that store's 3:30 AM close and sending its recap email.
+- **SQL:** through the `mog-supabase-schema` skill. Pull first. Claude never writes to the database; you run SQL in the Supabase SQL Editor.
+- **Onboarding a store, running *Move this store to Supabase*, or reinstalling a trigger** makes you the owner of that store's 3:30 AM close and the sender of its recap email.

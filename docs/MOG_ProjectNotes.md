@@ -35,9 +35,9 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 
 - **Default every Apps Script deploy to `--redeploy`.** `/exec` serves a versioned snapshot, so a push alone leaves it stale.
 - **Canary first is the default.**
-  - When the gates prove a change does nothing until someone uses it, "all stores now" is a fair option to offer (Sebastian chose it twice on 2026-10-18).
-  - Say what changed, what the gates prove, what's visible, and the rollback.
-  - A change to the order math for everyone, or a schema migration, still gets its own question.
+  - **A deploy that changes nothing a live store does runs without a question** (Sebastian, 2026-11-12; CLAUDE.md, Working conventions 2): code behind a switch that's off (like `close_direct`), a canary of it, the close function while no store is switched. Do it, then say what changed, what the gates prove, what's visible, and the rollback.
+  - **Still ask first:** turning on any store's `close_direct`, or any other cutover. A change to the order math for everyone, or a schema migration, also gets its own question.
+  - Nobody is told before a deploy or SQL: whoever continues pulls the latest (Sebastian, 2026-11-12).
 - **Checking a Pages push is live:** run `.claude/skills/mog-deploy-workflow/scripts/wait_live.py` in the background (2026-11-06; it holds the rules below and checks CI's `gates` run too).
   - Pages takes about 30-60 s, sometimes several minutes (HQ took about 4.5 on 2026-11-06).
   - Poll each store's file with a cache-busting query (`?x=$RANDOM`), in the background, and check all 10 stores.
@@ -73,7 +73,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
     - the morning check is [supabase/tests/night_shadow_check.sql](../supabase/tests/night_shadow_check.sql).
   - **A store switches** with `update mog.stores set close_direct = true where slug = '...'`. Its Apps Script trigger deletes itself the next night and stamps `mog.stores.sheet_trigger_off_at`. Switching back is `close_direct = false`, then Move this store to Supabase to re-install the trigger.
   - **Stop everything:** `select cron.unschedule('mog-night');`.
-  - **Deploying the function is a deploy:** on the maintainer's go, through the connector's `deploy_edge_function`, with the three files in `supabase/functions/close/` as they are in the repo (`index.ts`, `core.mjs`, the generated `shared.mjs`). Deploy with `verify_jwt` false, because the function checks the secret itself.
+  - **Deploying the function is a deploy:** without a question while no store has `close_direct` on (it then changes nothing a store gets); on the maintainer's go once a store is switched. Through the connector's `deploy_edge_function`, with the three files in `supabase/functions/close/` as they are in the repo (`index.ts`, `core.mjs`, the generated `shared.mjs`). Deploy with `verify_jwt` false, because the function checks the secret itself.
   - **The mail relay sends the recaps** (R3 revised 2026-11-12: no Resend, no new account). [mail-relay/Relay.gs](../mail-relay/Relay.gs) is one standalone Apps Script project, bound to no Sheet, owned by Sebastian, deployed as a web app that runs as him for anyone with the secret. The function posts it one email at a time; it sends with MailApp (`noReply`, the name "Master Ordering Guide").
     - **The secret** `MOG_RELAY_SECRET`: made by `setupRelay` (run once in the relay's editor) in its Script Properties, and copied by Sebastian into Edge Functions → Secrets under the same name. Never in chat or the repo. Both sides trim it, as a copied value can carry a newline.
     - **Deploy:** `python deploy.py --relay` pushes `mail-relay/` and redeploys its one deployment (IDs in `mail-relay/relay-target.json`), so the address in `index.ts`'s `RELAY_URL` never changes. Never put it in `apps-script/`: that goes to every Sheet. The gate `mail_relay` holds the two IDs equal.

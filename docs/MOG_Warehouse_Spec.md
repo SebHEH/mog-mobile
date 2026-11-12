@@ -327,7 +327,7 @@ About two sessions after the mockup. W1's stock records, W2a's orders and W2b's 
   - `template/hq/warehouse.js`: Stock (one table, items by place, amber below a low point, "count it" after a receipt beyond the records, On the way with Check in for the store), Items (list and panel: name, pack, concept, places with Now and a low point, the price, which stores, Send to stores), Places (list and panel: kind, held at, the name stores order it under, how it's counted; the stores that take from it linked by name), Who took what (a month, three tables, CSV). `template/hq/index.html`: the HEH STOCK sidebar group.
   - **Found while building:** an opening count (nothing on record) would have read as negative use; the smoke and the SQL leave it out.
   - **Differs from the mockup:** Stock's "Count a place" is one panel for any place (MarginEdge's pounds typed as cases); Items keeps "Which stores can order it" and Send to stores from the old Products page; Who took what has no summary tiles.
-- **Ship order:** `git pull` and v20 told to Donny first; v20 (`mog-supabase-schema`: smoke, fake, gate `tests/wh_places.test.js`, PGlite, planted defects), then the pages in `mog-preview`; a maintainer runs v20 and its smoke in the SQL Editor, the probe, then one push the same hour (today's pages save `via`, so they can't run on v20).
+- **Ship order:** `git pull` first; v20 (`mog-supabase-schema`: smoke, fake, gate `tests/wh_places.test.js`, PGlite, planted defects), then the pages in `mog-preview`; a maintainer runs v20 and its smoke in the SQL Editor, the probe, then one push the same hour (today's pages save `via`, so they can't run on v20).
 
 ### Routes spec (spec-first, approved by Sebastian 2026-11-05)
 

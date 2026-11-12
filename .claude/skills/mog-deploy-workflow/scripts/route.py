@@ -132,7 +132,7 @@ def main(argv):
               if path.replace("\\", "/").lstrip("./").startswith("supabase/schema")]
     if schema:
         print("\nFIRST: run " + ", ".join(schema) + " in the Supabase SQL Editor (Sebastian or Donny, "
-              "after telling the other), then its smoke file and check_api.sh. The database ships "
+              "on the maintainer's go), then its smoke file and check_api.sh. The database ships "
               "before the code that relies on it.")
 
     print("\nDeploy: " + ACTION_NAME[winner])

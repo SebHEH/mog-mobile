@@ -171,7 +171,7 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
 - `close_direct` is off at all 10 stores.
 - **The first shadow night (11-11 → 11-12):** all 10 stores matched Apps Script's log row for row (vendor, item, name, pack, area, on hand, quantity): 118 rows at the four that ordered (rpr 64, rpt 30, rpfr 12, rprfo 12), and 0 against 0 at the six that ordered nothing. No count landed between the shadow and the close. One post to the function at 3:00 (HTTP 200); 61 ticks, all succeeded. Apps Script closed every store between 3:23 and 3:37.
 
-**Still to do, each on Sebastian's go:**
+**Still to do** (since 2026-11-12, a deploy that changes nothing a store does runs and is reported; turning on `close_direct`, steps 8 and 9, is asked first):
 1. ~~Run v23, then smoke_v23.~~ Done 2026-11-11.
 2. ~~Deploy the function.~~ Done 2026-11-11.
 3. ~~Resend: signup, DNS, and the key.~~ Replaced 2026-11-12 by the mail relay, done the same day:
@@ -180,7 +180,7 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
    3. ~~Redeploy the function.~~ Version 4 (JWT check off); still 401 without Vault's secret.
 4. ~~Run `night_schedule.sql`.~~ Done 2026-11-11.
 5. ~~Send a test email to Sebastian, timed.~~ Sent 11-12 14:31 UTC: rprfo's 11-11 recap (1 vendor, 12 items), about 2.6 s end to end.
-6. Deploy Apps Script: rprfo, then all 11.
+6. Deploy Apps Script: ~~rprfo~~ (11-12, version @114, `/exec` health check answers), then the other 10 once rprfo's night checks out (it closes as before, sends one recap, and its new `Recap.gs` writes `mog.store_state.recap_sent_for`). Changes nothing a store does while `close_direct` is off, so it runs without a question (CLAUDE.md, Working conventions 2).
 7. Run the shadow nights (night 1 matched, 11-12).
 8. Turn on rprfo's `close_direct` for three nights.
 9. Turn it on for the other nine.

@@ -51,7 +51,6 @@
 - Donny works on branches and opens pull requests; Sebastian merges.
 - Donny deploys too. He already has clasp; he consents once in each store first.
 - Donny may run SQL in the Supabase SQL Editor.
-- They tell each other before deploying or running SQL, so the git check is a light backstop.
 
 **What was checked live:**
 - GitHub `SebHEH/mog-mobile` is a public repo on a personal account: a collaborator gets write access, and nothing finer.
@@ -65,8 +64,8 @@
   - pull first; Donny's changes through a pull request;
   - never hand-merge the generated store folders;
   - the deploy rules;
-  - who `/exec` and the triggers run as: whoever installed the 3:30 AM trigger sends the recap, so agree before re-installing one or onboarding a store;
-  - SQL by either maintainer (tell the other which `schema_vN` you're taking);
+  - who `/exec` and the triggers run as: whoever installed the 3:30 AM trigger sends the recap, so re-installing one or onboarding a store moves it;
+  - SQL by either maintainer;
   - handoffs name their author;
   - Donny's global-skill lessons go in his handoff, because the proposal mailbox is local to each computer.
 - **[deploy.py](../deploy.py) git check:**

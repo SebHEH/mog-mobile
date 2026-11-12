@@ -33,7 +33,7 @@ Read the change request and answer: **which layer?**
 | `apps-script/.clasp-targets.json` (add/remove deploy target, populate `deploymentId`) | Deploy infrastructure | `git commit; git push` (config-only). Next `python deploy.py` will pick it up. | `python deploy.py --dry-run` should list the new target without `FILL_ME_IN` errors. For a new store, run `python deploy.py --discover --target <slug>` to find the deploymentId. |
 | `build.py` or `deploy.py` itself | Deploy infrastructure | `git commit; git push`. Test by running the changed tool against a no-op input. | Run with `--dry-run` first, confirm output is what's expected, then run for real. |
 | `icons/*` or `docs/*` | Static assets / docs | `git commit; git push`. | For icons: verify the PWA install prompt shows the new icon on a fresh device or after clearing site data. |
-| `supabase/schema_vN.sql` (a new or changed `mog_*` function, table or column) | Supabase | **Runs FIRST, before any deploy below.** On the maintainer's go for that file (after telling the other maintainer), Claude runs it through the Supabase connector, or the maintainer pastes it in the SQL Editor; then `smoke_vN.sql`, then `check_api.sh`. The database ships before the code that relies on it. Then the calling code's own row in this table. Files and order: **`mog-supabase-schema`**. | Every smoke row PASS, `check_api.sh` all PASS, then a read-only `execute_sql` check on project `mnfwqmrstdeuczveyykv`. |
+| `supabase/schema_vN.sql` (a new or changed `mog_*` function, table or column) | Supabase | **Runs FIRST, before any deploy below.** On the maintainer's go for that file, Claude runs it through the Supabase connector, or the maintainer pastes it in the SQL Editor; then `smoke_vN.sql`, then `check_api.sh`. The database ships before the code that relies on it. Then the calling code's own row in this table. Files and order: **`mog-supabase-schema`**. | Every smoke row PASS, `check_api.sh` all PASS, then a read-only `execute_sql` check on project `mnfwqmrstdeuczveyykv`. |
 | `tests/*` | Gates | Nothing deploys. `node tests/run_all.js`, then commit with the code it gates. | All gates pass. |
 
 **After any push to `main`, check it's live with [`scripts/wait_live.py`](scripts/wait_live.py)**, in the background, instead of writing a poll script (one was written by hand for every push from 10-29 on):
@@ -59,7 +59,8 @@ For ANY multi-target deploy (clasp to 9 stores; `build.py` regenerating 8 store 
 - It fetches `origin/main` and refuses when this copy is missing commits from it, because clasp pushes the local folder as-is and would roll the other person's Apps Script back on every store.
 - A deploy to every store runs only from `main` with `apps-script/` committed; a `--target` canary may run from a branch or with uncommitted edits.
 - `--skip-git-check` is for emergencies.
-- Before a fan-out, tell the other maintainer. See CLAUDE.md, Two maintainers.
+- Nobody is told before a deploy: whoever continues pulls the latest (CLAUDE.md, Two maintainers).
+- A deploy that changes nothing a live store does (code behind a switch that's off, a canary of it) runs without a question: run it, then report. Turning on a store's `close_direct`, or any other cutover, is asked first (CLAUDE.md, Working conventions 2).
 
 The reason: spreadsheet data and per-store state vary subtly. A change that works in the canary's data shape may surface a bug in tnyt's. Catching it on the canary means 1 store affected, not 9.
 

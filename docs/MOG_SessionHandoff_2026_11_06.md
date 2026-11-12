@@ -75,16 +75,15 @@
 
 1. **The 11-07 close** (3:30 AM, the first on v22). Check read-only that every store's cycle moved to 11-07. If Rosslyn or Founders ordered SHRIMP from Transfer (Tysons) on 11-06, they each get a delivery; their phones show "To check in", and checking in takes it off Tysons.
 2. **Dan and Donny claim their invites** at https://sebheh.github.io/mog-mobile/hq/ ("I have an invite code"). A code lasts 24 hours from the 11-05 evening run; `select mog.hq_invite('<name>', '{hq,warehouse}');` issues a new one.
-3. **Tell Donny schemas v21 and v22 are taken.**
-4. **RP Tysons' own route** (Happy Supply → Tysons, its SHRIMP par to about 19). It waits for Dan: pound ordering and Happy Supply's delivery days.
-5. **Schema v23:** drop `wh_products.via`, `par`, `stores` around 11-12, after a week of v21 live. Retire fully (rewrite older smoke rows), and search the repo first.
-6. **Rosslyn's 11-04 SHRIMP:** ordered from both SamuelSon (9) and Transfer (Tysons) (9). Ask the KMs whether SamuelSon sent 9 too.
-7. **The TEST store:**
+3. **RP Tysons' own route** (Happy Supply → Tysons, its SHRIMP par to about 19). It waits for Dan: pound ordering and Happy Supply's delivery days.
+4. **Schema v23:** drop `wh_products.via`, `par`, `stores` around 11-12, after a week of v21 live. Retire fully (rewrite older smoke rows), and search the repo first.
+5. **Rosslyn's 11-04 SHRIMP:** ordered from both SamuelSon (9) and Transfer (Tysons) (9). Ask the KMs whether SamuelSon sent 9 too.
+6. **The TEST store:**
    - Sebastian ended the bowls' route (a test of End); the lids are still routed from Elpis;
    - its 11-02/11-03 Elpis deliveries are still open;
    - `test_store_elpis.sql` now orders only the lids.
-8. **Borderline skill candidates** (wait for another occurrence): a saved read-only morning-close query; a PGlite test of a one-off live data fix against the live shape.
-9. **From earlier, still open:** the STILL OUTSTANDING block above, plus:
+7. **Borderline skill candidates** (wait for another occurrence): a saved read-only morning-close query; a PGlite test of a one-off live data fix against the live shape.
+8. **From earlier, still open:** the STILL OUTSTANDING block above, plus:
    - HQ's `logic.heldStock` is used only by the `wh_elpis` gate;
    - Rosslyn FOH has a vendor "testtt";
    - the Apps Script dialog wording waits for the next Apps Script deploy (canary rprfo, `--redeploy`).

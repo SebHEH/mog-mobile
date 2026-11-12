@@ -39,12 +39,12 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - `apps-script/Concepts.gs` and `RecapEmail.gs` (moved out of `Dashboard.gs` and `Recap.gs` unchanged); the shared flag in `Recap.gs`; the self-retiring trigger in `Sync.gs`;
   - gate `night_close` (13 controls).
 - **Takes schema v23:** the drop of `via`, `par` and `stores` moves to v24.
-- **Live order, each on Sebastian's go** (Donny told first):
+- **Live order** (a deploy that changes nothing a store does runs and is reported; step 7, turning on `close_direct`, is asked first):
   1. v23, then smoke_v23;
   2. the function's deploy;
   3. ~~Resend~~ the mail relay (decided 2026-11-12: no new account): **done 11-12**, the relay created and deployed, its secret in Edge Functions → Secrets, the function at version 4;
   4. `night_schedule.sql` (done 11-11), then a test email (**sent 11-12**, about 2.6 s end to end);
-  5. the Apps Script deploy (rprfo, then all 11);
+  5. the Apps Script deploy: rprfo **done 11-12** (@114), the other 10 after rprfo's night checks out;
   6. shadow nights;
   7. rprfo's `close_direct` on for three nights, then the other nine.
 
@@ -122,7 +122,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 
 **Two maintainers (2026-10-29).** Sebastian's assistant Donny now maintains MOG too (CLAUDE.md, Two maintainers; his setup in [ONBOARDING.md](../ONBOARDING.md)).
 - **Changes:** Donny works on branches and opens pull requests; Sebastian merges.
-- **Deploys and SQL:** both can deploy and run SQL, after telling the other. `deploy.py` refuses a copy that is behind `origin/main`, and sends a deploy to every store only from `main`.
+- **Deploys and SQL:** both can deploy and run SQL. `deploy.py` refuses a copy that is behind `origin/main`, and sends a deploy to every store only from `main`.
 - **CI:** the 24 gates run on GitHub (`.github/workflows/gates.yml`) on every push and pull request, and pass there.
 - **Project notes:** what used to be Claude's memory on Sebastian's computer is now [docs/MOG_ProjectNotes.md](MOG_ProjectNotes.md).
 - **Not finished:** Sebastian's invites and branch protection, then Donny's one-store test deploy, which measures who `/exec` runs as after his redeploy.
@@ -164,8 +164,7 @@ Read before touching the app, the editor or Supabase: [docs/MOG_OneApp_Spec.md](
    - start and clean all four (Rosslyn BOH and FOH, Tysons BOH, Rockville FOH);
    - set up a store from one, or send ticked items with "Send N items to stores".
 3. **Start the warehouse** (W1 live; `docs/MOG_Warehouse_Spec.md` §2):
-   - Sebastian tells Donny that schemas v13 to v16 are taken;
-   - invites Chef Dan (done 2026-11-05, both roles);
+   - Sebastian invites Chef Dan (done 2026-11-05, both roles);
    - Dan adds the locations, suppliers and products, then a first count per location.
 
    Then W2 (store orders). **Its spec is approved** (2026-11-02, `docs/MOG_Warehouse_Spec.md` §2 "W2 spec"):
@@ -285,7 +284,7 @@ See `CLAUDE.md` → "Standing invariants" (10 rules). They aren't repeated here 
 ## Open issues / risks
 
 - **CI runs the gates on GitHub's Linux runner** (`.github/workflows/gates.yml`), with LF files. Run `node tests/run_all.js` before every deploy anyway; the live URL is still the final check. Reproducing a CI-only failure: see [docs/MOG_ProjectNotes.md](MOG_ProjectNotes.md), CI and tests.
-- **Two maintainers deploy from two computers.** `deploy.py`'s git check is the backstop; telling each other before a deploy is the rule.
+- **Two maintainers deploy from two computers.** `deploy.py`'s git check is the backstop: it refuses a copy that is behind `origin/main`. Whoever continues pulls the latest first.
 - **`python3` on Windows** is the Microsoft Store stub; use `python` or `py`.
 - **PowerShell PATH goes stale** after a `winget install` (see `CLAUDE.md` convention #7).
 - **A store's `/exec` can rot or flake.** Test a freshly cut deployment before repointing: if it flakes too, it isn't rot (`mog-exec-repoint`).

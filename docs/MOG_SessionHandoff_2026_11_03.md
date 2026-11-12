@@ -75,7 +75,7 @@
    4. The product → Send to stores → Rosslyn FOH (TEST), linking its own item (the first time, pick which vendor is Elpis).
    5. Order from Elpis on the TEST store; after the close, its Elpis card shows the delivery; Mark received.
    W2a's first use (Happy Supply on the TEST store) is still untried too.
-3. **Still Sebastian's, unchanged since 11-02:** rename Elpis to "Elpis Wholesale" at Rosslyn FOH, Founders FOH, RP Tysons FOH and TnY Tysons FOH; undo Horse Pho (rprfotest, change 237); tell Donny that v13 to v17 are taken. Rosslyn FOH also has a vendor named "testtt" (noticed, not asked about).
+3. **Still Sebastian's, unchanged since 11-02:** rename Elpis to "Elpis Wholesale" at Rosslyn FOH, Founders FOH, RP Tysons FOH and TnY Tysons FOH; undo Horse Pho (rprfotest, change 237). Rosslyn FOH also has a vendor named "testtt" (noticed, not asked about).
 4. **Blueprint and Donny's change:** the blueprint doesn't describe PR #7's count-list rule yet (an item counted on its main vendor's list only); that's Donny's change to write up (his handoff or the next session). This handoff stamps the blueprint at `42db1a9`.
 5. **Small, noticed:** "Only 0 available at Elpis." reads oddly (same wording as W2a's "Only N available"); the Held by list offers every store vendor name, "Elpis" and "Elpis Wholesale" both included.
 6. **From earlier sessions, unchanged:** the four libraries, Dan's invite and his pound-ordering answer, W3 chargebacks, the repo's origin in the desktop app, `gh`.
