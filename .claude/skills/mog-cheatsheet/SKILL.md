@@ -24,6 +24,8 @@ All commands run from the **repo root** (`C:\Users\sebcn\Documents\Github\mog-mo
 | Dry run preview of push + redeploy | `python deploy.py --dry-run --redeploy` |
 | Find deploymentIds for fresh checkout or new store | `python deploy.py --discover` |
 | Find deploymentId for one new store | `python deploy.py --discover --target <slug>` |
+| Push + redeploy the mail relay (Supabase's recap sender, `mail-relay/`; never the stores) | `python deploy.py --relay` |
+| Dry run of the mail relay deploy | `python deploy.py --relay --dry-run` |
 | Show all flags | `python deploy.py --help` |
 
 **When `--redeploy` is required:** any change to `MOGApi.gs` or any `api_*` function the PWA calls via the `/exec` URL. When unsure, pass `--redeploy` — costs ~3s/target extra. Bound-sidebar changes (Manage*, OrderHistory, etc.) don't need it.

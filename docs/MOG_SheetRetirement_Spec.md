@@ -33,7 +33,7 @@
 
 ## Purpose
 
-After this, a store is a row in Supabase plus its folder on GitHub Pages. The nightly close, the recap email, PINs, backups and opening a store all run in Supabase (plus one email service and one backup job), the same for every store, and as no person's Google account.
+After this, a store is a row in Supabase plus its folder on GitHub Pages. The nightly close, the recap email, PINs, backups and opening a store all run in Supabase (plus one email relay and one backup job), the same for every store. Only the email relay runs as a person's Google account: Sebastian's, one standalone Apps Script with no trigger (R3, revised 2026-11-12).
 
 ## Who it's for
 
@@ -72,7 +72,7 @@ After this, a store is a row in Supabase plus its folder on GitHub Pages. The ni
 |---|---|---|---|
 | R1 | **Where the close runs** | **A Supabase Edge Function** (`close`) running `OrderMath.gs` verbatim, copied in at build time as `build.py` does for the phone, started by `pg_cron` through `pg_net`. It calls the same `mog_sync_close_cycle` steps, so the held-delivery step (v17 to v22) runs unchanged. | One central Apps Script project, not bound to a Sheet, closing every store (reuses today's code, keeps Google and one account). A GitHub Actions schedule (start times drift, and the repo is public). |
 | R2 | When it runs | **Every 15 minutes**, a SQL check picks the stores whose local time is past 3:30 AM and whose cycle is behind, and only then calls the function. A failed close retries 15 minutes later; daylight saving and each store's `time_zone` are handled. | A fixed 3:30 AM (pg_cron runs in UTC, so two schedules around daylight saving, and a missed night waits for a phone). |
-| R3 | **How the recap email is sent** | **An email service (Resend)** called by the function, from an address on hehfood.com. Needs DNS records (SPF and DKIM) on hehfood.com, which Sebastian adds himself when step 2 starts. Free tier about 3,000 a month and 100 a day (confirm at signup), against under 20 a night today. | Google keeps sending: one central Apps Script sends what Supabase queues (as Sebastian, no DNS; one project and one trigger stay). The Gmail API with a stored Google token (no DNS; a token to keep alive). SMTP is out: Edge Functions block ports 25 and 587. |
+| R3 | **How the recap email is sent** | **Revised 2026-11-12: the mail relay.** One standalone Apps Script project (`mail-relay/`, bound to no Sheet, owned by Sebastian, no trigger) that the function posts each email to; it sends with MailApp from Google's no-reply address on hehfood.com, as the stores' recaps always have. No new account, no DNS. *Chosen 2026-11-11 and dropped before setup: an email service (Resend), which needed a new account, DNS records and an API key.* | Resend (a new account and DNS). The Gmail API (a Google Cloud project, a service account and domain-wide delegation). SMTP on port 465 (Edge Functions block only 25 and 587; untested, and it needs an app password with full access to a mailbox stored in Supabase). |
 | R4 | **What replaces the LOG_ORDERS backup** | **A nightly `pg_dump` of the `mog` schema** by a scheduled GitHub Action in a new private repo, kept 90 days, through a read-only database role. Covers every table, off Supabase, free. | Supabase Pro (about $25 a month: 7 daily backups restorable from the dashboard, kept by the same company). Both. |
 | R5 | **How a new store is created** | **HQ → Stores → New store** (hq role): name, concept, side, store code, slug, time zone, PIN and master PIN. One transaction creates the store with phones and editor on Supabase and an open cycle. Then Claude adds it to `stores.json`, builds and pushes, and the Overview checklist (or a concept library) sets it up. `mog-add-store` drops to about 4 steps. | A SQL function a maintainer runs in the SQL Editor, the GM choosing the PIN on first open with a one-use code (as HQ invites work). |
 | R6 | PINs | HQ → Stores sets a store's PIN and master PIN. Supabase owns them from the night its Sheet's trigger is removed (the PIN push goes with it). | A PIN change in the store's own Settings with the master PIN. |
@@ -91,7 +91,7 @@ Each step ships on its own. Sizes are estimates.
 | # | Step | Size | Why here |
 |---|---|---|---|
 | 1 | The backup (R4) | half a session | A store's LOG_ORDERS copy stops the night its close moves, so the new backup comes first. |
-| 2 | The close and the recap email in Supabase (R1, R2, R3, R8): canary rprfo, then all | 2 sessions | The core. Needs the email account and DNS ready. |
+| 2 | The close and the recap email in Supabase (R1, R2, R3, R8): canary rprfo, then all | 2 sessions | The core. Needs the mail relay set up. |
 | 3 | The phone off `/exec` (R7) | half to 1 session | Needs step 2's function. |
 | 4 | PINs and New store in HQ (R5, R6); `mog-add-store` rewritten; tried on a TEST store | 1 session | Needs every store's PIN push gone (step 2). |
 | 5 | Retire: the 11 projects' triggers, `deploy.py`'s targets, `mog-exec-repoint`, CLAUDE.md's layers, invariants and rules 5 and 6 | half a session | Last. |
@@ -127,12 +127,11 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
 **Measured first:**
 - `OrderMath.gs` loads unchanged as a strict ES module and closes a 600-item, 30-vendor store in 16 to 47 ms of CPU (Node, the same V8 as Deno), against the 2 s limit. rpr's live snapshot, the biggest, is 51 KB.
 - Edge Functions (Supabase docs): 2 s CPU, 150 s wall clock, 256 MB, no `vm`, ports 25 and 587 closed. `SUPABASE_DB_URL` is built in, so the function calls `mog.*` directly and adds no public endpoint.
-- Resend (resend.com, 11-11):
-  - the free plan is 3,000 emails a month and 100 a day;
-  - the API takes 10 requests a second;
-  - an `Idempotency-Key` header is kept 24 hours;
-  - its records go on `send` and `resend._domainkey`, so hehfood.com's Google Workspace SPF and MX are untouched;
-  - hehfood.com's DNS is on Cloudflare, which Resend can fill in by itself.
+- The mail relay (2026-11-12, R3):
+  - Apps Script's `doPost` can't read request headers, so the relay's secret rides in the body (HTTPS);
+  - MailApp's quota for a Workspace account is 1,500 recipients a day (Google's quota page). `setupRelay` logged 1,485 left on 11-12 at about 9 AM, so about 15 were already used that day. That's against 21 active recipients across the 10 stores;
+  - CacheService keeps a key at most 6 hours, and a recap's 3 tries are 15 minutes apart.
+- ~~Resend (resend.com, 11-11): 3,000 emails a month and 100 a day, an `Idempotency-Key` kept 24 hours, records on `send` and `resend._domainkey`.~~ Dropped 2026-11-12 for the mail relay (R3).
 - **The Daily summary already sets the once-per-cycle flag** (sent at 1:05 PM on 11-05 at Rosslyn BOH, at 4:01 PM on 11-01 at Tysons FOH), and that night's recap is then skipped. In step 2 it still runs in Apps Script, so the flag is shared.
 
 **Decided in the walkthrough (Sebastian, 2026-11-11):**
@@ -140,12 +139,13 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
 - Each store's 3:30 AM trigger deletes itself the first night its `close_direct` is on, and stamps `mog.stores.sheet_trigger_off_at`.
 - The recap comes from `Master Ordering Guide <noreply@hehfood.com>`, with no Reply-To.
 - Every night, each store Apps Script still closes gets a shadow run between 3:00 and 3:20 AM, compared each morning with what Apps Script logged.
+- **2026-11-12:** the recaps go through the mail relay, not Resend: no new account (R3). From Google's no-reply address, under the name "Master Ordering Guide".
 
 **How it runs:**
 1. Every 15 minutes `pg_cron` runs `mog.night_tick()` ([supabase/night_schedule.sql](../supabase/night_schedule.sql)). When `mog.night_due()` names something, it posts once to the Edge Function `close` with Vault's secret.
 2. The function ([supabase/functions/close/](../supabase/functions/close/)) does each due item in turn:
    - **Close:** a store with `close_direct` on, its cycle behind, from 3:30 AM its time. It reads the sync snapshot, runs `OrderMath.gs`, then calls `mog.night_close`, which is v17's close unchanged (`mog.close_cycle`).
-   - **Recap:** claimed once per 15 minutes, at most 3 tries. It's built by `RecapEmail.gs` and sent through Resend, one email per active recipient, with an idempotency key per cycle and person.
+   - **Recap:** claimed once per 15 minutes, at most 3 tries. It's built by `RecapEmail.gs` and posted to the mail relay ([mail-relay/Relay.gs](../mail-relay/Relay.gs)), one email per active recipient, with a key per cycle and person that the relay keeps 6 hours, so a retry never sends twice.
    - **Shadow:** worked out and kept in `mog.night_log` only.
 3. Every close, recap, shadow and test leaves a row in `mog.night_log`.
 
@@ -160,6 +160,7 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
   - 60 email cases against the pre-move `sendRecapEmail_`;
   - 7 once-per-cycle scenarios;
   - 13 planted defects.
+- The mail relay (2026-11-12): [mail-relay/](../mail-relay/) (`Relay.gs`, its manifest, `relay-target.json`), the function's `relayMailer` in `core.mjs`, `python deploy.py --relay`, and the gate `tests/mail_relay.test.js` (the real `Relay.gs` behind the function's mailer; 21 planted defects).
 
 **Live so far (2026-11-11, each on Sebastian's go):**
 - schema v23: smoke_v23 48/48, probe 142/142.
@@ -168,15 +169,19 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
   - a run with Vault's secret through `pg_net` answered HTTP 200 `{"ok":true,"ran":[]}`.
 - `night_schedule.sql`: `pg_cron` 1.6 and `pg_net` on, the secret made in Vault, job `mog-night` every 15 minutes.
 - `close_direct` is off at all 10 stores.
+- **The first shadow night (11-11 → 11-12):** all 10 stores matched Apps Script's log row for row (vendor, item, name, pack, area, on hand, quantity): 118 rows at the four that ordered (rpr 64, rpt 30, rpfr 12, rprfo 12), and 0 against 0 at the six that ordered nothing. No count landed between the shadow and the close. One post to the function at 3:00 (HTTP 200); 61 ticks, all succeeded. Apps Script closed every store between 3:23 and 3:37.
 
 **Still to do, each on Sebastian's go:**
 1. ~~Run v23, then smoke_v23.~~ Done 2026-11-11.
 2. ~~Deploy the function.~~ Done 2026-11-11.
-3. Resend: signup, DNS, and the key into Edge Functions → Secrets.
+3. ~~Resend: signup, DNS, and the key.~~ Replaced 2026-11-12 by the mail relay, done the same day:
+   1. ~~Create and deploy the relay with clasp.~~ Project and deployment @1 made by Claude; IDs in `relay-target.json` and `RELAY_URL`. It answered 403 until step 2.
+   2. ~~Sebastian runs `setupRelay` and copies `MOG_RELAY_SECRET` into Edge Functions → Secrets.~~ Done; the relay then answered `NOT_ALLOWED` without the secret.
+   3. ~~Redeploy the function.~~ Version 4 (JWT check off); still 401 without Vault's secret.
 4. ~~Run `night_schedule.sql`.~~ Done 2026-11-11.
-5. Send a test email to Sebastian.
+5. ~~Send a test email to Sebastian, timed.~~ Sent 11-12 14:31 UTC: rprfo's 11-11 recap (1 vendor, 12 items), about 2.6 s end to end.
 6. Deploy Apps Script: rprfo, then all 11.
-7. Run the shadow nights.
+7. Run the shadow nights (night 1 matched, 11-12).
 8. Turn on rprfo's `close_direct` for three nights.
 9. Turn it on for the other nine.
 
@@ -185,7 +190,10 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
 - The trigger list in each of the 11 Apps Script projects (only the recap's sender was measured). Step 2's triggers remove themselves, so the list matters only for anything else installed.
 - Whether anyone opens a store's Sheet today.
 - ~~`OrderMath.gs` and the recap builder running unchanged in Supabase's Deno runtime.~~ Measured as a strict ES module in Node (same V8 as Deno), 2026-11-11. The first Deno run itself is the test email and the first shadow.
-- ~~Resend's free-tier numbers.~~ Confirmed on resend.com 2026-11-11 (Step 2 above).
+- ~~Resend's free-tier numbers.~~ Confirmed on resend.com 2026-11-11, then Resend was dropped (R3).
+- ~~The relay's From line.~~ Seen by Sebastian on the test email, 11-12: from `Master Ordering Guide <noreply@hehfood.com>`, reply-to `noreply@`, signed by Google's `gappssmtp` key and mailed by `google.com` (the same signature as the stores' Apps Script recaps), subject and layout as usual.
+- ~~That the function's POST reaches `doPost` through Apps Script's redirect.~~ Confirmed 11-12 by the test email (HTTP 200, sent 1).
+- ~~How long one relay call takes.~~ Measured 11-12: the whole test run (pg_net, the function, the relay, MailApp) took about 2.6 s, so one send is under that, and 21 recipients fit the 100 s budget. No per-store batching.
 - Whether `SUPABASE_DB_URL` reaches the database from the function (IPv6 direct host or the pooler): the first test email shows it.
 - Whether each store's Script Property location matches `mog.stores.location`. Matched in the subjects sent for rpr, rprfo, rpfr, rpt and tnytf; the other five have sent no recap since 10-28.
 - ~~GitHub Actions artifact retention on a private repo (90 days assumed).~~ Settled 2026-11-11: a private repo keeps artifacts 1 to 400 days (GitHub docs); the backup sets 90.

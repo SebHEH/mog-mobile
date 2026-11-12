@@ -4,13 +4,19 @@
 // itself is core.mjs, which tests/night_close.test.js runs against the fake.
 //
 // This file is only the glue: the request's secret, the database calls, and
-// Resend. Deployed with verify_jwt off: the caller proves itself with the
-// secret Vault holds (mog_night_secret), checked in SQL before anything else
-// runs. Nothing here reads a key from the repo:
-//   SUPABASE_DB_URL  built in: the database, as its owner (the mog.* calls)
-//   RESEND_API_KEY   set by a maintainer in Edge Functions -> Secrets
+// the mail relay's address. Deployed with verify_jwt off: the caller proves
+// itself with the secret Vault holds (mog_night_secret), checked in SQL
+// before anything else runs. Nothing here reads a key from the repo:
+//   SUPABASE_DB_URL   built in: the database, as its owner (the mog.* calls)
+//   MOG_RELAY_SECRET  set by a maintainer in Edge Functions -> Secrets, copied
+//                     from the mail relay's Script Properties (setupRelay)
 import postgres from 'npm:postgres@3.4.5';
-import { runNight } from './core.mjs';
+import { runNight, relayMailer } from './core.mjs';
+
+// The mail relay (mail-relay/Relay.gs): its one deployment, the same one
+// mail-relay/relay-target.json names (tests/mail_relay.test.js holds them
+// equal). python deploy.py --relay keeps the address.
+const RELAY_URL = 'https://script.google.com/macros/s/AKfycbz63P9uqcrQOiQMOLSNLjkhz95oG7-5eEBg4eqD4Ro1KOeI9IZUg25V0DnpnVM00KCmew/exec';
 
 const sql = postgres(Deno.env.get('SUPABASE_DB_URL') ?? '', {
   max: 1, prepare: false, idle_timeout: 5, connect_timeout: 15
@@ -40,33 +46,8 @@ const db = {
               one(sql`select mog.night_note(${slug}, ${step}, ${cycle}::date, ${ok}, ${sql.json(detail as any)}) as r`)
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// One email through Resend. A 429 (10 requests a second per team) or a 5xx
-// is tried again, up to 3 times; anything else is the answer.
-const mail = {
-  async send(m: { from: string; to: string; subject: string; text: string; html: string; idempotencyKey?: string }) {
-    const key = Deno.env.get('RESEND_API_KEY') ?? '';
-    if (!key) return { ok: false, error: 'RESEND_API_KEY is not set' };
-    const headers: Record<string, string> = { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' };
-    if (m.idempotencyKey) headers['Idempotency-Key'] = m.idempotencyKey;
-    const body = JSON.stringify({ from: m.from, to: [m.to], subject: m.subject, text: m.text, html: m.html });
-    let last = '';
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const res = await fetch('https://api.resend.com/emails', { method: 'POST', headers, body });
-      const text = await res.text();
-      if (res.ok) {
-        let id = null;
-        try { id = JSON.parse(text).id; } catch (_) { /* the send went through either way */ }
-        return { ok: true, id };
-      }
-      last = 'HTTP ' + res.status + ': ' + text.slice(0, 200);
-      if (res.status !== 429 && res.status < 500) break;
-      await sleep(1000 * attempt);
-    }
-    return { ok: false, error: last };
-  }
-};
+// One email per POST to the mail relay (core.mjs relayMailer).
+const mail = relayMailer(fetch, RELAY_URL, (Deno.env.get('MOG_RELAY_SECRET') ?? '').trim());
 
 const answer = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });

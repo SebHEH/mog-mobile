@@ -47,6 +47,14 @@ Usage:
   python deploy.py --dry-run --redeploy         preview push + redeploy
   python deploy.py --discover                   find all deploymentIds
   python deploy.py --discover --target tnytf    find one deploymentId
+  python deploy.py --relay                      push mail-relay/ and redeploy it
+  python deploy.py --relay --dry-run            preview that
+
+The mail relay (--relay) is a separate standalone project, bound to no
+Sheet: Supabase's nightly close sends its recap emails through it. Its IDs
+are in mail-relay/relay-target.json, and --relay always redeploys that one
+deployment, so the /exec address the function calls never changes. It
+never touches the stores, and a store deploy never touches it.
 """
 
 import argparse
@@ -61,6 +69,9 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 APPS_SCRIPT_DIR = os.path.join(ROOT, 'apps-script')
 TARGETS_FILE    = os.path.join(APPS_SCRIPT_DIR, '.clasp-targets.json')
 CLASP_FILE      = os.path.join(APPS_SCRIPT_DIR, '.clasp.json')
+RELAY_DIR         = os.path.join(ROOT, 'mail-relay')
+RELAY_TARGET_FILE = os.path.join(RELAY_DIR, 'relay-target.json')
+RELAY_CLASP_FILE  = os.path.join(RELAY_DIR, '.clasp.json')
 
 
 def die(msg, code=1):
@@ -131,11 +142,11 @@ def cleanup_clasp_json():
             pass
 
 
-def run_clasp(clasp_path, args, capture_output=False):
-    """Run clasp from inside apps-script/. Returns (exit_code, stdout, stderr)."""
+def run_clasp(clasp_path, args, capture_output=False, cwd=APPS_SCRIPT_DIR):
+    """Run clasp from inside apps-script/ (or cwd). Returns (exit_code, stdout, stderr)."""
     result = subprocess.run(
         [clasp_path] + args,
-        cwd=APPS_SCRIPT_DIR,
+        cwd=cwd,
         capture_output=capture_output,
         text=True,
     )
@@ -220,6 +231,18 @@ def git(*args):
     return r.returncode, r.stdout.strip()
 
 
+def check_not_behind():
+    """Refuse a copy that is missing commits from origin/main."""
+    code, _ = git('fetch', '--quiet', 'origin', 'main')
+    if code != 0:
+        print('WARNING: could not reach GitHub (git fetch failed); checking against the last fetch.')
+    code, behind = git('rev-list', '--count', 'HEAD..origin/main')
+    if code == 0 and behind not in ('', '0'):
+        die('this copy is missing ' + behind + ' commit(s) that are on origin/main.\n'
+            '  Deploying now would put the older Apps Script back on every target you push to.\n'
+            '  Run git pull (or merge main into your branch), then deploy again.')
+
+
 def check_git_state(args):
     """Two people deploy from their own copies (CLAUDE.md, Two maintainers).
     clasp pushes the local folder as it is, so a copy missing the other
@@ -230,14 +253,7 @@ def check_git_state(args):
     if args.skip_git_check:
         print('WARNING: --skip-git-check: not comparing with origin/main.')
         return
-    code, _ = git('fetch', '--quiet', 'origin', 'main')
-    if code != 0:
-        print('WARNING: could not reach GitHub (git fetch failed); checking against the last fetch.')
-    code, behind = git('rev-list', '--count', 'HEAD..origin/main')
-    if code == 0 and behind not in ('', '0'):
-        die('this copy is missing ' + behind + ' commit(s) that are on origin/main.\n'
-            '  Deploying now would put the older Apps Script back on every target you push to.\n'
-            '  Run git pull (or merge main into your branch), then deploy again.')
+    check_not_behind()
     if args.target:
         return
     _, branch = git('rev-parse', '--abbrev-ref', 'HEAD')
@@ -302,6 +318,53 @@ def cmd_deploy(args, clasp_path):
         sys.exit(1)
 
 
+def cmd_relay(args, clasp_path):
+    """Push mail-relay/ to its own project and redeploy its one deployment
+    (Supabase's nightly recap sender; the address never changes)."""
+    if not os.path.exists(RELAY_TARGET_FILE):
+        die(RELAY_TARGET_FILE + ' not found.')
+    with open(RELAY_TARGET_FILE, 'r', encoding='utf-8') as f:
+        target = json.load(f)
+    script_id, deployment_id = target.get('scriptId'), target.get('deploymentId')
+    if not script_id or script_id == 'FILL_ME_IN' or not deployment_id or deployment_id == 'FILL_ME_IN':
+        die('mail-relay/relay-target.json has no scriptId or deploymentId yet.\n'
+            '  The relay is created once by hand (docs/MOG_ProjectNotes.md, Supabase: "The mail relay").')
+    print('=== mail relay (' + target.get('label', '') + ') ===')
+    print('Script ID: ' + script_id)
+    print('Deployment ID: ' + deployment_id)
+    print('Address: https://script.google.com/macros/s/' + deployment_id + '/exec')
+    if args.dry_run:
+        print('[dry run] would: clasp push -f, then clasp redeploy ' + deployment_id)
+        return
+    if args.skip_git_check:
+        print('WARNING: --skip-git-check: not comparing with origin/main.')
+    else:
+        check_not_behind()
+        _, dirty = git('status', '--porcelain', '--', 'mail-relay')
+        if dirty:
+            die('mail-relay/ has uncommitted changes; commit them first, so what the relay runs is in git:\n' + dirty)
+    with open(RELAY_CLASP_FILE, 'w', encoding='utf-8') as f:
+        json.dump({'scriptId': script_id, 'rootDir': '.'}, f)
+    try:
+        code, _, _ = run_clasp(clasp_path, ['push', '-f'], cwd=RELAY_DIR)
+        if code != 0:
+            die('PUSH FAILED: mail relay (exit ' + str(code) + ')')
+        print('PUSH OK: mail relay')
+        args_deploy = ['deploy', '--deploymentId', deployment_id]
+        if args.description:
+            args_deploy += ['--description', args.description]
+        code, _, _ = run_clasp(clasp_path, args_deploy, cwd=RELAY_DIR)
+        if code != 0:
+            die('DEPLOY FAILED: mail relay (exit ' + str(code) + ')')
+        print('DEPLOY OK: mail relay')
+    finally:
+        if os.path.exists(RELAY_CLASP_FILE):
+            try:
+                os.remove(RELAY_CLASP_FILE)
+            except OSError:
+                pass
+
+
 def cmd_discover(args, clasp_path):
     """Find deploymentIds for non-template targets."""
     targets = load_targets(args.target)
@@ -352,14 +415,20 @@ def main():
                         help='Discovery mode: print deploymentIds to paste into .clasp-targets.json.')
     parser.add_argument('--skip-git-check', action='store_true',
                         help='Deploy without comparing this copy with origin/main (emergencies only).')
+    parser.add_argument('--relay', action='store_true',
+                        help='Push mail-relay/ (the nightly recap sender) and redeploy it. Nothing else.')
     args = parser.parse_args()
 
-    if args.description and not args.redeploy:
-        die('--description only makes sense with --redeploy.')
+    if args.relay and (args.target or args.discover or args.redeploy):
+        die('--relay runs on its own (it always redeploys); leave out --target, --discover and --redeploy.')
+    if args.description and not (args.redeploy or args.relay):
+        die('--description only makes sense with --redeploy or --relay.')
 
     clasp_path = find_clasp()
 
-    if args.discover:
+    if args.relay:
+        cmd_relay(args, clasp_path)
+    elif args.discover:
         cmd_discover(args, clasp_path)
     else:
         cmd_deploy(args, clasp_path)

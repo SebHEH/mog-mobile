@@ -416,7 +416,7 @@ Sebastian's goal: create a store entirely in Supabase, with no Sheet copy and no
 
 **Spec approved 2026-11-11: [MOG_SheetRetirement_Spec.md](MOG_SheetRetirement_Spec.md)** (the inventory of what each Sheet still does, with file and function; the decisions; the order of work). It retires the Sheets of the 10 existing stores too. In short:
 - **The close:** a Supabase Edge Function running `OrderMath.gs` verbatim, started by `pg_cron` every 15 minutes for the stores that are due.
-- **The recap email:** Resend, from a hehfood.com address (Sebastian adds the DNS records).
+- **The recap email:** the mail relay, one standalone Apps Script sending with MailApp from Google's no-reply address on hehfood.com (revised 2026-11-12 from Resend: no new account).
 - **The backup** (replaces LOG_ORDERS): a nightly dump of every `mog` table to a private GitHub repo, kept 90 days.
 - **A new store:** HQ → Stores → New store, PINs set there too.
 - **Order:** the backup, the close and email (canary rprfo, then all), the phone off `/exec`, PINs and New store, then retire the triggers and deploy targets. About 4 to 5 sessions. The Sheets stay in Drive as an archive.

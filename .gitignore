@@ -1,5 +1,6 @@
 # clasp - rewritten per-target by deploy.py, not useful to commit
 apps-script/.clasp.json
+mail-relay/.clasp.json
 
 # clasp login credentials - NEVER commit
 .clasprc.json

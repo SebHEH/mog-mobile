@@ -2,10 +2,12 @@
 // step 2: R1, R2, R3, R8). The Edge Function `close` (index.ts) runs it every
 // time pg_cron's tick finds something due (supabase/night_schedule.sql).
 //
-// Pure: no Deno, no database driver, no network. index.ts hands it `db` (one
-// call per mog.night_* SQL function, schema_v23.sql) and `mail` (one email
-// through Resend), so tests/night_close.test.js runs this same file against
-// the fake Supabase and a fake mailer.
+// Pure: no Deno, no database driver, no network of its own. index.ts hands it
+// `db` (one call per mog.night_* SQL function, schema_v23.sql) and `mail`
+// (relayMailer below: one email through the mail relay, mail-relay/Relay.gs),
+// so tests/night_close.test.js runs this same file against the fake Supabase
+// and a fake mailer, and tests/mail_relay.test.js runs relayMailer against the
+// real Relay.gs.
 //
 // The order math and the email are the server's own: shared.mjs is
 // apps-script/OrderMath.gs, Concepts.gs and RecapEmail.gs, copied in verbatim
@@ -15,9 +17,11 @@ import {
   orderInputsFromSnapshot_, orderLogRowsFromInputs_, recapFromLogRows_, conceptTheme_, recapEmailContent_
 } from './shared.mjs';
 
-// Sebastian, 2026-11-11: from noreply@hehfood.com, no Reply-To. The name is
-// the one Apps Script's MailApp sends under.
-export const RECAP_FROM = 'Master Ordering Guide <noreply@hehfood.com>';
+// Sebastian, 2026-11-11: from noreply@hehfood.com, no Reply-To; 2026-11-12:
+// sent by the mail relay (MailApp with noReply, Google's no-reply address on
+// the domain), not a new email service. The name is the one Apps Script's
+// MailApp sends under.
+export const RECAP_NAME = 'Master Ordering Guide';
 
 // One run stops picking up new work after this long, well inside the free
 // plan's 150 s wall clock; what's left is due again on the next tick.
@@ -59,14 +63,61 @@ export function recapEmail(store, rows, cycleDate) {
                             recap.sections, recap.cycleDate, recap.totalItems);
 }
 
-// Resend keeps an idempotency key 24 hours: a second send of the same
-// cycle's recap to the same person in that time is answered, not sent.
+// The mail relay keeps a key 6 hours: a second send of the same cycle's
+// recap to the same person in that time is answered, not sent. A recap's
+// tries are 15 minutes apart, 3 at most.
 export function idempotencyKey(slug, cycleDate, email) {
   return ('mog-recap/' + slug + '/' + cycleDate + '/' + String(email || '').trim().toLowerCase()).slice(0, 256);
 }
 
 function message(e) {
   return String((e && e.message) || e || 'unknown error').slice(0, 300);
+}
+
+// The mailer index.ts gives runNight: one email per POST to the mail relay
+// (mail-relay/Relay.gs), a standalone Apps Script that sends it with MailApp.
+//   fetchFn  the runtime's fetch (the gate passes one that runs Relay.gs)
+//   url      the relay's /exec address
+//   secret   MOG_RELAY_SECRET
+//   wait     ms => Promise, the pause between tries (the gate passes none)
+// Apps Script answers 200 with JSON whatever happened, after a redirect fetch
+// follows. Anything that isn't the relay's JSON, and a send the relay
+// couldn't make, is tried again, 3 tries in all; a refusal (the secret, a bad
+// address) is the answer at once. The key makes a retry safe.
+const RELAY_REFUSALS = /^(NOT_ALLOWED|BAD_JSON|BAD_TO|NO_SUBJECT|NO_BODY|TOO_LONG_)/;
+export function relayMailer(fetchFn, url, secret, wait) {
+  const pause = wait || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  return {
+    async send(m) {
+      if (!url || /FILL_ME_IN/.test(url)) return { ok: false, error: 'the mail relay address is not set' };
+      if (!secret) return { ok: false, error: 'MOG_RELAY_SECRET is not set' };
+      const body = JSON.stringify({ secret, to: m.to, subject: m.subject, text: m.text, html: m.html,
+                                    name: m.name || '', key: m.idempotencyKey || '' });
+      let last = '';
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        if (attempt > 1) await pause(1000 * (attempt - 1));
+        let status = 0, text = '';
+        try {
+          const res = await fetchFn(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, redirect: 'follow' });
+          status = res.status;
+          text = await res.text();
+        } catch (e) {
+          last = 'network: ' + message(e);
+          continue;
+        }
+        let a = null;
+        try { a = JSON.parse(text); } catch (_) { a = null; }
+        if (a && a.ok === true) return { ok: true, id: a.duplicate ? 'duplicate' : null };
+        if (a && a.error) {
+          last = 'relay: ' + String(a.error).slice(0, 200);
+          if (RELAY_REFUSALS.test(String(a.error))) break;
+          continue;
+        }
+        last = 'HTTP ' + status + ': ' + text.slice(0, 200);
+      }
+      return { ok: false, error: last };
+    }
+  };
 }
 
 // One store's close, then its recap at once when the close owes one.
@@ -108,7 +159,7 @@ async function runRecap(db, mail, slug) {
   for (const r of recipients) {
     let res;
     try {
-      res = await mail.send({ from: RECAP_FROM, to: r.email, subject: email.subject, text: email.text, html: email.html,
+      res = await mail.send({ name: RECAP_NAME, to: r.email, subject: email.subject, text: email.text, html: email.html,
                               idempotencyKey: idempotencyKey(slug, cycle, r.email) });
     } catch (e) {
       res = { ok: false, error: message(e) };
@@ -145,7 +196,7 @@ async function runTest(db, mail, body) {
   if (!data || !data.ok) return { ok: false, error: (data && data.error) || 'no data' };
   const email = recapEmail(data, data.rows, date);
   if (!email) return { ok: false, error: 'nothing in the log for ' + slug + ' on ' + date };
-  const res = await mail.send({ from: RECAP_FROM, to, subject: email.subject, text: email.text, html: email.html });
+  const res = await mail.send({ name: RECAP_NAME, to, subject: email.subject, text: email.text, html: email.html });
   await db.note(slug, 'test', date, !!(res && res.ok), res && res.ok ? { sent: 1 } : { error: String(res && res.error) });
   return { ok: !!(res && res.ok), subject: email.subject, error: res && res.ok ? null : res && res.error };
 }

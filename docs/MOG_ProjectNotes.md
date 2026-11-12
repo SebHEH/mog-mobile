@@ -73,8 +73,13 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
     - the morning check is [supabase/tests/night_shadow_check.sql](../supabase/tests/night_shadow_check.sql).
   - **A store switches** with `update mog.stores set close_direct = true where slug = '...'`. Its Apps Script trigger deletes itself the next night and stamps `mog.stores.sheet_trigger_off_at`. Switching back is `close_direct = false`, then Move this store to Supabase to re-install the trigger.
   - **Stop everything:** `select cron.unschedule('mog-night');`.
-  - **Deploying the function is a deploy:** on the maintainer's go, through the connector's `deploy_edge_function`, with the three files in `supabase/functions/close/` as they are in the repo. Deploy with `verify_jwt` false, because the function checks the secret itself.
-  - **`RESEND_API_KEY`** lives only in Edge Functions → Secrets, set by Sebastian; never in chat or the repo.
+  - **Deploying the function is a deploy:** on the maintainer's go, through the connector's `deploy_edge_function`, with the three files in `supabase/functions/close/` as they are in the repo (`index.ts`, `core.mjs`, the generated `shared.mjs`). Deploy with `verify_jwt` false, because the function checks the secret itself.
+  - **The mail relay sends the recaps** (R3 revised 2026-11-12: no Resend, no new account). [mail-relay/Relay.gs](../mail-relay/Relay.gs) is one standalone Apps Script project, bound to no Sheet, owned by Sebastian, deployed as a web app that runs as him for anyone with the secret. The function posts it one email at a time; it sends with MailApp (`noReply`, the name "Master Ordering Guide").
+    - **The secret** `MOG_RELAY_SECRET`: made by `setupRelay` (run once in the relay's editor) in its Script Properties, and copied by Sebastian into Edge Functions → Secrets under the same name. Never in chat or the repo. Both sides trim it, as a copied value can carry a newline.
+    - **Deploy:** `python deploy.py --relay` pushes `mail-relay/` and redeploys its one deployment (IDs in `mail-relay/relay-target.json`), so the address in `index.ts`'s `RELAY_URL` never changes. Never put it in `apps-script/`: that goes to every Sheet. The gate `mail_relay` holds the two IDs equal.
+    - **Creating it** (once, done by Claude on Sebastian's go): `clasp create-script --type standalone --title "MOG mail relay" --rootDir mail-relay`, then `clasp push -f` and `clasp create-deployment` from `mail-relay/`; the script and deployment IDs go into `relay-target.json` and `RELAY_URL`, then the function is redeployed.
+    - **A key** (cycle, store, person) is kept 6 hours in the relay's cache: a retry after a lost answer never emails twice.
+    - **It runs as Sebastian's account:** MailApp's 1,500 recipients a day are shared with his other scripts (about 21 a night). If he leaves, the relay moves with a new owner's `create-script` and deploy.
 
 ## HQ control (schema v11)
 

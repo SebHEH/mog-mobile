@@ -221,8 +221,8 @@ async function runSuite(srcOf, seeds) {
         same(where, 'email ' + i + ' subject', bMails[i].subject, aMails[i].subject);
         same(where, 'email ' + i + ' text', bMails[i].text, aMails[i].body);
         same(where, 'email ' + i + ' html', bMails[i].html, aMails[i].htmlBody);
-        if (aMails[i].name !== 'Master Ordering Guide' || bMails[i].from !== 'Master Ordering Guide <noreply@hehfood.com>') {
-          fail(where, 'sender: ' + aMails[i].name + ' / ' + bMails[i].from);
+        if (aMails[i].name !== 'Master Ordering Guide' || bMails[i].name !== aMails[i].name) {
+          fail(where, 'sender: ' + aMails[i].name + ' / ' + bMails[i].name);
         }
       }
       if (sent.p_rows.length && !bMails.length) fail(where, 'rows were logged but Supabase sent no recap');

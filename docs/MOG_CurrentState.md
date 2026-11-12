@@ -42,8 +42,8 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **Live order, each on Sebastian's go** (Donny told first):
   1. v23, then smoke_v23;
   2. the function's deploy;
-  3. Resend and its DNS on hehfood.com (Sebastian), the key in Edge Functions → Secrets;
-  4. `night_schedule.sql`, then a test email;
+  3. ~~Resend~~ the mail relay (decided 2026-11-12: no new account): **done 11-12**, the relay created and deployed, its secret in Edge Functions → Secrets, the function at version 4;
+  4. `night_schedule.sql` (done 11-11), then a test email (**sent 11-12**, about 2.6 s end to end);
   5. the Apps Script deploy (rprfo, then all 11);
   6. shadow nights;
   7. rprfo's `close_direct` on for three nights, then the other nine.
