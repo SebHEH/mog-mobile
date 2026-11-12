@@ -42,7 +42,7 @@ file is run once, in order. Re-running any of them must stay harmless.
 | `tests/fake_supabase.js` | The new functions, with the same refusals and link rules as the SQL (on delete cascade, on delete set null, CONFLICT on a changed row). |
 | a gate in `tests/` | Whatever client code calls the new function; `node tests/run_all.js` must pass. |
 | `docs/MOG_SupabaseMigration.md` | A section 7 row per new function: its caller and its credential. |
-| `CLAUDE.md`, `docs/MOG_CurrentState.md` | The file-inventory line for `schema_vN.sql`; "schema vN" in Pinned focus. |
+| `docs/MOG_FileInventory.md`, `docs/MOG_CurrentState.md` | The file-inventory line for `schema_vN.sql`; "schema vN" in Pinned focus. |
 
 ## Rules learned here
 
