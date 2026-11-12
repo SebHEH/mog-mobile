@@ -122,7 +122,7 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
 - **The first scheduled night (11-12) never started:** GitHub picked up the schedule only after a push to the repo. Run #5, started by hand on 11-12, passed (37 tables, 17,766 rows, matched). **Not checked yet:** the 11-13 scheduled run (09:47 UTC). A backup watchdog (an email when no good backup is newer than 30 hours) is designed in step 2's session and waits for Sebastian's go.
 - **Unchanged:** the Sheets' LOG_ORDERS copy runs until step 2. No Apps Script, store or schema version changed.
 
-### The backup watchdog: schema v24, live 2026-11-12, silent until the address is set
+### The backup watchdog: schema v24, live and armed 2026-11-12
 
 Approved by Sebastian on 11-12 ("Yes, build the watchdog in v24 and include the via/par/stores drop"), built by a headless Grok Bot run. Its two open decisions were taken as the recommended defaults:
 - **When the watch starts:** the moment `schema_v24.sql` runs (`mog.backup_watch.watch_from`). Until the first heartbeat the clock counts from there, so a heartbeat step that never works still alerts after 30 hours. Setting `watch_from = now()` restarts it.
@@ -138,7 +138,7 @@ Built and gated: `supabase/schema_v24.sql`, `smoke_v24.sql` (28 rows; 9 of 10 pl
 
 Stop it: `update mog.backup_watch set alert_to = null;`.
 
-**Live 2026-11-12 (Grok Bot, ET):** backup run #7 (id 43272520410) green at 12:43 PM first; `schema_v24.sql` at 1:30 PM (watch from 18:30:48 UTC); smoke_v24 28/28; `check_api.sh` 149/149; `night_schedule.sql` re-run; the function `close` at version 5. `alert_to` is still empty, so nothing can alert yet, and `backup_watch_test()` hasn't run: a maintainer sets the address, then runs the test. The 11-13 scheduled backup should write the first heartbeat.
+**Live 2026-11-12 (Grok Bot, ET):** backup run #7 (id 43272520410) green at 12:43 PM first; `schema_v24.sql` at 1:30 PM (watch from 18:30:48 UTC); smoke_v24 28/28; `check_api.sh` 149/149; `night_schedule.sql` re-run; the function `close` at version 5. At 1:45 PM the address was set and `backup_watch_test()` sent one test email (`last_test_ok` true). The 11-13 scheduled backup should write the first heartbeat.
 
 **Re-running `night_schedule.sql`:** its first four lines (`create extension` for `pg_net` and `pg_cron`, and the two grants on schema `cron` to `postgres`) fail on a re-run with `2BP01 dependent privileges exist` (Supabase's `pg_cron` grant event trigger). Once both extensions are installed, skip those four lines and run the rest.
 

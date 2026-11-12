@@ -63,7 +63,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - smoke_v24 28/28 (cleaned up), `check_api.sh` 149 passed, 0 failed; the warehouse and catalog readers ran clean in a read-only transaction;
   - `night_schedule.sql` re-run (its first four lines skipped, see [docs/MOG_SheetRetirement_Spec.md](MOG_SheetRetirement_Spec.md)); `mog-night` still every 15 minutes;
   - the Edge Function `close` redeployed from `6c91637`: version 5, JWT check off, 401 without the secret.
-- **Silent until the address is set:** `mog.backup_watch.alert_to` is empty, so no alert can send, and `mog.backup_watch_test()` hasn't run. Sebastian's two steps: `update mog.backup_watch set alert_to = '<address>';`, then `select mog.backup_watch_test();`.
+- **Armed 2026-11-12 1:45 PM ET:** `mog.backup_watch.alert_to` is set (Sebastian's pick; the address stays out of this repo) and `mog.backup_watch_test()` sent one test email (`last_test_ok` true, `{"sent": 1}`).
 - **Next check:** the 11-13 scheduled backup (4:47 AM ET) should write the first row of `mog.backup_heartbeats`.
 
 **Older pinned entries (2026-11-11 Manage finished, the nightly backup, and everything back to 2026-11-01):** `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
