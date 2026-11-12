@@ -19,6 +19,7 @@ Project facts and gotchas that used to live in Claude's memory on one computer (
 Replace the path here with the newest handoff at the end of each session that ships material changes. (The `mog-session-handoff` skill rewrites this line.)
 
 @docs/MOG_SessionHandoff_2026_11_12.md
+If `docs/` holds a newer `MOG_SessionHandoff_*.md` than the import above (sort by name), read the newest one first. The SessionStart context guard flags a lagging import.
 
 ## Quick orientation
 
@@ -140,12 +141,12 @@ Repo-local skills in `./.claude/skills/` ARE owned by this repo — edit those i
 
 ## Working conventions
 
-1. Architectural walkthrough before any non-trivial implementation. Sebastian explicitly prefers being walked through changes step-by-step (see [feedback_explicit_safe_steps](#) in memory).
-2. **Canary first, fan out second.** For multi-target deploys (clasp to 11 targets, build.py to 10 store dirs), push to one canary, wait for Sebastian to smoke-test, then push to the rest. **A deploy that changes nothing a live store does needs no question** (code behind a switch that's off, a canary of it, the close function while no store has `close_direct` on): run it, then report what ran, what the gates prove and the rollback. **Still ask first** before turning on any store's `close_direct` or any other cutover (Sebastian, 2026-11-12).
+1. **Architectural walkthrough only for genuinely architectural changes** (a new structure or data flow, a schema change, a new system). Everything else: state the plan in a line or two and do it (Sebastian, 2026-11-12).
+2. **Canary first, fan out second.** For multi-target deploys (clasp to 11 targets, build.py to 10 store dirs), push to one canary, smoke-test it (open the live URL or run the function; Grok Bot can do this), then push to the rest without asking. Only a rollout that is a cutover asks first. **A deploy that changes nothing a live store does needs no question** (code behind a switch that's off, a canary of it, the close function while no store has `close_direct` on): run it, then report what ran, what the gates prove and the rollback. **Still ask first** before turning on any store's `close_direct` or any other cutover (Sebastian, 2026-11-12).
 3. **Verification is opening the live URL or running the function** — not "no errors in tooling output." Sebastian validates by using the thing.
 4. Read the actual file before editing — assume it may have drifted since the last session.
 5. No "🤖 Generated with Claude Code" footers on commit messages.
-6. Suggest commits, don't auto-commit. The maintainer in the session owns the commit decision. **Except a session handoff, which commits and pushes as part of it** (Sebastian, 2026-11-02; skill `mog-session-handoff`).
+6. **Commit and push when the work is done and the gates pass.** Don't ask first and don't print the message for approval; report the hash. A session handoff also commits and pushes (Sebastian, 2026-11-12; skill `mog-session-handoff`). Never `--no-verify`.
 7. PowerShell PATH may be stale after a fresh tooling install on Windows. If `node`, `npm`, `clasp`, or `python` returns "not found" right after `winget install`, prefix the next command with `$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User");`.
 8. **Every request to run a function in the Apps Script editor names its file.** Paste the output of `python editor_link.py <function> <store>`: the `.gs` file, the function, the store, and direct links to that store's editor and Sheet (global skill `appsscript-editor-action`). Never a bare function name, and never leave the store implicit (one codebase, ten Sheets). Sebastian's standing rule, 2026-10-15.
 9. **Every next step that involves a file links that file.** Whenever a suggestion, a hand-off, or a "next, do X" names a file Sebastian has to open, run, paste, or check (a SQL file to run in the Supabase SQL Editor, a smoke test, a doc, a generated page), give it as a clickable repo-relative Markdown link, e.g. [supabase/schema_v3.sql](supabase/schema_v3.sql), right where the step says to use it, with what to do with it. The links go in the turn's final message: the app collapses text written above a next-step question box into a one-line summary, so links placed there disappear. Never a bare file name. Sebastian's standing rule, 2026-10-16.
