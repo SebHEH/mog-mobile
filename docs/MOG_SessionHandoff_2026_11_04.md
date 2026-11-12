@@ -1,7 +1,6 @@
 # Session Handoff — HEH's stock at three places (W2c), and the week's smaller pieces
 
 **Session date:** 2026-11-04 (started the evening of 11-03, after that day's handoff)
-**Author:** Sebastian
 **Session focus:** the TEST store's Elpis deliveries; then, as Sebastian asked: HQ remembering a device, the KM brief for the meeting deck, stale wording and the Items area fix, checking deliveries in apart from ordering, and a reorientation of HQ's warehouse side into HEH's stock at three places.
 **Outcome:** Four schema versions and five code commits shipped, all checked live.
 - **Schemas, all live:** v18 (HQ remembers a device), v19 (Elpis on one page, the phone's "To check in"), v20 (W2c: places, items at places, the close by place, who took what). Each was checked live with its smoke and the probe: v20 smoke 37/37, probe 123/123.

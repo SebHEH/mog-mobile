@@ -1,7 +1,6 @@
 # Session Handoff — Happy Supply W2b, HEH's stock held at Elpis
 
 **Session date:** 2026-11-03
-**Author:** Sebastian
 **Session focus:** check whether W2a had been tried, then design and build W2b (`docs/MOG_Warehouse_Spec.md` §2, "W2 spec"): HEH's own packaging held at Elpis, ordered from Elpis as today, leaving the records when a store marks its delivery received.
 **Outcome:** W2b is live and unused.
 - Schema v17 ran in the SQL Editor: smoke_v17 47/47 PASS (Sebastian's paste); `check_api.sh` 111 passed, 0 failed; read-only check matched.

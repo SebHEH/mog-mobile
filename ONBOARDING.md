@@ -114,7 +114,7 @@ Start a MOG session (I'm Donny):
 ```
 Wrap up my MOG session (I'm Donny):
 1. Run node tests/run_all.js and show me its last line.
-2. Write the session handoff with the mog-session-handoff skill, Author: Donny. Put any lesson for a
+2. Write the session handoff with the mog-session-handoff skill. Put any lesson for a
    global skill under Process lessons, tagged [→ global proposal], for Sebastian to file.
 3. Commit everything on this branch with a clear message, then push it (git push -u origin <branch>).
 4. Give me the link to open the pull request:

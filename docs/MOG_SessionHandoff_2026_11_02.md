@@ -1,7 +1,6 @@
 # Session Handoff — Concept library, HQ redesign
 
 **Session date:** 2026-11-01 → 11-02 (the commits landed late on 11-01)
-**Author:** Sebastian
 **Session focus:** build the concept library (`docs/MOG_Warehouse_Spec.md` §1): one standard item list per concept and side, kept in HQ, which a new store's order guide starts from.
 
 **Outcome:** the library is live (schema v12, commit `67cccb0`). HQ was then redesigned from Sebastian's feedback into the order guide's computer look with the HEH brand (commit `84ac2cb`).
@@ -150,7 +149,6 @@ HQ and begin the warehouse (docs/MOG_Warehouse_Spec.md §2) with an architectura
 
 ## Later session — Happy Supply W1, the warehouse
 
-**Author:** Sebastian
 **Session focus:** record Sebastian's answers on the new HQ page and the libraries, then design the warehouse (`docs/MOG_Warehouse_Spec.md` §2) and build its first phase, W1.
 **Outcome:** W1 is live.
 - Schema v13 adds HQ roles, the warehouse tables and nine `mog_wh_*` calls; HQ has Happy Supply pages.
@@ -295,7 +293,6 @@ pound-ordered items and Sebastian's call on an Approve step.
 
 ## Later session — the local preview server, the slicer on Windows
 
-**Author:** Sebastian (a side session started from the session above)
 **Session focus:** commit the fake-Supabase preview that sessions kept rebuilding in the scratchpad (CurrentState candidate 3).
 **Outcome:** PR 6 is merged (`35cb81c`).
 - `tests/preview_server.js` serves the built app, editor and HQ against the fake Supabase; `preview_start` "mog-preview" starts it.
@@ -376,7 +373,6 @@ pound-ordered items and Sebastian's call on an Approve step.
 
 ## Later session 3 — LTOs, the HQ side
 
-**Author:** Sebastian
 **Session focus:** workshop Sebastian's LTO asks (label LTO items, flag new ones at the stores, roll back and remove, a list of each concept's LTOs, line up the concepts with the library), then build the first part.
 **Outcome:** the HQ side is live.
 - **Schema v14:** Sebastian ran it in the SQL Editor. smoke_v14: 26/26 PASS. `check_api.sh`: "94 passed, 0 failed".
@@ -516,7 +512,6 @@ Ask first whether Sebastian sent a live TEST LTO and rolled it back. Then build 
 
 ## Later session 4 — LTO items first on Items, library tick boxes, vendor rename
 
-**Author:** Sebastian
 **Session focus:** LTOs session 2 (the store's Items page), plus three asks Sebastian added: clear a library's items at once, rename vendors so the names line up across stores, and an easier way to set up Happy Supply and Elpis items with live stock for the people ordering.
 **Outcome:** three of the four are live (commit `abce087`, CI `gates` success, Pages serving it at all 10 stores and HQ about 45 s after the push).
 - Schema v15 (vendor rename) ran live: smoke_v15 18/18 PASS (Sebastian's paste), `check_api.sh` 96 passed, 0 failed, and a read-only check shows the new rename step, still closed to the public key.
@@ -639,7 +634,6 @@ Then either help clean the libraries, or start W2 (store orders) spec-first: liv
 
 ## Later session 5 — the W2 spec, Happy Supply store orders (W2a)
 
-**Author:** Sebastian
 **Session focus:** check what Sebastian saw after later session 4, then spec W2 (store orders) spec-first and build its first part.
 **Outcome:** W2a is live (commit `37588dd`).
 - Sebastian ran schema v16 in the SQL Editor: smoke_v16 50/50 PASS (his paste). A read-only check matched; `check_api.sh` gave "105 passed, 0 failed".

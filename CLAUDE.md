@@ -89,9 +89,8 @@ Where this file or a repo skill says "Sebastian" about testing, approving, runni
    - re-installing a trigger (Move, or the Health Check's install fix);
    - onboarding a new store.
 7. **Supabase SQL:** runs on either maintainer's go for that file, through `mog-supabase-schema`: Claude runs it through a connector that can write, or the maintainer pastes it in the SQL Editor. Pull before writing the next `schema_vN.sql`.
-8. **Handoffs name their author** (`**Author:**` under the session date). A second session on the same day adds a "Later session" section, as before.
-9. **Global skill lessons.** The proposal mailbox (`~/.claude/skills/_global-skill-proposals/`) is local to each computer, so only Sebastian's sessions file proposals. Donny's sessions write the lesson under the handoff's *Process lessons*, tagged `[→ global proposal]`, and Sebastian files it.
-10. **Claude's memory is per computer.** Project facts go in the repo ([docs/MOG_ProjectNotes.md](docs/MOG_ProjectNotes.md), this file, the handoffs), never only in one person's memory.
+8. **Global skill lessons.** The proposal mailbox (`~/.claude/skills/_global-skill-proposals/`) is local to each computer, so only Sebastian's sessions file proposals. Donny's sessions write the lesson under the handoff's *Process lessons*, tagged `[→ global proposal]`, and Sebastian files it.
+9. **Claude's memory is per computer.** Project facts go in the repo ([docs/MOG_ProjectNotes.md](docs/MOG_ProjectNotes.md), this file, the handoffs), never only in one person's memory.
 
 ## Skills
 

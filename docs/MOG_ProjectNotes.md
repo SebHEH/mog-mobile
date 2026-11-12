@@ -1,6 +1,6 @@
 # MOG — Project notes
 
-Facts and gotchas every Claude session in this repo needs, whoever is running it. Until 2026-10-29 they lived in Claude's memory on Sebastian's computer, which Donny's sessions can't see. **Add new durable facts here, not to one person's memory** (CLAUDE.md, Two maintainers, rule 10). `CLAUDE.md` @-imports this file.
+Facts and gotchas every Claude session in this repo needs, whoever is running it. Until 2026-10-29 they lived in Claude's memory on Sebastian's computer, which Donny's sessions can't see. **Add new durable facts here, not to one person's memory** (CLAUDE.md, Two maintainers, rule 9). `CLAUDE.md` @-imports this file.
 
 ## Direction
 

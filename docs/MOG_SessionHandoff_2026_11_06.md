@@ -1,7 +1,6 @@
 # Session Handoff — HQ routes (v21), and inactive items stop them (v22)
 
 **Session date:** 2026-11-06 (started 2026-11-05, after the 11-04 handoff)
-**Author:** Sebastian
 **Session focus:** Sebastian's HQ setup was refused ("HEH supply isn't on the other stores"), and he asked for a deep look at why HQ kept missing the logic he wanted.
 **Outcome:**
 - **Routes are live (schema v21, `5754aca`; smoke_v21 31/31, probe 129/129).** A store takes an HQ item by a route on its own item: the place and the store vendor. SHRIMP is routed at Rosslyn and Founders BOH.

@@ -1,7 +1,6 @@
 # Session Handoff — Vendor contacts, HQ control, warehouse spec
 
 **Session date:** 2026-11-01
-**Author:** Sebastian
 **Session focus:** three new things on the Supabase side only:
 - contact info on each store's vendors;
 - an HQ control to add vendors or LTO items to many stores at once;

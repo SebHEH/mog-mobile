@@ -1,7 +1,6 @@
 # Session Handoff — Supabase skills audit, and a second maintainer (Donny)
 
 **Session date:** 2026-10-20 → 2026-10-29 (one chat)
-**Author:** Sebastian
 **Session focus:**
 - mine the Supabase sessions for global skills;
 - then set the project up so Sebastian and his assistant Donny can both maintain it.
@@ -66,7 +65,6 @@
   - the deploy rules;
   - who `/exec` and the triggers run as: whoever installed the 3:30 AM trigger sends the recap, so re-installing one or onboarding a store moves it;
   - SQL by either maintainer;
-  - handoffs name their author;
   - Donny's global-skill lessons go in his handoff, because the proposal mailbox is local to each computer.
 - **[deploy.py](../deploy.py) git check:**
   - It fetches `origin/main` and refuses when this copy is missing commits from it. clasp pushes the local folder as it is, so a stale copy would roll the other person's Apps Script back on every store.
@@ -81,7 +79,7 @@
   - `authorizeSupabase` in each of the 11 stores (links included);
   - a one-store test deploy;
   - the session-start and wrap-up prompts.
-- **Skills:** `mog-supabase-schema` and `route.py` name either maintainer; `mog-deploy-workflow` explains the git check; `mog-session-handoff`'s spine has an **Author** line.
+- **Skills:** `mog-supabase-schema` and `route.py` name either maintainer; `mog-deploy-workflow` explains the git check.
 
 ## Section C — CI's first run, and the line-ending fix (`1dbe516`)
 
