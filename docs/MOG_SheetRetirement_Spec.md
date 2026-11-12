@@ -122,7 +122,7 @@ Walkthrough approved as recommended: the restore checked every night, the passwo
 - **The first scheduled night (11-12) never started:** GitHub picked up the schedule only after a push to the repo. Run #5, started by hand on 11-12, passed (37 tables, 17,766 rows, matched). **Not checked yet:** the 11-13 scheduled run (09:47 UTC). A backup watchdog (an email when no good backup is newer than 30 hours) is designed in step 2's session and waits for Sebastian's go.
 - **Unchanged:** the Sheets' LOG_ORDERS copy runs until step 2. No Apps Script, store or schema version changed.
 
-### The backup watchdog: built in schema v24, not live yet (2026-11-12)
+### The backup watchdog: schema v24, live 2026-11-12, silent until the address is set
 
 Approved by Sebastian on 11-12 ("Yes, build the watchdog in v24 and include the via/par/stores drop"), built by a headless Grok Bot run. Its two open decisions were taken as the recommended defaults:
 - **When the watch starts:** the moment `schema_v24.sql` runs (`mog.backup_watch.watch_from`). Until the first heartbeat the clock counts from there, so a heartbeat step that never works still alerts after 30 hours. Setting `watch_from = now()` restarts it.
@@ -137,6 +137,10 @@ How it runs:
 Built and gated: `supabase/schema_v24.sql`, `smoke_v24.sql` (28 rows; 9 of 10 planted defects caught, the tenth a doubled rule the table's check also holds), `check_api.sh`'s v24 block, `night_schedule.sql` (`mog.backup_watch_test`), the function's `runBackup` and `runBackupTest` (`core.mjs`, `index.ts`), the fake's copies, gate `tests/backup_watch.test.js` (9 controls), `backup_role_pglite.mjs` (the heartbeat refused read-only, written read-write, nothing else writable) and `night_schedule_pglite.mjs` (the test post, a due alert makes the tick post).
 
 Stop it: `update mog.backup_watch set alert_to = null;`.
+
+**Live 2026-11-12 (Grok Bot, ET):** backup run #7 (id 43272520410) green at 12:43 PM first; `schema_v24.sql` at 1:30 PM (watch from 18:30:48 UTC); smoke_v24 28/28; `check_api.sh` 149/149; `night_schedule.sql` re-run; the function `close` at version 5. `alert_to` is still empty, so nothing can alert yet, and `backup_watch_test()` hasn't run: a maintainer sets the address, then runs the test. The 11-13 scheduled backup should write the first heartbeat.
+
+**Re-running `night_schedule.sql`:** its first four lines (`create extension` for `pg_net` and `pg_cron`, and the two grants on schema `cron` to `postgres`) fail on a re-run with `2BP01 dependent privileges exist` (Supabase's `pg_cron` grant event trigger). Once both extensions are installed, skip those four lines and run the rest.
 
 ### Step 2: built and gated, not live yet (2026-11-11)
 
@@ -193,7 +197,7 @@ Stop it: `update mog.backup_watch set alert_to = null;`.
 3. ~~Resend: signup, DNS, and the key.~~ Replaced 2026-11-12 by the mail relay, done the same day:
    1. ~~Create and deploy the relay with clasp.~~ Project and deployment @1 made by Claude; IDs in `relay-target.json` and `RELAY_URL`. It answered 403 until step 2.
    2. ~~Sebastian runs `setupRelay` and copies `MOG_RELAY_SECRET` into Edge Functions → Secrets.~~ Done; the relay then answered `NOT_ALLOWED` without the secret.
-   3. ~~Redeploy the function.~~ Version 4 (JWT check off); still 401 without Vault's secret.
+   3. ~~Redeploy the function.~~ Version 4 (JWT check off); still 401 without Vault's secret. Version 5 (schema v24's watchdog, from `6c91637`) on 11-12.
 4. ~~Run `night_schedule.sql`.~~ Done 2026-11-11.
 5. ~~Send a test email to Sebastian, timed.~~ Sent 11-12 14:31 UTC: rprfo's 11-11 recap (1 vendor, 12 items), about 2.6 s end to end.
 6. Deploy Apps Script: ~~rprfo~~ (11-12, version @114, `/exec` health check answers), then the other 10 once rprfo's night checks out (it closes as before, sends one recap, and its new `Recap.gs` writes `mog.store_state.recap_sent_for`). Changes nothing a store does while `close_direct` is off, so it runs without a question (CLAUDE.md, Working conventions 2).
