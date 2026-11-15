@@ -157,7 +157,10 @@ def validate_stores(stores):
     if not stores:
         fail("stores.json is empty — at least one store entry required")
 
-    required_fields = ('slug', 'concept', 'location', 'deployment')
+    # 'deployment' (its Sheet's /exec address) is optional since schema v26:
+    # a store made in HQ has no Sheet, so its page makes every call to
+    # Supabase. Such a store must be an app-editor store ("editor": "supabase").
+    required_fields = ('slug', 'concept', 'location')
     slugs_seen = set()
 
     for idx, entry in enumerate(stores):
@@ -194,7 +197,15 @@ def validate_stores(stores):
         if 'editor' in entry and entry['editor'] != 'supabase':
             fail(f"{prefix}: field 'editor' must be 'supabase' when present")
 
-        if not DEPLOY_URL_RE.match(entry['deployment']):
+        # Optional: true for a test store (HQ's "Test store"): its page is
+        # built and published at /<slug>/, but the hub never lists it.
+        if 'test' in entry and entry['test'] is not True:
+            fail(f"{prefix}: field 'test' must be true when present")
+
+        if 'deployment' not in entry:
+            if entry.get('editor') != 'supabase':
+                fail(f"{prefix}: a store with no 'deployment' (made in HQ, no Sheet) must have \"editor\": \"supabase\"")
+        elif not isinstance(entry['deployment'], str) or not DEPLOY_URL_RE.match(entry['deployment']):
             fail(f"{prefix}: deployment URL does not match Apps Script pattern\n"
                  f"  expected: https://script.google.com/macros/s/<id>/exec\n"
                  f"  got:      {entry['deployment']!r}")
@@ -394,7 +405,8 @@ def generate_store(entry, template_html, template_sw, dry_run, order_math, supab
     if count != 1:
         fail(f"template/index.html: expected exactly 1 {API_URL_PLACEHOLDER!r}, "
              f"found {count}. Template may be corrupted.")
-    rendered_html = template_html.replace(API_URL_PLACEHOLDER, entry['deployment'])
+    # A store made in HQ (schema v26) has none: '' means "no /exec".
+    rendered_html = template_html.replace(API_URL_PLACEHOLDER, entry.get('deployment', ''))
 
     # Theme substitution. Concept-derived; validate_stores already refused an
     # unknown concept ('default' is a no-op in the template's theme CSS).
@@ -518,7 +530,7 @@ def inject_hub_registry(stores, dry_run):
 
     public_registry = [
         {'slug': e['slug'], 'concept': e['concept'], 'location': e['location']}
-        for e in stores
+        for e in stores if not e.get('test')   # a test store is built, never listed
     ]
     registry_json = json.dumps(public_registry, ensure_ascii=False)
 

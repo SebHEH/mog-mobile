@@ -2348,6 +2348,10 @@
     // handful of stores).
     const m = url.match(/\/macros\/s\/([^\/]+)\/exec/);
     if (m && m[1]) return m[1].substring(0, 12);
+    // A store made in HQ (schema v26) has no Sheet and no /exec address: its
+    // slug keeps its drafts, caches and queue apart from every other store's.
+    // (Stores with an address keep theirs, so nothing a phone holds moves.)
+    if (!url && window.MOG_SUPABASE && window.MOG_SUPABASE.slug) return 's_' + window.MOG_SUPABASE.slug;
     // Fallback: hash the whole URL so we still namespace if the URL
     // format ever changes.
     let h = 0;
@@ -3203,7 +3207,8 @@
   const API_TIMEOUT_MS = 30000;
 
   async function api(action, payload, timeoutMs) {
-    if (!state.apiUrl || state.apiUrl.indexOf('PASTE_YOUR') === 0) {
+    // A store made in HQ (schema v26) has no /exec address: every call is direct.
+    if ((!state.apiUrl || state.apiUrl.indexOf('PASTE_YOUR') === 0) && !window.MOG_SUPABASE) {
       throw new Error('CONFIG_MISSING');
     }
     // Read-only calls (get*/ping) auto-retry on a transient failure — a
@@ -3261,6 +3266,7 @@
   // One request attempt: returns json.data, or throws (BAD_JSON, server !ok,
   // network/abort). The retry policy lives in api() above.
   async function apiOnce_(action, payload, timeoutMs) {
+    if (!state.apiUrl || state.apiUrl.indexOf('PASTE_YOUR') === 0) throw new Error('CONFIG_MISSING');
     const controller = new AbortController();
     // Most calls use the default API_TIMEOUT_MS; a caller may pass a longer
     // one so a cold /exec invocation isn't aborted mid-flight and mistaken
@@ -3598,9 +3604,11 @@
     switch (action) {
       case 'ping': {
         // A store not on Supabase (or Supabase unreachable) signs in on /exec.
+        // A store made in HQ has no /exec: Supabase unreachable is offline.
         let login;
         try { login = await directLogin_(DIRECT_LOGIN_TIMEOUT_MS); }
         catch (e) {
+          if (typeof state !== 'undefined' && state && !state.apiUrl) throw e;
           if (e.useExec || isNetworkError_(e) || String(e.message || '').indexOf('BAD_JSON') === 0) {
             directUseExec_();
             throw useExecError_();
@@ -8218,7 +8226,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.34.0';
+    const versionStr = '0.34.1';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =

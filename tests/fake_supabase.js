@@ -172,7 +172,8 @@ class FakeSupabase {
 
   provision(slug) {
     const key = (slug + 'k'.repeat(64)).slice(0, 64).replace(/[^0-9a-f]/g, 'a');
-    this.stores.set(slug, { key, pins: {}, catalog: null, version: null, state: null, counts: new Map(), log: [],
+    this.stores.set(slug, { key, pins: this.hq && this.hq.managerPin ? { master: this.hq.managerPin.pin } : {},   // v26's trigger
+                            catalog: null, version: null, state: null, counts: new Map(), log: [],
                             phoneDirect: false, failCount: 0, lockedUntil: 0, sessions: new Map(),
                             editorDirect: false, profile: {}, tables: null,
                             presence: new Map(), people: new Map() });
@@ -347,8 +348,10 @@ class FakeSupabase {
         return ok({ applied: true, version: p.p_version });
 
       case 'mog_sync_set_pins': {
-        const changed = s.pins.pin !== (p.p_pin || null) || s.pins.master !== (p.p_master_pin || null);
-        s.pins = { pin: p.p_pin || null, master: p.p_master_pin || null };
+        if (s.closeDirect) return err('PINS_IN_HQ');   // v26: Supabase owns the PINs of a store it closes
+        const master = this.lockedManagerPin(p.p_master_pin || null);
+        const changed = s.pins.pin !== (p.p_pin || null) || s.pins.master !== master;
+        s.pins = { pin: p.p_pin || null, master };
         return ok({ changed });
       }
 
@@ -1074,6 +1077,100 @@ FakeSupabase.prototype.editorPublish = function (s) {
   s.catalog = catalogFromTables(s);
   return s.version;
 };
+
+// ---- HQ → Stores (schema_v26.sql) -------------------------------------------
+// A new store in one go, a store PIN set in HQ, the one manager PIN. The
+// rules and their order are mog.store_create, mog.store_set_pin and
+// mog.manager_pin_set; the messages are the SQL's, word for word. Dates are
+// UTC like every date here (smoke_v26.sql pins the store's own time zone).
+// The trigger stores_manager_pin is lockedManagerPin: once HQ set the
+// manager PIN, every store has it whatever writes the store.
+const CONCEPT_NAMES_V26 = { 'roll-play': 'Roll Play', teasnyou: 'Teas\'n You', an: 'ĂN', leid: 'Lei\'d Poke' };
+const RESERVED_SLUGS_V26 = ['hq', 'docs', 'icons', 'supabase', 'template', 'tests', 'scripts', 'brand', 'assets', 'editor', 'preview'];
+const pinOkV26 = x => /^[0-9]{4,8}$/.test(String(x == null ? '' : x));
+FakeSupabase.prototype.lockedManagerPin = function (want) {
+  return (this.hq && this.hq.managerPin) ? this.hq.managerPin.pin : want;
+};
+FakeSupabase.prototype.hqStores = function (by, p) {
+  const H = this.hqState();
+  const ok = data => ({ ok: true, data });
+  const rej = m => ({ ok: false, error: 'REJECTED: ' + m });
+  const row = p.p_row;
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return rej('nothing to save');
+  const isManager = x => !!H.managerPin && String(x == null ? '' : x) === H.managerPin.pin;
+  const nowIso = new Date(this.nowMs).toISOString();
+  const str = k => String(row[k] == null ? '' : row[k]);
+
+  if (p.p_action === 'create') {
+    const concept = str('concept').trim(), cname = CONCEPT_NAMES_V26[concept];
+    const side = str('side').trim().toUpperCase();
+    const site = str('site').trim().replace(/\s+/g, ' ');
+    const slug = str('slug').trim().toLowerCase(), abbr = str('abbr').trim().toUpperCase();
+    const tz = str('timeZone').trim() || 'America/New_York';
+    const address = str('address').trim() || null;
+    const pin = str('pin');
+    const email = str('gmEmail').trim().toLowerCase() || null;
+    const isTest = row.isTest === true || row.isTest === 'true';
+    if (!cname) return rej('pick the concept');
+    if (side !== 'BOH' && side !== 'FOH') return rej('pick BOH or FOH');
+    if (site.length < 2 || site.length > 40) return rej('the site is 2 to 40 letters (the place, like Ballston)');
+    if (/\b(BOH|FOH)\b/i.test(site)) return rej('leave BOH or FOH out of the site: pick the side instead');
+    if (site.toLowerCase().indexOf(cname.toLowerCase()) === 0) return rej('the site is the place only (like Ballston), without the concept');
+    const loc = cname + ' ' + site + ' ' + side + (isTest ? ' (TEST)' : '');
+    if (Array.from(this.stores.values()).some(s => String(s.profile.location || '').toLowerCase() === loc.toLowerCase())) {
+      return rej('there\'s already a store called ' + loc);
+    }
+    if (!/^[a-z0-9]{2,20}$/.test(slug)) return rej('the web address is 2 to 20 lowercase letters or digits, no spaces or dashes');
+    if (RESERVED_SLUGS_V26.indexOf(slug) >= 0) return rej('the web address ' + slug + ' is taken by the site itself');
+    if (this.stores.has(slug)) return rej('the web address ' + slug + ' is taken');
+    if (!/^[A-Z0-9]{2,10}$/.test(abbr)) return rej('the store code is 2 to 10 capital letters or digits');
+    try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); } catch (e) { return rej(tz + ' isn\'t a time zone'); }
+    if (address && address.length > 200) return rej('the address is 200 characters at most');
+    if (!pinOkV26(pin)) return rej('the store PIN is 4 to 8 digits');
+    if (isManager(pin)) return rej('that\'s the manager PIN: a store PIN must be different');
+    if (email && (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 120)) return rej('the GM email doesn\'t look like an email address');
+    this.provision(slug);
+    const s = this.stores.get(slug);
+    const day = this.today();
+    Object.assign(s, {
+      pins: { pin, master: this.lockedManagerPin(null) }, profile: { timeZone: tz, location: loc, abbr, concept },
+      side, phoneDirect: true, editorDirect: true, closeDirect: true, isTest, recipientsSeeded: true, address,
+      createdBy: by, createdAt: nowIso, pinSetAt: nowIso, pinSetBy: by,
+      tables: { vendors: [], areas: [], items: [], pickRows: [] },
+      recipients: email ? [{ name: 'GM', email, active: true, gm: true }] : [],
+      state: { cycleDate: day, dayOfWeek: DAYS[(new Date(day + 'T00:00:00Z').getUTCDay() + 6) % 7],
+               emergencyOverride: false, vendorPicks: {}, todaysLog: [] }
+    });
+    this.editorPublish(s);
+    return ok({ slug, location: loc, abbr, isTest, cycleDate: day, dayOfWeek: s.state.dayOfWeek,
+                managerPin: !!H.managerPin, recipients: email ? 1 : 0 });
+  }
+  if (p.p_action === 'pin') {
+    const slug = str('slug').trim().toLowerCase(), s = this.stores.get(slug);
+    if (!s) return rej('there\'s no store ' + (row.slug == null ? '(none)' : row.slug));
+    if (!pinOkV26(row.pin)) return rej('the store PIN is 4 to 8 digits');
+    if (isManager(row.pin)) return rej('that\'s the manager PIN: a store PIN must be different');
+    Object.assign(s, { pinSetAt: nowIso, pinSetBy: by, failCount: 0, lockedUntil: 0 });
+    s.pins.pin = String(row.pin);
+    const out = s.sessions.size;
+    s.sessions.clear();
+    return ok({ slug, location: s.profile.location, signedOut: out });
+  }
+  if (p.p_action === 'managerPin') {
+    if (!pinOkV26(row.pin)) return rej('the manager PIN is 4 to 8 digits');
+    const hit = Array.from(this.stores.values()).filter(s => s.pins.pin && s.pins.pin === String(row.pin))
+      .map(s => String(s.profile.location)).sort()[0];
+    if (hit) return rej('that\'s the store PIN at ' + hit + ': the manager PIN must differ from every store\'s PIN');
+    H.managerPin = { pin: String(row.pin), setAt: nowIso, setBy: by };
+    let out = 0;
+    for (const s of this.stores.values()) {
+      s.pins.master = H.managerPin.pin;
+      for (const [t, x] of s.sessions) if (x.authType === 'master') { s.sessions.delete(t); out++; }
+    }
+    return ok({ stores: this.stores.size, signedOut: out });
+  }
+  return rej('HQ can create a store, or set a PIN or the manager PIN');
+};
 // ---- HQ control (schema_v11.sql, v12) ---------------------------------------
 // People with their own lockout (5 wrong, 15 minutes), a one-use invite that
 // becomes a passphrase, 12-hour tokens, the remembered vendor names (gone
@@ -1083,7 +1180,8 @@ FakeSupabase.prototype.editorPublish = function (s) {
 // saved whole in that same save (mog.library_put: cleaned, versioned, logged).
 // v13: each person's roles (hq, warehouse); the catalog calls answer only the
 // hq role (mog.hq_session), and signing in returns the roles.
-const HQ_FNS = { mog_hq_claim: 1, mog_hq_login: 1, mog_hq_data: 1, mog_hq_apply: 1, mog_hq_remember: 1, mog_hq_signout: 1 };
+const HQ_FNS = { mog_hq_claim: 1, mog_hq_login: 1, mog_hq_data: 1, mog_hq_apply: 1, mog_hq_remember: 1, mog_hq_signout: 1,
+                 mog_hq_stores: 1 };
 FakeSupabase.prototype.hqState = function () {
   if (!this.hq) this.hq = { users: new Map(), sessions: new Map(), links: [], tokenSeq: 0, libraries: new Map(), libraryLog: [],
                             ltos: new Map(), ltoStores: [] };
@@ -1321,11 +1419,20 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
   if (H.users.get(sess.name).roles.indexOf('hq') < 0) return err('SESSION_EXPIRED');
   const name = sess.name;
 
+  if (fn === 'mog_hq_stores') return this.hqStores(name, p);
+
   if (fn === 'mog_hq_data') {
+    const mp = H.managerPin || null;
     const stores = Array.from(this.stores.entries()).map(([slug, s]) => ({
       slug, location: s.profile.location || null, abbr: s.profile.abbr || null, concept: s.profile.concept || '',
       isTest: !!s.isTest, editorDirect: !!s.editorDirect, side: s.side != null ? s.side : sideFromLocation(s.profile.location),
-      tables: s.editorDirect ? editorTablesJson(s.tables, this.ltosFor(slug)) : null }))
+      tables: s.editorDirect ? editorTablesJson(s.tables, this.ltosFor(slug)) : null,
+      // v26: what HQ → Stores shows
+      timeZone: s.profile.timeZone || 'America/New_York', address: s.address || null,
+      createdAt: s.createdAt || null, createdBy: s.createdBy || null, pinSetAt: s.pinSetAt || null, pinSetBy: s.pinSetBy || null,
+      hasPin: !!s.pins.pin, phoneDirect: !!s.phoneDirect, closeDirect: !!s.closeDirect,
+      recipients: (s.recipients || []).filter(r => r.active && String(r.email || '') !== '').length,
+      managerPin: !!mp && s.pins.master === mp.pin }))
       .sort((a, b) => (a.concept < b.concept ? -1 : a.concept > b.concept ? 1 : 0) || (a.isTest - b.isTest) ||
                       String(a.location).localeCompare(String(b.location)) || (a.slug < b.slug ? -1 : 1));
     const recent = [];
@@ -1343,7 +1450,9 @@ FakeSupabase.prototype.handleHq = function (fn, p) {
         .sort((a, b) => (a.sentAt < b.sentAt ? -1 : a.sentAt > b.sentAt ? 1 : 0) || (a.slug < b.slug ? -1 : 1))
         .map(r => ({ slug: r.slug, sentAt: r.sentAt, sentBy: r.sentBy, changeId: r.changeId,
                      vendorsAdded: clone(r.vendorsAdded), backupsAdded: clone(r.backupsAdded) })) }));
-    return ok({ name, stores, links: clone(this.hqLinks()).sort((a, b) => (a.hqName < b.hqName ? -1 : a.hqName > b.hqName ? 1 : 0) || (a.slug < b.slug ? -1 : 1)),
+    const managerPin = mp ? { setAt: mp.setAt, setBy: mp.setBy,
+                               everyStore: Array.from(this.stores.values()).every(s => s.pins.master === mp.pin) } : null;
+    return ok({ name, managerPin, stores, links: clone(this.hqLinks()).sort((a, b) => (a.hqName < b.hqName ? -1 : a.hqName > b.hqName ? 1 : 0) || (a.slug < b.slug ? -1 : 1)),
                 libraries, ltos, recent: recent.slice(0, 50) });
   }
 

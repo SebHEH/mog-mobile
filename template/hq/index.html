@@ -20,6 +20,8 @@
                      started from a store, edited item by item, and sent
                      to stores like an LTO ("Set up stores from it")
          Vendors     one vendor to many stores
+         Stores      every store, its PIN and its nightly close; a new store
+                     in one save; the one manager PIN (schema v26, stores.js)
        Each store's change is worked out by catalogEdit.js, the editor's own
        code (commitHqRollout), and mog_hq_apply writes every store (and
        library) or none, one logged change per store that the store can undo
@@ -31,6 +33,7 @@
   <script src="catalogEdit.js"></script>
   <script src="warehouse.js"></script>
   <script src="ltos.js"></script>
+  <script src="stores.js"></script>
   <style>
     * { box-sizing: border-box; }
     :root { --ink: #1a1a1a; --ink2: #3d3d3a; --muted: #5f5e5a; --label: #64635e; --line: rgba(0,0,0,0.08); --line2: rgba(0,0,0,0.18);
@@ -254,6 +257,28 @@
     .err { margin: 0; font-size: 14px; font-weight: 600; color: var(--bad); }
     .panel h2 { font-size: 19px; }
     [id^="v-wh-"] > .status:empty { display: none; }
+    /* Stores and New store (schema v26, stores.js) */
+    .ctiles { margin-top: 16px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .ctile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 118px; padding: 16px 12px; border: 1px solid rgba(0,0,0,0.16); border-radius: 12px; background: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .ctile img { height: 48px; width: auto; max-width: 120px; object-fit: contain; }
+    .band { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 18px 22px; border-radius: 14px; }
+    .band img { height: 52px; width: auto; max-width: 150px; object-fit: contain; }
+    .band .bt { font-family: var(--head); font-size: 22px; }
+    .band .bs { font-size: 13px; margin-top: 2px; }
+    .namebox { margin-top: 16px; padding: 14px 16px; border-radius: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+    .namebox b { font-size: 16px; }
+    .lockline { margin-top: 16px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; background: var(--ground); line-height: 1.45; }
+    .okhead { display: flex; align-items: center; gap: 12px; }
+    .okdot { width: 30px; height: 30px; border-radius: 50%; background: var(--ok); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .clist { margin: 16px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; }
+    .clist li { display: flex; align-items: center; gap: 10px; }
+    .next { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+    .nrow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 16px; border-radius: 12px; background: var(--ground); }
+    .nrow .t { flex: 1 1 360px; line-height: 1.45; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tr.sel td { background: var(--hair); }
+    td .n { display: block; font-size: 15px; font-weight: 600; }
+    td .s { display: block; margin-top: 2px; font-size: 13px; color: var(--muted); }
 
     /* Sign in */
     .signin { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
@@ -268,6 +293,8 @@
       .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); }
       .concept .select { min-width: 0; flex: 1; }
       .prow b { flex-basis: 100%; }
+      .ctiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .clist { grid-template-columns: minmax(0, 1fr); }
     }
   </style>
 </head>
@@ -304,6 +331,7 @@
       <button type="button" class="nav" data-nav="libraries"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M9 5a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 8h4"/><path d="M9 16h4"/><path d="M13.8 4.56l2.18 -.53c.56 -.13 1.13 .19 1.28 .73l3.7 13.42a1.02 1.02 0 0 1 -.64 1.22l-2.31 .57c-.56 .13 -1.13 -.19 -1.28 -.73l-3.7 -13.42a1.02 1.02 0 0 1 .77 -1.26z"/></svg>Libraries</button>
       <button type="button" class="nav" data-nav="vendor"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-11a1 1 0 0 1 1 -1h9v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5"/></svg>Vendors</button>
       <button type="button" class="nav" data-nav="links"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 15l6 -6"/><path d="M11 6l.46 -.54a5 5 0 0 1 7.07 7.07l-.53 .47"/><path d="M13 18l-.4 .53a5.07 5.07 0 0 1 -7.12 0a4.97 4.97 0 0 1 0 -7.07l.52 -.46"/></svg>Vendor names</button>
+      <button type="button" class="nav" data-nav="stores"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21l18 0"/><path d="M3 7v1a3 3 0 0 0 6 0v-1m0 1a3 3 0 0 0 6 0v-1m0 1a3 3 0 0 0 6 0v-1h-18l2 -4h14l2 4"/><path d="M5 21l0 -10.15"/><path d="M19 21l0 -10.15"/><path d="M9 21v-4a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v4"/></svg>Stores</button>
       </div>
       <div id="nav-wh" hidden>
       <div class="eyebrow" style="padding-top:18px">HEH STOCK</div>
@@ -437,6 +465,10 @@
           <section class="card"><div class="scroll" id="links"></div><div class="status" id="links-status" role="status"></div></section>
         </section>
 
+        <!-- Stores and New store (schema v26, stores.js fills them) -->
+        <section class="view" id="v-stores" aria-labelledby="st-h" hidden></section>
+        <section class="view" id="v-newstore" aria-labelledby="ns-h" hidden></section>
+
         <!-- Recent -->
         <section class="view" id="v-recent" aria-labelledby="rc-h" hidden>
           <div class="page-head"><div><h1 id="rc-h">Recent changes</h1>
@@ -560,6 +592,9 @@
       markHtml, shortName, usable, vendorRowsHtml, previewHtml, libraryOf, libName,
       libKey: (c, s) => libKey(c, s), rolloutPlan: (items, label, stores, lto) => rolloutPlan(items, label, stores, lto),
       save: (plan, statusId, reset, libraries, lto) => save(plan, statusId, reset, libraries, lto) }) : null;
+    // HQ → Stores and New store (schema v26).
+    const ST = window.HQStores ? window.HQStores.create({ S, $, esc, plural, rpc, CHEV, storeBy, storeName, shortName, conceptName, markHtml,
+      load: () => load(), go: v => go(v), signedOut: msg => { keepToken(null); S.data = null; showSignin(msg); } }) : null;
 
     // ---- Sign in ----
     function showSignin(msg) {
@@ -830,9 +865,10 @@
     function renderNav() {
       document.querySelectorAll('.nav[data-nav]').forEach(b => {
         const v = b.getAttribute('data-nav');
-        if (v === S.view || (v === 'libraries' && S.view === 'setup')) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+        if (v === S.view || (v === 'libraries' && S.view === 'setup') || (v === 'stores' && S.view === 'newstore')) b.setAttribute('aria-current', 'page');
+        else b.removeAttribute('aria-current');
       });
-      for (const v of ['rollout', 'libraries', 'setup', 'vendor', 'links', 'recent'].concat(WH ? WH.views : [], LT ? LT.views : [])) $('v-' + v).hidden = S.view !== v;
+      for (const v of ['rollout', 'libraries', 'setup', 'vendor', 'links', 'recent'].concat(WH ? WH.views : [], LT ? LT.views : [], ST ? ST.views : [])) $('v-' + v).hidden = S.view !== v;
       if (WH) WH.badges();
       if (LT && S.data) LT.badge();
     }
@@ -840,6 +876,7 @@
       renderNav();
       if (S.view.indexOf('wh-') === 0) { if (WH) WH.render(S.view); return; }
       if (S.view === 'ltos' && LT) LT.render();
+      if (ST && ST.views.indexOf(S.view) >= 0) ST.render(S.view);
       if (S.view === 'rollout') renderRollout();
       if (S.view === 'libraries') renderLibraries();
       if (S.view === 'setup') renderSetup();
@@ -1186,6 +1223,7 @@
       const nav = t.getAttribute('data-nav');
       if (nav && (S.data || nav.indexOf('wh-') === 0)) { go(nav); return; }
       if (!S.data) return;
+      if (ST && ST.click(t)) return;
       if (LT && LT.click(t)) return;
       const quick = t.getAttribute('data-quick');
       if (quick) { const v = t.getAttribute('data-view'); quickPick(v, quick); return renderStoresChanged(v); }
@@ -1305,6 +1343,7 @@
     document.addEventListener('change', e => {
       const t = e.target;
       if (!S.data) return;
+      if (ST && ST.change(t)) return;
       const cv = t.getAttribute('data-concept');
       if (cv) { S.concept[cv] = t.value; S.pick[cv] = {}; return renderStoresChanged(cv); }
       const mp = t.getAttribute('data-map');
@@ -1324,6 +1363,7 @@
     document.addEventListener('input', e => {
       const t = e.target;
       if (!S.data) return;
+      if (ST && ST.input(t)) return;
       const row = t.getAttribute('data-row');
       if (row != null) { S.rows[Number(row)][t.getAttribute('data-k')] = t.value; return renderRolloutWork(); }
       if (t.id === 'ro-label') return renderRolloutWork();

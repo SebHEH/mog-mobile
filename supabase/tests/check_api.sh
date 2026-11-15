@@ -223,6 +223,17 @@ check "v24 helper: backup_status not exposed"       404 ''   -X POST "${J[@]}" -
 check "v24 helper: backup_alert_claim not exposed"  404 ''   -X POST "${J[@]}" -d '{}' "$(rpc backup_alert_claim)"
 check "v24 helper: backup_test_data not exposed"    404 ''   -X POST "${J[@]}" -d '{}' "$(rpc backup_test_data)"
 
+# schema v26 (HQ → Stores: a new store, PINs, the one manager PIN; a bogus token or key only)
+check "v26 manager_pin table: not reachable"        404 ''   "$URL/rest/v1/manager_pin"
+check "v26 hq_stores create: bad token refused"     200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_action":"create","p_row":{"slug":"nosuchstore"}}' "$(rpc mog_hq_stores)"
+check "v26 hq_stores pin: bad token refused"        200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_action":"pin","p_row":{"slug":"nosuchstore","pin":"0000"}}' "$(rpc mog_hq_stores)"
+check "v26 hq_stores managerPin: bad token refused" 200 'SESSION_EXPIRED' -X POST "${J[@]}" -d '{"p_token":"bogus","p_action":"managerPin","p_row":{"pin":"0000"}}' "$(rpc mog_hq_stores)"
+check "v26 sync_set_pins: bad key still refused"    200 'BAD_SYNC_KEY' -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_pin":"0000","p_master_pin":null}' "$(rpc mog_sync_set_pins)"
+check "v26 helper: store_create not exposed"        404 ''   -X POST "${J[@]}" -d '{"p_by":"x","p_row":{}}' "$(rpc store_create)"
+check "v26 helper: store_set_pin not exposed"       404 ''   -X POST "${J[@]}" -d '{"p_by":"x","p_slug":"nosuchstore","p_pin":"0000"}' "$(rpc store_set_pin)"
+check "v26 helper: manager_pin_set not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_by":"x","p_pin":"0000"}' "$(rpc manager_pin_set)"
+check "v26 helper: is_manager_pin not exposed"      404 ''   -X POST "${J[@]}" -d '{"p_pin":"0000"}' "$(rpc is_manager_pin)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
