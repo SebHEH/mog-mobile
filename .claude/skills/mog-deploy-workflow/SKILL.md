@@ -61,7 +61,7 @@ For ANY multi-target deploy (clasp to 9 stores; `build.py` regenerating 8 store 
 - A deploy to every store runs only from `main` with `apps-script/` committed; a `--target` canary may run from a branch or with uncommitted edits.
 - `--skip-git-check` is for emergencies.
 - Nobody is told before a deploy: whoever continues pulls the latest (CLAUDE.md, Two maintainers).
-- A deploy that changes nothing a live store does (code behind a switch that's off, a canary of it) runs without a question: run it, then report. Turning on a store's `close_direct`, or any other cutover, is asked first (CLAUDE.md, Working conventions 2).
+- A deploy that changes nothing a live store does (code behind a switch that's off, a canary of it) runs without a question: run it, then report. Turning on a store's `close_direct`, or any other cutover, runs without a question too since 2026-11-15, one store first and the rest after its nights are clean; report what ran, the gate line and the rollback (CLAUDE.md, Working conventions 2).
 
 The reason: spreadsheet data and per-store state vary subtly. A change that works in the canary's data shape may surface a bug in tnyt's. Catching it on the canary means 1 store affected, not 9.
 

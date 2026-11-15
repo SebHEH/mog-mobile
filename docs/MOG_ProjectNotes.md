@@ -37,7 +37,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **Default every Apps Script deploy to `--redeploy`.** `/exec` serves a versioned snapshot, so a push alone leaves it stale.
 - **Canary first is the default.**
   - **A deploy that changes nothing a live store does runs without a question** (Sebastian, 2026-11-12; CLAUDE.md, Working conventions 2): code behind a switch that's off (like `close_direct`), a canary of it, the close function while no store is switched. Do it, then say what changed, what the gates prove, what's visible, and the rollback.
-  - **Still ask first:** turning on any store's `close_direct`, or any other cutover. A change to the order math for everyone, or a schema migration, also gets its own question.
+  - **Cutovers run without a question too** (Sebastian, 2026-11-15): turning on a store's `close_direct`, or another switch that changes what a live store does, once its gates pass and the canary store's nights are clean. Report what ran, the gate line and the rollback. A change to the order math for everyone, or a schema migration, still gets its own question here.
   - Nobody is told before a deploy or SQL: whoever continues pulls the latest (Sebastian, 2026-11-12).
 - **`build.py` has no `--help`:** any run, `--help` included, builds every store (2026-11-10). Use `--dry-run` to see what it would write.
 - **Checking a Pages push is live:** run `.claude/skills/mog-deploy-workflow/scripts/wait_live.py` in the background (2026-11-06; it holds the rules below and checks CI's `gates` run too).
@@ -209,4 +209,5 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **`build.py` can fail once with `OSError: [Errno 22]`** writing a store's `editor/` file: a passing Windows file lock. Run it again (2026-11-01).
 - **Python run from Git Bash prints CRLF:** pipe it through `tr -d '\r'` before a `while read` loop.
 - **Check non-ASCII edits:** the Edit tool once turned a typed `ă` into `ă`, so check the bytes with `cat -A` when a JS escape (not the character) matters.
+- **Git Bash's `TZ=America/New_York date` prints UTC labelled as ET** (no time zone data; 2026-11-15, a deploy logged five hours late). Read the time from the database instead: `select now() at time zone 'America/New_York'`.
 - **clasp can go missing while its login stays** (found 2026-11-15: `%APPDATA%\npm\node_modules\@google` empty, `~/.clasprc.json` intact). `deploy.py` then stops with "'clasp' not found". Reinstall clasp 3 (the login file holds clasp 3's named users): `npm install -g @google/clasp@3`, then `clasp show-authorized-user` should name the owner account. No new login needed.

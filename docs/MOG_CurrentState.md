@@ -36,7 +36,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - the Edge Function `close` (version 1, JWT check off): refuses a call without Vault's secret (401), and an authenticated run answered `{"ok":true,"ran":[]}`;
   - `night_schedule.sql`: `pg_cron` job `mog-night`, every 15 minutes.
 - **Not yet:**
-  - `close_direct` is off at all 10 stores, so Apps Script still closes every store and sends every recap;
+  - `close_direct` is on at rprfo only (since 11-15); Apps Script still closes the other nine and sends their recaps;
   - the first shadows run at 3:00 AM on 11-12.
 - **Approved in the walkthrough:** Apps Script shares the once-per-cycle flag through Supabase (the Daily summary stays in Apps Script until step 3); each store's 3:30 AM trigger retires itself the first night its `close_direct` is on; recaps from `noreply@hehfood.com`, no Reply-To; a nightly shadow (3:00 to 3:20 AM) of every store Apps Script still closes, compared each morning with `supabase/tests/night_shadow_check.sql`.
 - **Built:**
@@ -45,14 +45,14 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - `apps-script/Concepts.gs` and `RecapEmail.gs` (moved out of `Dashboard.gs` and `Recap.gs` unchanged); the shared flag in `Recap.gs`; the self-retiring trigger in `Sync.gs`;
   - gate `night_close` (13 controls).
 - **Takes schema v23:** the drop of `via`, `par` and `stores` moves to v24.
-- **Live order** (a deploy that changes nothing a store does runs and is reported; step 7, turning on `close_direct`, is asked first):
+- **Live order** (a deploy that changes nothing a store does runs and is reported; since 2026-11-15 a cutover does too, step 7 included):
   1. v23, then smoke_v23;
   2. the function's deploy;
   3. ~~Resend~~ the mail relay (decided 2026-11-12: no new account): **done 11-12**, the relay created and deployed, its secret in Edge Functions → Secrets, the function at version 4;
   4. `night_schedule.sql` (done 11-11), then a test email (**sent 11-12**, about 2.6 s end to end);
-  5. the Apps Script deploy: rprfo **done 11-12** (@114), **the other 10 done 11-15** (6:30 PM ET, `--redeploy`, every store's `/exec` answers);
+  5. the Apps Script deploy: rprfo **done 11-12** (@114), **the other 10 done 11-15** (about 1:30 PM ET, `--redeploy`, every store's `/exec` answers);
   6. shadow nights: **done**, cycles 11-11, 11-12 and 11-13 matched at all 10 stores (11-14: nothing ordered; rpt's cycle closed by the phone's new-day reset at 00:01, so no shadow);
-  7. rprfo's `close_direct` on for three nights, then the other nine.
+  7. rprfo's `close_direct` on for three nights (**on since 11-15, 1:40 PM ET**; first close early on 11-16), then the other nine.
 
 **2026-11-12 (afternoon): schema v24 live** (Sebastian's go at 12:15 PM; built by a headless Grok Bot run, run live by Grok Bot at 1:30 PM ET; `docs/MOG_SheetRetirement_Spec.md`, "The backup watchdog").
 - **Built and gated:** the backup watchdog (a heartbeat from SebHEH/mog-backup after each good backup; an email through the mail relay when none is newer than 30 hours, once a day) and the drop of `mog.wh_products.via`, `par` and `stores` (copied first to `mog.wh_products_retired`; the drop stops if any function still names them). PGlite all pass, smoke_v24 28/28, 41 gates.

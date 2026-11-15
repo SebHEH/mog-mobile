@@ -1,6 +1,6 @@
 # MOG: retiring each store's Google Sheet (spec)
 
-**Status:** approved by Sebastian, 2026-11-11 (spec-first: R1, R3, R4 and R5 picked as recommended; R2 and R6 to R11 approved as stated). Step 1 (the backup) is built and live (2026-11-11, "Step 1, built" below). Step 2 is built and gated: schema v23, the function and the schedule are live, and no store has switched yet ("Step 2" below). Steps 3 to 5 are not started. It replaces the stub in [MOG_Warehouse_Spec.md](MOG_Warehouse_Spec.md) §3, which links here.
+**Status:** approved by Sebastian, 2026-11-11 (spec-first: R1, R3, R4 and R5 picked as recommended; R2 and R6 to R11 approved as stated). Step 1 (the backup) is built and live (2026-11-11, "Step 1, built" below). Step 2 is built and gated: schema v23, the function and the schedule are live, and rprfo switched on 2026-11-15 ("Step 2" below). Steps 3 to 5 are not started. It replaces the stub in [MOG_Warehouse_Spec.md](MOG_Warehouse_Spec.md) §3, which links here.
 **Read with:** [MOG_SupabaseMigration.md](MOG_SupabaseMigration.md) (D9: the Sheet is retired from the app's path), [MOG_OneApp_Spec.md](MOG_OneApp_Spec.md).
 
 ---
@@ -191,7 +191,7 @@ Stop it: `update mog.backup_watch set alert_to = null;`.
 - `close_direct` is off at all 10 stores.
 - **The first shadow night (11-11 → 11-12):** all 10 stores matched Apps Script's log row for row (vendor, item, name, pack, area, on hand, quantity): 118 rows at the four that ordered (rpr 64, rpt 30, rpfr 12, rprfo 12), and 0 against 0 at the six that ordered nothing. No count landed between the shadow and the close. One post to the function at 3:00 (HTTP 200); 61 ticks, all succeeded. Apps Script closed every store between 3:23 and 3:37.
 
-**Still to do** (since 2026-11-12, a deploy that changes nothing a store does runs and is reported; turning on `close_direct`, steps 8 and 9, is asked first):
+**Still to do** (since 2026-11-12, a deploy that changes nothing a store does runs and is reported; since 2026-11-15 so does turning on `close_direct`, steps 8 and 9):
 1. ~~Run v23, then smoke_v23.~~ Done 2026-11-11.
 2. ~~Deploy the function.~~ Done 2026-11-11.
 3. ~~Resend: signup, DNS, and the key.~~ Replaced 2026-11-12 by the mail relay, done the same day:
@@ -200,9 +200,9 @@ Stop it: `update mog.backup_watch set alert_to = null;`.
    3. ~~Redeploy the function.~~ Version 4 (JWT check off); still 401 without Vault's secret. Version 5 (schema v24's watchdog, from `6c91637`) on 11-12.
 4. ~~Run `night_schedule.sql`.~~ Done 2026-11-11.
 5. ~~Send a test email to Sebastian, timed.~~ Sent 11-12 14:31 UTC: rprfo's 11-11 recap (1 vendor, 12 items), about 2.6 s end to end.
-6. ~~Deploy Apps Script~~: rprfo 11-12 (version @114); the other 10 on 2026-11-15 at 6:30 PM ET (`python deploy.py --redeploy`, all 11 push and deploy OK; every store's `/exec` answers a bad-JSON POST with its JSON error in about 1.5 s). rprfo's nights checked first: it closed the 11-12 cycle at 3:37 AM (9 rows, matching its shadow), wrote `recap_sent_for` 2026-11-12, and its 4 recipients got one recap each at 3:39 AM.
+6. ~~Deploy Apps Script~~: rprfo 11-12 (version @114); the other 10 on 2026-11-15 at about 1:30 PM ET (`python deploy.py --redeploy`, all 11 push and deploy OK; every store's `/exec` answers a bad-JSON POST with its JSON error in about 1.5 s). rprfo's nights checked first: it closed the 11-12 cycle at 3:37 AM (9 rows, matching its shadow), wrote `recap_sent_for` 2026-11-12, and its 4 recipients got one recap each at 3:39 AM.
 7. ~~Run the shadow nights.~~ Cycles 11-11, 11-12 and 11-13 matched at all 10 stores (rpr 64, 26, 71 rows; rpt 30 and 17; rpfr 12 and 12; rprfo 12 and 9). Cycle 11-14: nothing ordered at any store; rpt has no shadow because the phone's new-day reset closed its cycle at 00:01, before the 3:00 AM window (a KM opened the app after midnight), which is how a store closed early always reads.
-8. Turn on rprfo's `close_direct` for three nights.
+8. Turn on rprfo's `close_direct` for three nights: **on since 2026-11-15, 1:40 PM ET** (Sebastian's go). `mog.night_due` then named the other nine for shadows at 3:05 AM and rprfo's close at 3:35 AM. First night: the 11-15 cycle, closed early on 11-16. Rollback: `close_direct = false`, then Move this store to Supabase in rprfo's Sheet to put the 3:30 AM trigger back.
 9. Turn it on for the other nine.
 
 ## Not verified
