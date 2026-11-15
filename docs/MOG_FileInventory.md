@@ -125,6 +125,8 @@ mog-mobile/
 │                                the one manager PIN), mog.manager_pin and its lock trigger, mog_sync_set_pins refused once Supabase
 │                                closes the store (PINS_IN_HQ), mog_hq_data's store fields (run after v25; has `delete` in two
 │                                function bodies, so it's pasted in the SQL Editor, not run through the connector).
+│   ├── schema_v27.sql           Apps Script's close and recap flag refused once Supabase closes the store: mog_sync_close_cycle and
+│                                mog_sync_set_recap_sent answer CLOSE_DIRECT while close_direct is on (Sheet retirement step 5, item 1; run after v26).
 │   ├── night_schedule.sql       Run once after v23 (again after v24): pg_cron + pg_net, the Vault secret, mog.night_tick every 15 minutes,
 │                                mog.night_test (a test email), mog.backup_watch_test (the watchdog's test email).
 │   ├── functions/close/         The Edge Function `close` (index.ts: the secret, the database, the mail relay's address; core.mjs: the close, the recap, the shadow, relayMailer;
@@ -133,7 +135,7 @@ mog-mobile/
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
 │   ├── backup_role.sql          The nightly backup's read-only login, mog_backup (pasted by a maintainer in the SQL Editor: it shows the
 │                                new password once, for the private repo SebHEH/mog-backup's secret). Re-running rotates the password.
-│   └── tests/                   smoke.sql … smoke_v26.sql (logic, run in the SQL Editor or the connector; v25 on rolls itself back) + check_api.sh (public-key lockout)
+│   └── tests/                   smoke.sql … smoke_v27.sql (logic, run in the SQL Editor or the connector; v25 on rolls itself back) + check_api.sh (public-key lockout)
 │                                + test_store_elpis.sql (SQL Editor: two nights' held-place deliveries on the TEST store, which never closes, by route since v21)
 │                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it)
 │                                + backup_role_pglite.mjs (backup_role.sql as a non-superuser like Supabase's postgres; CI runs it)

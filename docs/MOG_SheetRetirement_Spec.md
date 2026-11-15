@@ -244,7 +244,13 @@ Stop it: `update mog.backup_watch set alert_to = null;`.
 1. **Schema v26 on the live database.** The connector hung on it (the word `delete` in two function bodies; nothing ran, checked 11-15). A maintainer pastes it in the SQL Editor; then Claude runs `smoke_v26.sql` and the probe through the connector. Until then HQ → Stores says it needs v26.
 2. **The TEST store trial** (success criteria 5 and 6): Sebastian makes a test store in HQ, Claude publishes it, a sign-in and a count on a phone, its first close and recap the next morning, a PIN changed in HQ that works the next morning, and the manager PIN set once for every store.
 
-### Step 5: the retirement checklist (researched 2026-11-15, nothing changed yet)
+### Step 5: the retirement checklist (researched 2026-11-15; decided the same evening)
+
+**Decided (Sebastian, 2026-11-15 evening, all four as proposed):**
+- **Item 1: schema v27** refuses `mog_sync_close_cycle` and `mog_sync_set_recap_sent` with `CLOSE_DIRECT` while the store's `close_direct` is on (the key is still checked first). Built and gated 11-15 (smoke_v27 14/14 in PGlite, 4 planted defects caught, a `night_close` scenario); runs after v26.
+- **Item 2: a fixed `ns` per store in `stores.json`** (today's 12 characters), injected by `build.py`, read by the app before anything else; a gate checks it. Stores made in HQ keep `s_<slug>`.
+- **Item 4: archive all 10 store deployments at once**, after the first all-Supabase nights (from 11-16) and the TEST store trial are clean and the app without `/exec` is live.
+- **Item 7: fix forward plus the nightly backup.** A bad close is fixed in the Edge Function or SQL and run again (`pg_cron` retries every 15 minutes; `select mog.night_tick();` in the SQL Editor runs it at once); lost or wrong data comes back from SebHEH/mog-backup. No switch back to Apps Script.
 
 Read from the code on 11-15 (app v0.34.1). Each item says what it touches and what breaks.
 

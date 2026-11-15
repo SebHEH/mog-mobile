@@ -35,11 +35,16 @@ const LOCAL_FAIL_ROWS = {
     why: 'in PGlite the check doesn\'t see what prepare_test_store wrote in that same statement (the call itself answers "phones on"); both passed in the SQL Editor',
     rows: ['test store: prepare gives it a cycle and turns its phones on', 'stores: zztest7\'s today edits never reach another store']
   },
-  'smoke_v23.sql': {
+  'smoke_v23.sql': [{
     why: 'schema_v25 moved the close from 3:30 AM to midnight on purpose; smoke_v25 checks the new time (these rows passed against v23 and v24)',
     rows: ['due: close_direct on, not at 2:35 AM (winter)', 'due: close_direct on, not at 3:25 AM (winter)',
            'due: summer time, at 3:35 AM (07:35 UTC) and not at 3:25']
-  }
+  }, {
+    why: 'schema_v27 refuses Apps Script\'s recap flag (mog_sync_set_recap_sent) while close_direct is on, on purpose; smoke_v27 checks the refusal (these rows passed against v23 to v26)',
+    rows: ['mog_sync_set_recap_sent: a cycle is required', 'night_close: the Daily summary already went out: logged, no recap owed',
+           'the flag set by Apps Script settles an owed recap: nothing to claim', 'claim: the flag already names the owed cycle: nothing claimed, settled',
+           'mog_sync_night: close_direct and the flag, no stamp yet']
+  }]
 };
 
 const num = f => (f === 'schema.sql' ? 1 : Number((/^schema_v(\d+)\.sql$/.exec(f) || [])[1]));
@@ -75,8 +80,11 @@ async function smoke(file, again) {
   if (!res) return;
   const last = res[res.length - 1];
   const rows = (last && last.rows) || [];
-  const known = LOCAL_FAIL_ROWS[file] || { rows: [] };
+  // One group of rows, or several, each with its own reason.
+  const groups = [].concat(LOCAL_FAIL_ROWS[file] || []);
+  const known = { rows: [].concat(...groups.map(g => g.rows)) };
   const skipped = rows.filter(x => x.result !== 'PASS' && known.rows.indexOf(x.check_name) >= 0);
+  known.why = groups.filter(g => skipped.some(x => g.rows.indexOf(x.check_name) >= 0)).map(g => g.why).join('; ');
   const bad = rows.filter(x => x.result !== 'PASS' && skipped.indexOf(x) < 0);
   if (!rows.length || bad.length) failed++;
   console.log((rows.length && !bad.length ? 'PASS  ' : 'FAIL  ') + label + ': ' + (rows.length - bad.length - skipped.length) + '/' + rows.length + ' PASS' +

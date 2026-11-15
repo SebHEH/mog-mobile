@@ -234,6 +234,11 @@ check "v26 helper: store_set_pin not exposed"       404 ''   -X POST "${J[@]}" -
 check "v26 helper: manager_pin_set not exposed"     404 ''   -X POST "${J[@]}" -d '{"p_by":"x","p_pin":"0000"}' "$(rpc manager_pin_set)"
 check "v26 helper: is_manager_pin not exposed"      404 ''   -X POST "${J[@]}" -d '{"p_pin":"0000"}' "$(rpc is_manager_pin)"
 
+# schema v27 (Apps Script's close and recap flag refused once close_direct is on). rprfo has
+# close_direct on: a bogus key must still answer BAD_SYNC_KEY, never CLOSE_DIRECT (the key first).
+check "v27 close_cycle: bad key before close_direct" 200 'BAD_SYNC_KEY' -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_closing":"2026-01-01","p_new_cycle":"2026-01-02","p_new_dow":"Fri","p_rows":[],"p_todays_log":[]}' "$(rpc mog_sync_close_cycle)"
+check "v27 set_recap_sent: bad key before close_direct" 200 'BAD_SYNC_KEY' -X POST "${J[@]}" -d '{"p_slug":"rprfo","p_key":"bogus","p_cycle":"2026-01-01"}' "$(rpc mog_sync_set_recap_sent)"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

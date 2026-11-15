@@ -369,8 +369,10 @@ class FakeSupabase {
         return ok({ saved: this.upsert(s, cycle, null, p.p_rows), cycleDate: cycle });
       }
 
-      // schema_v23.sql: the key check in front of mog.close_cycle (closeCycleCore).
+      // schema_v23.sql: the key check in front of mog.close_cycle (closeCycleCore);
+      // v27: refused once Supabase closes the store.
       case 'mog_sync_close_cycle':
+        if (s.closeDirect) return err('CLOSE_DIRECT');
         return this.closeCycleCore(p.p_slug, s, p);
 
       case 'mog_sync_get_log':
@@ -468,6 +470,7 @@ class FakeSupabase {
         return ok({ closeDirect: !!s.closeDirect, recapSentFor: s.state ? (s.recapSentFor || null) : null,
                     sheetTriggerOffAt: s.sheetTriggerOffAt || null });
       case 'mog_sync_set_recap_sent':
+        if (s.closeDirect) return err('CLOSE_DIRECT');   // v27: Supabase's own recap is the record
         if (!p.p_cycle) return err('a cycle date is required');
         if (!s.state) return err('STORE_NOT_SYNCED');
         s.recapSentFor = p.p_cycle;

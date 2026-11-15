@@ -318,6 +318,24 @@ async function runSuite(srcOf, seeds) {
       if (!row || row.detail.recap !== 'already sent') fail('C Daily summary first', 'close row: ' + JSON.stringify(row));
     });
 
+    // v27: once Supabase closes the store, the Sheet's Reset On Hand (a same-day
+    // close) and an old app's commitReset reach mog_sync_close_cycle and are
+    // refused: Apps Script throws before LOG_ORDERS or a recap, and its flag
+    // write is refused, so Supabase's own recap still goes out.
+    await scen('v27: Apps Script closes nothing once close_direct is on', async () => {
+      const X = movedStore(seedC, script, 'roll-play');
+      X.s.closeDirect = true;
+      const before = clone({ log: X.s.log, state: X.s.state, flag: X.s.recapSentFor || null });
+      let threw = '';
+      try { run(X.side, c => c.closeCycleInDb_({ sameDay: true })); } catch (e) { threw = String(e.message || e); }
+      if (!/CLOSE_DIRECT/.test(threw)) fail('C v27', 'the same-day close did not throw CLOSE_DIRECT: ' + JSON.stringify(threw));
+      same('C v27', 'nothing closed or logged', { log: X.s.log, state: X.s.state, flag: X.s.recapSentFor || null }, before);
+      const pending = run(X.side, c => c.PropertiesService.getScriptProperties().getProperty('MOG_PENDING_RECAP'));
+      if (pending || X.side.mails.length) fail('C v27', 'a recap was armed or sent: ' + pending + ' / ' + X.side.mails.length);
+      run(X.side, c => c.markRecapSent_(X.s.state.cycleDate));
+      if ((X.s.recapSentFor || null) !== before.flag) fail('C v27', 'Apps Script set the flag in Supabase: ' + X.s.recapSentFor);
+    });
+
     await scen('a failed send is tried again', async () => {
       const X = movedStore(seedC, script, 'teasnyou');
       X.s.closeDirect = true;
