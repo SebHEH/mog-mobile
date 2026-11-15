@@ -71,6 +71,11 @@ file is run once, in order. Re-running any of them must stay harmless.
 
   The PGlite runner reads it like any other smoke file. Older smoke files keep their clean-up
   `delete`s: run them in the SQL Editor, not the connector.
+- **A schema file hangs the connector too when the word `delete` is anywhere in it, a function
+  body included** (2026-11-15, schema_v26: two `delete from mog.sessions` inside plpgsql bodies;
+  the call hung 10 minutes and ran nothing). Before running a schema file through the connector,
+  `grep -nwi "delete\|truncate" supabase/schema_vN.sql`: a hit means the maintainer pastes that
+  file in the SQL Editor (give the click-path), and only its smoke file goes through the connector.
 - **Throwaway stores are `zztestN`.** `rprfotest` (`is_test`) holds rprfo's REAL PIN: never sign in
   there by script (memory `reference_fake_supabase_preview`).
 - **The fake copies the SQL's link rules.** An area rename sent as delete plus insert loses its pick

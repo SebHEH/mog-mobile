@@ -14,8 +14,8 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
 - **Each Sheet** is frozen for catalog edits. Since 2026-11-15 Supabase closes every store just after midnight and sends the recap; the phone neither closes a cycle nor sends a Daily summary (both removed, step 3), so its only `/exec` use left is sign-in's fallback when Supabase can't be reached (step 5). The Sheet's Apps Script still holds the onboarding moves. Its LOG_ORDERS backup stopped with its trigger; the nightly off-site backup covers every table.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions (newest first):** app v0.34.0 / store cache v77 (Sheet retirement step 3: no phone reset, no Daily summary; all 10 stores 2026-11-15); schema v25 (the nightly close from midnight, not 3:30 AM: live 2026-11-15 about 2:45 PM ET, smoke_v25 11/11, probe 149/149); schema v24 (the backup watchdog and the via/par/stores drop: live 2026-11-12, smoke_v24 28/28, probe 149/149, below); app v0.33.0 / store cache v76 (Manage finished, live on all 10 stores 2026-11-11, 41 gates since v24); schema v23 (live 2026-11-11, see Sheet retirement step 2 below); v22 (live 2026-11-06), v21 (routes, live 2026-11-05, store cache v74). Every older version with its smoke and probe counts: `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
-- **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
+- **Versions (newest first):** schema v26 (HQ → Stores: New store, PINs in HQ, one manager PIN; built and gated, **not run yet**: it goes in through the SQL Editor); app v0.34.1 / store cache v78 (a store with no `/exec`: its own storage keys, no `/exec` fallback; no change for the 10 stores; all 10 on 2026-11-15); app v0.34.0 / store cache v77 (Sheet retirement step 3: no phone reset, no Daily summary; all 10 stores 2026-11-15); schema v25 (the nightly close from midnight, not 3:30 AM: live 2026-11-15 about 2:45 PM ET, smoke_v25 11/11, probe 149/149); schema v24 (the backup watchdog and the via/par/stores drop: live 2026-11-12, smoke_v24 28/28, probe 149/149, below); app v0.33.0 / store cache v76 (Manage finished, live on all 10 stores 2026-11-11, 41 gates since v24); schema v23 (live 2026-11-11, see Sheet retirement step 2 below); v22 (live 2026-11-06), v21 (routes, live 2026-11-05, store cache v74). Every older version with its smoke and probe counts: `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
+- **New stores** follow `mog-add-store`: four steps, no Sheet (HQ → Stores → New store, then "Publish <slug>"), once schema v26 runs. PINs are set in HQ → Stores; the manager PIN is one code for every store.
 - **The three stores that moved empty:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
   - Tysons BOH (`tnyt`): its KMs have been setting it up since 10-26 (208 items on 11-01). It seeds the Teas'n You BOH library.
@@ -23,6 +23,12 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - all 10 stores closed between 3:23 and 3:38 AM;
   - rpr and rprfo had orders, and their recaps went to their Supabase recipients;
   - the other stores had nothing ordered, so no email (by design).
+
+**2026-11-15 (later): Sheet retirement step 4 built; schema v26 waits to run** (`docs/MOG_SheetRetirement_Spec.md`, "Step 4").
+- **Approved:** the walkthrough, then the mockups (https://claude.ai/artifact/665XFnU7VfRaKXntyXLtxu) with two changes: one manager PIN for every store and concept, locked; the New store form in the picked concept's colours and logo.
+- **Live:** HQ → Stores and New store (`efcaf52`; the page says it needs v26 until it runs); app v0.34.1 / cache v78 at all 10 stores (`efcaf52` canary, `7535744`), no change for them; `build.py` takes a store with no `/exec` and `"test": true`; `mog-add-store` is four steps.
+- **Not yet:** schema v26 (the connector hung on its `delete`s and ran nothing; pasted in the SQL Editor next), then smoke_v26 and the probe, then the TEST store trial.
+- **The first all-Supabase night is still ahead:** the 11-15 cycle closes just after midnight on 11-16 (checked at 3:33 PM: all 10 due at 12:16 AM, nothing due before).
 
 **2026-11-15: Supabase closes every store; the close at midnight; the phone stops closing; the Daily summary removed** (Sheet retirement steps 2 and 3, `docs/MOG_SheetRetirement_Spec.md`).
 - **Checked first:** backups daily since 11-13; shadows matched at all 10 stores for cycles 11-11 to 11-13; rprfo's new Apps Script sent one recap per recipient.
@@ -78,7 +84,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 
 0. **Get everything ready for the full move off the Sheets** (Sebastian, 2026-11-15; `docs/MOG_SheetRetirement_Spec.md`, "Order of work"):
    - first, read the first all-Supabase night (cycle 11-15): a close per store in `mog.night_log`, `sheet_trigger_off_at` at all 10, recaps from `noreply@` with no duplicates;
-   - step 4: PINs owned by Supabase and set in HQ (R6), HQ → Stores → New store in one transaction (R5), `mog-add-store` down to about 4 steps, tried on a TEST store (walkthrough, schema v26);
+   - step 4: **built and its code live** (above); left: schema v26 in the SQL Editor, smoke_v26 and the probe, the manager PIN set once in HQ, the TEST store trial (made in HQ, published, a phone sign-in and count, its close and recap, a PIN changed in HQ that works the next morning);
    - step 5's checklist: sign-in's `/exec` fallback (and `tests/pwa_direct.test.js`), `deploy.py`'s store targets, the Sheets' remaining triggers, `mog-exec-repoint`, CLAUDE.md's layers and rules 5 and 6;
    - tell the KMs the Daily summary is gone (Sebastian's message; Claude drafts).
 1. **Finish lining up after later session 4** (Sebastian's steps, live; checked 11-02 evening):

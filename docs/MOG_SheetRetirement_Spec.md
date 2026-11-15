@@ -1,6 +1,6 @@
 # MOG: retiring each store's Google Sheet (spec)
 
-**Status:** approved by Sebastian, 2026-11-11 (spec-first: R1, R3, R4 and R5 picked as recommended; R2 and R6 to R11 approved as stated). Step 1 (the backup) is built and live (2026-11-11, "Step 1, built" below). Step 2 is built and gated: schema v23, the function and the schedule are live, and all 10 stores switched on 2026-11-15 ("Step 2" below). Steps 3 to 5 are not started. It replaces the stub in [MOG_Warehouse_Spec.md](MOG_Warehouse_Spec.md) §3, which links here.
+**Status:** approved by Sebastian, 2026-11-11 (spec-first: R1, R3, R4 and R5 picked as recommended; R2 and R6 to R11 approved as stated). Step 1 (the backup) is built and live (2026-11-11, "Step 1, built" below). Step 2 is built and gated: schema v23, the function and the schedule are live, and all 10 stores switched on 2026-11-15 ("Step 2" below). Step 3 is live (2026-11-15) apart from the sign-in fallback, moved to step 5. Step 4 is built and its code live; schema v26 waits to run ("Step 4" below). Step 5 is not started. It replaces the stub in [MOG_Warehouse_Spec.md](MOG_Warehouse_Spec.md) §3, which links here.
 **Read with:** [MOG_SupabaseMigration.md](MOG_SupabaseMigration.md) (D9: the Sheet is retired from the app's path), [MOG_OneApp_Spec.md](MOG_OneApp_Spec.md).
 
 ---
@@ -93,7 +93,7 @@ Each step ships on its own. Sizes are estimates.
 | 1 | The backup (R4) | half a session | A store's LOG_ORDERS copy stops the night its close moves, so the new backup comes first. |
 | 2 | The close and the recap email in Supabase (R1, R2, R3, R8): canary rprfo, then all | 2 sessions | The core. Needs the mail relay set up. |
 | 3 | The phone off `/exec` (R7, **replaced 2026-11-15**: the phone stops closing and the Daily summary goes; see "Step 3") | half a session | Needs step 2's function. |
-| 4 | PINs and New store in HQ (R5, R6); `mog-add-store` rewritten; tried on a TEST store | 1 session | Needs every store's PIN push gone (step 2). |
+| 4 | PINs and New store in HQ (R5, R6; **one manager PIN for every store**, 2026-11-15); `mog-add-store` rewritten; tried on a TEST store | 1 session | Needs every store's PIN push gone (step 2). |
 | 5 | Retire: the 11 projects' triggers, `deploy.py`'s targets, `mog-exec-repoint`, CLAUDE.md's layers, invariants and rules 5 and 6 | half a session | Last. |
 
 About 4 to 5 sessions. Schema numbers are taken when each step is built.
@@ -224,6 +224,25 @@ Stop it: `update mog.backup_watch set alert_to = null;`.
 **Moved to step 5:** sign-in's fallback to `/exec` when Supabase can't be reached. It lives in the direct client that `tests/pwa_direct.test.js` runs as written, and `/exec` reads Supabase anyway, so it changes nothing while Supabase answers; it goes with the rest of `/exec`.
 
 **Docs:** the KM brief and the Logic Blueprint (R0, R12, R13, R13a, the new-day flow and contract, the parts diagram, the integrations table; stamp `aeb165d`) say so. Step 3 is done apart from the sign-in fallback, moved to step 5.
+
+### Step 4: PINs and New store in HQ; built 2026-11-15, schema v26 waiting to run
+
+**Approved (Sebastian, 2026-11-15):** the walkthrough as recommended, then the mockups ("HQ Stores mockup", https://claude.ai/artifact/665XFnU7VfRaKXntyXLtxu) with two changes:
+- **One manager PIN for every store and concept, locked to one PIN** (R6 had it per store). It lives once in `mog.manager_pin`; HQ → Stores sets it for every store at once; a new store gets it; a trigger (`stores_manager_pin`) keeps every store's `master_pin_hash` equal to it whatever writes the row. It must differ from every store's PIN (sign-in checks the store PIN first), and a store PIN can't be it. Until it's first set in HQ, each store keeps the manager PIN its Sheet gave it.
+- **The New store form takes the picked concept's colours and logo** (concept tiles, a band, each card's top border, the Create button).
+- Also picked: the TEST store trial is published but hidden (`"test": true` in `stores.json`: built at `/<slug>/`, never on the hub); schema v26 asks first (the repo rule).
+
+**What runs:**
+- **HQ → Stores** (hq role, `template/hq/stores.js`): every store with its items, recap recipients, where its PIN was set ("From its Sheet" or "Set here <date> · <name>") and who closes its nights; Change PIN per store (every sign-in there ends); the Manager PIN card.
+- **HQ → Stores → New store:** concept, side, time zone, site, address, Test store, web address and store code (suggested from the concept, site and side; typed over, they stay), store PIN twice, GM email. One call, `mog_hq_stores('create')`, makes the store in one transaction: its row (phones, editor and nightly close on; a sync key nobody holds; `created_by`), today's cycle in its time zone, the empty catalog the phones read, the GM as recap recipient. The name is "<concept> <site> <side>", plus " (TEST)". Then Claude publishes it (`mog-add-store`, now four steps: HQ, publish, items, smoke test).
+- **PINs belong to Supabase (R6):** `mog_sync_set_pins` answers `PINS_IN_HQ` once Supabase closes the store (`close_direct`, all 10). A rollback turns `close_direct` off first, so the Sheet's Move works again.
+- **A store with no Sheet:** `build.py` takes a store with no `deployment` (it must have `"editor": "supabase"`); its page has no `/exec` address. The app keys such a store's local storage by its slug (`s_<slug>`; stores with an address keep their deployment-id keys, so nothing on a phone moves) and never falls back to `/exec` for it: Supabase unreachable at sign-in is offline. App v0.34.1, cache v78 (canary rprfo `efcaf52`, the other nine `7535744`).
+
+**Built and gated:** `supabase/schema_v26.sql` (generated: `mog_hq_data` from v14, `mog_sync_set_pins` from schema.sql), `smoke_v26.sql` (30 rows, rolls itself back; 11 planted defects caught), `check_api.sh`'s v26 block, the fake's `mog_hq_stores`, gate `tests/hq_stores.test.js` (12 controls: parity with the SQL's concept names and reserved addresses, the form, Create, Change PIN, the manager PIN, the page before v26, build.py), 42 gates, CI green. Checked in headless Edge against the fake: a Lei'd Poke store created, a PIN changed, the manager PIN set, no sideways scroll at phone width.
+
+**Not yet:**
+1. **Schema v26 on the live database.** The connector hung on it (the word `delete` in two function bodies; nothing ran, checked 11-15). A maintainer pastes it in the SQL Editor; then Claude runs `smoke_v26.sql` and the probe through the connector. Until then HQ → Stores says it needs v26.
+2. **The TEST store trial** (success criteria 5 and 6): Sebastian makes a test store in HQ, Claude publishes it, a sign-in and a count on a phone, its first close and recap the next morning, a PIN changed in HQ that works the next morning, and the manager PIN set once for every store.
 
 ## Not verified
 

@@ -33,6 +33,9 @@ mog-mobile/
 │   │                            Vendor names); heh-logo.svg and the concept marks beside it come from the HEH brand kit.
 │   │                            hq/ltos.js (schema v14): each concept's LTOs, where each stands at each store, and Send to
 │   │                            more stores, Make it standard, End and Roll back (rules in catalogEdit.js commitHqLto).
+│   │                            hq/stores.js (schema v26, Sheet retirement step 4): Stores (every store, its PIN, its nightly
+│   │                            close; Change PIN; the one manager PIN for every store) and New store (one save, in the
+│   │                            picked concept's colours and logo; an-mark.svg and leid-mark.svg beside it). Gate: hq_stores.
 │   │                            hq/warehouse.js (schema v13, pages rebuilt in v20): HEH STOCK: Stock (every item at each place, On the way), Items, Places, Who took what; Incoming (vendor
 │   │                            orders in, transfers), Products and prices and Stock history, for the warehouse role. Each
 │   │                            person sees the sections their roles (hq, warehouse) open. Orders (schema v16): the store
@@ -118,6 +121,10 @@ mog-mobile/
 │   ├── schema_v24.sql           The backup watchdog (mog.backup_heartbeats, mog.backup_watch, mog.backup_*; night_due names its alert) and the drop of
 │                                mog.wh_products.via, par and stores, copied first to mog.wh_products_retired (run after v23).
 │   ├── schema_v25.sql           The nightly close is due from midnight, not 3:30 AM (mog.night_due; Sheet retirement step 3, run after v24).
+│   ├── schema_v26.sql           HQ → Stores (Sheet retirement step 4): mog_hq_stores (a new store in one transaction, a store's PIN,
+│                                the one manager PIN), mog.manager_pin and its lock trigger, mog_sync_set_pins refused once Supabase
+│                                closes the store (PINS_IN_HQ), mog_hq_data's store fields (run after v25; has `delete` in two
+│                                function bodies, so it's pasted in the SQL Editor, not run through the connector).
 │   ├── night_schedule.sql       Run once after v23 (again after v24): pg_cron + pg_net, the Vault secret, mog.night_tick every 15 minutes,
 │                                mog.night_test (a test email), mog.backup_watch_test (the watchdog's test email).
 │   ├── functions/close/         The Edge Function `close` (index.ts: the secret, the database, the mail relay's address; core.mjs: the close, the recap, the shadow, relayMailer;
@@ -126,7 +133,7 @@ mog-mobile/
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
 │   ├── backup_role.sql          The nightly backup's read-only login, mog_backup (pasted by a maintainer in the SQL Editor: it shows the
 │                                new password once, for the private repo SebHEH/mog-backup's secret). Re-running rotates the password.
-│   └── tests/                   smoke.sql … smoke_v25.sql (logic, run in the SQL Editor or the connector; v25 on rolls itself back) + check_api.sh (public-key lockout)
+│   └── tests/                   smoke.sql … smoke_v26.sql (logic, run in the SQL Editor or the connector; v25 on rolls itself back) + check_api.sh (public-key lockout)
 │                                + test_store_elpis.sql (SQL Editor: two nights' held-place deliveries on the TEST store, which never closes, by route since v21)
 │                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it)
 │                                + backup_role_pglite.mjs (backup_role.sql as a non-superuser like Supabase's postgres; CI runs it)
