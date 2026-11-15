@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: 2aff545 (2026-11-12) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: aeb165d (2026-11-15) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -42,8 +42,9 @@ their own process, and a KM can take a vacation without the store suffering.
 
 Someone opens the app on their phone, counts on-hand for a vendor's items, sees a suggested order
 quantity appear next to each one, adjusts anything unusual, and submits the count. It takes a few
-minutes per vendor. The store's manager and KM get the recap email, use it to place the actual
-orders, and the day's counts reset cleanly for tomorrow. Nobody had to open the spreadsheet or do
+minutes per vendor. The KM places the orders from the app's order list (or each vendor's copied
+order), the day closes itself just after midnight, the store's recipients get the recap email as
+the day's record, and the counts start clean for tomorrow. Nobody had to open the spreadsheet or do
 the coverage math by hand.
 
 ### Where it's headed
@@ -80,7 +81,7 @@ rebuild can replace. The stated goal for a rebuild is to capture the logic; the 
 | **Primary vs. secondary vendor** | An item's default order source is its primary vendor; the same item can also sit on other (secondary/backup) vendor tabs and be ordered from them. All are fully orderable; par is shared. |
 | **Pick path / storage area** | The user-defined ordering of items within a vendor, grouped by where they physically sit, so counting follows a walking route. |
 | **Count session (the daily order)** | The set of counts plus suggested quantities a user submits for a vendor on a given day. |
-| **Recap email** | The auto-generated "today's suggested order" email sent to the store's recipients once per order cycle. The handoff used to place the actual orders. |
+| **Recap email** | The email of the day's logged order, sent to the store's recipients once per order cycle after the midnight close: the day's record. Until 2026-11-15 a "Daily summary" sent the same email during the day as the list to order from; orders are now placed from the app. |
 | **Reset / new day** | Clearing the day's on-hand counts and snapshotting the completed session to history so the next day starts fresh. |
 | **Store PIN vs. master PIN** | The store PIN (the store's street number) gates the phone app and the desktop editor; a separate master PIN gates destructive/admin actions. |
 | **Web editor** | A desktop, PIN-gated web app (same URL, different door) where a user manages items, vendors, storage areas, pick path, and views order history. |
@@ -97,18 +98,18 @@ rebuild can replace. The stated goal for a rebuild is to capture the logic; the 
   3. For each item the user enters the on-hand count (whole or decimal). Each count saves itself a few seconds after the user stops typing, so others counting at the same time see it (R25).
   4. As counts are entered, the system computes a suggested order quantity per item: it takes the item's par, scales it by how many days this vendor's order must cover today, subtracts what is on hand, and rounds up to a whole unit. Items where the vendor does not deliver today, or where on-hand already meets coverage, show nothing to order.
   5. The user reviews the vendor's full suggested order, adjusts any quantity, and submits the count.
-  6. The session is recorded and the recap email goes to the store's recipients (once per cycle, no duplicates).
-- **Ends with:** A submitted count for that vendor, a recap email on its way, and the user free to count the next vendor. The actual purchase happens later, outside MOG, from the recap.
+  6. The session is recorded; the recap email goes to the store's recipients after the day closes (once per cycle, no duplicates).
+- **Ends with:** A submitted count for that vendor and the user free to count the next vendor. The actual purchase happens outside MOG, from the app's order list or the vendor's copied order.
 
 #### Flow: New-day reset
 
-- **Triggered by:** A nightly run at about 3:30 AM in the store's time zone. If that run failed, the first app open of the new day closes it instead (auto). An admin can also close the day early from the Sheet's dashboard control.
+- **Triggered by:** The nightly close just after midnight in the store's time zone, run by the database's scheduler every 15 minutes until it succeeds (since 2026-11-15; 3:30 AM by each store's Sheet before). The phone never closes a day: a phone that opens on a day not yet closed shows a Refresh screen (R13a).
 - **What happens:**
   1. The system detects the stored "current order day" is behind today.
   2. In one step that cannot half-happen, it logs the completed day's lines (each item with a positive suggested quantity) and starts the new day with Emergency Override off and no day picks. A day can only be closed once, so nothing is ever logged twice.
   3. The recap email is built from those logged lines and sent if it has not already gone out for that cycle.
   4. The new day starts with no counts. The old day's counts are kept with that day (as evidence, for 45 days) rather than wiped.
-  5. A backup copy of the logged lines is appended to the order-history sheet.
+  5. The whole database, the order log included, is copied off-site every night (the order-history sheet's copy stopped with the Sheets' nightly runs).
 - **Ends with:** A fresh order day before anyone opens the app; the user sees a clean count screen. The close is what guarantees the recap gets sent and the day gets logged.
 
 #### Flow: Multi-vendor sourcing
@@ -146,16 +147,15 @@ flowchart LR
   HUB[Hub picker<br/>concept to site to store] --> PWA
 
   PWA <-->|one snapshot down, count saves up<br/>order math runs on the phone| DB[(Counts, current day, overrides, order log,<br/>catalog, recipients, change log<br/>currently Supabase / Postgres)]
-  PWA -.->|reset fallback, recap resend| API[Rules engine + scheduler<br/>currently Apps Script /exec]
+  PWA -.->|place the actual order from the order list, outside MOG| VENDOR([Vendor websites / phone])
   ED <-->|catalog saves with Undo, order history, health| DB
 
-  API -->|nightly close| DB
-  DB -->|recipients, the day's order lines| API
-  API -->|recap email once per cycle| MAIL[Notifier<br/>currently Gmail/MailApp]
-  MAIL --> RCPT([Manager + KM])
-  RCPT -.->|place the actual order, outside MOG| VENDOR([Vendor websites / phone])
+  SCHED[Scheduler + rules engine<br/>currently pg_cron + an Edge Function] -->|nightly close just after midnight| DB
+  DB -->|recipients, the day's order lines| SCHED
+  SCHED -->|recap email once per cycle| MAIL[Notifier<br/>currently a mail relay on MailApp]
+  MAIL --> RCPT([Manager + KM: the day's record])
 
-  API -.->|nightly backup of the order log| LOG[(Order history backup<br/>currently a sheet tab)]
+  DB -.->|nightly off-site backup of every table| LOG[(Backup<br/>currently a private GitHub repo)]
 ```
 
 ### The rules
@@ -163,9 +163,10 @@ flowchart LR
 *Enumerated so the rebuild spec can cite them. This is the highest-value section: these are what a
 naive rebuild silently loses.*
 
-- **R0. MOG produces a suggested order; it does not place orders.** The output is the count session
-  plus the recap email; the actual purchase happens externally (vendor websites/phone) from that
-  recap. *(Owner-confirmed.)*
+- **R0. MOG produces a suggested order; it does not place orders.** The output is the count session,
+  read in the app (the order list, each vendor's copied order); the actual purchase happens
+  externally (vendor websites/phone). The recap email after the close is the record. *(Owner-confirmed;
+  the list moved from the email to the app on 2026-11-15.)*
 - **R1. Suggested order quantity = round-up( par × coverage − on-hand ), never below zero.** If the
   result is zero or negative, the item shows nothing to order. *(Confirmed: `computeSuggestedQty_`,
   `MOGApi.gs`.)*
@@ -229,25 +230,30 @@ naive rebuild silently loses.*
   into a later cycle. *(Confirmed: `api_setEmergencyOverride_`/`api_setVendorOverride_`, reset and
   off-toggle clear both; owner-confirmed why.)*
 - **R12. The recap email is sent exactly once per order cycle**, as a guaranteed side effect of the
-  session/reset, regardless of which path triggered it. It goes to the manager and the KM: one counts,
-  the other (or the same person later) places the orders from the email, and it doubles as an
-  accountability record of what the par said to order. *(Confirmed: the last-sent date, checked against the store's own day (Supabase's once a store
-  moved, fixed 2026-10-20) under a lock, so two phones finishing at once can't both send; a failed
-  send is retried up to 3 times by `sendPendingRecap_`; owner-confirmed purpose.)*
-- **R13. A new order day starts automatically every night** (about 3:30 AM, store time), so the day is
-  already closed when the first person opens the app. The first app open is the fallback when the night
-  run failed. There is no manual mid-day reset in the app. The close is also what guarantees the recap
-  gets sent and the day gets logged. The close is all-or-nothing and can happen only once per day (a
-  repeat or concurrent close changes nothing). Why nightly: the close took 14 to 31 seconds on a KM's
-  first open. *(Confirmed: `nightlyMaintenance_` + `closeCycleInDb_` / `mog_sync_close_cycle`;
-  owner decision D3, 2026-10-15; the manual app button was removed earlier.)*
+  nightly close. It goes to the manager and the KM as the accountability record of what the par said
+  to order. Until 2026-11-15 a Daily summary could send it during the day as the list to order from;
+  that is gone, and orders are placed from the app. *(Confirmed: `mog.store_state.recap_sent_for`
+  and the close function's recap step (schema v23); a failed send is retried up to 3 times, 15
+  minutes apart, and the mail relay keeps a key per cycle and person so a retry never sends twice;
+  owner decision 2026-11-15.)*
+- **R13. A new order day starts automatically every night, just after midnight store time**, so the
+  day is already closed when the first person opens the app. One place closes a day, the nightly
+  close, retried every 15 minutes until it succeeds; the phone never closes one (before 2026-11-15 its
+  first open after midnight did, as a fallback). There is no manual mid-day reset in the app. The close
+  is also what guarantees the recap gets sent and the day gets logged. The close is all-or-nothing and
+  can happen only once per day (a repeat or concurrent close changes nothing). Why midnight: it is
+  where the phone's fallback already drew the day line, and the one store that counts after midnight
+  (Saturday nights) counts for the new day; nobody counted between 11 PM and midnight in the 4 weeks
+  measured. *(Confirmed: `mog.night_due` (schema v25), the Edge Function `close`, `mog.close_cycle`;
+  owner decisions D3 2026-10-15 and 2026-11-15.)*
 - **R13a. Never let anyone order against a cycle you could not confirm.** If the system cannot verify
   that the current day has been reset, it must GATE — not proceed. The failure this rule exists to
   prevent is silent and expensive: the previous cycle's vendor list, pars and multipliers render
   identically to a normal day, so a user counts into a stale cycle and those counts get logged under
   the *old* cycle date with nothing on screen to hint at it. The correct behavior is a blocking screen
-  offering a retry, plus — only when cached data exists — an explicit, user-chosen "work offline"
-  path that makes the trade visible rather than automatic. On a rebuild: any error handler on the
+  offering a retry, plus — only when cached data exists and the day isn't known to be still open —
+  an explicit, user-chosen "work offline" path that makes the trade visible rather than automatic.
+  When the snapshot says the day is behind (the close hasn't run), there is no offline path. On a rebuild: any error handler on the
   boot/auth path that falls through to "just show the app" is this bug. *(Confirmed:
   `gateOnUnconfirmedCycle_`, shipped 2026-08-03 after both boot paths were found failing open.)*
 - **R14. Counts entered while offline are queued, and none is ever lost or filed under the wrong day.**
@@ -570,8 +576,8 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 
 #### Contract: New-day reset
 - **Inputs:** active order date vs. today.
-- **Logic:** nightly (and as the fallback on the first app open): if today > active order date, then in ONE transaction log every line with a positive suggested quantity under the closing day, set active order date = today, clear emergency override and day picks. Refuse (change nothing) when the stored day is no longer the one being closed, so a repeat or concurrent close is harmless. Then build the recap from the logged lines and send it if unsent; append a backup of the lines to the history sheet. The closed day's counts stay with that day; the new day starts with none.
-- **On failure:** nothing changes (the transaction is all-or-nothing); the app's first open retries. If a client abort hid a finished close, re-poll status and enter the app.
+- **Logic:** nightly, from midnight store time: if today > active order date, then in ONE transaction log every line with a positive suggested quantity under the closing day, set active order date = today, clear emergency override and day picks. Refuse (change nothing) when the stored day is no longer the one being closed, so a repeat or concurrent close is harmless. Then build the recap from the logged lines and send it if unsent. The closed day's counts stay with that day; the new day starts with none.
+- **On failure:** nothing changes (the transaction is all-or-nothing); the scheduler tries again 15 minutes later. A phone that opens meanwhile shows the Refresh screen and never closes the day itself.
 - **Rules applied:** R11, R12, R13, R14, R23.
 
 #### Contract: Reassign an item's primary vendor
@@ -591,7 +597,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | The use-multiplier flag is off for bulk and batch-recipe items. | Bulk items you cannot order smaller, or that are cheaper in bulk and do not spoil, and set-size batch recipes, should not scale up by day; scaling them just over-orders. |
 | Emergency override bridges to the next delivery instead of a flat 1×. | A flat 1× order cannot tide a store over to a vendor's next scheduled drop when the schedule is disrupted (for example a holiday on a delivery day); covering the gap is what "emergency" actually needs. |
 | Emergency override is store-wide and any user can flip it. | Vendors tend to share delivery days, so a disruption usually hits all of them at once, and turning it on is an operational call, not an admin one. |
-| The manual "start the new day" button was removed; the day closes itself every night, and the first app open is the fallback. | It was pure friction, and the close took 14 to 31 seconds when it ran on a KM's first open; at night nobody waits for it. It is still what guarantees the recap sends and the day logs. |
+| The manual "start the new day" button was removed, and since 2026-11-15 the phone never closes a day; the nightly close is the only one. | It was pure friction, the close took 14 to 31 seconds when it ran on a KM's first open, and two places closing the same day is one too many. The nightly close is what guarantees the recap sends and the day logs. |
 | A count saved after its day closed lands in its own day, not the new one. | A phone that queued counts offline overnight must not pollute the fresh day; the late count is kept as evidence for the day it was made. |
 | The same item twice on one vendor's route shares one count. | A count belongs to the item, not the row (R24). |
 | A "just today" par applies on every list the item is on. | One par per item (R6): a day-only par is the same number, for one day. |
@@ -600,21 +606,20 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | An incoming count never overwrites one this device typed. | The person holding the phone is looking at that shelf; their number is the fresher one (R25). |
 | Secondary/backup vendors are fully orderable, not reference-only. | A user needs to order from a backup when the primary is out of stock or not delivering that day, or when the backup is cheaper this week. |
 | Only lines with a positive suggested quantity are logged. | History records what was actually meant to be ordered, not zero rows, which keeps the usage history clean. |
-| Offline counts must flush before reset. | A user on a flaky connection must never lose a count to an auto-reset that fires first. |
+| A count queued offline keeps its own day. | When it reaches the server after its day closed, it lands in that day as late evidence and is never ordered; the phone tells the KM. |
 | Storage areas and pick path stay in the user's manual order; everything else sorts A to Z. | The pick path is a physical walking route through the store; alphabetizing it would defeat the purpose. |
 | Same identical code ships to every store; all per-store difference is data. | Nine stores cannot each carry a code fork; isolation (R16) keeps a user out of other stores' data. |
-| The recap retries on a send failure, but still lands at most once per cycle. | The recap is the handoff used to place real orders and an accountability record, so a silent miss is costly; a failed send is retried up to 3 times, and the last-sent date keeps it to one email (Q-INT-1, built). |
+| The recap retries on a send failure, but still lands at most once per cycle. | The recap is the accountability record of each day's order, so a silent miss is costly; a failed send is retried up to 3 times, and the last-sent date keeps it to one email (Q-INT-1, built). |
 
 ### Integration contracts
 
 | Integration | Direction | Payload | Frequency | If it's down |
 |---|---|---|---|---|
 | Phone app and database | Both | One snapshot (catalog, current day, overrides, this day's counts) down; count saves and override changes up; the order math runs on the phone | Sign-in, each screen (a snapshot is reused for ~3 s), each save | App shows "Offline"; counts queue locally with their day and flush on reconnect (R14). |
-| Phone app and count engine | Both | Reset fallback, recap resend | When those actions are used | Those actions fail with an error; counting carries on against the database. |
-| Count engine and database | Out (nightly close), In (snapshot, recipients and order lines for the close and the recap) | The nightly close; the PINs (stored as hashes); the one-time copies when a store's editor moves (catalog, order history, recipients) | Nightly; once per store | Catalog edits reach phones on the next successful push (the nightly one at the latest); a failed night close is retried by the first app open. |
-| Count engine to recipients | Out | Recap email ("today's suggested order") | Once per order cycle | The session still records; a failed send is retried up to 3 times, still capped at once per cycle (Q-INT-1). |
-| Recipients to vendors | Out (outside MOG) | The actual purchase order | Per order | Not a MOG boundary; MOG's job ends at the recap. Documented so a rebuilder does not try to place orders from MOG. |
-| Count engine and per-store Sheet | Out | The nightly order-log backup (the Sheet keeps the catalog it had at the move and is never updated again) | Nightly | The backup waits; nothing else depends on the Sheet. |
+| Scheduler and database | Both | The nightly close (snapshot in, order log and new day out) | Every 15 minutes; a close once a day just after midnight | The day stays open and phones show Refresh; the next tick retries. |
+| Scheduler to recipients | Out | Recap email (the day's logged order) through a mail relay | Once per order cycle | The day still closes; a failed send is retried up to 3 times, still capped at once per cycle (Q-INT-1). |
+| Store staff to vendors | Out (outside MOG) | The actual purchase order, from the app's order list or a vendor's copied order | Per order | Not a MOG boundary; MOG's job ends at the order list. Documented so a rebuilder does not try to place orders from MOG. |
+| Database to off-site backup | Out | Every table, nightly | Nightly | A watchdog emails when no good backup is newer than 30 hours. |
 | MarginEdge | In | Vendor Items export (CSV), uploaded in the editor: vendors first, then the items they sell. Each product becomes one item under its MarginEdge name; the vendor bought from most recently is its primary. Items arrive with no par, pack or storage area. | Once, when a store's catalog is set up (stores whose editor is on the database) | A bad or wrong file is refused before anything is saved; one import is one logged change, undoable. Not yet: pack sizes (MarginEdge's API has them, the CSV doesn't) and cost. |
 | Web editor and database | Both | The catalog tables, the change log, saves and Undo, order history, the Health Check | Per editor action (every store since 2026-10-19, R23) | Editor unusable until back; each save is all-or-nothing. |
 | **Future:** Toast (POS) | In (planned) | Sales / usage to inform pars | TBD | Not built; see growth seams. |
@@ -732,5 +737,5 @@ behavior.*
 All ASSUMED flags from the draft were resolved on 2026-07-17. The one item left open then, since built:
 
 - **Q-INT-1 (recap retry):** The recap retries on a send failure but still lands at most once per
-  cycle: `sendPendingRecap_` tries a failed send up to 3 times, and the last-sent date keeps it to one
-  email. Kept here so a rebuild builds it in.
+  cycle: the close function tries a failed send up to 3 times, 15 minutes apart, and the last-sent
+  date keeps it to one email. Kept here so a rebuild builds it in.

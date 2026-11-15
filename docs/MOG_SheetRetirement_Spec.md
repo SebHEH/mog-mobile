@@ -223,7 +223,7 @@ Stop it: `update mog.backup_watch set alert_to = null;`.
 
 **Moved to step 5:** sign-in's fallback to `/exec` when Supabase can't be reached. It lives in the direct client that `tests/pwa_direct.test.js` runs as written, and `/exec` reads Supabase anyway, so it changes nothing while Supabase answers; it goes with the rest of `/exec`.
 
-**Still to do:** the Logic Blueprint (the recap is no longer the list orders are placed from; the close at midnight; no phone reset).
+**Docs:** the KM brief and the Logic Blueprint (R0, R12, R13, R13a, the new-day flow and contract, the parts diagram, the integrations table; stamp `aeb165d`) say so. Step 3 is done apart from the sign-in fallback, moved to step 5.
 
 ## Not verified
 
