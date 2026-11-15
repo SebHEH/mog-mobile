@@ -105,6 +105,19 @@ RESERVED_SLUGS = {
 # connect.
 SLUG_RE       = re.compile(r'^[a-z0-9]{2,20}$')
 DEPLOY_URL_RE = re.compile(r'^https://script\.google\.com/macros/s/[^/]+/exec$')
+NS_RE = re.compile(r'^[A-Za-z0-9_-]{1,40}$')
+
+
+def store_ns_from(entry):
+    """The phones' storage key a store must keep: the first 12 characters of
+    its /exec deployment id (what app v0.34 and older took from the address),
+    s_<slug> for a store made in HQ (no deployment). None when it can't be
+    worked out (a malformed deployment; validate_stores refuses that first)."""
+    dep = entry.get('deployment')
+    if dep is None:
+        return 's_' + entry['slug']
+    m = re.match(r'^https://script\.google\.com/macros/s/([^/]+)/exec$', str(dep))
+    return m.group(1)[:12] if m else None
 
 API_URL_PLACEHOLDER = '__MOG_API_URL__'
 THEME_PLACEHOLDER   = '__MOG_THEME__'
@@ -162,6 +175,7 @@ def validate_stores(stores):
     # Supabase. Such a store must be an app-editor store ("editor": "supabase").
     required_fields = ('slug', 'concept', 'location')
     slugs_seen = set()
+    ns_seen = set()
 
     for idx, entry in enumerate(stores):
         prefix = f"stores.json[{idx}]"
@@ -209,6 +223,24 @@ def validate_stores(stores):
             fail(f"{prefix}: deployment URL does not match Apps Script pattern\n"
                  f"  expected: https://script.google.com/macros/s/<id>/exec\n"
                  f"  got:      {entry['deployment']!r}")
+
+        # Required: the key every phone files this store's drafts, unsent
+        # counts and caches under (Sheet retirement step 5, item 2). It never
+        # changes, like the slug: a store from a Sheet keeps the first 12
+        # characters of its deployment id, which v0.34 and older read from the
+        # /exec address; a store made in HQ has s_<slug>. Checked against the
+        # deployment while one is listed, so the two can't drift apart.
+        ns = entry.get('ns')
+        if not isinstance(ns, str) or not NS_RE.match(ns):
+            fail(f"{prefix}: field 'ns' is required: 1-40 letters, digits, _ or - "
+                 f"(the first 12 characters of the deployment id, or s_<slug> for a store made in HQ)")
+        want = store_ns_from(entry)
+        if want is not None and ns != want:
+            fail(f"{prefix}: ns {ns!r} must stay {want!r}: every phone at this store keeps its drafts and "
+                 f"unsent counts under it")
+        if ns in ns_seen:
+            fail(f"{prefix}: duplicate ns {ns!r}: two stores would share their phones' drafts")
+        ns_seen.add(ns)
 
 
 # ---------------------------------------------------------------------------
@@ -446,8 +478,10 @@ def generate_store(entry, template_html, template_sw, dry_run, order_math, supab
     if st_count != 1:
         fail(f"template/index.html: expected exactly 1 {STORE_PLACEHOLDER!r}, "
              f"found {st_count}. Template may be corrupted.")
+    # 'ns': the key the phones file this store's local data under (stores.json,
+    # checked by validate_stores; a preview build gets its own).
     st_json = json.dumps({'address': entry.get('address', '').strip(), 'location': entry['location'],
-                          'concept': entry['concept']}, ensure_ascii=False)
+                          'concept': entry['concept'], 'ns': entry['ns']}, ensure_ascii=False)
     rendered_html = rendered_html.replace(STORE_PLACEHOLDER, st_json)
 
     # The shared order math, verbatim.
@@ -611,7 +645,7 @@ def build_preview(stores, slug, like, dry_run):
         template_html = f.read()
     with open(TEMPLATE_SW, 'r', encoding='utf-8') as f:
         template_sw = f.read()
-    app_entry = dict(entry, slug=slug, location=entry['location'] + ' (TEST)', deployment=PREVIEW_EXEC)
+    app_entry = dict(entry, slug=slug, location=entry['location'] + ' (TEST)', deployment=PREVIEW_EXEC, ns='s_' + slug)
     generate_store(app_entry, template_html, template_sw, dry_run, read_order_math(), supabase, target_dir=target)
     generate_editor(target, entry, slug, entry['location'] + ' (TEST)', supabase, themes, dry_run)
     print(f"[done] serve the repo root and open /_preview/{slug}/ (the app) or /_preview/{slug}/editor/ (the editor)")

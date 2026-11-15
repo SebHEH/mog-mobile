@@ -1868,7 +1868,7 @@
   // This store's profile from stores.json, injected by build.py: the street
   // address vendors deliver to (Copy order for email; optional), and its
   // place and concept (the computer sign-in, the sidebar).
-  window.MOG_STORE = {"address": "838 Rockville Pike Unit C, Rockville, MD 20852", "location": "Rockville BOH", "concept": "Teas’n You"};
+  window.MOG_STORE = {"address": "838 Rockville Pike Unit C, Rockville, MD 20852", "location": "Rockville BOH", "concept": "Teas’n You", "ns": "AKfycbxTnTOX"};
 </script>
 <!-- The shared order math, apps-script/OrderMath.gs, copied in verbatim by
      build.py so the phone runs the same code as the server. -->
@@ -3233,37 +3233,24 @@ function parFlagCutoff_(today) {
   //      so the KM keeps moving; conflict reasoning is the same as
   //      the online case (last-write-wins).
   //
-  // Namespacing: every key written by this block is prefixed with a
-  // short identifier derived from the Apps Script deployment URL.
-  // This lets multiple stores' PWAs share a single GitHub Pages
-  // origin without their caches or queues colliding. Per-cycle keys
-  // (mog_<ns>_draft_, mog_<ns>_reviewed_) are
-  // also namespaced under this scheme as of the hub router rollout.
+  // Namespacing: every key written by this block is prefixed with the
+  // store's fixed key, `ns` in stores.json (build.py puts it in
+  // window.MOG_STORE). This lets multiple stores' PWAs share a single
+  // GitHub Pages origin without their caches or queues colliding.
+  // Per-cycle keys (mog_<ns>_draft_, mog_<ns>_reviewed_) are also
+  // namespaced under this scheme as of the hub router rollout.
   // ============================================================
 
-  function deploymentNs_() {
-    const url = state.apiUrl || '';
-    // Apps Script deployment URLs look like
-    //   /macros/s/AKfycb...XYZ/exec
-    // First 12 chars of the deployment ID is plenty unique for this
-    // purpose (collision risk is functionally zero across HEH's
-    // handful of stores).
-    const m = url.match(/\/macros\/s\/([^\/]+)\/exec/);
-    if (m && m[1]) return m[1].substring(0, 12);
-    // A store made in HQ (schema v26) has no Sheet and no /exec address: its
-    // slug keeps its drafts, caches and queue apart from every other store's.
-    // (Stores with an address keep theirs, so nothing a phone holds moves.)
-    if (!url && window.MOG_SUPABASE && window.MOG_SUPABASE.slug) return 's_' + window.MOG_SUPABASE.slug;
-    // Fallback: hash the whole URL so we still namespace if the URL
-    // format ever changes.
-    let h = 0;
-    for (let i = 0; i < url.length; i++) {
-      h = ((h << 5) - h) + url.charCodeAt(i);
-      h |= 0;
-    }
-    return 'h' + Math.abs(h).toString(36);
+  // A store from a Sheet keeps the first 12 characters of its old /exec
+  // deployment id (what v0.34 and older took from the address), a store made
+  // in HQ has s_<slug>: nothing a phone holds moves when the address goes
+  // (Sheet retirement step 5, item 2; tests/store_ns.test.js).
+  function storeNs_() {
+    const st = window.MOG_STORE;
+    if (st && st.ns) return st.ns;
+    return 's_' + ((window.MOG_SUPABASE && window.MOG_SUPABASE.slug) || 'unknown');
   }
-  function nsKey_(slot) { return 'mog_' + deploymentNs_() + '_' + slot; }
+  function nsKey_(slot) { return 'mog_' + storeNs_() + '_' + slot; }
 
   // Slot names used throughout. Listed here so the cleanup paths
   // (signOut, reset, etc.) can drop them in one pass.
@@ -3374,7 +3361,7 @@ function parFlagCutoff_(today) {
   // and reset paths. Iterates by prefix because vendor caches are
   // an open-ended set (one key per vendor name we've ever cached).
   function clearAllOfflineState_() {
-    const prefix = 'mog_' + deploymentNs_() + '_';
+    const prefix = 'mog_' + storeNs_() + '_';
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
       if (k && k.indexOf(prefix) === 0) localStorage.removeItem(k);

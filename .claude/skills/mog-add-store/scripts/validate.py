@@ -185,6 +185,9 @@ def check_entry(text):
     if str(row.get('address') or '').strip():
         entry['address'] = str(row['address']).strip()
     entry['editor'] = 'supabase'
+    # The phones' storage key, fixed for good (build.py checks it): s_<slug>
+    # for a store made in HQ (Sheet retirement step 5, item 2).
+    entry['ns'] = 's_' + slug
     if test:
         entry['test'] = True
     notes.append(json.dumps(entry, ensure_ascii=False, indent=2))
@@ -208,6 +211,8 @@ def check_wired(slug, published):
         problems.append('stores.json: "editor": "supabase" missing')
     if 'deployment' in store and not EXEC_URL_RE.match(str(store['deployment'])):
         problems.append('stores.json: deployment is not an /exec URL (a store made in HQ has none: leave the field out)')
+    if 'deployment' not in store and store.get('ns') != 's_' + slug:
+        problems.append('stores.json: "ns": "s_' + slug + '" missing (the phones\' storage key; build.py refuses the store without it)')
     if not str(store.get('address', '')).strip():
         notes.append('NOTE: stores.json has no address (Copy order for email leaves it out)')
     built = [os.path.join(slug, 'index.html'), os.path.join(slug, 'sw.js'), os.path.join(slug, 'editor', 'index.html')]

@@ -277,7 +277,7 @@ function buildChecks(plant) {
     'stores = json.loads(sys.argv[1])',
     'out = {}',
     'try:',
-    '    build.validate_stores([dict(slug="nodeploy", concept="Roll Play", location="X BOH")])',
+    '    build.validate_stores([dict(slug="nodeploy", concept="Roll Play", location="X BOH", ns="s_nodeploy")])',
     '    out["noEditor"] = "accepted"',
     'except SystemExit:',
     '    out["noEditor"] = "refused"',
@@ -293,9 +293,9 @@ function buildChecks(plant) {
     'print("RESULT " + json.dumps(out))'
   ].join('\n');
   const stores = [
-    { slug: 'zzhq26', concept: 'Roll Play', location: 'Navy Yard FOH', editor: 'supabase' },
-    { slug: 'zzhq26t', concept: 'Roll Play', location: 'HQ Test FOH', editor: 'supabase', test: true },
-    { slug: 'rpr', concept: 'Roll Play', location: 'Rosslyn BOH', deployment: 'https://script.google.com/macros/s/AKfycbx_abc123/exec', editor: 'supabase' }
+    { slug: 'zzhq26', concept: 'Roll Play', location: 'Navy Yard FOH', editor: 'supabase', ns: 's_zzhq26' },
+    { slug: 'zzhq26t', concept: 'Roll Play', location: 'HQ Test FOH', editor: 'supabase', test: true, ns: 's_zzhq26t' },
+    { slug: 'rpr', concept: 'Roll Play', location: 'Rosslyn BOH', deployment: 'https://script.google.com/macros/s/AKfycbx_abc123/exec', editor: 'supabase', ns: 'AKfycbx_abc1' }
   ];
   const r = spawnSync(PY, ['-B', '-c', plant ? plant(code) : code, JSON.stringify(stores), path.join(dir, 'out'), hub], { encoding: 'utf8', cwd: REPO });
   const line = (r.stdout || '').split('\n').find(l => l.indexOf('RESULT ') === 0);
