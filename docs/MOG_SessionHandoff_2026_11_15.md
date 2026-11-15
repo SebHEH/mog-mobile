@@ -120,3 +120,89 @@ Live since 11-15: Supabase closes all 10 stores just after midnight (close_direc
 First, read-only: did the first all-Supabase night (cycle 11-15) work? night_log close rows at all 10, recaps (none expected for rpt and tnytf), sheet_trigger_off_at at all 10, Gmail (no duplicates, from noreply@). If the 7:41 AM scheduled check already reported in the old chat, use that.
 Goal: everything ready for the full move off the Sheets, even if not all of it ships. Step 4 first: PINs owned by Supabase and set in HQ, HQ -> Stores -> New store in one transaction, mog-add-store down to about 4 steps, tried on a TEST store (needs a walkthrough and schema v26; smoke files roll themselves back, never delete). Then step 5's retirement checklist: the sign-in /exec fallback (and tests/pwa_direct.test.js), deploy.py's store targets, the Sheets' remaining triggers, mog-exec-repoint, CLAUDE.md's layers and rules 5 and 6.
 ```
+
+---
+
+## Later session — HQ Stores (step 4) and the step 5 checklist
+
+**Session focus:** read the first all-Supabase night, then step 4 (PINs and New store in HQ, `mog-add-store` down to about 4 steps, a TEST store), then step 5's retirement checklist.
+**Outcome:**
+- **The night check couldn't run yet:** the database clock said 3:33 PM on 11-15, so the first all-Supabase night is the coming one. Checked instead: all 10 due at 12:16 AM, nothing before; the 3:30 AM trigger retires itself whatever the cycle says (`Sync.gs:558`).
+- **Step 4 is built and its code is live; schema v26 has not run.** The connector hung on it (the word `delete` in two function bodies) and ran nothing; Grok Bot is to paste it in the SQL Editor.
+- **Step 5's checklist is written** (spec, "Step 5"), with a proposed order and the decisions it needs.
+
+**Next session focus:** v26's smoke and probe, the manager PIN set once, the TEST store trial; then step 5's decisions.
+
+### What shipped
+
+- **Walkthrough and mockups approved** (https://claude.ai/artifact/665XFnU7VfRaKXntyXLtxu). Sebastian's picks:
+  - manager PIN first per store, then changed on seeing the form: **one manager PIN for every store and concept, locked to one PIN**;
+  - **the New store form takes the picked concept's colours and logo**;
+  - the TEST store published but hidden (`"test": true`);
+  - v26 asks first (then "run it now").
+- **Schema v26** (`efcaf52`, not run): `mog_hq_stores(token, action, row)`:
+  - `create`: a whole store with no Sheet in one transaction;
+  - `pin`: a store's PIN, ending every sign-in there;
+  - `managerPin`: one hash at every store, kept by the trigger `stores_manager_pin`; refused when it's any store's PIN.
+  - `mog_sync_set_pins` answers `PINS_IN_HQ` once Supabase closes the store; `mog_hq_data` gains each store's PIN record, flags, time zone, address and recap count.
+  - Generated with `sqlgen.py` (`mog_hq_data` from v14, `mog_sync_set_pins` from schema.sql). PGlite 30/30, the whole chain re-run clean, 11 planted defects caught.
+- **HQ → Stores and New store** (`template/hq/stores.js`; ĂN and Lei'd marks from the brand kit). Before v26 the page says it needs it. Checked in headless Edge against the fake: a Lei'd Poke store created, a PIN changed, the manager PIN set, no sideways scroll at 390 px.
+- **A store with no Sheet:**
+  - `build.py` takes a store with no `deployment` (it must have `"editor": "supabase"`) and `"test": true` (built, never on the hub);
+  - the app keys such a store's local storage by slug and never falls back to `/exec` for it (app v0.34.1, cache v78; canary rprfo `efcaf52`, fan-out `7535744`; no change for the 10 stores, all serving v78, CI green).
+  - Found on the way: the app's storage namespace is the store's deployment id, so dropping a `deployment` would orphan drafts and save queues.
+- **`mog-add-store` rewritten to four steps** (HQ, "Publish <slug>", items, smoke test). `validate.py` loses the Sheet checks and gains `entry` (the store's row into its `stores.json` entry).
+- **Gate `tests/hq_stores.test.js`**: 12 controls, covering parity with the SQL, the form, Create, Change PIN, the manager PIN, before v26, and `build.py`. 42 gates.
+- **Docs** (`6f8fff8`): the spec's Step 4, CurrentState, ProjectNotes (HQ Stores), the function table, FileInventory, CLAUDE.md's `mog-add-store` row. Step 5's checklist in the spec (this commit).
+
+### Outstanding (carry forward)
+
+1. **Schema v26:** Grok Bot pastes [supabase/schema_v26.sql](../supabase/schema_v26.sql) in the SQL Editor (Sebastian is asking it).
+   - Then Claude checks with reads (`mog_hq_stores`, `mog.manager_pin`, the trigger, `mog.stores.pin_set_at`; none existed at the end of this session).
+   - Then `smoke_v26.sql` through the connector (no `delete` in it; 30 rows) and `check_api.sh`.
+2. **Then, in HQ → Stores (Sebastian):** set the manager PIN once (every store gets it), and create a TEST store. Claude publishes it ("Publish <slug>", `mog-add-store`). A phone sign-in and a count follow. The next morning: its close and recap, and a PIN changed in HQ still working.
+3. **The Logic Blueprint** for the PIN rules (one manager PIN, PINs set in HQ, a store made in HQ), once v26 is live.
+4. **The first all-Supabase night** (cycle 11-15, closed just after midnight on 11-16): still to read, unless the 7:41 AM check reported in the first 11-15 chat.
+5. **Step 5** (spec, "Step 5"): ask its decisions first:
+   - v27 refusing Apps Script's close and recap once `close_direct` is on: the Sheet's Reset On Hand checkbox and old app versions can still close a cycle and send a MailApp recap;
+   - a fixed per-store storage namespace before the app drops `/exec`;
+   - archiving the store `/exec` deployments;
+   - what replaces the two Apps Script rollbacks.
+6. **A global proposal** (an addendum to `supabase-schema-change-2026-11-15-c`): a schema file with `delete` in a function body also hangs the connector.
+7. **From the first 11-15 block, still open:** tell the KMs the Daily summary is gone (a draft for Sebastian), see v0.34 on a real phone, the global proposal `-c`, older smoke files' `delete`s.
+
+### Files touched this chat (later session)
+
+- **Supabase:** `supabase/schema_v26.sql` (new, not run), `supabase/tests/smoke_v26.sql` (new), `supabase/tests/check_api.sh` (v26 block).
+- **HQ:** `template/hq/stores.js` (new), `template/hq/index.html` (Stores nav, views, CSS, hooks), `template/hq/an-mark.svg` and `leid-mark.svg` (new). `hq/` is generated.
+- **App:** `template/index.html` (v0.34.1: the slug namespace, no `/exec` fallback without an address), `template/sw.js` (v78). Every store's `index.html` and `sw.js` are generated.
+- **Build and gates:** `build.py`, `tests/fake_supabase.js`, `tests/hq_stores.test.js` (new).
+- **Skills:** `mog-add-store` (`SKILL.md`, `scripts/validate.py`), `mog-supabase-schema` (the connector and `delete` in a schema file).
+- **Docs:** `docs/MOG_SheetRetirement_Spec.md` (Step 4, Step 5), `docs/MOG_CurrentState.md`, `docs/MOG_ProjectNotes.md`, `docs/MOG_SupabaseMigration.md`, `docs/MOG_FileInventory.md`, `CLAUDE.md`, this handoff.
+- **Live data:** none (v26 not run; the connector's attempt ran nothing).
+
+### Process lessons
+
+- **The connector holds any SQL containing `delete` for a confirmation, inside a function body too, and that question never reaches the app.** v26 hung 10 minutes and ran nothing. Grep a schema file before running it through the connector; on a hit, the maintainer pastes it. The global proposal is still to file (Outstanding 6). [→ mog-supabase-schema]
+- **The app's local storage is keyed by the store's `/exec` deployment id**, and no gate checks it (the harness stubs `nsKey_`). Any change to a store's `deployment` orphans the drafts and save queues on its phones. Also in the spec's Step 5. [→ docs/MOG_ProjectNotes.md]
+- **A helper added to a function that gates slice by name crashes those gates** (`hasExec_` inside `api()`). Inline the check or add the helper to every slice plan (mog-supabase-schema already has the slice-plan rule). [→ one-off]
+- **The preview server keeps its data in memory between browser runs:** a second run needs fresh names. [→ one-off]
+
+**Skill gate:** no question this time. The one skill lesson was applied during the session and shown in chat (mog-supabase-schema, `6f8fff8`). The others are project facts already in ProjectNotes and the spec, or one-offs. Checked: the lessons above; Sebastian's corrections (the manager PIN changed after the mockup; the concept's look on the form); the rejected tool call (the connector's hang).
+
+### Commits landed this session (later)
+
+```
+efcaf52 HQ Stores: new store in one save, PINs in Supabase, one manager PIN (step 4, canary rprfo; schema v26 not run yet)
+7535744 Step 4 fan-out: app v0.34.1 / cache v78 at the other nine stores
+6f8fff8 docs: Sheet retirement step 4 built (HQ Stores, one manager PIN); schema v26 waits for the SQL Editor
+```
+
+### Opening prompt for next session
+
+```
+Read docs/MOG_CurrentState.md, the "Later session" block of docs/MOG_SessionHandoff_2026_11_15.md and docs/MOG_SheetRetirement_Spec.md ("Step 4", "Step 5") first, and run git pull.
+First, read-only: the first all-Supabase night (cycle 11-15, closed just after midnight on 11-16): a close row per store in mog.night_log, sheet_trigger_off_at at all 10, recaps from noreply@ with no duplicates (none expected for rpt and tnytf). If the 7:41 AM check already reported in the first 11-15 chat, use that.
+Then step 4's last part: was schema v26 pasted in the SQL Editor (Grok Bot)? Check with reads (mog_hq_stores, mog.manager_pin, the trigger stores_manager_pin, mog.stores.pin_set_at), then run supabase/tests/smoke_v26.sql through the connector (no delete in it; 30 rows) and check_api.sh. Then I set the manager PIN once in HQ -> Stores and make a TEST store; "Publish <slug>" follows mog-add-store; its close and a PIN change are checked the next morning; then the Logic Blueprint for the PIN rules.
+Then step 5: ask the spec's Step 5 decisions first (v27 refusing Apps Script's close and recap once close_direct is on; a fixed per-store storage namespace before the app drops /exec; archiving the store /exec deployments; what replaces the Apps Script rollbacks), then build in the proposed order.
+```
