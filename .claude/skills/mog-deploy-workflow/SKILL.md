@@ -103,6 +103,17 @@ Editor pages are served two ways from the same Apps Script project:
 
 **"Deployed but not showing" on an editor page is a runtime bug, not a deploy/cache problem.** If `curl`/`clasp pull` confirm the new code is in the served HTML but the page looks unchanged, it's executing wrong (classic: `setLang` wiping the `mge-web` class) — open DevTools/console or "View frame source" and check the rendered DOM before touching the deploy pipeline. See `mog-editor-web-reskin` and `[[feedback_delivered_vs_executing]]`.
 
+## Removing or changing something KMs use: read the brief first
+
+Before writing code that removes or changes a KM-facing feature (a button, an email, a screen, a
+step in the daily routine), grep [docs/MOG_OrderingApp_KM_Brief.md](../../../docs/MOG_OrderingApp_KM_Brief.md)
+and [docs/MOG_LogicBlueprint.md](../../../docs/MOG_LogicBlueprint.md) for it. A rule written there
+("DO NOT SKIP", an owner-confirmed `R#`) is a decision Sebastian made; put it and the evidence in the
+question **before** building, and rewrite the brief in the same change if the answer stands.
+(2026-11-15: the Daily summary was removed on "nobody uses it"; the brief's 11-03 rule making it a
+DO NOT SKIP step for placing orders surfaced only after the rprfo canary shipped, and the decision
+had to be asked a second time.)
+
 ## When the layer choice isn't obvious
 
 Common ambiguities and the right resolution:
