@@ -1,21 +1,22 @@
 'use strict';
 // The phone, for the gates: the real template code (api(), the save queue and
 // the DIRECT CLIENT block) plus OrderMath.gs in its own context, talking to a
-// fake Supabase and, for /exec, to an Apps Script side. The same harness
-// tests/pwa_direct.test.js builds inline.
+// fake Supabase. Since app v0.35.0 the phone never calls /exec: a fetch to any
+// other address is recorded in calls.exec (and answered by execPost), so a
+// gate can say it never happens. The same harness tests/pwa_direct.test.js
+// builds inline.
 
 const vm = require('vm');
 const { slices } = require('./slice_js.js');
 
 const SB_URL = 'https://fake.supabase.co';
-const EXEC_URL = 'https://script.google.com/macros/s/FAKE/exec';
 const PRELUDE = [
   'var API_TIMEOUT_MS = 30000; var offlineState = false; var drainPromise_ = null;',
   "var OFFLINE_SLOTS = { QUEUE: 'save_queue' }; function nsKey_(s) { return 'mog_t_' + s; }",
   'function setOffline_() { offlineState = true; } function setOnline_() { offlineState = false; }',
   'function refreshBanner_() {} function showToast() {} function t(k) { return k; } function setDashboardFetchedAt_() {}'
 ].join('\n');
-const PHONE_FNS = ['api', 'apiOnce_', 'isNetworkError_', 'readSaveQueue_', 'writeSaveQueue_', 'enqueueSave_',
+const PHONE_FNS = ['api', 'isNetworkError_', 'readSaveQueue_', 'writeSaveQueue_', 'enqueueSave_',
   'drainSaveQueue_', 'drainSaveQueueRun_'];
 
 function phoneScript(srcOf) {
@@ -34,7 +35,7 @@ function makePhone(script, sb, execPost, opts) {
   const ctx = {
     console, AbortController, setTimeout, clearTimeout,
     window: { MOG_SUPABASE: { url: SB_URL, key: 'pub', slug: opts.slug } },
-    state: { apiUrl: EXEC_URL, pin: opts.pin, cache: {} },
+    state: { pin: opts.pin, cache: {} },
     localStorage: { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) },
     fetch: (url, o) => {
       if (url.indexOf(SB_URL) === 0) { calls.sb.push(url.split('/rpc/')[1]); return sbFetch(url, o); }

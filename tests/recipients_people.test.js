@@ -14,7 +14,8 @@
 //     run or the first read) and a list emptied on purpose stays empty, an
 //     older app's /exec save is refused, and with Supabase down the email
 //     falls back to the Sheet's list
-//   - before the move everything stays on /exec and the Sheet
+//   - before the move Supabase refuses (EDITOR_NOT_DIRECT): the phone never
+//     calls /exec (app v0.35.0) and the Sheet's list is untouched
 //   People
 //   - a rename reaches a phone still using the old name; a removed name
 //     makes its phones ask again and isn't added back by a device that still
@@ -180,7 +181,7 @@ async function runSuite(srcOf, cases) {
     if (!s.recipientsSeeded || first.length !== 1) fail('moved', 'the first read did not copy the list: ' + JSON.stringify(first));
   }
 
-  // ---- Before the move: /exec and the Sheet ----
+  // ---- Before the move: refused by Supabase, never /exec (app v0.35.0) ----
   {
     const spec = makeStore(4, { realistic: true });
     const sb = new FakeSupabase(spec.now);
@@ -188,12 +189,16 @@ async function runSuite(srcOf, cases) {
     run(side, c => { c.pushPinsNow_(); c.pushCatalogNow_(); c.setDbStateFromSheet_(); });
     sb.stores.get(SLUG).phoneDirect = true;
     const phone = PH.makePhone(phoneCode, sb, execPost(side), { slug: SLUG, pin: PIN });
+    const sheetBefore = run(side, c => c.readRecipientsSheet_()).length;
     await phone.answer('ping');
-    await phone.answer('getRecipients');
-    await phone.answer('saveRecipients', { recipients: [{ name: 'Ana', email: 'ana@example.com', active: true }] });
-    if (phone.calls.exec.join() !== 'getRecipients,saveRecipients') fail('sheet', 'before the move Recipients went to ' + phone.calls.exec.join() + ' on /exec');
+    const got = await phone.answer('getRecipients');
+    const saved = await phone.answer('saveRecipients', { recipients: [{ name: 'Ana', email: 'ana@example.com', active: true }] });
+    if (phone.calls.exec.length) fail('sheet', 'before the move Recipients went to /exec: ' + phone.calls.exec.join());
+    if (got.ok || saved.ok || got.error !== 'EDITOR_NOT_DIRECT' || saved.error !== 'EDITOR_NOT_DIRECT') {
+      fail('sheet', 'before the move: ' + JSON.stringify(got).slice(0, 100) + ' / ' + JSON.stringify(saved).slice(0, 100));
+    }
     if (sb.stores.get(SLUG).recipientsSeeded) fail('sheet', 'a store still on the Sheet got a Supabase list');
-    if (run(side, c => c.readRecipientsSheet_()).length !== 1) fail('sheet', 'the /exec save did not reach the Sheet');
+    if (run(side, c => c.readRecipientsSheet_()).length !== sheetBefore) fail('sheet', 'the Sheet\'s list changed');
   }
 
   // ---- People ----

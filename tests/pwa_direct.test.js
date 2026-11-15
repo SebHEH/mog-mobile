@@ -6,17 +6,21 @@
 // Sheet, for every action, before and after every write.
 //
 // Each randomized store is built twice from the same spec, both moved to their
-// own fake Supabase: P (the phone talks to it directly; its /exec runs on
-// side P) and R (the reference, reached only through /exec). The phone code is
-// the real template code (api, apiOnce_, the save queue, the DIRECT CLIENT
-// block) plus OrderMath.gs, run in its own context. Also checked:
-//   - sign-in on a store whose phones aren't direct, or with Supabase down,
-//     falls back to /exec; a wrong PIN does not; the master PIN signs in as
-//     manager
-//   - actions outside the count path (history, reset) always go to /exec, and
-//     an /exec write refreshes the snapshot
-//   - a save queued in direct mode drains into its own cycle after the close
-//   - an expired session signs in again; USE_EXEC mid-session moves to /exec
+// own fake Supabase: P (the phone talks to it directly) and R (the reference,
+// reached only through its Apps Script /exec, the oracle). The phone code is
+// the real template code (api, the save queue, the DIRECT CLIENT block) plus
+// OrderMath.gs, run in its own context. Since app v0.35.0 (Sheet retirement
+// step 5) the phone never calls /exec; also checked:
+//   - sign-in on a store Supabase doesn't know answers "Unknown store", and
+//     with Supabase down it's offline after three tries, never /exec; a wrong
+//     PIN locks out after five; the master PIN signs in as manager
+//   - history on a store whose editor hasn't moved is refused by Supabase,
+//     and the phone never closes a cycle (commitReset is unknown)
+//   - a queued save drains into its own cycle after the close
+//   - the save queue draining before sign-in sends no PIN (an empty one would
+//     count against every phone's lockout), keeps its entries, and drains
+//     once signed in
+//   - an expired session signs in again; USE_EXEC mid-session is an error
 //   - the template carries each build placeholder exactly once
 // Each has a planted-defect control.
 //
@@ -35,7 +39,6 @@ const PIN = '1111';
 const MASTER = '9999';
 const SLUG = 'zztest';
 const SB_URL = 'https://fake.supabase.co';
-const EXEC_URL = 'https://script.google.com/macros/s/FAKE/exec';
 const NL = SRC('template/index.html').includes('\r\n') ? '\r\n' : '\n';
 
 const NEW_EXECUTION = new vm.Script(
@@ -71,8 +74,11 @@ const PRELUDE = [
   'function setOffline_() { offlineState = true; } function setOnline_() { offlineState = false; }',
   'function refreshBanner_() {} function showToast() {} function t(k) { return k; } function setDashboardFetchedAt_() {}'
 ].join('\n');
-const PHONE_FNS = ['api', 'apiOnce_', 'isNetworkError_', 'readSaveQueue_', 'writeSaveQueue_', 'enqueueSave_',
+const PHONE_FNS = ['api', 'isNetworkError_', 'readSaveQueue_', 'writeSaveQueue_', 'enqueueSave_',
   'drainSaveQueue_', 'drainSaveQueueRun_'];
+// api()'s retry backoff (700 ms, then 1400 ms) runs at once here; every other
+// timer (the fetch abort among them) keeps its delay.
+const fastBackoff = (fn, ms) => setTimeout(fn, (ms === 700 || ms === 1400) ? 0 : ms);
 
 function phoneScript(srcOf) {
   const html = srcOf('template/index.html');
@@ -88,9 +94,11 @@ function makePhone(script, sb, execSide, pin) {
   const sbFetch = sb.fetchFn();
   const store = new Map();
   const ctx = {
-    console, AbortController, setTimeout, clearTimeout,
+    // A phone with no PIN yet: its drain's "stopped" warning is the expected outcome.
+    console: pin === '' ? Object.assign(Object.create(console), { warn() {} }) : console,
+    AbortController, setTimeout: fastBackoff, clearTimeout,
     window: { MOG_SUPABASE: { url: SB_URL, key: 'pub', slug: SLUG } },
-    state: { apiUrl: EXEC_URL, pin: pin || PIN, cache: {} },
+    state: { pin: pin === undefined ? PIN : pin, cache: {} },
     localStorage: { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) },
     fetch: (url, opts) => {
       if (url.indexOf(SB_URL) === 0) { calls.sb.push(url.split('/rpc/')[1]); return sbFetch(url, opts); }
@@ -111,7 +119,8 @@ function makePhone(script, sb, execSide, pin) {
       catch (e) { return { ok: false, error: e.message, lockout: !!e.lockout }; }
     },
     forceFresh: () => run('direct.snapAt = 0'),
-    mode: () => run('direct.mode')
+    mode: () => run('direct.mode'),
+    offline: () => run('offlineState')
   };
 }
 
@@ -121,7 +130,7 @@ async function runSuite(srcOf, stores) {
   const server = compileStep4(srcOf);
   const phoneCode = phoneScript(srcOf);
   const failures = [];
-  const stats = { stores: 0, compared: 0, writes: 0, staleDrains: 0, invalidations: 0, quickEdits: 0 };
+  const stats = { stores: 0, compared: 0, writes: 0, staleDrains: 0, noClose: 0, noPin: 0, quickEdits: 0 };
   const fail = (seed, scenario, what) => failures.push('seed ' + seed + ' [' + scenario + ']: ' + what);
   const clean = r => ({ ok: r.ok, data: r.ok ? r.data : undefined, error: r.ok ? undefined : r.error });
 
@@ -219,17 +228,20 @@ async function runSuite(srcOf, stores) {
       if (dbOf(sbP) !== dbOf(sbR)) fail(seed, 'writes', 'Supabase P and R differ after the same writes');
       if (phone.calls.exec.length) fail(seed, 'writes', 'the count path called /exec: ' + phone.calls.exec.join());
 
-      // Outside the count path: /exec, same answer.
+      // History on a store whose editor is still in the Sheet: Supabase
+      // refuses it, and the phone doesn't go to /exec for it (app v0.35.0).
       const hist = { dateFrom: '2000-01-01', dateTo: '2100-01-01' };
-      same('history', 'getHistoryDates', await phone.answer('getHistoryDates', hist), sideR.post('getHistoryDates', hist));
-      if (phone.calls.exec.join() !== 'getHistoryDates') fail(seed, 'history', 'not on /exec: ' + phone.calls.exec.join());
+      const h = await phone.answer('getHistoryDates', hist);
+      if (h.ok || h.error !== 'EDITOR_NOT_DIRECT' || phone.calls.exec.length) {
+        fail(seed, 'history', JSON.stringify(h).slice(0, 120) + ' exec=' + phone.calls.exec.join());
+      }
 
-      // The reset runs on /exec, and the snapshot is refreshed after it.
-      const before = sbP.stores.get(SLUG).state.cycleDate;
-      await phone.answer('getResetStatus');   // a snapshot younger than the reuse window
-      same('reset', 'commitReset', await phone.answer('commitReset'), sideR.post('commitReset'));
-      same('reset', 'getResetStatus right after', await phone.answer('getResetStatus'), sideR.post('getResetStatus'));
-      if (sbP.stores.get(SLUG).state.cycleDate !== before) stats.invalidations++;
+      // The phone never closes a cycle: commitReset is no action of its own.
+      const before = JSON.stringify(sbP.stores.get(SLUG).state);
+      const cr = await phone.answer('commitReset');
+      if (cr.ok || cr.error !== 'Unknown action: commitReset' || JSON.stringify(sbP.stores.get(SLUG).state) !== before || phone.calls.exec.length) {
+        fail(seed, 'no close', JSON.stringify(cr).slice(0, 120) + ' exec=' + phone.calls.exec.join());
+      } else stats.noClose++;
 
       // A save queued in direct mode (offline), the nightly close moves the
       // cycle on, then the queue drains: the count lands in its own day.
@@ -263,13 +275,14 @@ async function runSuite(srcOf, stores) {
       same('session', 'getDashboard after expiry', await phone.answer('getDashboard'), sideR.post('getDashboard'));
       if (phone.calls.sb.filter(f => f === 'mog_login').length !== 1) fail(seed, 'session', 'did not sign in again: ' + phone.calls.sb.join());
 
-      // Phones turned off mid-session: the next call goes to /exec, and stays there.
+      // Phones turned off mid-session (USE_EXEC): the next read is that error,
+      // not the held snapshot and not /exec.
       sbP.stores.get(SLUG).phoneDirect = false;
-      phone.calls.exec.length = 0;
       phone.forceFresh();
-      same('use exec', 'getDashboard', await phone.answer('getDashboard'), sideR.post('getDashboard'));
-      if (vendors.length) same('use exec', 'getVendorItems', await phone.answer('getVendorItems', { vendor: vendors[0] }), sideR.post('getVendorItems', { vendor: vendors[0] }));
-      if (phone.mode() !== 'exec' || phone.calls.exec[0] !== 'getDashboard') fail(seed, 'use exec', 'mode ' + phone.mode() + ', exec calls ' + phone.calls.exec.join());
+      const off = await phone.answer('getDashboard');
+      if (off.ok || off.error !== 'USE_EXEC' || phone.calls.exec.length) {
+        fail(seed, 'phones off', JSON.stringify(off).slice(0, 120) + ' exec=' + phone.calls.exec.join());
+      }
     } catch (e) {
       fail(seed, 'crash', (e.stack || String(e)).split('\n').slice(0, 3).join(' | '));
     }
@@ -277,17 +290,16 @@ async function runSuite(srcOf, stores) {
     if (seed > 12) continue;
     // ---- Sign-in edge cases ----------------------------------------------
     try {
-      // Not moved yet (Supabase doesn't know the store): /exec, after one try.
+      // Supabase doesn't know the store: "Unknown store", one try, no /exec.
       const sbU = new FakeSupabase(spec.now);
       const sideU = makeSide(spec, server, sbU, { connected: false });
       const u = makePhone(phoneCode, sbU, sideU);
-      same('not moved', 'ping', await u.answer('ping'), sideU.post('ping'));
-      same('not moved', 'getDashboard', await u.answer('getDashboard'), sideU.post('getDashboard'));
-      if (u.calls.sb.join() !== 'mog_login' || u.calls.exec.join() !== 'ping,getDashboard') {
-        fail(seed, 'not moved', 'calls: sb=' + u.calls.sb.join() + ' exec=' + u.calls.exec.join());
+      const up = await u.answer('ping');
+      if (up.ok || up.error !== 'Unknown store' || u.calls.sb.join() !== 'mog_login' || u.calls.exec.length || u.mode() !== null) {
+        fail(seed, 'not moved', JSON.stringify(up).slice(0, 100) + ' sb=' + u.calls.sb.join() + ' exec=' + u.calls.exec.join());
       }
 
-      // Supabase down at sign-in: /exec.
+      // Supabase down at sign-in: three tries, then offline; never /exec.
       const sbD = new FakeSupabase(spec.now);
       const sideD = makeSide(spec, server, sbD, { connected: true, switched: true, key: sbD.provision(SLUG) });
       sbD.stores.get(SLUG).phoneDirect = true;
@@ -295,10 +307,31 @@ async function runSuite(srcOf, stores) {
       const d = makePhone(phoneCode, sbD, sideD);
       const dp = await d.answer('ping');
       sbD.down = false;
-      same('supabase down', 'ping', dp, sideD.post('ping'));
-      if (d.mode() !== 'exec') fail(seed, 'supabase down', 'mode ' + d.mode());
+      if (dp.ok || !d.offline() || d.calls.sb.filter(f => f === 'mog_login').length !== 3 || d.calls.exec.length || d.mode() !== null) {
+        fail(seed, 'supabase down', JSON.stringify(dp).slice(0, 100) + ' offline=' + d.offline() + ' sb=' + d.calls.sb.join() + ' exec=' + d.calls.exec.join());
+      }
 
-      // A wrong PIN on a direct store: refused by Supabase, never retried on
+      // The save queue drains at start, before the PIN is typed: no PIN is
+      // sent (an empty one counts against the store's lockout), the entry is
+      // kept, and it drains once signed in.
+      const items1 = vendors.length ? ((sideR.post('getVendorItems', { vendor: vendors[0] }).data || { items: [] }).items) : [];
+      if (items1.length) {
+        const n = makePhone(phoneCode, sbD, sideD, '');
+        n.run('enqueueSave_')(vendors[0], [{ id: items1[0].id, onHand: 55 }]);
+        const fails0 = sbD.stores.get(SLUG).failCount || 0;
+        await n.run('drainSaveQueue_')();
+        const q = () => JSON.parse(n.run('localStorage').getItem('mog_t_save_queue') || '[]');
+        if (n.calls.sb.length || (sbD.stores.get(SLUG).failCount || 0) !== fails0 || q().length !== 1) {
+          fail(seed, 'no PIN', 'before sign-in: sb=' + n.calls.sb.join() + ' failCount ' + sbD.stores.get(SLUG).failCount + ' queue ' + q().length);
+        }
+        n.run("state.pin = '" + PIN + "'");
+        await n.answer('ping');
+        await n.run('drainPromise_');
+        if (q().length || n.calls.exec.length) fail(seed, 'no PIN', 'after sign-in the queue is ' + q().length + ' long');
+        else stats.noPin++;
+      }
+
+      // A wrong PIN on a direct store: refused by Supabase, never tried on
       // /exec; the fifth locks the store out.
       const w = makePhone(phoneCode, sbD, sideD, '0000');
       let last;
@@ -487,15 +520,17 @@ function placeholderProblems(html) {
   const res = await runSuite(null, STORES);
   const s = res.stats;
   console.log(`pwa_direct: ${s.stores} stores, ${s.compared} answers compared, ${s.writes} writes, ` +
-    `${s.invalidations} resets that moved the cycle, ${s.staleDrains} stale drains, ${s.quickEdits} quick edits`);
+    `${s.noClose} closes refused, ${s.staleDrains} stale drains, ${s.noPin} drains held until sign-in, ${s.quickEdits} quick edits`);
   if (res.failures.length) {
     failed++;
     console.log(`FAIL  ${res.failures.length} problem(s):`);
     for (const f of res.failures.slice(0, 15)) console.log('      ' + f);
   } else {
-    console.log('PASS  phone answers == /exec answers (fresh and reused snapshots), before and after every write');
+    console.log('PASS  phone answers == /exec answers (fresh and reused snapshots), before and after every write; never /exec itself');
   }
-  if (!s.staleDrains || !s.writes || !s.quickEdits) { failed++; console.log('FAIL  fixtures never moved a cycle, wrote, or made a quick edit'); }
+  if (!s.staleDrains || !s.writes || !s.quickEdits || !s.noClose || !s.noPin) {
+    failed++; console.log('FAIL  fixtures never moved a cycle, wrote, made a quick edit, refused a close or held a drain');
+  }
 
   const ph = placeholderProblems(SRC('template/index.html'));
   if (ph.length) { failed++; console.log('FAIL  template placeholders: ' + ph.join(', ')); }
@@ -514,25 +549,26 @@ function placeholderProblems(html) {
     { name: 'saves not applied to the held snapshot', scenario: 'writes',
       find: '    const snap = direct.snap;' + NL + '    if (!snap || snap.state.cycleDate !== cycle) return;',
       replace: '    return;' },
-    { name: 'USE_EXEC not redone on /exec', scenario: 'use exec',
-      find: '        if (viaDirect && err && err.useExec) { viaDirect = false; attempt--; continue; }' + NL, replace: '' },
-    { name: 'sign-in does not fall back when Supabase is down', scenario: 'supabase down',
-      find: 'if (e.useExec || isNetworkError_(e) ||', replace: 'if (e.useExec || false ||' },
-    { name: 'history routed direct before the editor moved', scenario: 'history',
-      find: "if (DIRECT_WHEN_MOVED[action]) return direct.mode === 'direct' && direct.editorDirect === true;",
-      replace: "if (DIRECT_WHEN_MOVED[action]) return direct.mode === 'direct';" },
-    { name: 'every action routed direct', scenario: 'reset',
-      find: 'if (!DIRECT_ACTIONS[action]) return false;', replace: '' },
+    { name: 'Supabase down at sign-in never shows offline', scenario: 'supabase down',
+      find: '        if (isNetworkError_(err)) setOffline_();', replace: '' },
+    { name: 'an unknown store signs in anyway', scenario: 'not moved',
+      find: '    if (!body.ok) throw envelopeError_(body);' + NL + "    direct.mode = 'direct';",
+      replace: "    if (!body.ok && body.error !== 'Unknown store') throw envelopeError_(body);" + NL + "    direct.mode = 'direct';" },
+    { name: 'USE_EXEC mid-session answered from the held snapshot', scenario: 'phones off',
+      find: '      if (body.ok) return body.data;', replace: "      if (body.ok || body.error === 'USE_EXEC') return body.ok ? body.data : { catalogVersion: direct.catalogVersion, state: direct.snap.state, counts: direct.snap.counts };" },
+    { name: 'history answered without Supabase', scenario: 'history',
+      find: '        const h = await directHistory_(payload.dateFrom, payload.dateTo);', replace: '        const h = { rows: [] };' },
+    { name: 'the phone takes commitReset', scenario: 'no close',
+      find: "        throw new Error('Unknown action: ' + action);", replace: '        data = { logged: false };' + NL + '        break;' },
+    { name: 'an empty PIN sent before sign-in', scenario: 'no PIN',
+      find: "    if (!state.pin) throw new Error('NOT_SIGNED_IN');", replace: '' },
     { name: 'no sign-in again after the session expires', scenario: 'session',
       find: "if (body.error === 'SESSION_EXPIRED' && pass === 0) { direct.token = null; continue; }", replace: '' },
-    { name: 'an /exec write leaves the snapshot as it was', scenario: 'reset',
-      find: 'if (!retriable) directInvalidate_();', replace: '' },
     { name: 'a snapshot without the catalog wipes the catalog', scenario: 'reads',
       find: '    if (data.catalog) {' + NL + '      direct.catalog = data.catalog;',
       replace: '    if (true) {' + NL + '      direct.catalog = data.catalog;' },
-    { name: 'a wrong PIN retried on /exec', scenario: 'wrong PIN',
-      find: "      if (DIRECT_EXEC_SIGNALS[body.error]) { directUseExec_(); throw useExecError_(); }" + NL + "      throw envelopeError_(body);" + NL + "    }" + NL + "    direct.mode = 'direct';",
-      replace: "      directUseExec_(); throw useExecError_();" + NL + "    }" + NL + "    direct.mode = 'direct';" }
+    { name: 'a lockout loses its flag', scenario: 'wrong PIN',
+      find: '      e.lockout = true;', replace: '      e.lockout = false;' }
   ];
   for (const c of CONTROLS) {
     let r;
