@@ -217,7 +217,13 @@ Stop it: `update mog.backup_watch set alert_to = null;`.
 
 **The connector and destructive statements (2026-11-15):** the Supabase connector asks to confirm a statement with `delete` or `truncate`, and that question never showed in the app, so the call hung 10 minutes and timed out. `update`, `create or replace` and `revoke` ran without it. From smoke_v25 on, a smoke file rolls itself back (its writes in an inner block that ends by raising `mog_smoke25_rollback`; the results ride out in the error's detail), so it needs no clean-up and no confirmation.
 
-**Still to do:** the phone change (rprfo first, then the other nine), then the docs (Blueprint, KM brief).
+**The KM routine changes with it (Sebastian, 2026-11-15):** the KM brief (2026-11-03) made "Email me the daily summary" a DO NOT SKIP step so whoever places orders had the list before the cutoffs; asked again with that and the use (9 sends on about 58 store-days with orders), Sebastian kept the removal. Orders are placed from the app (View full order list, each vendor's Copy order for email); the recap after the midnight close is the day's record. The brief's steps 6 to 8, daily rhythm and "what goes wrong" were rewritten.
+
+**The phone change (app v0.34.0, store cache v77):** canary rprfo `220d3d2` on 2026-11-15, then the other nine the same evening. It removes the new-day reset and every Daily summary entry point (the all-done button, the out-of-date banner, the order list's button, Settings → Daily summary, the send after Mark all reviewed), and prunes the old sent markers on boot. Checked before the canary: 41 gates; every inline script of the built page parses; a local preview against the fake Supabase in Edge (a normal day opens with only `mog_login` and `mog_snapshot2` and no `/exec` request; a stale cycle shows the Refresh screen, no work-offline button, no close call).
+
+**Moved to step 5:** sign-in's fallback to `/exec` when Supabase can't be reached. It lives in the direct client that `tests/pwa_direct.test.js` runs as written, and `/exec` reads Supabase anyway, so it changes nothing while Supabase answers; it goes with the rest of `/exec`.
+
+**Still to do:** the Logic Blueprint (the recap is no longer the list orders are placed from; the close at midnight; no phone reset).
 
 ## Not verified
 

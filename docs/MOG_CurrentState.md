@@ -12,9 +12,9 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 
 - **Phones** count straight into Supabase (`phone_direct` on all 10 stores).
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
-- **Each Sheet** is frozen for catalog edits. Since 2026-11-15 Supabase closes every store at night and sends the recap; the Sheet's Apps Script still serves the phone's new-day reset and the Daily summary (both through `/exec`, step 3 removes them) and the onboarding moves. Its LOG_ORDERS backup stopped with its trigger; the nightly off-site backup covers every table.
+- **Each Sheet** is frozen for catalog edits. Since 2026-11-15 Supabase closes every store just after midnight and sends the recap; the phone neither closes a cycle nor sends a Daily summary (both removed, step 3), so its only `/exec` use left is sign-in's fallback when Supabase can't be reached (step 5). The Sheet's Apps Script still holds the onboarding moves. Its LOG_ORDERS backup stopped with its trigger; the nightly off-site backup covers every table.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions (newest first):** schema v25 (the nightly close from midnight, not 3:30 AM: live 2026-11-15 about 2:45 PM ET, smoke_v25 11/11, probe 149/149; Sheet retirement step 3); schema v24 (the backup watchdog and the via/par/stores drop: live 2026-11-12, smoke_v24 28/28, probe 149/149, below); app v0.33.0 / store cache v76 (Manage finished, live on all 10 stores 2026-11-11, 41 gates since v24); schema v23 (live 2026-11-11, see Sheet retirement step 2 below); v22 (live 2026-11-06), v21 (routes, live 2026-11-05, store cache v74). Every older version with its smoke and probe counts: `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
+- **Versions (newest first):** app v0.34.0 / store cache v77 (Sheet retirement step 3: no phone reset, no Daily summary; all 10 stores 2026-11-15); schema v25 (the nightly close from midnight, not 3:30 AM: live 2026-11-15 about 2:45 PM ET, smoke_v25 11/11, probe 149/149); schema v24 (the backup watchdog and the via/par/stores drop: live 2026-11-12, smoke_v24 28/28, probe 149/149, below); app v0.33.0 / store cache v76 (Manage finished, live on all 10 stores 2026-11-11, 41 gates since v24); schema v23 (live 2026-11-11, see Sheet retirement step 2 below); v22 (live 2026-11-06), v21 (routes, live 2026-11-05, store cache v74). Every older version with its smoke and probe counts: `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
 - **The three stores that moved empty:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
@@ -23,6 +23,13 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - all 10 stores closed between 3:23 and 3:38 AM;
   - rpr and rprfo had orders, and their recaps went to their Supabase recipients;
   - the other stores had nothing ordered, so no email (by design).
+
+**2026-11-15: Supabase closes every store; the close at midnight; the phone stops closing; the Daily summary removed** (Sheet retirement steps 2 and 3, `docs/MOG_SheetRetirement_Spec.md`).
+- **Checked first:** backups daily since 11-13; shadows matched at all 10 stores for cycles 11-11 to 11-13; rprfo's new Apps Script sent one recap per recipient.
+- **Apps Script** to the other 10 targets (about 1:30 PM ET); **`close_direct` on** at rprfo (1:40 PM), then all nine others (1:55 PM, Sebastian's pick, no canary nights).
+- **Schema v25** (2:45 PM): the close is due from midnight. **App v0.34.0** (rprfo `220d3d2`, then the other nine): no new-day reset, no Daily summary; the KM brief rewritten.
+- **First all-Supabase night:** the 11-15 cycle, closed just after midnight on 11-16; a check is scheduled for 7:41 AM.
+- **Rules changed:** cutovers run without a question (CLAUDE.md convention 2); smoke files roll themselves back (the connector's delete confirmation never shows, `mog-supabase-schema`).
 
 **2026-11-10 → 11-12: the count screen's backups, Manage finished, Sheet retirement started** (`docs/MOG_SessionHandoff_2026_11_12.md`).
 - **Count screen (app v0.32.0, `6d1c225`, all 10 stores):** an item whose main vendor isn't ordered today lists on its backups; once one list counts it, the others show it read-only at the bottom, "Counted on [vendor]'s list today" (Blueprint R35). Not seen on a real phone yet.

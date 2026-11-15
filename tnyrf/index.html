@@ -419,23 +419,6 @@
     }
     .alldone-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; color: var(--teal-dark); }
     .alldone-sub { font-size: 13px; color: var(--text-2); margin: 0 0 14px; line-height: 1.4; }
-    .alldone-btn {
-      width: 100%;
-      background: var(--teal); color: white;
-      border: none; border-radius: var(--r-md);
-      padding: 12px;
-      font-size: 14px; font-weight: 600;
-      display: inline-flex; align-items: center; justify-content: center;
-      gap: 8px;
-    }
-    .alldone-btn:active { background: var(--teal-dark); }
-    .alldone-btn:disabled { opacity: 0.6; }
-    .alldone-btn i { font-size: 17px; }
-    .alldone-sent {
-      font-size: 12px; color: var(--teal-dark); margin-top: 8px;
-      display: inline-flex; align-items: center; gap: 4px;
-    }
-    .alldone-sent i { font-size: 14px; }
 
     /* Per-vendor inline mark-reviewed action. Replaces the pill-progress
        label on cards where enteredCount > 0. Same physical footprint as
@@ -476,34 +459,8 @@
     .bulk-mark-link:active { background: var(--teal-light); }
     .bulk-mark-link i { font-size: 14px; vertical-align: middle; margin-right: 4px; }
 
-    /* Stale-summary banner — shown when recap_stale_<cycleDate> is set
-       (un-review after the email was sent). Warning amber, sits above
-       the all-done panel + vendor list. Inline Resend CTA. */
-    .recap-stale-banner {
-      background: var(--warn-fill);
-      border: 0.5px solid var(--warn-border);
-      border-radius: var(--r-md);
-      padding: 10px 12px;
-      margin-bottom: 14px;
-      display: flex; align-items: center; gap: 10px;
-      font-size: 13px; color: var(--warn-text);
-    }
-    .recap-stale-banner i.lead { font-size: 18px; flex-shrink: 0; color: var(--warn-accent); }
-    .recap-stale-banner .stale-text { flex: 1; line-height: 1.35; font-weight: 600; }
-    .recap-stale-banner .stale-resend {
-      background: var(--warn-accent); color: white;
-      border: none; border-radius: var(--r-sm, 6px);
-      padding: 7px 14px;
-      font-size: 13px; font-weight: 600;
-      white-space: nowrap;
-      display: inline-flex; align-items: center; gap: 5px;
-    }
-    .recap-stale-banner .stale-resend:active { background: var(--warn-accent-active); }
-    .recap-stale-banner .stale-resend:disabled { opacity: 0.6; }
-    .recap-stale-banner .stale-resend i { font-size: 14px; }
-
     /* Emergency override control on Home. Quiet dashed pill when off;
-       filled amber banner when on (mirrors .recap-stale-banner). */
+       filled amber banner when on. */
     .override-banner {
       width: 100%;
       display: flex; align-items: center; gap: 10px;
@@ -1180,14 +1137,6 @@
     .recap-refresh-pill.show { display: inline-flex; }
     .recap-refresh-pill .ti { font-size: 12px; animation: recap-spin 1s linear infinite; }
     @keyframes recap-spin { to { transform: rotate(360deg); } }
-    /* Email-myself button row in the recap view. Sits between the summary
-       strip and the first vendor section. Uses .alldone-btn for the
-       button itself (same affordance as the home dashboard's all-done
-       panel) so the user recognizes the action across views. */
-    .recap-email-row {
-      margin-bottom: 22px;
-      text-align: center;
-    }
     .recap-section { margin-bottom: 22px; }
     .recap-section:last-child { margin-bottom: 0; }
     .recap-vendor-head {
@@ -3242,19 +3191,8 @@ function parFlagCutoff_(today) {
   }
   function setReviewed(dateStr, vendor, val) {
     const m = getReviewedSet(dateStr);
-    const wasReviewed = !!m[vendor];
     if (val) m[vendor] = true; else delete m[vendor];
     localStorage.setItem(reviewedKey(dateStr), JSON.stringify(m));
-    // If un-reviewing AFTER the daily summary email has been sent, the
-    // sent email no longer reflects current state. Mark stale so the
-    // home banner prompts a resend. Re-reviewing the same vendor does
-    // NOT clear stale — counts may have changed between the toggles,
-    // and we err on "stale" until they explicitly resend.
-    if (wasReviewed && !val) {
-      if (localStorage.getItem(nsKey_('recap_sent_' + dateStr))) {
-        localStorage.setItem(nsKey_('recap_stale_' + dateStr), '1');
-      }
-    }
   }
   // Garbage-collect old reviewed-flag keys on boot. Scoped to the
   // current deployment's namespace — other stores' reviewed flags
@@ -3262,9 +3200,14 @@ function parFlagCutoff_(today) {
   function gcReviewedFlags(currentDateStr) {
     const prefix = nsKey_('reviewed_');
     const keep   = reviewedKey(currentDateStr);
+    // The Daily summary's sent and out-of-date markers: the email was removed
+    // 2026-11-15 (Sheet retirement step 3), so every one of them goes.
+    const gone   = [nsKey_('recap_sent_'), nsKey_('recap_stale_')];
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
       if (k && k.startsWith(prefix) && k !== keep) {
+        localStorage.removeItem(k);
+      } else if (k && (k.startsWith(gone[0]) || k.startsWith(gone[1]))) {
         localStorage.removeItem(k);
       }
     }
@@ -3294,7 +3237,7 @@ function parFlagCutoff_(today) {
   // short identifier derived from the Apps Script deployment URL.
   // This lets multiple stores' PWAs share a single GitHub Pages
   // origin without their caches or queues colliding. Per-cycle keys
-  // (mog_<ns>_draft_, mog_<ns>_reviewed_, mog_<ns>_recap_sent_) are
+  // (mog_<ns>_draft_, mog_<ns>_reviewed_) are
   // also namespaced under this scheme as of the hub router rollout.
   // ============================================================
 
@@ -3566,10 +3509,8 @@ function parFlagCutoff_(today) {
   }
 
   // In-flight drain promise. A second caller JOINS the running drain (awaits
-  // the same promise) instead of returning immediately — the new-day
-  // auto-reset depends on this: it must not fire commitReset while a
-  // boot-kicked drain is mid-flight, or yesterday's queued counts either get
-  // wiped unlogged or land on the freshly-cleared sheet.
+  // the same promise) instead of returning immediately, so two drains never
+  // send the same queued counts twice.
   let drainPromise_ = null;
   function drainSaveQueue_() {
     if (drainPromise_) return drainPromise_;
@@ -3853,9 +3794,7 @@ function parFlagCutoff_(today) {
       discardChanges:   { en: "Don't save, continue", es: 'No guardar, continuar' },
       // End-of-day panel
       allDoneTitle:     { en: 'All vendors reviewed', es: 'Todos los proveedores revisados' },
-      allDoneSub:       { en: "You're set for the day. Email yourself a copy to place the orders.", es: 'Listo para hoy. Env\u00edate una copia para hacer los pedidos.' },
-      emailMyCopy:      { en: 'Email me the daily summary', es: 'Env\u00edame el resumen' },
-      emailing:         { en: 'Sending…', es: 'Enviando…' },
+      allDoneSub:       { en: "You're set for the day.", es: 'Listo para hoy.' },
       refreshing:       { en: 'Refreshing…', es: 'Actualizando…' },
       ptrPull:          { en: 'Pull to refresh', es: 'Desliza para actualizar' },
       ptrRelease:       { en: 'Release to refresh', es: 'Suelta para actualizar' },
@@ -3900,21 +3839,6 @@ function parFlagCutoff_(today) {
       pinConfigError:   { en: 'App not configured. Contact your GM.', es: 'App no configurada. Contacta tu gerente.' },
       pinLockedError:   { en: 'Too many attempts. Try again in {minutes} minute(s).', es: 'Demasiados intentos. Espera {minutes} minuto(s).' },
       pinServerHiccup:  { en: 'The server hiccupped. Tap Sign in again.', es: 'El servidor falló. Toca Iniciar sesión otra vez.' },
-      summarySent:      { en: 'Daily summary emailed', es: 'Resumen enviado' },
-      summaryAlreadySent: { en: 'Daily summary already sent today', es: 'El resumen ya se envió hoy' },
-      summarySentPartial: {
-        en: 'Sent to {sent} · {failed} failed',
-        es: 'Enviado a {sent} · {failed} fallaron'
-      },
-      summaryNoRecipients: {
-        en: 'No recipients configured. Add at least one in Settings → Recipients.',
-        es: 'Sin destinatarios. Agrega al menos uno en Ajustes → Destinatarios.'
-      },
-      recipientsShort:  { en: 'recipient(s)', es: 'destinatario(s)' },
-      summaryEmpty:     { en: 'Nothing to send yet', es: 'No hay nada que enviar' },
-      dailySummary:     { en: 'Daily summary', es: 'Resumen diario' },
-      dailySummaryHelp: { en: 'Email all configured recipients', es: 'Enviar a los destinatarios configurados' },
-      sendingSummary:   { en: 'Sending…', es: 'Enviando…' },
       // Recipients management
       recipientsTitle:  { en: 'Recipients', es: 'Destinatarios' },
       recipientsHelp:   { en: 'Who gets the daily order email', es: 'Quién recibe el correo diario' },
@@ -3967,13 +3891,6 @@ function parFlagCutoff_(today) {
       recipientsCancel: { en: 'Cancel', es: 'Cancelar' },
       recipientsSaveAndStay: { en: 'Save', es: 'Guardar' },
       // Recap UI
-      recapStaleText: { en: 'Daily summary is out of date', es: 'El resumen diario está desactualizado' },
-      recapStaleCta: { en: 'Resend', es: 'Reenviar' },
-      autoSendFailed: { en: 'Daily summary email failed. Retry from home.', es: 'No se envió el resumen. Reinténtalo desde inicio.' },
-      flushPartialFail: {
-        en: 'Some counts didn\'t save — email may show partial data.',
-        es: 'Algunos conteos no se guardaron — el correo puede mostrar datos parciales.'
-      },
       // Mark reviewed shortcuts (inline + bulk)
       markReviewedShort: { en: 'Mark reviewed', es: 'Marcar revisado' },
       confirmMarkVendorTitle: { en: 'Mark as reviewed?', es: '¿Marcar como revisado?' },
@@ -3998,8 +3915,8 @@ function parFlagCutoff_(today) {
       vcClose:      { en: 'Close', es: 'Cerrar' },
       bulkMarkConfirmTitle: { en: 'Mark all as reviewed?', es: '¿Marcar todo como revisado?' },
       bulkMarkConfirmMsg: {
-        en: 'These vendors will be marked as reviewed and the daily summary will be emailed:',
-        es: 'Estos proveedores se marcarán como revisados y se enviará el resumen diario:'
+        en: 'These vendors will be marked as reviewed:',
+        es: 'Estos proveedores se marcarán como revisados:'
       },
       bulkMarkConfirmBtn: { en: 'Mark all reviewed', es: 'Marcar todo revisado' },
       language:         { en: 'Language', es: 'Idioma' },
@@ -4183,8 +4100,8 @@ function parFlagCutoff_(today) {
   // which surfaces as "Offline — using last loaded data" with a retry that fails
   // the same way — the server had answered, the client just stopped waiting.
   // Apps Script also keeps executing after a client abort, so a too-low ceiling
-  // buys nothing and costs a confusing failure. Known-slow writes still pass an
-  // explicit override (see RESET_TIMEOUT_MS).
+  // buys nothing and costs a confusing failure. A caller can still pass an
+  // explicit timeout.
   const API_TIMEOUT_MS = 30000;
 
   async function api(action, payload, timeoutMs) {
@@ -4218,7 +4135,7 @@ function parFlagCutoff_(today) {
       try {
         if (viaDirect) return await directOnce_(action, payload);
         const data = await apiOnce_(action, payload, timeoutMs);
-        if (!retriable) directInvalidate_();   // an /exec write (reset, email) may have moved the cycle
+        if (!retriable) directInvalidate_();   // an /exec write may have changed the snapshot
         return data;
       } catch (err) {
         if (viaDirect && err && err.useExec) { viaDirect = false; attempt--; continue; }
@@ -4247,10 +4164,9 @@ function parFlagCutoff_(today) {
   // network/abort). The retry policy lives in api() above.
   async function apiOnce_(action, payload, timeoutMs) {
     const controller = new AbortController();
-    // Most calls use the default API_TIMEOUT_MS. Known-slow writes (e.g.
-    // commitReset, which logs + clears On Hand + sends the recap email
-    // synchronously) pass a longer timeout so a cold /exec invocation
-    // isn't aborted mid-flight and mistaken for a network failure.
+    // Most calls use the default API_TIMEOUT_MS; a caller may pass a longer
+    // one so a cold /exec invocation isn't aborted mid-flight and mistaken
+    // for a network failure.
     const timeoutId  = setTimeout(function() { controller.abort(); }, timeoutMs || API_TIMEOUT_MS);
     try {
       const resp = await fetch(state.apiUrl, {
@@ -4295,8 +4211,9 @@ function parFlagCutoff_(today) {
   // phone_direct) answers the count path here: one snapshot (catalog + state
   // + this cycle's counts) and the shared OrderMath.gs builders, giving the
   // SAME answers and shapes /exec gives (DbApi.gs runs the same functions).
-  // Writes go straight to Supabase. The reset fallback and the recap email
-  // stay on /exec. Design record: D12-D14.
+  // Writes go straight to Supabase. Since step 3 (2026-11-15) the phone
+  // neither closes a cycle nor sends the Daily summary, the two calls that
+  // stayed on /exec. Design record: D12-D14.
   const DIRECT_ACTIONS = {
     ping: 1, getResetStatus: 1, getDashboard: 1, getVendorItems: 1, getVendorItemsBulk: 1,
     getRecapData: 1, saveOnHand: 1, setEmergencyOverride: 1, setVendorOverride: 1,
@@ -4883,11 +4800,12 @@ function parFlagCutoff_(today) {
     $('name-skip').addEventListener('click', function () { done(''); });
   }
 
-  // Shown only when the new-day auto-reset couldn't be confirmed (timeout or
-  // network). Offers a single Refresh action; reloading re-checks reset status,
-  // so if the reset actually completed server-side the app enters without
-  // re-running it — no double log, no double recap email.
-  function showResetRefreshScreen_() {
+  // Shown when the day's cycle can't be confirmed (timeout or network), or
+  // when it's confirmed but still yesterday's (opts.closing: the nightly
+  // close hasn't run yet). Refresh reloads, which re-checks; the phone never
+  // closes a cycle itself (step 3, 2026-11-15).
+  function showResetRefreshScreen_(opts) {
+    opts = opts || {};
     hideBusy();
     document.documentElement.classList.remove('in-main', 'restoring', 'on-pin');
     $('screen-pin').style.display = 'none';
@@ -4898,8 +4816,10 @@ function parFlagCutoff_(today) {
     // would be a dead end.
     const offlineBtn = $('stale-offline-btn');
     if (offlineBtn) {
+      // Never while the close is still due: counting into yesterday's cycle
+      // is exactly what this screen prevents.
       const haveCache = !!(state.cache.dashboard && state.cache.dashboard.vendors);
-      offlineBtn.style.display = haveCache ? 'inline-block' : 'none';
+      offlineBtn.style.display = (haveCache && !opts.closing) ? 'inline-block' : 'none';
     }
   }
 
@@ -4925,122 +4845,17 @@ function parFlagCutoff_(today) {
     try {
       const status = await api('getResetStatus');
       if (status.isStale) {
-        // New day detected — auto-run the reset behind the busy overlay (no
-        // manual screen). commitReset logs + emails server-side; on failure
-        // runStaleReset_ shows the Refresh screen.
-        await autoRunStaleReset();
+        // Yesterday's cycle is still open: Supabase's nightly close (from
+        // midnight, schema v25) hasn't run yet or failed and retries every 15
+        // minutes. The phone never closes a cycle itself (Sheet retirement
+        // step 3, 2026-11-15), and never counts into a closed day.
+        showResetRefreshScreen_({ closing: true });
       } else {
         await showMainApp();
       }
     } catch (err) {
       // Was showMainApp() — see gateOnUnconfirmedCycle_ for why that was unsafe.
       gateOnUnconfirmedCycle_(err, 'proceedAfterAuth');
-    }
-  }
-
-  // Auto-fires the daily reset the first time the app is opened on a new
-  // day. Shows a "Detected new day — resetting…" overlay so the automatic
-  // clear is visible, not silent. If the reset fails (and the server-side
-  // re-check agrees it didn't land), showResetRefreshScreen_ offers a
-  // single Refresh button — reload → re-check → no second reset.
-  async function autoRunStaleReset() {
-    await runStaleReset_(
-      state.lang === 'en'
-        ? 'Detected new day — resetting On Hand…'
-        : 'Nuevo día detectado — reiniciando inventario…'
-    );
-  }
-
-  // commitReset is the heaviest call in the app — server-side it logs On
-  // Hand to LOG_ORDERS, clears the columns, sends the recap email
-  // synchronously, then stamps AE9. On a cold /exec invocation that can run
-  // well past the default 15s API timeout, so give it generous headroom.
-  // 120s, raised from 45s (2026-08-03). The reset was measured at ~26s on an
-  // 11-vendor store with zero rows to log and on-hand already clear, and ~31s
-  // doing real work — one range read per vendor tab plus one clear-write per
-  // vendor tab, neither of which batches. 45s left almost no headroom for a cold
-  // CacheService (every --redeploy flushes it) or normal Apps Script variance,
-  // and blowing it drops the KM on the Refresh screen even though the reset
-  // usually completed server-side.
-  const RESET_TIMEOUT_MS = 120000;
-
-  // Shared reset core for both the manual button and the new-day auto-reset.
-  // busyLabel is shown on the full-screen overlay while the reset runs.
-  async function runStaleReset_(busyLabel) {
-    showBusy(busyLabel);
-    try {
-      // Flush any offline-queued counts FIRST — they're previous-cycle data
-      // and must be on the sheet before commitReset logs and clears it.
-      // Joins the boot-kicked drain when one is already in flight. If the
-      // drain fails on network, commitReset fails the same way → the
-      // Refresh screen; entries stay queued for the next attempt. Entries
-      // that fail on a server error were unsendable either way — don't
-      // hold the store's reset hostage to them.
-      try { await drainSaveQueue_(); }
-      catch (e) { console.warn('[reset] pre-reset drain error (continuing):', e); }
-      await api('commitReset', null, RESET_TIMEOUT_MS);
-      finishResetAndEnterApp_();
-    } catch (err) {
-      console.error('reset error:', err);
-      // The fetch may have been aborted (timeout) or failed mid-flight, but
-      // Apps Script does NOT stop server execution when the client gives up —
-      // the reset usually still completes server-side (AE9 gets stamped).
-      // Re-check status before surfacing anything: if the day is no longer
-      // stale, the reset landed and we can just enter the app.
-      try {
-        const recheck = await api('getResetStatus');
-        if (recheck && !recheck.isStale) {
-          finishResetAndEnterApp_();
-          return;
-        }
-      } catch (recheckErr) {
-        // Re-poll itself failed (still offline) — fall through to the
-        // Refresh screen below.
-        console.error('reset re-check error:', recheckErr);
-      }
-      // Still stale (or re-check failed) — offer a single Refresh. Reloading
-      // re-checks status, so a reset that finished server-side won't be re-run
-      // (no double log / double recap email), and a genuine failure retries.
-      showResetRefreshScreen_();
-    }
-  }
-
-  // Clear all cached/per-cycle state after a confirmed reset, then enter the
-  // home screen. Shared by the happy path and the re-check recovery path.
-  function finishResetAndEnterApp_() {
-    state.cache.dashboard = null;
-    setDashboardFetchedAt_(null);
-    state.cache.historyDates = null;
-    state.cache.historyVendors = {};
-    state.cache.recap = null;
-    state.cache.vendorItems = {};
-    clearAllPerCycleLocalState_();
-    clearAllOfflineState_();
-    hideBusy();
-    showMainApp();
-  }
-
-  // Wipes every piece of localStorage tied to the current ordering cycle.
-  // Called whenever a reset is committed from any path (stale gate, home
-  // dashboard button, etc.) so reviewed flags / drafts / recap markers
-  // don't carry over and confuse the next cycle.
-  //
-  // Scoped to the current deployment's namespace — a reset at one
-  // store does NOT wipe other stores' per-cycle state on the same
-  // browser.
-  function clearAllPerCycleLocalState_() {
-    const prefixes = [
-      nsKey_('reviewed_'),
-      nsKey_('draft_'),
-      nsKey_('recap_sent_'),
-      nsKey_('recap_stale_')
-    ];
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const k = localStorage.key(i);
-      if (!k) continue;
-      for (const p of prefixes) {
-        if (k.indexOf(p) === 0) { localStorage.removeItem(k); break; }
-      }
     }
   }
 
@@ -5107,13 +4922,9 @@ function parFlagCutoff_(today) {
       ? ('Loading ' + strong + ' order guide')
       : ('Cargando guía de ' + strong);
 
-    // On a NEW DAY we must NOT run the auto-reset inside the transition's
-    // work-promise: the transition overlay is z-80 and the reset's
-    // "Detected new day…" busy overlay is z-70, so the reset would run
-    // hidden behind the loading bar (which just pulses for the multi-second
-    // commitReset and reads as "stuck loading"). Instead, let the transition
-    // wrap only the fast status check (+ the normal-day app load), finish
-    // its ceremony and fade out, THEN hand off to the visible reset overlay.
+    // A cycle the nightly close hasn't moved yet shows the Refresh screen
+    // AFTER the transition finishes, never underneath it (the transition bar
+    // is z-80 and would swallow the taps).
     let pendingStale = null;
     let gateFailure  = null;
     await playTransitionAnimation((async function () {
@@ -5139,7 +4950,8 @@ function parFlagCutoff_(today) {
     }
 
     if (pendingStale) {
-      await autoRunStaleReset();
+      // See proceedAfterAuth: the nightly close hasn't moved the cycle yet.
+      showResetRefreshScreen_({ closing: true });
     }
   }
 
@@ -5406,43 +5218,12 @@ function parFlagCutoff_(today) {
       const s = effectiveStatus(v, data.date);
       return s === 'reviewed' || s === 'sent';
     });
-    const recapSent = !!localStorage.getItem(nsKey_('recap_sent_' + data.date));
-
     // Celebratory all-done panel — only when every vendor is done.
     if (allReviewed) {
       html += '<div class="alldone-panel">' +
         '<div class="alldone-icon"><i class="ti ti-check" aria-hidden="true"></i></div>' +
         '<p class="alldone-title">' + escapeHtml(t('allDoneTitle')) + '</p>' +
         '<p class="alldone-sub">' + escapeHtml(t('allDoneSub')) + '</p>' +
-        (recapSent
-          ? '<button class="alldone-btn" id="alldone-resend-btn">' +
-              '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
-              '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
-            '</button>' +
-            '<div class="alldone-sent">' +
-              '<i class="ti ti-circle-check" aria-hidden="true"></i>' +
-              '<span class="lang-en">Already sent today</span>' +
-              '<span class="lang-es">Ya enviado hoy</span>' +
-            '</div>'
-          : '<button class="alldone-btn" id="alldone-email-btn">' +
-              '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
-              '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
-            '</button>') +
-      '</div>';
-    }
-
-    // Stale summary banner — shown whenever the user un-reviewed a
-    // vendor after the daily summary email was already sent. Persists
-    // until they tap Resend (which clears the stale flag) or reset.
-    const recapStale = !!localStorage.getItem(nsKey_('recap_stale_' + data.date));
-    if (recapStale) {
-      html += '<div class="recap-stale-banner">' +
-        '<i class="ti ti-alert-triangle lead" aria-hidden="true"></i>' +
-        '<span class="stale-text">' + escapeHtml(t('recapStaleText')) + '</span>' +
-        '<button class="stale-resend" id="stale-resend-btn">' +
-          '<i class="ti ti-refresh" aria-hidden="true"></i>' +
-          '<span>' + escapeHtml(t('recapStaleCta')) + '</span>' +
-        '</button>' +
       '</div>';
     }
 
@@ -5567,10 +5348,7 @@ function parFlagCutoff_(today) {
         await onBulkMarkReviewedClick_(data);
       });
     }
-    if ($('alldone-email-btn'))  $('alldone-email-btn').addEventListener('click', onSendDailyRecap);
-    if ($('alldone-resend-btn')) $('alldone-resend-btn').addEventListener('click', onSendDailyRecap);
     if ($('view-full-btn'))      $('view-full-btn').addEventListener('click', openRecap);
-    if ($('stale-resend-btn'))   $('stale-resend-btn').addEventListener('click', onStaleResendClick);
     if ($('override-on-btn'))    $('override-on-btn').addEventListener('click', () => onOverrideToggle_(true));
     if ($('override-off-btn'))   $('override-off-btn').addEventListener('click', () => onOverrideToggle_(false));
   }
@@ -5612,50 +5390,11 @@ function parFlagCutoff_(today) {
     }
   }
 
-  // Stale-banner Resend handler. Same code path as the all-done panel's
-  // Send/Resend button — sendDailyRecap() clears the stale flag on
-  // success, which removes the banner on the next render.
-  async function onStaleResendClick() {
-    const btn = $('stale-resend-btn');
-    if (btn) {
-      btn.disabled = true;
-      btn.querySelector('span').textContent = t('emailing');
-    }
-    // Manual resend → force send. Stale banner exists because the user
-    // explicitly un-reviewed after a prior send; they want the recap
-    // refreshed and re-delivered.
-    const result = await sendDailyRecap({ force: true });
-    if (result.ok) {
-      if (result.alreadySent) {
-        showToast(t('summaryAlreadySent'), 'success');
-      } else if (result.failedCount > 0) {
-        const msg = t('summarySentPartial')
-          .replace('{sent}', result.sentCount)
-          .replace('{failed}', result.failedCount);
-        showToast(msg, 'error');
-      } else {
-        showToast(t('summarySent') + ' · ' + result.sentCount + ' ' + t('recipientsShort'), 'success');
-      }
-      if (state.cache.dashboard) renderToday(state.cache.dashboard);
-    } else {
-      const m = String((result.error && result.error.message) || '');
-      if (result.offline) showToast(t('offlineRetry'), 'error');
-      else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
-      else if (m.indexOf('No recipients') >= 0) showToast(t('summaryNoRecipients'), 'error');
-      else showToast(m || t('errGeneric'), 'error');
-      if (btn) {
-        btn.disabled = false;
-        btn.querySelector('span').textContent = t('recapStaleCta');
-      }
-    }
-  }
-
   // Inline per-vendor mark-reviewed handler. Runs from the dashboard
   // without opening the vendor count screen. Confirmation modal names
   // the vendor so the KM knows exactly what they're confirming.
-  // Reuses the existing setReviewed + maybeAutoSendOnAllReviewed_ path
-  // so the rest of the system (sort order, all-done panel, auto-send,
-  // stale-flag tracking) works identically to in-vendor mark-reviewed.
+  // Reuses setReviewed so the rest of the system (sort order, the all-done
+  // panel) works identically to in-vendor mark-reviewed.
   async function onInlineMarkReviewedClick_(vendor, dateStr) {
     const ok = await showConfirm({
       kind: 'success',
@@ -5676,9 +5415,7 @@ function parFlagCutoff_(today) {
   }
 
   // Bulk mark-all-remaining handler. Confirms with a list of affected
-  // vendors, then loops setReviewed() with autoSend guarded so the
-  // recap fires exactly once at the end rather than firing partway
-  // through and hitting the recap_sent_ flag on subsequent vendors.
+  // vendors, then loops setReviewed() and re-renders once.
   async function onBulkMarkReviewedClick_(data) {
     const targets = data.vendors.filter(v => {
       const s = effectiveStatus(v, data.date);
@@ -5701,20 +5438,13 @@ function parFlagCutoff_(today) {
     if (!ok) return;
 
     // Mark each target reviewed. Order doesn't matter because setReviewed
-    // is local-only (no server round-trip) and the auto-send trigger
-    // isn't fired here — we call it once at the end. This avoids the
-    // race where the first mark fires the trigger, sets recap_sent_,
-    // and subsequent marks see the flag and skip.
+    // is local-only (no server round-trip).
     for (const v of targets) {
       setReviewed(data.date, v.name, true);
     }
 
     // Re-render the dashboard with all marks applied.
     if (state.cache.dashboard) renderToday(state.cache.dashboard);
-
-    // Now fire the consolidated auto-send — single email reflecting
-    // all the marks at once.
-    maybeAutoSendOnAllReviewed_();
   }
 
   function renderVendorCard(v, status, dashboardDateStr) {
@@ -8767,31 +8497,6 @@ function parFlagCutoff_(today) {
       '</span>' +
     '</div>';
 
-    // Email-myself button — same code path as the home dashboard's
-    // all-done panel (shared sendDailyRecap()). The cycle date used to
-    // gate the "already sent" badge comes from data.cycleDate, falling
-    // back to the dashboard cache so the two views stay consistent if
-    // they ever disagree (they shouldn't, but defending against drift).
-    const cycleDate = data.cycleDate ||
-      (state.cache.dashboard && state.cache.dashboard.date) || '';
-    const recapSent = cycleDate && !!localStorage.getItem(nsKey_('recap_sent_' + cycleDate));
-    html += '<div class="recap-email-row">' +
-      (recapSent
-        ? '<button class="alldone-btn" id="recap-email-btn">' +
-            '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
-            '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
-          '</button>' +
-          '<div class="alldone-sent" style="margin-top:8px">' +
-            '<i class="ti ti-circle-check" aria-hidden="true"></i>' +
-            '<span class="lang-en">Already sent today</span>' +
-            '<span class="lang-es">Ya enviado hoy</span>' +
-          '</div>'
-        : '<button class="alldone-btn" id="recap-email-btn">' +
-            '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
-            '<span>' + escapeHtml(t('emailMyCopy')) + '</span>' +
-          '</button>') +
-    '</div>';
-
     for (const sec of data.sections) {
       html += '<div class="recap-section">' +
         '<div class="recap-vendor-head">' +
@@ -8815,52 +8520,6 @@ function parFlagCutoff_(today) {
     }
 
     view.innerHTML = html;
-
-    // Wire the email button. Re-rendering the recap view (which we do
-    // after a successful send to flip to the "already sent" state)
-    // re-runs this listener attachment, so no duplicate handlers.
-    const emailBtn = $('recap-email-btn');
-    if (emailBtn) emailBtn.addEventListener('click', onRecapEmailClick);
-  }
-
-  // Email-from-recap-view handler. Mirrors onSendDailyRecap but scoped
-  // to the recap view's own button, and re-renders the recap on success
-  // so the "already sent" badge appears immediately.
-  async function onRecapEmailClick() {
-    const btn = $('recap-email-btn');
-    if (btn) {
-      btn.disabled = true;
-      btn.querySelector('span').textContent = t('emailing');
-    }
-    // Manual button → force send, bypassing server dedupe.
-    const result = await sendDailyRecap({ force: true });
-    if (result.ok) {
-      if (result.alreadySent) {
-        showToast(t('summaryAlreadySent'), 'success');
-      } else if (result.failedCount > 0) {
-        const msg = t('summarySentPartial')
-          .replace('{sent}', result.sentCount)
-          .replace('{failed}', result.failedCount);
-        showToast(msg, 'error');
-      } else {
-        showToast(t('summarySent') + ' · ' + result.sentCount + ' ' + t('recipientsShort'), 'success');
-      }
-      // Re-render so the "already sent today" badge appears, and also
-      // leave the dashboard cache so the home panel stays in sync if
-      // the user navigates back — next render will read the updated
-      // localStorage flag and show the correct state.
-      if (state.cache.recap) renderRecap(state.cache.recap);
-    } else {
-      const m = String((result.error && result.error.message) || '');
-      if (result.offline) showToast(t('offlineRetry'), 'error');
-      else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
-      else if (m.indexOf('No recipients') >= 0) showToast(t('summaryNoRecipients'), 'error');
-      else showToast(m || t('errGeneric'), 'error');
-      if (btn) {
-        btn.disabled = false;
-        btn.querySelector('span').textContent = t('emailMyCopy');
-      }
-    }
   }
 
   // ============================================================
@@ -9461,7 +9120,7 @@ function parFlagCutoff_(today) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.33.0';
+    const versionStr = '0.34.0';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
@@ -9477,13 +9136,6 @@ function parFlagCutoff_(today) {
 
       '<div class="settings-section-label"><span class="lang-en">Actions</span><span class="lang-es">Acciones</span></div>' +
       '<div class="settings-group">' +
-        '<div class="settings-row tappable" id="settings-summary">' +
-          '<div>' +
-            '<div class="settings-label"><i class="ti ti-mail-share" aria-hidden="true"></i>' + escapeHtml(t('dailySummary')) + '</div>' +
-            '<div style="font-size:12px;color:var(--text-3);margin-top:4px;margin-left:28px">' + escapeHtml(t('dailySummaryHelp')) + '</div>' +
-          '</div>' +
-          '<div class="settings-value"><i class="ti ti-chevron-right" aria-hidden="true"></i></div>' +
-        '</div>' +
         '<div class="settings-row tappable" id="settings-recipients">' +
           '<div>' +
             '<div class="settings-label"><i class="ti ti-users" aria-hidden="true"></i>' + escapeHtml(t('recipientsTitle')) + '</div>' +
@@ -9540,323 +9192,11 @@ function parFlagCutoff_(today) {
     });
     $('settings-recipients').addEventListener('click', openRecipients);
     if ($('settings-people')) $('settings-people').addEventListener('click', openPeople_);
-    $('settings-summary').addEventListener('click', onDailySummaryClick);
     if ($('settings-name')) $('settings-name').addEventListener('click', async () => {
       try { directExpire_(); await directSnapshot_(); } catch (e) { /* offline: the list we have */ }
       openNamePicker_();
     });
     $('signout-btn').addEventListener('click', signOut);
-  }
-
-  // ============================================================
-  // EMAIL AUTO-SEND HELPERS
-  //
-  // The daily summary email has three trigger points:
-  //   1. Manual: user taps Send Email — always fires, ignores flag.
-  //      Sources: all-done panel button, stale banner Resend.
-  //   2. Auto on bulk-mark-reviewed: user explicitly marks all
-  //      remaining vendors reviewed in one gesture. The confirmation
-  //      modal mentions the email send. Gated by recap_sent_ flag so
-  //      a second bulk-mark in the same cycle doesn't double-send.
-  //   3. Auto on reset on hand: backup trigger. Fires before
-  //      commitReset if no email has been sent for this cycle.
-  //
-  // Per-vendor mark-reviewed (in-vendor screen or inline pill on home)
-  // does NOT auto-send. The all-done panel surfaces the Send Email
-  // CTA when all vendors are reviewed; user taps it explicitly.
-  //
-  // All four send paths (manual, bulk-auto, reset-auto, stale-resend)
-  // route through sendDailyRecap(), which now calls
-  // flushAllPendingDrafts_() first to ensure the email reflects the
-  // device's most recent counts even if some vendors were edited
-  // offline and never explicitly saved.
-  // ============================================================
-
-  // Best-effort auto-send used by triggers (2) and (3). Silent on
-  // success beyond a toast + dashboard re-render. Silent on failure
-  // beyond an error toast. Never throws; never blocks the caller.
-  //
-  // Server-side dedupe: api_emailRecap_ with force=false short-circuits
-  // when PROP_LAST_RECAP_SENT_DATE matches the current cycle, returning
-  // alreadySent=true. Combined with the local recap_sent_<cycleDate>
-  // check below, this prevents same-cycle double-sends regardless of
-  // which path fires (PWA, sheet reset, multiple devices).
-  //
-  // No userEmail gate anymore — recipients live in SETUP. If there are
-  // none, the server throws "No recipients configured" and the toast
-  // surfaces it. KMs add themselves via Settings → Recipients.
-  async function autoSendDailyRecap_(reason) {
-    const cycleDate = state.cache.dashboard && state.cache.dashboard.date;
-    if (cycleDate && localStorage.getItem(nsKey_('recap_sent_' + cycleDate))) {
-      return { ok: false, skipped: 'already-sent' };
-    }
-    try {
-      // Auto-paths omit force so the server can dedupe across devices.
-      const result = await sendDailyRecap({ force: false });
-      if (result && result.ok) {
-        // alreadySent means the server short-circuited the send because
-        // another path got there first. Treat as success silently — the
-        // local sent flag is set inside sendDailyRecap so UI flips
-        // correctly.
-        if (!result.alreadySent) {
-          showToast(t('summarySent') + ' · ' + result.vendorCount + ' ' + (state.lang === 'en' ? 'vendors' : 'proveedores'), 'success');
-        }
-        if (state.cache.dashboard) renderToday(state.cache.dashboard);
-      } else if (result) {
-        const m = String((result.error && result.error.message) || '');
-        if (result.offline) showToast(t('offlineRetry'), 'error');
-        else if (m.indexOf('Nothing to recap') >= 0) {
-          // Empty recap on auto-send isn't a user-visible error.
-        } else if (m.indexOf('No recipients') >= 0) {
-          // No recipients configured isn't an auto-send failure — it's a
-          // configuration state. Don't toast on auto paths; the user
-          // will see the error if they manually tap send.
-        } else {
-          showToast(t('autoSendFailed'), 'error');
-        }
-      }
-      return result;
-    } catch (err) {
-      console.error('[autoSend ' + reason + '] error:', err);
-      showToast(t('autoSendFailed'), 'error');
-      return { ok: false, error: err };
-    }
-  }
-
-  // Called after every successful mark-reviewed. If this was the last
-  // unreviewed vendor, fires the auto-send (gated by recap_sent_).
-  async function maybeAutoSendOnAllReviewed_() {
-    const data = state.cache.dashboard;
-    if (!data || !data.vendors || !data.vendors.length) return;
-    const allReviewed = data.vendors.every(v => {
-      const s = effectiveStatus(v, data.date);
-      return s === 'reviewed' || s === 'sent';
-    });
-    if (!allReviewed) return;
-    await autoSendDailyRecap_('all-reviewed');
-  }
-
-  // Walks every namespaced draft_* key in localStorage and pushes each
-  // vendor's pending counts to the server via saveOnHand. Used as a
-  // pre-flight before any email send so the email reflects the device's
-  // most recent counts.
-  //
-  // Why this matters: drafts are written on every keystroke. They get
-  // converted to actual sheet writes when the user taps Save, Mark
-  // Reviewed, or one of the offline-replay paths. But a user can also
-  // type counts, navigate back to the dashboard without saving (the
-  // count screen does flush on its action buttons, but if the user
-  // backs out via the system back button or app switcher, drafts
-  // remain), and then trigger a send. Without this flush, the email
-  // would reflect older on-hand values than what the device has.
-  //
-  // Failure modes:
-  //   - Network error on save → enqueueSave_ queues for offline replay
-  //     and we still count as success from the user's perspective
-  //   - Other save error → counted as a failure; surfaced to caller
-  //
-  // Returns:
-  //   { hadAnything, flushed, failed: [vendorName, ...] }
-  async function flushAllPendingDrafts_() {
-    const result = { hadAnything: false, flushed: 0, failed: [] };
-    const draftPrefix = nsKey_('draft_');
-    // Snapshot the keys first — saveOnHand can mutate localStorage
-    // indirectly (e.g. via clearDraft after a successful save in
-    // some flows), and iterating while mutating is brittle.
-    const draftKeys = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(draftPrefix)) draftKeys.push(k);
-    }
-    if (!draftKeys.length) return result;
-
-    for (const key of draftKeys) {
-      // Key shape: mog_<ns>_draft_<dateStr>_<vendor>
-      // Strip the prefix to get "<dateStr>_<vendor>" — the vendor name
-      // can contain underscores, so split on the FIRST underscore after
-      // the date (date format YYYY-MM-DD is fixed-width 10 chars).
-      const rest = key.substring(draftPrefix.length);
-      // rest is "<dateStr>_<vendor>"; dateStr is always 10 chars.
-      if (rest.length < 12) continue; // malformed
-      const dateStr = rest.substring(0, 10);
-      const vendor  = rest.substring(11);
-      if (!vendor) continue;
-
-      let draftObj;
-      try {
-        draftObj = JSON.parse(localStorage.getItem(key) || '{}');
-      } catch (e) { continue; }
-      const ids = Object.keys(draftObj);
-      if (!ids.length) continue;
-
-      result.hadAnything = true;
-      const items = ids.map(id => ({ id: id, onHand: draftObj[id] }));
-
-      try {
-        await api('saveOnHand', { vendor: vendor, items: items });
-        // Successful save — clear the draft so a future flush doesn't
-        // re-send the same payload. Matches the per-vendor save flow.
-        clearDraft(dateStr, vendor);
-        // Also drop any cached vendor items snapshot so the next read
-        // pulls fresh values that incorporate this save.
-        delete state.cache.vendorItems[vendor];
-        result.flushed++;
-      } catch (err) {
-        if (isNetworkError_(err)) {
-          // Offline: queue for later replay. Don't count as failure;
-          // when the replay runs, the saved values land on the sheet.
-          // The email going out now will not include them, but that's
-          // an acceptable degradation (no email is sent at all when
-          // truly offline since api('emailRecap') will also fail).
-          enqueueSave_(vendor, items);
-          result.flushed++;
-        } else {
-          console.error('[flushDrafts] save failed for ' + vendor + ':', err);
-          result.failed.push(vendor);
-        }
-      }
-    }
-    return result;
-  }
-
-  // Shared core: flushes any pending drafts, then calls api('emailRecap').
-  // Used by every send path (manual, bulk-mark auto, reset auto, stale
-  // resend). Recipients live in SETUP — no per-device email state.
-  //
-  // Options:
-  //   opts.force  (bool) — bypass server-side dedupe. Manual sends pass
-  //                        true so they always fire. Auto sends omit so
-  //                        the server can dedupe across paths.
-  //
-  // Returns:
-  //   { ok: true,  vendorCount, itemCount, sentCount, failedCount,
-  //     failed, alreadySent }
-  //   { ok: false, offline: true, error }
-  //   { ok: false, error }
-  async function sendDailyRecap(opts) {
-    opts = opts || {};
-    // Flush any pending drafts before the server reads on-hand. This
-    // guarantees the email reflects the device's most recent counts.
-    // See flushAllPendingDrafts_ docstring for failure handling.
-    try {
-      const flushResult = await flushAllPendingDrafts_();
-      if (flushResult.failed.length) {
-        // Some vendors couldn't save (non-network errors). User
-        // explicitly asked for an email — proceed, but warn.
-        showToast(t('flushPartialFail'), 'error');
-      }
-    } catch (e) {
-      // flushAllPendingDrafts_ shouldn't throw, but if it does we
-      // don't want to block the email — proceed with whatever is
-      // on the sheet.
-      console.warn('[flushDrafts] unexpected throw, proceeding:', e);
-    }
-    try {
-      // force defaults to true for manual sends (callers from buttons),
-      // false for auto-paths. autoSendDailyRecap_ explicitly passes false.
-      const force = opts.force !== false;
-      const result = await api('emailRecap', { force: force });
-
-      // Server returns alreadySent=true when the cycle was already
-      // emailed by another path. UI still flips to "sent" state, but
-      // we don't double-toast.
-      const cycleDate = (state.cache.dashboard && state.cache.dashboard.date) || result.cycleDate;
-      if (cycleDate) {
-        localStorage.setItem(nsKey_('recap_sent_' + cycleDate), '1');
-        // Successful send (or already-sent) clears any stale flag — the
-        // newly-sent email reflects current state, so the out-of-date
-        // banner should go.
-        localStorage.removeItem(nsKey_('recap_stale_' + cycleDate));
-      }
-      // Recap may have committed today's orders to LOG_ORDERS — drop the
-      // history cache so the next History open shows the new entry
-      // instead of stale data.
-      state.cache.historyDates = null;
-      state.cache.historyVendors = {};
-      return {
-        ok:           true,
-        vendorCount:  result.vendorCount,
-        itemCount:    result.itemCount,
-        sentCount:    result.sentCount,
-        failedCount:  result.failedCount,
-        failed:       result.failed || [],
-        alreadySent:  !!result.alreadySent
-      };
-    } catch (err) {
-      console.error('emailRecap error:', err);
-      if (isNetworkError_(err)) {
-        return { ok: false, offline: true, error: err };
-      }
-      return { ok: false, error: err };
-    }
-  }
-
-  async function onSendDailyRecap() {
-    const btn = $('alldone-email-btn') || $('alldone-resend-btn');
-    if (btn) {
-      btn.disabled = true;
-      btn.querySelector('span').textContent = t('emailing');
-    }
-    // Manual button → force send, bypassing server dedupe.
-    const result = await sendDailyRecap({ force: true });
-    if (result.ok) {
-      // Surface partial failures so the user knows some recipients
-      // didn't get the email. sentCount may be 0 on alreadySent path —
-      // skip the toast in that case.
-      if (result.alreadySent) {
-        showToast(t('summaryAlreadySent'), 'success');
-      } else if (result.failedCount > 0) {
-        const msg = t('summarySentPartial')
-          .replace('{sent}', result.sentCount)
-          .replace('{failed}', result.failedCount);
-        showToast(msg, 'error');
-      } else {
-        showToast(t('summarySent') + ' · ' + result.sentCount + ' ' + t('recipientsShort'), 'success');
-      }
-      // Re-render Today so the panel flips to "already sent" state
-      if (state.cache.dashboard) renderToday(state.cache.dashboard);
-    } else {
-      const m = String((result.error && result.error.message) || '');
-      if (result.offline) showToast(t('offlineRetry'), 'error');
-      else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
-      else if (m.indexOf('No recipients') >= 0) showToast(t('summaryNoRecipients'), 'error');
-      else showToast(m || t('errGeneric'), 'error');
-      if (btn) {
-        btn.disabled = false;
-        btn.querySelector('span').textContent = t('emailMyCopy');
-      }
-    }
-  }
-
-  // (onHomeResetClick removed 2026-07-12 along with the home-screen manual
-  // reset button — the new-day reset auto-runs in proceedAfterAuth via
-  // autoRunStaleReset/runStaleReset_; the Sheet dashboard's Reset On Hand
-  // checkbox remains as the admin-side manual path.)
-
-  async function onDailySummaryClick() {
-    const row = $('settings-summary');
-    row.classList.add('disabled');
-    const labelEl = row.querySelector('.settings-label');
-    const original = labelEl.innerHTML;
-    // Inline indeterminate bar below the label — replaces the rotating
-    // ti-loader icon for visual consistency with the rest of the app's
-    // loading states (everything is bars now, no spinning circles).
-    labelEl.innerHTML =
-      '<i class="ti ti-mail-share" aria-hidden="true"></i>' +
-      escapeHtml(t('sendingSummary')) +
-      '<span class="bar sm inline"><span class="bar-fill-indeterminate"></span></span>';
-    const result = await sendDailyRecap();
-    if (result.ok) {
-      showToast(t('summarySent') + ' · ' + result.vendorCount + ' ' + (state.lang === 'en' ? 'vendors' : 'proveedores'), 'success');
-    } else {
-      const m = String((result.error && result.error.message) || '');
-      if (result.offline) showToast(t('offlineRetry'), 'error');
-      else if (m.indexOf('Nothing to recap') >= 0) showToast(t('summaryEmpty'), 'error');
-      else showToast(m || t('errGeneric'), 'error');
-    }
-    row.classList.remove('disabled');
-    labelEl.innerHTML = original;
-    renderSettings();
   }
 
   // ============================================================
