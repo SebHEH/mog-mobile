@@ -60,7 +60,8 @@ To check a web address before typing it: `validate.py slug <slug>`.
    (made in HQ). `has_manager_pin` is false only until the manager PIN is first set in HQ.
 2. **The stores.json entry:** `validate.py entry '<the row as JSON>'` prints it (the concept's
    stores.json spelling, the location without the concept and "(TEST)", `"editor": "supabase"`,
-   no `deployment`, `"test": true` for a test store) and checks the slug is free. Paste it into
+   `"ns": "s_<slug>"` (the phones' storage key, fixed for good; `build.py` refuses the store
+   without it), no `deployment`, `"test": true` for a test store) and checks the slug is free. Paste it into
    `stores.json`: a store next to its concept's stores, a test store at the end.
 3. **Hub cache:** a real store changes the hub's list, so bump `CACHE_VERSION` in the root `sw.js`
    (invariant #7). A test store isn't listed: no bump.

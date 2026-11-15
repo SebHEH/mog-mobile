@@ -17,7 +17,7 @@ mog-mobile/
 ├── index.html                   Hub picker landing page.
 ├── sw.js                        Hub service worker.
 ├── manifest.json                PWA manifest for the hub.
-├── stores.json                  Store registry: slug, concept, location, deployment URL.
+├── stores.json                  Store registry: slug, concept, location, deployment URL, ns (the phones' fixed storage key; gate store_ns).
 ├── build.py                     Python templating: stores.json + template/ → <slug>/ dirs + STORE_REGISTRY injection.
 ├── deploy.py                    Push (and optionally --redeploy) apps-script/ to all 11 clasp targets. Also handles --discover for deploymentId bootstrap.
 ├── editor_link.py               Prints the exact "run X in the Apps Script editor" request: .gs file, store, editor + Sheet links (convention #8).
@@ -143,6 +143,7 @@ mog-mobile/
 │                                + night_shadow_check.sql (reads only: the night's shadows against Apps Script's log, and the night log).
 ├── tests/                       Node gates that run the real .gs code: `node tests/run_all.js`. Never put .js under apps-script/ (clasp pushes it to every store).
 │                                preview_server.js (not a gate): the built app, editor and HQ against the fake Supabase (preview_start "mog-preview").
+│                                store_ns.test.js: each store's storage key (stores.json ns) equals what app v0.34.1 took from its /exec address.
 ├── docs/
 │   ├── MOG_CurrentState.md      Running snapshot — what's in flight, invariants, recent changes.
 │   ├── MOG_ProjectNotes.md      Project facts and gotchas (moved from Claude's per-computer memory, 2026-10-29).

@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: aeb165d (2026-11-15) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: 67232ca (2026-11-15) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -260,8 +260,10 @@ naive rebuild silently loses.*
   This is a hard requirement: never lose a user's counts to a bad connection. Each queued count carries
   the day it was counted on. One that arrives after its day was closed lands in that day, and the
   server says so; it never leaks into the new day. The app then tells the user those counts weren't
-  ordered, instead of reporting them synced, and the fallback path through Apps Script files them in
-  their own day the same way. The app still flushes its queue before it closes a day itself.
+  ordered, instead of reporting them synced. Since app v0.35.0 (2026-11-15) the queue goes only to
+  Supabase: there is no Apps Script path, and a drain that starts before sign-in sends no PIN (an
+  empty one would count against the store's lockout); it keeps its entries and runs again once signed
+  in.
   *(Confirmed: the queue's `cycleDate` + `mog_save_counts`' `stale` answer, the drain's late warning
   and `dbSaveOnHand_` (2026-10-20); `drainSaveQueue_` awaited by `runStaleReset_`; owner-confirmed
   hard requirement.)*
