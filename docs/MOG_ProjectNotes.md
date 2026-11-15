@@ -156,6 +156,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - **The data lives in memory:** a restart starts over, and a signed-in app signs in again by itself. Each RPC call is logged (`preview_logs`), with the error when one fails.
   - **Manage in a hidden pane:** the phone layout has no Manage. `resize_window` to 1280×800, then `location.reload()`, brings the computer layout; each Manage page runs in `#manage-frame`.
   - Use `127.0.0.1`, never `localhost`, which hung (IPv6). The Daily summary button still goes to `/exec` and fails there: that's the harness, not the app.
+- **Without the browser pane or Playwright** (2026-11-15, Sebastian's Windows computer): `npm install playwright-core` in a scratch folder and launch the installed Edge (`chromium.launch({ executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' })`), with `serviceWorkers: 'block'` on the context (the service worker's first-load reload breaks clicks) and the PIN typed and submitted inside one `page.evaluate`. `node tests/preview_server.js --port 8772` serves the app; `page.route` on `**/rest/v1/rpc/**` can rewrite an answer to fake a state (a stale cycle).
 - **When the session isn't open in a window, the browser pane is hidden at 0×0.**
   - Screenshots and clicks time out, but `find`, `form_input` and `javascript_tool` work.
   - The app's PIN box: `form_input` sets the value without firing its `input` event, so Sign in stays disabled. Set `#pin-input`'s value by script, dispatch `input`, then click `#pin-submit` (2026-11-11).
@@ -209,5 +210,6 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **`build.py` can fail once with `OSError: [Errno 22]`** writing a store's `editor/` file: a passing Windows file lock. Run it again (2026-11-01).
 - **Python run from Git Bash prints CRLF:** pipe it through `tr -d '\r'` before a `while read` loop.
 - **Check non-ASCII edits:** the Edit tool once turned a typed `ă` into `ă`, so check the bytes with `cat -A` when a JS escape (not the character) matters.
+- **The Write tool turns a JS escape such as `í` into the character itself** (2026-11-15). A script that must match the page's escaped text builds the backslash with `chr(92)`; write such scripts as guarded replaces that write nothing unless every match is found.
 - **Git Bash's `TZ=America/New_York date` prints UTC labelled as ET** (no time zone data; 2026-11-15, a deploy logged five hours late). Read the time from the database instead: `select now() at time zone 'America/New_York'`.
 - **clasp can go missing while its login stays** (found 2026-11-15: `%APPDATA%\npm\node_modules\@google` empty, `~/.clasprc.json` intact). `deploy.py` then stops with "'clasp' not found". Reinstall clasp 3 (the login file holds clasp 3's named users): `npm install -g @google/clasp@3`, then `clasp show-authorized-user` should name the owner account. No new login needed.
