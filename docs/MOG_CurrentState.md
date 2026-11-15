@@ -12,7 +12,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 
 - **Phones** count straight into Supabase (`phone_direct` on all 10 stores).
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
-- **Each Sheet** is frozen for catalog edits. It still holds the Apps Script: the 3:30 AM close, the recap email, the onboarding moves. It also gets a nightly LOG_ORDERS backup.
+- **Each Sheet** is frozen for catalog edits. Since 2026-11-15 Supabase closes every store at night and sends the recap; the Sheet's Apps Script still serves the phone's new-day reset and the Daily summary (both through `/exec`, step 3 removes them) and the onboarding moves. Its LOG_ORDERS backup stopped with its trigger; the nightly off-site backup covers every table.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
 - **Versions (newest first):** schema v24 (the backup watchdog and the via/par/stores drop: live 2026-11-12, smoke_v24 28/28, probe 149/149, below); app v0.33.0 / store cache v76 (Manage finished, live on all 10 stores 2026-11-11, 41 gates since v24); schema v23 (live 2026-11-11, see Sheet retirement step 2 below); v22 (live 2026-11-06), v21 (routes, live 2026-11-05, store cache v74). Every older version with its smoke and probe counts: `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
 - **New stores** follow `mog-add-store` (11 steps, `scripts/validate.py`). The setup wizard and the Sheet menus accept all four concepts.
@@ -36,7 +36,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - the Edge Function `close` (version 1, JWT check off): refuses a call without Vault's secret (401), and an authenticated run answered `{"ok":true,"ran":[]}`;
   - `night_schedule.sql`: `pg_cron` job `mog-night`, every 15 minutes.
 - **Not yet:**
-  - `close_direct` is on at rprfo only (since 11-15); Apps Script still closes the other nine and sends their recaps;
+  - `close_direct` is on at all 10 stores (since 11-15); from the 11-15 cycle Supabase closes every store and sends every nightly recap, and each Sheet's 3:30 AM trigger retires itself that night;
   - the first shadows run at 3:00 AM on 11-12.
 - **Approved in the walkthrough:** Apps Script shares the once-per-cycle flag through Supabase (the Daily summary stays in Apps Script until step 3); each store's 3:30 AM trigger retires itself the first night its `close_direct` is on; recaps from `noreply@hehfood.com`, no Reply-To; a nightly shadow (3:00 to 3:20 AM) of every store Apps Script still closes, compared each morning with `supabase/tests/night_shadow_check.sql`.
 - **Built:**
@@ -52,7 +52,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   4. `night_schedule.sql` (done 11-11), then a test email (**sent 11-12**, about 2.6 s end to end);
   5. the Apps Script deploy: rprfo **done 11-12** (@114), **the other 10 done 11-15** (about 1:30 PM ET, `--redeploy`, every store's `/exec` answers);
   6. shadow nights: **done**, cycles 11-11, 11-12 and 11-13 matched at all 10 stores (11-14: nothing ordered; rpt's cycle closed by the phone's new-day reset at 00:01, so no shadow);
-  7. rprfo's `close_direct` on for three nights (**on since 11-15, 1:40 PM ET**; first close early on 11-16), then the other nine.
+  7. `close_direct` on: rprfo at 1:40 PM ET on 11-15, **then all nine others at about 1:55 PM the same day** (Sebastian's pick, no canary nights). First all-Supabase close: early on 11-16 (checked at 7:41 AM).
 
 **2026-11-12 (afternoon): schema v24 live** (Sebastian's go at 12:15 PM; built by a headless Grok Bot run, run live by Grok Bot at 1:30 PM ET; `docs/MOG_SheetRetirement_Spec.md`, "The backup watchdog").
 - **Built and gated:** the backup watchdog (a heartbeat from SebHEH/mog-backup after each good backup; an email through the mail relay when none is newer than 30 hours, once a day) and the drop of `mog.wh_products.via`, `par` and `stores` (copied first to `mog.wh_products_retired`; the drop stops if any function still names them). PGlite all pass, smoke_v24 28/28, 41 gates.
