@@ -3,7 +3,8 @@
 -- =====================================================================
 -- docs/MOG_SheetRetirement_Spec.md, R2. Every 15 minutes pg_cron runs
 -- mog.night_tick(): when mog.night_due() names anything (a store Supabase
--- closes whose cycle is behind after 3:30 AM its time, a recap a close
+-- closes whose cycle is behind its own today, from midnight since v25
+-- (3:30 AM before), a recap a close
 -- owes, a store Apps Script still closes to shadow between 3:00 and 3:20),
 -- it posts once to the Edge Function `close` through pg_net, which does it.
 --

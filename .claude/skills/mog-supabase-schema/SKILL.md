@@ -55,6 +55,22 @@ file is run once, in order. Re-running any of them must stay harmless.
     `EDITOR_NOT_DIRECT`. That was safe only while rprfo's editor was in the Sheet. Since 2026-10-19
     every store is `editor_direct`, so the probe became a real wrong-PIN attempt, and a FAIL. It
     was fixed 2026-10-20 to probe `nosuchstore`; `smoke_v6.sql` covers the refusal on `zztest6`.
+- **A smoke file rolls itself back; it never deletes** (2026-11-15). The Supabase connector asks to
+  confirm any statement with `delete` or `truncate`, the question never shows in the app, and the
+  call hangs 10 minutes and times out (smoke_v25's first run; two Toast Payroll sessions hit it the
+  same day). `update`, `create or replace` and `revoke` run without it. So, copying
+  [`supabase/tests/smoke_v25.sql`](../../../supabase/tests/smoke_v25.sql):
+  - results go in the session setting `mog.smokeN` (`set_config`), not a temp table that needs a
+    `truncate`;
+  - every write sits in an inner `begin ... exception` block that ends with
+    `raise exception 'mog_smokeN_rollback' using detail = current_setting('mog.smokeN')`; the handler
+    re-raises anything else and puts the detail back in the setting;
+  - the last row checks that nothing of the throwaway store was kept, and the file refuses to start
+    when one already exists;
+  - no `delete`, `truncate` or `drop` anywhere in the file, comments included (`grep -wi`).
+
+  The PGlite runner reads it like any other smoke file. Older smoke files keep their clean-up
+  `delete`s: run them in the SQL Editor, not the connector.
 - **Throwaway stores are `zztestN`.** `rprfotest` (`is_test`) holds rprfo's REAL PIN: never sign in
   there by script (memory `reference_fake_supabase_preview`).
 - **The fake copies the SQL's link rules.** An area rename sent as delete plus insert loses its pick

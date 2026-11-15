@@ -92,7 +92,7 @@ Each step ships on its own. Sizes are estimates.
 |---|---|---|---|
 | 1 | The backup (R4) | half a session | A store's LOG_ORDERS copy stops the night its close moves, so the new backup comes first. |
 | 2 | The close and the recap email in Supabase (R1, R2, R3, R8): canary rprfo, then all | 2 sessions | The core. Needs the mail relay set up. |
-| 3 | The phone off `/exec` (R7) | half to 1 session | Needs step 2's function. |
+| 3 | The phone off `/exec` (R7, **replaced 2026-11-15**: the phone stops closing and the Daily summary goes; see "Step 3") | half a session | Needs step 2's function. |
 | 4 | PINs and New store in HQ (R5, R6); `mog-add-store` rewritten; tried on a TEST store | 1 session | Needs every store's PIN push gone (step 2). |
 | 5 | Retire: the 11 projects' triggers, `deploy.py`'s targets, `mog-exec-repoint`, CLAUDE.md's layers, invariants and rules 5 and 6 | half a session | Last. |
 
@@ -204,6 +204,20 @@ Stop it: `update mog.backup_watch set alert_to = null;`.
 7. ~~Run the shadow nights.~~ Cycles 11-11, 11-12 and 11-13 matched at all 10 stores (rpr 64, 26, 71 rows; rpt 30 and 17; rpfr 12 and 12; rprfo 12 and 9). Cycle 11-14: nothing ordered at any store; rpt has no shadow because the phone's new-day reset closed its cycle at 00:01, before the 3:00 AM window (a KM opened the app after midnight), which is how a store closed early always reads.
 8. ~~Turn on rprfo's `close_direct` for three nights~~: on 2026-11-15, 1:40 PM ET (Sebastian's go).
 9. ~~Turn it on for the other nine.~~ **On 2026-11-15, about 1:55 PM ET**, the same afternoon (Sebastian's pick: all nine at once, R9's three canary nights dropped). The shadows had matched at all 10 stores for 3 nights; what hadn't run live was a close writing the log, a recap to real recipients, and the trigger retiring itself. `mog.night_due` for 3:30 AM on 11-16 then named all 10 closes and no shadow; only the TEST store `rprfotest` stays off. First night: the 11-15 cycle, closed early on 11-16. Rollback for a store: `close_direct = false`, then Move this store to Supabase in its Sheet to put the 3:30 AM trigger back; until then the phone's new-day reset still closes it through `/exec`.
+
+### Step 3: the phone stops closing; decided 2026-11-15
+
+**Decided (Sebastian, 2026-11-15), replacing R7:** the nightly close is the only thing that closes a cycle. R7 had the phone ask the close function to close its store; instead the phone never closes, so there aren't two places doing the same thing.
+- **The close moves to midnight**, each store's own time (schema v25). Measured over the 4 weeks to 11-15: the only counts between midnight and 3:30 AM were RP Tysons BOH's Saturday-night Chef Center and Transfer (Rosslyn) counts, 12:01 to 12:38 AM on 10-25, 11-08 and 11-15, which the phone's midnight reset filed under Sunday (the only counts behind Sunday's Chef Center order); no count at any store between 11 PM and midnight. A midnight close keeps that day line.
+- **The Daily summary goes** (the Send email button and the auto-send when every vendor is marked reviewed): the nightly recap is the one email. It had gone out 9 times in those 4 weeks (25 emails), twice on 11-15 (rpt 1:43 PM, tnytf 1:47 PM, most likely the auto-send); the same recap now arrives after the close instead.
+- **The phone never closes a cycle.** When it opens on a cycle that's behind (the close late or failed), it says the close is still finishing and offers Refresh; it never counts into a closed day. The close retries every 15 minutes.
+- **Sign-in stops falling back to `/exec`.** After step 3 the phone makes no `/exec` call.
+
+**Live:** schema v25 on 2026-11-15, about 2:45 PM ET: `mog.night_due` names a close from midnight; smoke_v25 11/11 (it rolls itself back, below), probe 149/149. The phone still resets until its change ships; a reset racing the midnight close is refused as `CYCLE_MOVED`, so nothing closes twice.
+
+**The connector and destructive statements (2026-11-15):** the Supabase connector asks to confirm a statement with `delete` or `truncate`, and that question never showed in the app, so the call hung 10 minutes and timed out. `update`, `create or replace` and `revoke` ran without it. From smoke_v25 on, a smoke file rolls itself back (its writes in an inner block that ends by raising `mog_smoke25_rollback`; the results ride out in the error's detail), so it needs no clean-up and no confirmation.
+
+**Still to do:** the phone change (rprfo first, then the other nine), then the docs (Blueprint, KM brief).
 
 ## Not verified
 

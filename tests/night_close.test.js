@@ -22,7 +22,8 @@
 //      never twice in one window, at most 3 times; a recap Supabase sent
 //      stops Apps Script's own pending send; the 3:30 AM trigger retires
 //      itself once close_direct is on (and only then); the shadow writes
-//      nothing but its log row; nothing before 3:30; the test email touches
+//      nothing but its log row; a close from midnight, not the evening
+//      before (v25; it waited for 3:30 AM before); the test email touches
 //      no flag; one store's failure leaves the others alone.
 //   D. supabase/functions/close/shared.mjs holds OrderMath.gs, Concepts.gs
 //      and RecapEmail.gs as they are now (python build.py rewrites it).
@@ -394,7 +395,7 @@ async function runSuite(srcOf, seeds) {
       }
     });
 
-    await scen('the shadow, and nothing before 3:30', async () => {
+    await scen('the shadow, and a close from midnight (v25)', async () => {
       const X = movedStore(seedC, script, 'roll-play');
       X.setAt(X.at(3, 5));
       const snap = clone(X.sb.handle('mog_sync_get_snapshot', { p_slug: SLUG, p_key: X.key }).data);
@@ -410,12 +411,12 @@ async function runSuite(srcOf, seeds) {
       same('C shadow', 'the shadow writes nothing else', { log: X.s.log, state: X.s.state }, before);
       if (mail.sent.length) fail('C shadow', 'the shadow sent email');
       X.s.closeDirect = true;
-      X.setAt(X.at(3, 25));
+      X.setAt(X.at(23, 55, 0));
       await night(core, X.sb, mail);
-      same('C shadow', 'close_direct on, 3:25 AM: nothing closed', { log: X.s.log, state: X.s.state }, before);
-      X.setAt(X.at(3, 30));
+      same('C shadow', 'close_direct on, 11:55 PM the evening of the cycle: nothing closed', { log: X.s.log, state: X.s.state }, before);
+      X.setAt(X.at(0, 5));
       await night(core, X.sb, mail);
-      if (X.s.state.cycleDate === before.state.cycleDate) fail('C shadow', 'close_direct on, 3:30 AM: not closed');
+      if (X.s.state.cycleDate === before.state.cycleDate) fail('C shadow', 'close_direct on, 12:05 AM: not closed');
     });
 
     await scen('the test email', async () => {

@@ -117,6 +117,7 @@ mog-mobile/
 │                                (v17's close without the key), the nightly function's mog.night_* SQL, mog_sync_night / mog_sync_set_recap_sent (run after v22).
 │   ├── schema_v24.sql           The backup watchdog (mog.backup_heartbeats, mog.backup_watch, mog.backup_*; night_due names its alert) and the drop of
 │                                mog.wh_products.via, par and stores, copied first to mog.wh_products_retired (run after v23).
+│   ├── schema_v25.sql           The nightly close is due from midnight, not 3:30 AM (mog.night_due; Sheet retirement step 3, run after v24).
 │   ├── night_schedule.sql       Run once after v23 (again after v24): pg_cron + pg_net, the Vault secret, mog.night_tick every 15 minutes,
 │                                mog.night_test (a test email), mog.backup_watch_test (the watchdog's test email).
 │   ├── functions/close/         The Edge Function `close` (index.ts: the secret, the database, the mail relay's address; core.mjs: the close, the recap, the shadow, relayMailer;
@@ -125,7 +126,7 @@ mog-mobile/
 │   ├── phones_direct.sql        Turns phone_direct on for every moved store (Move does it itself since 2026-10-17; this is the fallback).
 │   ├── backup_role.sql          The nightly backup's read-only login, mog_backup (pasted by a maintainer in the SQL Editor: it shows the
 │                                new password once, for the private repo SebHEH/mog-backup's secret). Re-running rotates the password.
-│   └── tests/                   smoke.sql … smoke_v24.sql (logic, run in the SQL Editor) + check_api.sh (public-key lockout)
+│   └── tests/                   smoke.sql … smoke_v25.sql (logic, run in the SQL Editor or the connector; v25 on rolls itself back) + check_api.sh (public-key lockout)
 │                                + test_store_elpis.sql (SQL Editor: two nights' held-place deliveries on the TEST store, which never closes, by route since v21)
 │                                + run_pglite.mjs (every schema and smoke file in PGlite; CI runs it)
 │                                + backup_role_pglite.mjs (backup_role.sql as a non-superuser like Supabase's postgres; CI runs it)

@@ -542,7 +542,8 @@ class FakeSupabase {
     const out = [];
     for (const slug of slugs) {
       const s = this.stores.get(slug);
-      if (s.closeDirect && s.state && s.catalog && s.state.cycleDate < L.date && L.time >= '03:30') out.push({ slug, step: 'close' });
+      // v25: due from midnight (v23 and v24 waited for 3:30 AM).
+      if (s.closeDirect && s.state && s.catalog && s.state.cycleDate < L.date) out.push({ slug, step: 'close' });
     }
     for (const slug of slugs) {
       const s = this.stores.get(slug);

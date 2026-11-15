@@ -34,6 +34,11 @@ const LOCAL_FAIL_ROWS = {
   'smoke_v7.sql': {
     why: 'in PGlite the check doesn\'t see what prepare_test_store wrote in that same statement (the call itself answers "phones on"); both passed in the SQL Editor',
     rows: ['test store: prepare gives it a cycle and turns its phones on', 'stores: zztest7\'s today edits never reach another store']
+  },
+  'smoke_v23.sql': {
+    why: 'schema_v25 moved the close from 3:30 AM to midnight on purpose; smoke_v25 checks the new time (these rows passed against v23 and v24)',
+    rows: ['due: close_direct on, not at 2:35 AM (winter)', 'due: close_direct on, not at 3:25 AM (winter)',
+           'due: summer time, at 3:35 AM (07:35 UTC) and not at 3:25']
   }
 };
 
