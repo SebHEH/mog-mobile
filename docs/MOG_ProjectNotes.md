@@ -209,3 +209,4 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **`build.py` can fail once with `OSError: [Errno 22]`** writing a store's `editor/` file: a passing Windows file lock. Run it again (2026-11-01).
 - **Python run from Git Bash prints CRLF:** pipe it through `tr -d '\r'` before a `while read` loop.
 - **Check non-ASCII edits:** the Edit tool once turned a typed `ă` into `ă`, so check the bytes with `cat -A` when a JS escape (not the character) matters.
+- **clasp can go missing while its login stays** (found 2026-11-15: `%APPDATA%\npm\node_modules\@google` empty, `~/.clasprc.json` intact). `deploy.py` then stops with "'clasp' not found". Reinstall clasp 3 (the login file holds clasp 3's named users): `npm install -g @google/clasp@3`, then `clasp show-authorized-user` should name the owner account. No new login needed.

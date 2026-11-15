@@ -50,8 +50,8 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   2. the function's deploy;
   3. ~~Resend~~ the mail relay (decided 2026-11-12: no new account): **done 11-12**, the relay created and deployed, its secret in Edge Functions → Secrets, the function at version 4;
   4. `night_schedule.sql` (done 11-11), then a test email (**sent 11-12**, about 2.6 s end to end);
-  5. the Apps Script deploy: rprfo **done 11-12** (@114), the other 10 after rprfo's night checks out;
-  6. shadow nights;
+  5. the Apps Script deploy: rprfo **done 11-12** (@114), **the other 10 done 11-15** (6:30 PM ET, `--redeploy`, every store's `/exec` answers);
+  6. shadow nights: **done**, cycles 11-11, 11-12 and 11-13 matched at all 10 stores (11-14: nothing ordered; rpt's cycle closed by the phone's new-day reset at 00:01, so no shadow);
   7. rprfo's `close_direct` on for three nights, then the other nine.
 
 **2026-11-12 (afternoon): schema v24 live** (Sebastian's go at 12:15 PM; built by a headless Grok Bot run, run live by Grok Bot at 1:30 PM ET; `docs/MOG_SheetRetirement_Spec.md`, "The backup watchdog").
@@ -64,7 +64,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - `night_schedule.sql` re-run (its first four lines skipped, see [docs/MOG_SheetRetirement_Spec.md](MOG_SheetRetirement_Spec.md)); `mog-night` still every 15 minutes;
   - the Edge Function `close` redeployed from `6c91637`: version 5, JWT check off, 401 without the secret.
 - **Armed 2026-11-12 1:45 PM ET:** `mog.backup_watch.alert_to` is set (Sebastian's pick; the address stays out of this repo) and `mog.backup_watch_test()` sent one test email (`last_test_ok` true, `{"sent": 1}`).
-- **Next check:** the 11-13 scheduled backup (4:47 AM ET) should write the first row of `mog.backup_heartbeats`.
+- **Heartbeats since:** one a day, 11-13 to 11-15 (the 11-15 run at 16:36 UTC: 40 tables, 18,233 rows); no alert sent. GitHub starts the scheduled run 3 to 7 hours after its 09:47 UTC slot, well inside the 30-hour window.
 
 **Older pinned entries (2026-11-11 Manage finished, the nightly backup, and everything back to 2026-11-01):** `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
 ### Next-session candidates
@@ -123,6 +123,7 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
    - `template/sw.js` `FORCE_CLIENT_RELOAD`: never change `FORCE_RELOAD_ID`.
    - Stale repo skills: `mog-apps-script-caching`, `mog-rpc-consolidation`, `mog-editor-web-reskin`, `mog-sheet-formula-verify`, `mog-health-check-extend`.
 9. **Small open items:**
+   - **RP Tysons BOH's recap bounces for one recipient:** `rollplaytyson@hehfood.com` is "Address not found" (Gmail's bounce on 11-12 and 11-14, each night rpt ordered). Fix or remove it in rpt's Manage → Recipients.
    - Confirm this repo's origin in the desktop app (Help → Troubleshooting → Review Pinned Git Origins), so worktree sessions can merge `main` when it changed a skill.
    - No GitHub CLI on Sebastian's computer: pull requests are opened by hand and the app can't watch their CI (optional: install `gh`, then `gh auth login`).
    - `mog-deploy-workflow`'s HTML-modal row still says modals run in Rhino ES5 (CLAUDE.md invariant #4 says otherwise).

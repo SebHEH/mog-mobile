@@ -200,8 +200,8 @@ Stop it: `update mog.backup_watch set alert_to = null;`.
    3. ~~Redeploy the function.~~ Version 4 (JWT check off); still 401 without Vault's secret. Version 5 (schema v24's watchdog, from `6c91637`) on 11-12.
 4. ~~Run `night_schedule.sql`.~~ Done 2026-11-11.
 5. ~~Send a test email to Sebastian, timed.~~ Sent 11-12 14:31 UTC: rprfo's 11-11 recap (1 vendor, 12 items), about 2.6 s end to end.
-6. Deploy Apps Script: ~~rprfo~~ (11-12, version @114, `/exec` health check answers), then the other 10 once rprfo's night checks out (it closes as before, sends one recap, and its new `Recap.gs` writes `mog.store_state.recap_sent_for`). Changes nothing a store does while `close_direct` is off, so it runs without a question (CLAUDE.md, Working conventions 2).
-7. Run the shadow nights (night 1 matched, 11-12).
+6. ~~Deploy Apps Script~~: rprfo 11-12 (version @114); the other 10 on 2026-11-15 at 6:30 PM ET (`python deploy.py --redeploy`, all 11 push and deploy OK; every store's `/exec` answers a bad-JSON POST with its JSON error in about 1.5 s). rprfo's nights checked first: it closed the 11-12 cycle at 3:37 AM (9 rows, matching its shadow), wrote `recap_sent_for` 2026-11-12, and its 4 recipients got one recap each at 3:39 AM.
+7. ~~Run the shadow nights.~~ Cycles 11-11, 11-12 and 11-13 matched at all 10 stores (rpr 64, 26, 71 rows; rpt 30 and 17; rpfr 12 and 12; rprfo 12 and 9). Cycle 11-14: nothing ordered at any store; rpt has no shadow because the phone's new-day reset closed its cycle at 00:01, before the 3:00 AM window (a KM opened the app after midnight), which is how a store closed early always reads.
 8. Turn on rprfo's `close_direct` for three nights.
 9. Turn it on for the other nine.
 
