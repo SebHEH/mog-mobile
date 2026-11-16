@@ -1,0 +1,1927 @@
+// MOG catalog editor: the editor's actions over the Supabase catalog tables.
+//
+// Pure: no DOM, no network, no Apps Script. A port of the Sheet editor's
+// server code from Sheet ranges to the schema-v4 tables: Manage Items
+// (Items.gs), Manage Vendors (Vendors.gs), Storage Areas and Shelf to Sheet
+// (PickPath.gs). tests/catalog_edit.test.js runs it next to that real code on
+// the fake Sheet: same answers, same errors, same row order. Intended
+// differences, each pinned there:
+//   - removing a vendor takes it off its items and lists and leaves the items
+//     active (D23); the Sheet deactivates them
+//   - names the database can't hold (a vendor over 100 characters, an item
+//     over 300) are refused instead of written
+// Some calls are the editor's own, with no Sheet twin: commitImportItems
+// (Import from MarginEdge, tests/me_import.test.js), the Items page's bulk
+// saves (tests/items_bulk.test.js), the Vendors page's getVendorsPage and
+// commitSaveVendor (a vendor's days, cutoff and contact, schema v10;
+// tests/vendor_contacts.test.js), and HQ's commitHqRollout (one store's
+// share of a vendor or LTO rollout, schema v11; tests/hq_rollout.test.js).
+// The concept library's list rules (cleanLibrary, librarySeed, libraryAdd,
+// libraryLabel; schema v12, tests/concept_library.test.js) are plain
+// functions: a library is no store's tables.
+// The store is never part of this file: the tables it gets are one store's,
+// and mog_editor_apply takes the store from the sign-in token.
+//
+// tables = { vendors:  [{ name, mults, cutoff, contact? }]   (contact only
+//                                                            when it has one)
+//            areas:    [{ name, ord }],
+//            items:    [{ id, name, primaryVendor, pack, par, active, useMult,
+//                         notes, sku, category, eligible, seq, lto? }],   (lto: the
+//                                                            LTO that made it, schema v14)
+//            pickRows: [{ vendor, id, area, shelfOrder, seq }],
+//            ltos?:    [{ id, name, sentAt, status }] }      (the LTOs sent to the
+//                                                            store, only when there is one)
+// The shape Sync.gs buildCatalogTables_ builds and mog_editor_get returns.
+// items and pickRows are in seq order, which is the Sheet's row order:
+// MASTER_ITEMS for items, SETUP K:P for pick rows.
+//
+// A write never changes the tables it's given. It returns { result, ops }:
+//   result  what the Sheet's code returns (minus the Sheet row numbers)
+//   ops     the changes, for mog_editor_apply (supabase/schema_v8.sql) and
+//           applyOps below, in an order the database's links allow:
+//     { shift: 'items', from: n }        every item with seq >= n moves down
+//                                        one (a row inserted above them, as
+//                                        the Sheet does)
+//     { rename: 'areas', from, to }      a storage area renamed; its pick rows
+//                                        follow (the database's on update
+//                                        cascade)
+//     { rename: 'vendors', from, to }    a vendor renamed (schema v15): its
+//                                        items' main vendor and pick rows
+//                                        follow, its name in the items' vendor
+//                                        lists changes with it, and the
+//                                        database moves the store's counts and
+//                                        HQ's remembered name too
+//     { t, key, before, after }          one row of table t; before null =
+//                                        insert, after null = delete
+//   Order: shifts, renames, then pick-row and area deletes, then inserts and
+//   updates (vendors, areas, items, pick rows), then item and vendor deletes.
+//   So a vendor's items lose it before it goes, and an area's rows go before
+//   it does.
+// An error is thrown with the Sheet code's own message.
+(function (root) {
+  'use strict';
+
+  const DELIM = '|';                       // Core.gs ELIGIBLE_VENDOR_DELIM
+  const MIN_ORDERS = 3;                    // History.gs PAR_FLAG.MIN_ORDERS
+  const TABLES = ['vendors', 'areas', 'items', 'pickRows'];
+  const s_ = v => String(v || '').trim();  // Items.gs's String(x || "").trim()
+  const clone = x => JSON.parse(JSON.stringify(x));
+
+  function keyOf(t, row) {
+    if (t === 'items') return row.id;
+    if (t === 'pickRows') return row.vendor + '\u0001' + row.id;
+    return row.name;
+  }
+
+  // ---- Helpers (Vendors.gs / PickPath.gs, over the tables) -----------------
+
+  // getVendorList: the listed vendors, A to Z the way localeCompare sorts.
+  function vendorList(t) {
+    const seen = new Set(), out = [];
+    for (const v of t.vendors) {
+      const n = s_(v.name), k = n.toLowerCase();
+      if (n && !seen.has(k)) { seen.add(k); out.push(n); }
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  }
+  const vendorMap = t => new Map(vendorList(t).map(v => [v.toLowerCase(), v]));
+
+  function normalizeVendorOrThrow(t, vendorName) {
+    const map = vendorMap(t);
+    const input = String(vendorName || '').trim();
+    if (!input) throw new Error('Vendor is required.');
+    const key = input.toLowerCase();
+    if (!map.has(key)) throw new Error('Vendor "' + input + '" is not in SETUP vendor table (column R).');
+    return map.get(key);
+  }
+
+  function parseEligibleVendors(raw) {
+    return String(raw == null ? '' : raw).split(DELIM).map(s => s.trim()).filter(s => s !== '');
+  }
+
+  // normalizeEligibleList_: canonical, deduped, the active vendor first.
+  function normalizeEligibleList(raw, activeVendor, map) {
+    const names = Array.isArray(raw) ? raw : parseEligibleVendors(raw);
+    const out = [], seen = new Set();
+    const add = v => {
+      const canon = map.get(String(v == null ? '' : v).trim().toLowerCase());
+      if (!canon) return;
+      const k = canon.toLowerCase();
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push(canon);
+    };
+    if (activeVendor) add(activeVendor);
+    names.forEach(add);
+    return out;
+  }
+
+  const areaOrderMap = t => new Map(t.areas.filter(a => s_(a.name) !== '').map(a => [s_(a.name), Number(a.ord)]));
+
+  // findItemRow_: the first item whose ID is the query, or whose name is,
+  // ignoring case.
+  function findItem(t, query) {
+    const q = String(query || '').trim();
+    if (!q) return null;
+    const ql = q.toLowerCase();
+    for (const it of t.items) {
+      if (s_(it.id) === q || s_(it.name).toLowerCase() === ql) return it;
+    }
+    return null;
+  }
+
+  // The item's storage area: the first pick row (Sheet order) that has one.
+  function firstArea(t, id) {
+    for (const r of t.pickRows) if (s_(r.id) === id && s_(r.area)) return s_(r.area);
+    return '';
+  }
+
+  const nextPickSeq = t => t.pickRows.reduce((m, r) => Math.max(m, Number(r.seq) || 0), 0) + 1;
+  const shelfNum = r => Number(r.shelfOrder) || 0;
+
+  // ---- Reads ---------------------------------------------------------------
+
+  // getAllItemsForView_
+  function getAllItemsForView(t) {
+    const areaById = new Map();
+    for (const r of t.pickRows) {
+      const id = s_(r.id), area = s_(r.area);
+      if (id && area && !areaById.has(id)) areaById.set(id, area);
+    }
+    const map = vendorMap(t);
+    const ltos = new Map((t.ltos || []).map(l => [l.id, l]));
+    return t.items.filter(it => s_(it.id) && s_(it.name)).map(it => {
+      const id = s_(it.id), vendor = s_(it.primaryVendor);
+      const row = {
+        id: id,
+        name: s_(it.name),
+        vendor: vendor,
+        eligibleVendors: normalizeEligibleList(it.eligible, vendor, map),
+        pack: s_(it.pack),
+        par: it.par === null || it.par === undefined ? '' : Number(it.par),
+        active: it.active === true,
+        useMult: it.useMult === true,
+        hasArea: areaById.has(id),
+        storageArea: areaById.get(id) || ''
+      };
+      // The LTO it came from (schema v14), only when it has one.
+      if (s_(it.lto)) {
+        const l = ltos.get(s_(it.lto)) || {};
+        row.lto = { id: s_(it.lto), name: s_(l.name), status: s_(l.status), sentAt: l.sentAt || '' };
+      }
+      return row;
+    });
+  }
+
+  // getStorageAreaList_compute_: areas in their order.
+  function getStorageAreaList(t) {
+    return t.areas.map(a => ({ name: s_(a.name), order: Number(a.ord) }))
+      .filter(x => x.name !== '' && Number.isFinite(x.order))
+      .sort((a, b) => a.order - b.order);
+  }
+
+  // getVendorTableData_compute_ (the fields Manage Items reads).
+  function getVendorTableData(t) {
+    return t.vendors.filter(v => s_(v.name)).map(v => ({
+      name: s_(v.name),
+      mults: (v.mults || []).slice(0, 7).map(x => Number(x) || 0),
+      cutoffTime: v.cutoff || null
+    }));
+  }
+
+  // ---- A vendor's contact (schema v10) ---------------------------------------
+  // The eight keys, text only, trimmed, empty ones left out: the rule
+  // mog.vendor_contact_clean applies. Keys go in jsonb's stored order
+  // (shorter first, then A to Z), so a contact saved here reads back from
+  // Supabase exactly as it went in and an unchanged one makes no change.
+  // null when there is nothing to keep.
+  const CONTACT_KEYS = ['person', 'phone', 'email', 'orderVia', 'orderEmail', 'website', 'account', 'notes'];
+  const CONTACT_LABEL = { person: 'contact name', phone: 'phone', email: 'email', orderVia: 'how to order',
+                          orderEmail: 'order email', website: 'website', account: 'account number', notes: 'notes' };
+  const jsonbKeyOrder = (a, b) => (a.length - b.length) || (a < b ? -1 : a > b ? 1 : 0);
+  const CONTACT_ORDER = CONTACT_KEYS.slice().sort(jsonbKeyOrder);
+  function cleanContact(c) {
+    if (!c || typeof c !== 'object' || Array.isArray(c)) return null;
+    const out = {};
+    for (const k of CONTACT_ORDER) {
+      if (typeof c[k] !== 'string') continue;
+      const v = c[k].trim(), max = k === 'notes' ? 500 : 200;
+      if (v.length > max) {
+        const label = CONTACT_LABEL[k];
+        throw new Error(label.charAt(0).toUpperCase() + label.slice(1) + ': ' + max + ' characters at most.');
+      }
+      if (v) out[k] = v;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+  // The same contact for comparing: key order fixed, empty = none. Never throws.
+  function contactKey(c) {
+    if (!c || typeof c !== 'object') return null;
+    const keys = Object.keys(c).sort(jsonbKeyOrder);
+    return keys.length ? JSON.stringify(keys.map(k => [k, c[k]])) : null;
+  }
+
+  // The Vendors page: every vendor A to Z with its days, cutoff and contact,
+  // and the counts the phone's vendor card shows (the catalog's itemCounts and
+  // backupCounts: active items it's the main vendor of, and active items on
+  // its list whose main vendor is another one).
+  function getVendorsPage(t) {
+    const active = new Map(t.items.filter(it => it.active).map(it => [it.id, it]));
+    return vendorList(t).map(name => {
+      const v = findVendor(t, name);
+      const backups = new Set(t.pickRows.filter(r => r.vendor === v.name && active.has(r.id) &&
+                                                     active.get(r.id).primaryVendor !== v.name).map(r => r.id));
+      return { name: v.name, mults: (v.mults || []).slice(0, 7).map(x => Number(x) || 0), cutoffTime: v.cutoff || null,
+               contact: v.contact ? clone(v.contact) : {},
+               itemCount: t.items.filter(it => it.active && it.primaryVendor === v.name).length,
+               backupCount: backups.size };
+    });
+  }
+
+  // ---- Delivery days (the Vendors page and HQ) -------------------------------
+  // ManageVendors.html's computeMultsFromDelivery / inferDeliveryFromMults,
+  // index 0 = Monday. An order placed on day i arrives the next day and
+  // covers the days until the following delivery, so mults[i] is that gap
+  // (0 when nothing is due).
+  function multsFromDays(days) {
+    const mults = [0, 0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < 7; i++) {
+      const tomorrow = (i + 1) % 7;
+      if (!days[tomorrow]) continue;
+      let gap = 1;
+      for (let j = 1; j <= 7; j++) { if (days[(tomorrow + j) % 7]) { gap = j; break; } }
+      mults[i] = gap;
+    }
+    return mults;
+  }
+  function daysFromMults(mults) {
+    const days = [false, false, false, false, false, false, false];
+    for (let i = 0; i < 7; i++) if (Number(mults[i]) > 0) days[(i + 1) % 7] = true;
+    return days;
+  }
+
+  // ---- The same vendor at another store (HQ) ---------------------------------
+  // A store's name for a vendor HQ names: the same name in any case, else the
+  // closest one once the words that only tell a company apart ("and",
+  // "Inc", "Distributions") are dropped: equal, one the start of the other,
+  // or a letter in five apart ("Chefs Warehouse", "Chef Centre"). HQ shows
+  // every match for a person to confirm. null = no match.
+  const VENDOR_NOISE = ['and', 'the', 'inc', 'co', 'llc', 'ltd', 'corp', 'company',
+                        'distribution', 'distributions', 'distributor', 'distributors'];
+  function vendorKey(name) {
+    return s_(name).toLowerCase().replace(/&/g, ' ').split(/[^a-z0-9]+/)
+      .filter(w => w && VENDOR_NOISE.indexOf(w) < 0).join('');
+  }
+  function editDistance(a, b) {
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      for (let j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      }
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  function matchVendor(names, wanted) {
+    const w = s_(wanted);
+    if (!w) return null;
+    const same = names.find(n => s_(n).toLowerCase() === w.toLowerCase());
+    if (same) return { name: same, how: 'same' };
+    const k = vendorKey(w);
+    if (!k) return null;
+    let best = null;
+    for (const n of names) {
+      const nk = vendorKey(n);
+      if (!nk) continue;
+      let score;
+      if (nk === k) score = 0;
+      else if (Math.min(nk.length, k.length) >= 3 && (nk.indexOf(k) === 0 || k.indexOf(nk) === 0)) score = 1;
+      else {
+        const d = editDistance(nk, k);
+        if (d > Math.max(1, Math.floor(Math.max(nk.length, k.length) / 5))) continue;
+        score = 1 + d;
+      }
+      if (!best || score < best.score) best = { name: n, score: score };
+    }
+    return best ? { name: best.name, how: 'close' } : null;
+  }
+
+  // getManageItemsBootstrap_. The Par Review flags come from the order log
+  // (docs/MOG_OneApp_Spec.md E4, T1): host.js reads it and works them out with
+  // OrderMath.gs parReviewFlags_, the Sheet's own math, and passes them in
+  // with its threshold; none given, they are empty ("No data yet").
+  function getManageItemsBootstrap(t, flags, minOrders) {
+    return { items: getAllItemsForView(t), flags: flags || {}, areas: getStorageAreaList(t),
+             vendorTable: getVendorTableData(t), minOrders: minOrders || MIN_ORDERS };
+  }
+
+  // ---- Store Health Check (T4) ------------------------------------------------
+  // The app's own checks for a store whose catalog lives here: what can still
+  // go wrong in the tables (the database already rules out orphan pick rows,
+  // repeated item ids and areas that don't exist), and the store's status
+  // from mog_editor_status: phones on Supabase, last night's close, the PIN
+  // lockout. Same report shape as Health.gs getStoreHealthReport_.
+
+  // Backup vendors missing from their lists: (item, vendor) pairs where the
+  // item is eligible with the vendor, has a storage area, and has no row on
+  // that vendor's list (Health.gs "Backup vendor placement").
+  function missingBackupRows(t) {
+    const map = vendorMap(t);
+    const out = [];
+    for (const it of t.items) {
+      if (it.active !== true || !s_(it.id)) continue;
+      const id = s_(it.id);
+      const rows = t.pickRows.filter(r => s_(r.id) === id);
+      const area = (rows.find(r => s_(r.area)) || {}).area;
+      if (!area) continue;
+      const have = new Set(rows.map(r => s_(r.vendor).toLowerCase()));
+      for (const v of normalizeEligibleList(it.eligible, s_(it.primaryVendor), map)) {
+        if (!have.has(v.toLowerCase())) out.push({ id: id, name: s_(it.name), vendor: v, area: s_(area) });
+      }
+    }
+    return out;
+  }
+
+  const listOf = (names, max) => names.slice(0, max || 8).join(', ') + (names.length > (max || 8) ? ' and ' + (names.length - (max || 8)) + ' more' : '');
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function fmtLocal(s) {   // 'YYYY-MM-DD HH:MM' -> 'Oct 19, 2026 3:30 PM' (Health.gs's format)
+    const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(String(s || ''));
+    if (!m) return String(s || '');
+    const h = Number(m[4]);
+    return MONTHS[Number(m[2]) - 1] + ' ' + Number(m[3]) + ', ' + m[1] + ' ' + ((h % 12) || 12) + ':' + m[5] + ' ' + (h < 12 ? 'AM' : 'PM');
+  }
+
+  // Health.gs's report shape. Each row also carries what the Overview words
+  // its own row from, in either language (its Needs attention, since the
+  // Health check page went into it, 2026-11): count and names for a catalog
+  // row, copies for repeated names, cycleDate for the close, minutes for the
+  // lockout.
+  function getStoreHealthReport(t, status, storeName) {
+    const checks = [];
+    const add = (id, label, st, detail, fix, fixId, more) =>
+      checks.push(Object.assign({ id: id, label: label, status: st, detail: detail || '', fix: fix || '', fixId: fixId || '', destructive: false }, more || {}));
+    const st = status || {};
+
+    // ── The store ──
+    add('phones', 'Phones on Supabase', st.phoneDirect ? 'pass' : 'warn',
+      st.phoneDirect ? 'Phones read and save straight to Supabase.'
+                     : 'Phones still go through the Sheet\'s /exec web app, which is slower.',
+      st.phoneDirect ? '' : 'In the Supabase SQL Editor run supabase/phones_direct.sql for this store.');
+    const today = String(st.localNow || '').slice(0, 10), hhmm = String(st.localNow || '').slice(11, 16);
+    const cycle = { cycleDate: st.cycleDate || '' };
+    if (!st.cycleDate) {
+      add('nightly', 'Last night\'s close', 'fail', 'The store has no cycle in Supabase yet.',
+        'Open the Sheet: 📱 Mobile API → Move this store to Supabase.', '', cycle);
+    } else if (st.cycleDate >= today || hhmm < '04:00') {
+      add('nightly', 'Last night\'s close', 'pass', 'The cycle open now is ' + st.cycleDate + '; the next close is at 3:30 AM.', '', '', cycle);
+    } else {
+      add('nightly', 'Last night\'s close', 'fail',
+        'The cycle open now is still ' + st.cycleDate + ', so last night\'s 3:30 AM close did not run.',
+        'Open the app on a phone to start the new day, then install the nightly run: in the Sheet, 📱 Mobile API → 🩺 Store Health Check → "Nightly 3:30 AM run" → Fix.', '', cycle);
+    }
+    const mins = Math.ceil((Number(st.lockedForMs) || 0) / 60000);
+    add('lockout', 'PIN lockout', mins > 0 ? 'warn' : 'pass',
+      mins > 0 ? 'The PIN is locked for ' + mins + ' more minute' + (mins === 1 ? '' : 's') + ' after 5 wrong tries.' : 'No lockout.',
+      mins > 0 ? 'Clear it so the right PIN works now.' : '', mins > 0 ? 'clear_lockout' : '', { minutes: Math.max(mins, 0) });
+    const listed = names => ({ count: names.length, names: names });
+
+    // ── The catalog ──
+    const noDays = t.vendors.filter(v => !(v.mults || []).some(x => Number(x) > 0)).map(v => s_(v.name));
+    add('vendors_days', 'Vendors with delivery days', noDays.length ? 'warn' : 'pass',
+      noDays.length ? noDays.length + ' vendor' + (noDays.length === 1 ? ' has' : 's have') + ' no delivery days, so ' +
+                      (noDays.length === 1 ? 'it orders' : 'they order') + ' nothing: ' + listOf(noDays) + '.'
+                    : 'Every vendor has delivery days.',
+      noDays.length ? 'Vendors: set each one\'s delivery days.' : '', '', listed(noDays));
+
+    const active = t.items.filter(it => it.active === true && s_(it.id) && s_(it.name));
+    const unassigned = getUnassignedActiveItems(t);
+    add('items_area', 'Items on a count list', unassigned.length ? 'warn' : 'pass',
+      unassigned.length ? unassigned.length + ' active item' + (unassigned.length === 1 ? ' has' : 's have') +
+                          ' no storage area, so ' + (unassigned.length === 1 ? 'it is' : 'they are') + ' on no count list: ' +
+                          listOf(unassigned.map(u => u.name)) + '.'
+                        : 'Every active item has a storage area.',
+      unassigned.length ? 'Items → Needs setup: give each a storage area.' : '', '', listed(unassigned.map(u => u.name)));
+
+    const noPar = active.filter(it => typeof it.par !== 'number').map(it => s_(it.name));
+    add('items_par', 'Items with a par', noPar.length ? 'warn' : 'pass',
+      noPar.length ? noPar.length + ' active item' + (noPar.length === 1 ? ' has' : 's have') + ' no par, so ' +
+                     (noPar.length === 1 ? 'it is' : 'they are') + ' never ordered: ' + listOf(noPar) + '.'
+                   : 'Every active item has a par.',
+      noPar.length ? 'Items → Needs setup: set each one\'s par.' : '', '', listed(noPar));
+
+    const noVendor = active.filter(it => !s_(it.primaryVendor)).map(it => s_(it.name));
+    add('items_primary', 'Items with a primary vendor', noVendor.length ? 'warn' : 'pass',
+      noVendor.length ? noVendor.length + ' active item' + (noVendor.length === 1 ? ' has' : 's have') +
+                        ' no primary vendor (its vendor was removed): ' + listOf(noVendor) + '.'
+                      : 'Every active item has a primary vendor.',
+      noVendor.length ? 'Items → Needs setup: pick a main vendor for each.' : '', '', listed(noVendor));
+
+    const missing = missingBackupRows(t);
+    add('backups_placed', 'Backup vendor placement', missing.length ? 'warn' : 'pass',
+      missing.length ? missing.length + ' item' + (missing.length === 1 ? ' is' : 's are') + ' missing from a backup vendor\'s list: ' +
+                       listOf(missing.map(m => m.name + ' (' + m.vendor + ')'), 6) + '.'
+                     : 'Every item is on each of its vendors\' lists.',
+      missing.length ? 'Place them, in their current storage area. You can undo it from Changes.' : '',
+      missing.length ? 'place_backups' : '', listed(missing.map(m => m.name + ' (' + m.vendor + ')')));
+
+    const byName = new Map();
+    for (const it of active) {
+      const k = s_(it.name).toLowerCase();
+      byName.set(k, (byName.get(k) || []).concat([s_(it.name)]));
+    }
+    const sharing = Array.from(byName.values()).filter(v => v.length > 1);
+    const repeated = sharing.map(v => v[0] + ' (' + v.length + ')');
+    add('item_names', 'Item names', repeated.length ? 'warn' : 'pass',
+      repeated.length ? 'Active items sharing a name, which is easy to mix up when counting: ' + listOf(repeated) + '.'
+                      : 'Every active item has its own name.',
+      repeated.length ? 'Items: rename the extra copies, or make them inactive.' : '', '',
+      { count: sharing.length, names: sharing.map(v => v[0]), copies: sharing.map(v => v.length) });
+
+    const summary = { pass: 0, warn: 0, fail: 0 };
+    checks.forEach(c => { summary[c.status]++; });
+    return { generatedAt: fmtLocal(st.localNow), store: storeName || 'Store', summary: summary, checks: checks };
+  }
+
+  // The Overview's numbers (docs/MOG_OneApp_Spec.md U4, U9): its count cards
+  // and setup checklist, by the Health Check's own rules above. Shelf to Sheet
+  // counts as done once the change log holds one of its saves (its label,
+  // changeLabel below) that wasn't undone.
+  const SHELF_SAVE_RE = /^Saved the .+ list \(/;
+  function getOverviewCounts(t, changes) {
+    const live = t.items.filter(it => it.active === true && s_(it.id) && s_(it.name));
+    return {
+      items: live.length,
+      inactive: t.items.filter(it => it.active !== true && s_(it.id)).length,
+      vendors: t.vendors.map(v => s_(v.name)),
+      vendorsNoDays: t.vendors.filter(v => !(v.mults || []).some(x => Number(x) > 0)).map(v => s_(v.name)),
+      areas: t.areas.slice().sort((a, b) => (a.ord - b.ord) || (s_(a.name) < s_(b.name) ? -1 : 1)).map(a => s_(a.name)),
+      itemsNoArea: getUnassignedActiveItems(t).length,
+      itemsNoPar: live.filter(it => typeof it.par !== 'number').length,
+      shelfSaved: (changes || []).some(c => c && !c.undoneBy && !c.undoes && SHELF_SAVE_RE.test(String(c.label || '')))
+    };
+  }
+
+  // The Overview's Needs attention rows from the Health check (its page went
+  // into the Overview, 2026-11-11): one row per check that isn't OK, in the
+  // report's order, saying what it opens (a Manage page and its filter, as
+  // ?page= link parameters) or fixes. setupOpen: the setup card is showing,
+  // so the rows it already covers (vendors' days, items' areas and pars) stay
+  // on it. The store checks that are OK come back in storeOk, for the line
+  // under the rows that always shows them.
+  const STORE_CHECKS = ['nightly', 'lockout', 'phones'];
+  const SETUP_COVERS = ['vendors_days', 'items_area', 'items_par'];
+  function healthRows(report, setupOpen) {
+    const rows = [], storeOk = [];
+    for (const c of (report && report.checks) || []) {
+      const store = STORE_CHECKS.indexOf(c.id) >= 0;
+      if (c.status === 'pass') { if (store) storeOk.push(c.id); continue; }
+      if (setupOpen && SETUP_COVERS.indexOf(c.id) >= 0) continue;
+      const names = Array.isArray(c.names) ? c.names.slice() : [];
+      let link = null;
+      if (c.id === 'vendors_days') link = names.length === 1 ? { page: 'vendors', open: names[0] } : { page: 'vendors' };
+      else if (c.id === 'items_area') link = { page: 'items', area: '__none' };
+      else if (c.id === 'items_par' || c.id === 'items_primary') link = { page: 'items', view: 'setup' };
+      else if (c.id === 'item_names' && names.length) link = { page: 'items', q: names[0] };
+      rows.push({ id: c.id, kind: store ? 'store' : 'catalog', tone: c.status === 'fail' ? 'bad' : 'warn',
+                  count: Number(c.count) || names.length, names: names, copies: Array.isArray(c.copies) ? c.copies.slice() : [],
+                  minutes: Number(c.minutes) || 0, cycleDate: c.cycleDate || '', link: link, fix: c.fixId || '' });
+    }
+    // The store's own checks in one order (the close, the PIN, the phones),
+    // the catalog's after them in the report's.
+    const rank = id => { const i = STORE_CHECKS.indexOf(id); return i < 0 ? STORE_CHECKS.length : i; };
+    const order = new Map(rows.map((r, i) => [r, i]));
+    rows.sort((a, b) => (rank(a.id) - rank(b.id)) || (order.get(a) - order.get(b)));
+    storeOk.sort((a, b) => rank(a) - rank(b));
+    return { rows: rows, storeOk: storeOk };
+  }
+
+  // The Health Check's fix: each missing backup row, in the item's current
+  // area at the end of that area, as syncItemEligiblePickRows_ adds them.
+  function placeBackupVendors(w) {
+    const missing = missingBackupRows(w);
+    for (const m of missing) {
+      const vLow = m.vendor.toLowerCase();
+      const maxShelf = w.pickRows
+        .filter(r => s_(r.vendor).toLowerCase() === vLow && s_(r.area) === m.area)
+        .reduce((x, r) => Math.max(x, shelfNum(r)), 0);
+      w.pickRows.push({ vendor: m.vendor, id: m.id, area: m.area, shelfOrder: maxShelf + 10, seq: nextPickSeq(w) });
+    }
+    return { placed: missing.length };
+  }
+
+  // getUnassignedActiveItems_: active items with no storage area anywhere.
+  function getUnassignedActiveItems(t) {
+    const assigned = new Set(t.pickRows.filter(r => s_(r.id) && s_(r.area)).map(r => s_(r.id)));
+    return t.items
+      .filter(it => s_(it.id) && s_(it.name) && it.active === true && !assigned.has(s_(it.id)))
+      .map(it => ({ id: s_(it.id), name: s_(it.name), vendor: s_(it.primaryVendor), pack: s_(it.pack) }))
+      .sort((a, b) => {
+        const v = a.vendor.localeCompare(b.vendor);
+        return v !== 0 ? v : a.name.localeCompare(b.name);
+      });
+  }
+
+  // getItemForEdit_
+  function getItemForEdit(t, query) {
+    const it = findItem(t, query);
+    if (!it) return null;
+    const id = s_(it.id), vendor = s_(it.primaryVendor);
+    return {
+      sheetRow: it.seq,
+      id: id,
+      name: s_(it.name),
+      vendor: vendor,
+      eligibleVendors: normalizeEligibleList(it.eligible, vendor, vendorMap(t)),
+      pack: s_(it.pack),
+      par: it.par === null || it.par === undefined ? '' : it.par,
+      active: it.active === true,
+      useMult: it.useMult === true,
+      notes: s_(it.notes),
+      currentArea: firstArea(t, id)
+    };
+  }
+
+  // ---- Writes, on a working copy w ------------------------------------------
+
+  // commitPickPathAreaAssignment_ (PickPath.gs): the item's row on this
+  // vendor's list moves to areaName, at the end of that area.
+  function assignArea(w, itemId, vendor, areaName, opts) {
+    const id = String(itemId || '').trim();
+    if (!id) throw new Error('Item ID is required.');
+    if (!vendor) throw new Error('Vendor is required.');
+    if (!areaName) throw new Error('Storage Area is required.');
+    const orders = areaOrderMap(w);
+    if (!orders.has(areaName)) throw new Error('"' + areaName + '" is not a recognised Storage Area.');
+    const vLow = String(vendor).trim().toLowerCase();
+    w.pickRows = w.pickRows.filter(r => !(s_(r.vendor).toLowerCase() === vLow && s_(r.id) === id));
+    const maxShelf = w.pickRows
+      .filter(r => s_(r.vendor).toLowerCase() === vLow && s_(r.area) === areaName)
+      .reduce((m, r) => Math.max(m, shelfNum(r)), 0);
+    void opts;   // the Sheet stores the item's name on the row; the tables look it up
+    w.pickRows.push({ vendor: String(vendor).trim(), id: id, area: areaName, shelfOrder: maxShelf + 10, seq: nextPickSeq(w) });
+  }
+
+  // The item moves to areaName on every list it's on: its main vendor's row
+  // (assignArea), then each backup's row not already there, each at the end
+  // of that area on its own list (2026-11-04: only the main vendor's row
+  // moved, so a backup kept the old area and Items could show it).
+  function moveItemToArea(w, itemId, vendor, areaName, opts) {
+    assignArea(w, itemId, vendor, areaName, opts);
+    const id = String(itemId || '').trim(), vLow = String(vendor).trim().toLowerCase();
+    const others = w.pickRows.filter(r => s_(r.id) === id && s_(r.vendor).toLowerCase() !== vLow && s_(r.area) !== areaName)
+      .map(r => s_(r.vendor));
+    for (const v of others) assignArea(w, id, v, areaName, opts);
+  }
+
+  // syncItemEligiblePickRows_ (Items.gs): the item's pick rows follow its
+  // eligible list. Rows for vendors no longer eligible go; an eligible vendor
+  // without a row gets one in the item's current area (none if it has none).
+  function syncEligiblePickRows(w, itemId, ctx) {
+    const id = String(itemId || '').trim();
+    if (!id) return { added: 0, removed: 0 };
+    const eligible = ctx.eligible || [];
+    const eligLow = new Set(eligible.map(v => v.toLowerCase()));
+    let currentArea = '';
+    const have = new Set();
+    for (const r of w.pickRows) {
+      if (s_(r.id) !== id) continue;
+      if (!currentArea && s_(r.area)) currentArea = s_(r.area);
+      const v = s_(r.vendor);
+      if (v) have.add(v.toLowerCase());
+    }
+    let removed = 0;
+    const kept = w.pickRows.filter(r => {
+      if (s_(r.id) !== id) return true;
+      if (eligLow.has(s_(r.vendor).toLowerCase())) return true;
+      removed++;
+      return false;
+    });
+    let added = 0;
+    if (currentArea) {
+      for (const vend of eligible) {
+        if (have.has(vend.toLowerCase())) continue;
+        const maxShelf = kept
+          .filter(r => s_(r.vendor).toLowerCase() === vend.toLowerCase() && s_(r.area) === currentArea)
+          .reduce((m, r) => Math.max(m, shelfNum(r)), 0);
+        kept.push({ vendor: vend, id: id, area: currentArea, shelfOrder: maxShelf + 10,
+                    seq: kept.reduce((m, r) => Math.max(m, Number(r.seq) || 0), 0) + 1 });
+        added++;
+      }
+    }
+    w.pickRows = kept;
+    return { added: added, removed: removed };
+  }
+
+  // A new MASTER_ITEMS row goes after the vendor's last item, else after the
+  // last ITEM-#### row, else first (getLastRowForVendor_ / getLastItemRow_).
+  function insertSeqFor(w, vendor) {
+    const vLow = vendor.toLowerCase();
+    let after = -1;
+    for (const it of w.items) if (s_(it.id) && s_(it.primaryVendor).toLowerCase() === vLow) after = it.seq;
+    if (after === -1) {
+      after = 1;
+      for (const it of w.items) if (/^ITEM-\d+$/i.test(s_(it.id))) after = it.seq;
+      if (after < 1) after = 1;
+    }
+    return after + 1;
+  }
+
+  // commitUpsertItem_ (Items.gs), add or edit.
+  function upsertItem(w, payload, shifts) {
+    const mode = payload.mode;
+    const name = String(payload.name || '').trim();
+    const vendor = normalizeVendorOrThrow(w, payload.vendor);
+    const pack = String(payload.pack || '').trim();
+    const notes = String(payload.notes || '').trim();
+    const par = Number(payload.par);
+    if (!Number.isFinite(par)) throw new Error('Base Par must be a number.');
+    const useMult = (payload.useMult === true || payload.useMult === 'true');
+    const active = (payload.active === true || payload.active === 'true');
+
+    let existing = null, item = null;
+    if (mode === 'edit') {
+      existing = getItemForEdit(w, String(payload.lookup || '').trim());
+      if (!existing) throw new Error('Could not find an item with that Item ID or name.');
+      item = findItem(w, String(payload.lookup || '').trim());
+    } else if (!name) {
+      throw new Error('Item Name is required.');
+    }
+
+    if (mode === 'add') {
+      let maxN = 0;
+      for (const it of w.items) {
+        const m = /^ITEM-(\d+)$/i.exec(s_(it.id));
+        if (m) maxN = Math.max(maxN, Number(m[1]));
+      }
+      const itemId = 'ITEM-' + String(maxN + 1).padStart(4, '0');
+      const seq = insertSeqFor(w, vendor);
+      for (const it of w.items) if (it.seq >= seq) it.seq += 1;
+      shifts.push(seq);
+      const eligibleAdd = normalizeEligibleList(payload.eligibleVendors || [], vendor, vendorMap(w));
+      w.items.push({ id: itemId, name: name, primaryVendor: vendor, pack: pack, par: par, active: active,
+                     useMult: useMult, notes: notes, sku: '', category: '', eligible: eligibleAdd, seq: seq });
+      w.items.sort((a, b) => a.seq - b.seq);
+
+      let assignedArea = '', areaError = '';
+      if (payload.areaName) {
+        try {
+          moveItemToArea(w, itemId, vendor, String(payload.areaName).trim(), { itemName: name });
+          assignedArea = String(payload.areaName).trim();
+        } catch (err) {
+          areaError = (err && err.message) ? err.message : String(err);
+        }
+      }
+      syncEligiblePickRows(w, itemId, { name: name, primary: vendor, eligible: eligibleAdd });
+      return { ok: true, mode: 'add', id: itemId, assignedArea: assignedArea, areaError: areaError };
+    }
+
+    // Edit. ID, SKU and category stay as they are.
+    const editName = name || existing.name;
+    item.name = editName;
+    item.primaryVendor = vendor;
+    item.pack = pack;
+    item.par = par;
+    const eligibleSource = (payload.eligibleVendors !== undefined && payload.eligibleVendors !== null)
+      ? payload.eligibleVendors : item.eligible;
+    const eligibleList = normalizeEligibleList(eligibleSource, vendor, vendorMap(w));
+    // Reassign = promote: the old primary stays on as a backup.
+    const oldPrimary = String((existing && existing.vendor) || '').trim();
+    if (oldPrimary && oldPrimary.toLowerCase() !== vendor.toLowerCase() &&
+        !eligibleList.some(v => v.toLowerCase() === oldPrimary.toLowerCase())) {
+      eligibleList.push(oldPrimary);
+    }
+    item.eligible = eligibleList;
+    const keepNotes = (payload.notes === undefined || payload.notes === null);
+    item.active = active;
+    item.useMult = useMult;
+    item.notes = keepNotes ? String((existing && existing.notes) || '').trim() : notes;
+
+    // An inactive item leaves every vendor's list.
+    if (!active) w.pickRows = w.pickRows.filter(r => s_(r.id) !== existing.id);
+
+    let assignedArea = '', areaError = '';
+    if (active && payload.areaName) {
+      try {
+        moveItemToArea(w, existing.id, vendor, String(payload.areaName).trim(), { itemName: editName });
+        assignedArea = String(payload.areaName).trim();
+      } catch (err) {
+        areaError = (err && err.message) ? err.message : String(err);
+      }
+    }
+    if (active) syncEligiblePickRows(w, existing.id, { name: editName, primary: vendor, eligible: eligibleList });
+    return { ok: true, mode: 'edit', id: existing.id, assignedArea: assignedArea, areaError: areaError };
+  }
+
+  // commitSwitchActiveVendor_ (Items.gs): another eligible vendor becomes the
+  // primary. The old one keeps its row; the new one gets a row in the item's
+  // area if it had none.
+  function switchActiveVendor(w, itemId, newVendorRaw) {
+    const id = String(itemId || '').trim();
+    if (!id) throw new Error('Item ID is required.');
+    const newVendor = normalizeVendorOrThrow(w, newVendorRaw);
+    const item = findItem(w, id);
+    if (!item) throw new Error('Could not find an item with ID ' + id + '.');
+    const oldVendor = s_(item.primaryVendor);
+    const eligible = normalizeEligibleList(item.eligible, oldVendor, vendorMap(w));
+    if (eligible.map(v => v.toLowerCase()).indexOf(newVendor.toLowerCase()) === -1) {
+      throw new Error('"' + newVendor + '" is not in this item\'s eligible vendor list. ' +
+                      'Add it to the item first, then switch.');
+    }
+    if (newVendor.toLowerCase() === oldVendor.toLowerCase()) {
+      return { ok: true, id: id, vendor: newVendor, area: '', needsArea: false, unchanged: true };
+    }
+    const currentArea = firstArea(w, id);
+    item.primaryVendor = newVendor;
+    let assignedArea = '';
+    const hasNewVendorRow = w.pickRows.some(r => s_(r.vendor).toLowerCase() === newVendor.toLowerCase() && s_(r.id) === id);
+    if (hasNewVendorRow) {
+      assignedArea = currentArea;
+    } else if (currentArea) {
+      const maxShelf = w.pickRows
+        .filter(r => s_(r.vendor).toLowerCase() === newVendor.toLowerCase() && s_(r.area) === currentArea)
+        .reduce((m, r) => Math.max(m, shelfNum(r)), 0);
+      w.pickRows.push({ vendor: newVendor, id: id, area: currentArea, shelfOrder: maxShelf + 10, seq: nextPickSeq(w) });
+      assignedArea = currentArea;
+    }
+    return { ok: true, id: id, vendor: newVendor, area: assignedArea, needsArea: !assignedArea };
+  }
+
+  // commitSetVendorItems_ (Items.gs): the Assign-to-Vendor tab's save. The
+  // checked items are on this vendor's list (and eligible for it); the rest
+  // are not, except items it's the primary of.
+  function setVendorItems(w, vendorRaw, itemIds) {
+    const vendor = normalizeVendorOrThrow(w, vendorRaw);
+    const vLow = vendor.toLowerCase();
+    const wanted = new Set((Array.isArray(itemIds) ? itemIds : []).map(x => String(x || '').trim()).filter(Boolean));
+    if (!w.items.length) return { ok: true, vendor: vendor, added: 0, removed: 0, unplaced: 0 };
+    const map = vendorMap(w);
+
+    const itemArea = new Map(), onVendor = new Set();
+    for (const r of w.pickRows) {
+      const id = s_(r.id), area = s_(r.area);
+      if (id && area && !itemArea.has(id)) itemArea.set(id, area);
+      if (id && s_(r.vendor).toLowerCase() === vLow) onVendor.add(id);
+    }
+
+    let added = 0, removed = 0, unplaced = 0;
+    const addRows = [], removeIds = new Set();
+    for (const it of w.items) {
+      const id = s_(it.id);
+      if (!id) continue;
+      if (it.active === false) continue;
+      const primary = s_(it.primaryVendor);
+      const isPrimary = primary.toLowerCase() === vLow;
+      const want = isPrimary || wanted.has(id);
+      const eligible = normalizeEligibleList(it.eligible, primary, map);
+      const hasElig = eligible.some(v => v.toLowerCase() === vLow);
+      if (want && !hasElig) {
+        eligible.push(vendor);
+        it.eligible = eligible;
+      } else if (!want && hasElig && !isPrimary) {
+        it.eligible = eligible.filter(v => v.toLowerCase() !== vLow);
+      }
+      const onTab = onVendor.has(id);
+      if (want && !onTab) {
+        const area = itemArea.get(id);
+        if (area) { addRows.push({ id: id, area: area }); added++; }
+        else unplaced++;
+      } else if (!want && onTab && !isPrimary) {
+        removeIds.add(id);
+        removed++;
+      }
+    }
+    if (removeIds.size) {
+      w.pickRows = w.pickRows.filter(r => !(s_(r.vendor).toLowerCase() === vLow && removeIds.has(s_(r.id))));
+    }
+    if (addRows.length) {
+      const maxShelf = new Map();
+      for (const r of w.pickRows) {
+        if (s_(r.vendor).toLowerCase() !== vLow) continue;
+        const a = s_(r.area), s = shelfNum(r);
+        if ((maxShelf.get(a) || 0) < s) maxShelf.set(a, s);
+      }
+      for (const a of addRows) {
+        const shelf = (maxShelf.get(a.area) || 0) + 10;
+        maxShelf.set(a.area, shelf);
+        w.pickRows.push({ vendor: vendor, id: a.id, area: a.area, shelfOrder: shelf, seq: nextPickSeq(w) });
+      }
+    }
+    return { ok: true, vendor: vendor, added: added, removed: removed, unplaced: unplaced };
+  }
+
+  // commitDeleteItem_ (Items.gs): the item and every pick row it has.
+  function deleteItem(w, itemId) {
+    const id = String(itemId || '').trim();
+    if (!id) throw new Error('Item ID is required.');
+    const item = findItem(w, id);
+    if (!item) throw new Error('Item not found: ' + id);
+    const out = { ok: true, name: s_(item.name), vendor: s_(item.primaryVendor), id: id };
+    w.items = w.items.filter(x => x !== item);
+    // By ID (the database's link); Items.gs matched the query, which the page
+    // always sends as the ID.
+    w.pickRows = w.pickRows.filter(r => s_(r.id) !== item.id);
+    return out;
+  }
+
+  // ---- The Items page's bulk bar (no Items.gs twin) ----------------------------
+  // Many items at once, as ONE logged change with one Undo. Each item ends
+  // exactly where saving it alone in the item panel (upsertItem, fields
+  // unchanged) would leave it; tests/items_bulk.test.js holds that. Items that
+  // save would skip or refuse come back in `skipped`, with the reason.
+
+  const idList = raw => Array.from(new Set((Array.isArray(raw) ? raw : []).map(x => String(x == null ? '' : x).trim()).filter(Boolean)));
+
+  // The fields an item save writes back unchanged: the canonical primary
+  // vendor and the normalized eligible list. null when it has no vendor the
+  // store still has (D23 leaves those behind).
+  function settle(w, item, map) {
+    const vendor = map.get(s_(item.primaryVendor).toLowerCase());
+    if (!vendor) return null;
+    item.primaryVendor = vendor;
+    item.eligible = normalizeEligibleList(item.eligible, vendor, map);
+    return vendor;
+  }
+
+  // Move to area. A save with only the area changed: the primary vendor's row
+  // moves to the end of that area, and each eligible vendor without a row
+  // gets one there. Inactive items are skipped (they're on no list).
+  function setItemsArea(w, itemIdsRaw, areaRaw) {
+    const area = String(areaRaw || '').trim();
+    if (!area) throw new Error('Storage Area is required.');
+    if (!areaOrderMap(w).has(area)) throw new Error('"' + area + '" is not a recognised Storage Area.');
+    const ids = idList(itemIdsRaw);
+    if (!ids.length) throw new Error('Pick at least one item.');
+    const map = vendorMap(w);
+    let moved = 0;
+    const skipped = [];
+    for (const id of ids) {
+      const item = w.items.find(x => s_(x.id) === id);
+      if (!item) { skipped.push({ id: id, reason: 'not found' }); continue; }
+      if (item.active !== true) { skipped.push({ id: id, reason: 'inactive' }); continue; }
+      const vendor = settle(w, item, map);
+      if (!vendor) { skipped.push({ id: id, reason: 'no vendor' }); continue; }
+      moveItemToArea(w, id, vendor, area, { itemName: s_(item.name) });
+      syncEligiblePickRows(w, id, { name: s_(item.name), primary: vendor, eligible: item.eligible });
+      moved++;
+    }
+    return { ok: true, area: area, moved: moved, skipped: skipped };
+  }
+
+  // Make active / inactive. Inactive leaves every vendor's list, as a save
+  // does; active again comes back with no storage area (it gets one the usual
+  // way). An item with no vendor can still be switched off and on.
+  function setItemsActive(w, itemIdsRaw, activeRaw) {
+    const active = (activeRaw === true || activeRaw === 'true');
+    const ids = idList(itemIdsRaw);
+    if (!ids.length) throw new Error('Pick at least one item.');
+    const map = vendorMap(w);
+    let changed = 0;
+    const skipped = [];
+    for (const id of ids) {
+      const item = w.items.find(x => s_(x.id) === id);
+      if (!item) { skipped.push({ id: id, reason: 'not found' }); continue; }
+      if ((item.active === true) === active) { skipped.push({ id: id, reason: active ? 'already active' : 'already inactive' }); continue; }
+      const vendor = settle(w, item, map);
+      item.active = active;
+      if (!active) w.pickRows = w.pickRows.filter(r => s_(r.id) !== id);
+      else if (vendor) syncEligiblePickRows(w, id, { name: s_(item.name), primary: vendor, eligible: item.eligible });
+      changed++;
+    }
+    return { ok: true, active: active, changed: changed, skipped: skipped };
+  }
+
+  // Add to / remove from a vendor: a save with only the backup vendors
+  // changed. Adding puts the vendor on the item's list of vendors (and on
+  // that vendor's count list in the item's area, once it has one); removing
+  // takes it off both. Only the ticked items change: unlike the Assign tab's
+  // save (setVendorItems), nothing else on the vendor's list is touched.
+  // An item's main vendor can't be removed, and an item needs a main vendor.
+  function setItemsVendor(w, itemIdsRaw, vendorRaw, addRaw) {
+    const vendor = normalizeVendorOrThrow(w, vendorRaw);
+    const add = (addRaw === true || addRaw === 'true');
+    const ids = idList(itemIdsRaw);
+    if (!ids.length) throw new Error('Pick at least one item.');
+    const map = vendorMap(w), vLow = vendor.toLowerCase();
+    const rowsOf = id => JSON.stringify(w.pickRows.filter(r => s_(r.id) === id));
+    let changed = 0;
+    const skipped = [];
+    for (const id of ids) {
+      const item = w.items.find(x => s_(x.id) === id);
+      if (!item) { skipped.push({ id: id, reason: 'not found' }); continue; }
+      if (!map.get(s_(item.primaryVendor).toLowerCase())) { skipped.push({ id: id, reason: 'no vendor' }); continue; }
+      if (s_(item.primaryVendor).toLowerCase() === vLow) { skipped.push({ id: id, reason: 'main vendor' }); continue; }
+      const before = JSON.stringify(item.eligible) + rowsOf(id);
+      const primary = settle(w, item, map);
+      const has = item.eligible.some(v => v.toLowerCase() === vLow);
+      if (add && !has) item.eligible = item.eligible.concat([vendor]);
+      if (!add) item.eligible = item.eligible.filter(v => v.toLowerCase() !== vLow);
+      if (item.active !== true) w.pickRows = w.pickRows.filter(r => s_(r.id) !== id);
+      else syncEligiblePickRows(w, id, { name: s_(item.name), primary: primary, eligible: item.eligible });
+      if (JSON.stringify(item.eligible) + rowsOf(id) !== before) changed++;
+    }
+    return { ok: true, vendor: vendor, add: add, changed: changed, skipped: skipped };
+  }
+
+  // ---- Manage Vendors (Vendors.gs) -------------------------------------------
+
+  const pad2 = n => (n < 10 ? '0' : '') + n;
+
+  // normalizeCutoffString_: "HH:MM" (24h) or "H:MM AM/PM" to "HH:MM", else null.
+  function normalizeCutoff(raw) {
+    if (raw === null || raw === undefined || raw === '') return null;
+    const s = String(raw).trim();
+    if (!s) return null;
+    let m = s.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+    if (m) {
+      let h = parseInt(m[1], 10);
+      const mins = parseInt(m[2], 10);
+      if (mins < 0 || mins > 59) return null;
+      const isPm = m[3].toLowerCase() === 'pm';
+      if (h === 12) h = isPm ? 12 : 0;
+      else if (isPm) h += 12;
+      if (h < 0 || h > 23) return null;
+      return pad2(h) + ':' + pad2(mins);
+    }
+    m = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (m) {
+      const h = parseInt(m[1], 10);
+      const mins = parseInt(m[2], 10);
+      if (h < 0 || h > 23 || mins < 0 || mins > 59) return null;
+      return pad2(h) + ':' + pad2(mins);
+    }
+    return null;
+  }
+
+  const multsOf = mults => mults.map(m => Number(m) || 0);   // what the Sheet's readers make of S:Y
+  const findVendor = (w, name) => w.vendors.find(v => s_(v.name).toLowerCase() === name.toLowerCase()) || null;
+
+  // commitAddVendor_. The Sheet also clones VENDOR_TEMPLATE into the vendor's
+  // tab; the tables have no tabs, so the tab header always "lands" (b1ok).
+  function addVendor(w, vendorName, mults, cutoffTime) {
+    const name = String(vendorName || '').trim();
+    if (!name) throw new Error('Vendor name is required.');
+    if (!Array.isArray(mults) || mults.length !== 7) throw new Error('7 multiplier values required.');
+    const cutoffNorm = (cutoffTime === undefined || cutoffTime === null || cutoffTime === '') ? null : normalizeCutoff(cutoffTime);
+    if (vendorList(w).some(v => v.toLowerCase() === name.toLowerCase())) throw new Error('"' + name + '" already exists.');
+    if (name.length > 100) throw new Error('Vendor name "' + name + '" is longer than 100 characters.');
+    w.vendors.push({ name: name, mults: multsOf(mults), cutoff: cutoffNorm });
+    return { ok: true, name: name, b1ok: true };
+  }
+
+  // commitUpdateVendorMultsAndCutoff_
+  function updateVendor(w, vendorName, mults, cutoffTime) {
+    const name = String(vendorName || '').trim();
+    if (!name) throw new Error('Vendor name is required.');
+    if (!Array.isArray(mults) || mults.length !== 7) throw new Error('7 multiplier values required.');
+    const cutoffNorm = (cutoffTime === undefined || cutoffTime === null || cutoffTime === '') ? null : normalizeCutoff(cutoffTime);
+    if (cutoffTime && cutoffNorm === null) throw new Error('Cutoff time format not recognized. Use "HH:MM" (24h) or "H:MM AM/PM".');
+    const v = findVendor(w, name);
+    if (!v) throw new Error('"' + name + '" not found in vendor list.');
+    v.mults = multsOf(mults);
+    v.cutoff = cutoffNorm;
+    return { ok: true, cutoffTime: cutoffNorm };
+  }
+
+  // commitRemoveVendor_, the D23 way: the vendor leaves every list it was on
+  // and every item's vendors; items it supplied have no primary vendor but
+  // stay active (they show as Unassigned). The Sheet deactivates them.
+  function removeVendor(w, vendorName) {
+    const name = String(vendorName || '').trim();
+    if (!name) throw new Error('Vendor name is required.');
+    const v = findVendor(w, name);
+    if (!v) throw new Error('"' + name + '" was not found in the vendor table.');
+    const low = s_(v.name).toLowerCase();
+    w.pickRows = w.pickRows.filter(r => s_(r.vendor).toLowerCase() !== low);
+    for (const it of w.items) {
+      const eligible = (it.eligible || []).filter(x => s_(x).toLowerCase() !== low);
+      if (eligible.length !== (it.eligible || []).length) it.eligible = eligible;
+      if (s_(it.primaryVendor).toLowerCase() === low) it.primaryVendor = null;
+      if (s_(it.whVendor).toLowerCase() === low) delete it.whVendor;   // v21: a route's vendor goes with it (on delete set null)
+    }
+    w.vendors = w.vendors.filter(x => x !== v);
+    return { ok: true, name: name };
+  }
+
+  // The Vendors page's one save: a new vendor, or an existing one's name,
+  // days, cutoff and contact together. p = { mode: 'add' | 'edit', name,
+  // newName (edit: a rename, schema v15), mults (7), cutoff ('HH:MM',
+  // 'H:MM AM/PM' or ''), contact }. A rename is a rename step (`renames`), so
+  // the database carries the vendor's items, lists, counts and HQ's
+  // remembered name along; a name another vendor has is refused (merging two
+  // vendors is not a rename).
+  function saveVendor(w, p, renames) {
+    p = p || {};
+    const add = p.mode === 'add';
+    const contact = cleanContact(p.contact);
+    if (p.cutoff && normalizeCutoff(p.cutoff) === null) {
+      throw new Error('Cutoff time format not recognized. Use "HH:MM" (24h) or "H:MM AM/PM".');
+    }
+    let name = String(p.name || '').trim(), renamedFrom = '';
+    const to = s_(p.newName);
+    if (!add && to && to !== name) {
+      const v = findVendor(w, name);
+      if (!v) throw new Error('"' + name + '" not found in vendor list.');
+      if (to.length > 100) throw new Error('Vendor name "' + to + '" is longer than 100 characters.');
+      const taken = w.vendors.find(x => x !== v && s_(x.name).toLowerCase() === to.toLowerCase());
+      if (taken) throw new Error('"' + s_(taken.name) + '" is already a vendor here. Pick another name: two vendors can\'t be merged by renaming one.');
+      renamedFrom = v.name;
+      renameVendor(w, v.name, to);
+      if (renames) renames.push({ rename: 'vendors', from: renamedFrom, to: to });
+      name = to;
+    }
+    if (add) addVendor(w, name, p.mults, p.cutoff);
+    else updateVendor(w, name, p.mults, p.cutoff);
+    const v = findVendor(w, name);
+    if (contact) v.contact = contact; else delete v.contact;
+    const out = { ok: true, mode: add ? 'add' : 'edit', name: v.name, cutoffTime: v.cutoff, contact: contact || {} };
+    if (renamedFrom) out.renamedFrom = renamedFrom;
+    return out;
+  }
+
+  // HQ's change at one store (hq/; schema v11 applies every store's together).
+  // p = { label, vendors: [{ name, mults, cutoff, contact }]   vendors to add here
+  //       items:   [{ name, pack, notes, vendor, backups }]   this store's vendor names
+  //       lto }                                               an LTO's id (schema v14), or none
+  // Each piece is the editor's own save: a vendor as the Vendors page adds
+  // it; a new item as Import from MarginEdge adds one (no par, no storage
+  // area, so it waits in the store's Needs setup and on no count list yet);
+  // an item the store already has (same name) keeps its main vendor, par and
+  // area, and any of the rollout's vendors it doesn't list yet is added the
+  // way the Items page's "Add to a vendor" does. With an LTO, each new item
+  // carries its id; an item the store already had never does, so ending the
+  // LTO can't touch the store's own item.
+  function hqRollout(w, p) {
+    p = p || {};
+    const vendorsAdded = [];
+    for (const v of (Array.isArray(p.vendors) ? p.vendors : [])) {
+      vendorsAdded.push(saveVendor(w, Object.assign({}, v, { mode: 'add' })).name);
+    }
+    const byName = new Map();
+    for (const it of w.items) if (s_(it.name)) byName.set(s_(it.name).toLowerCase(), it);
+    const fresh = [], backupsAdded = [], skipped = [];
+    for (const row of (Array.isArray(p.items) ? p.items : [])) {
+      const name = s_(row && row.name);
+      if (!name) throw new Error('Item Name is required.');
+      const main = normalizeVendorOrThrow(w, row.vendor);
+      const backups = (Array.isArray(row.backups) ? row.backups : []).map(v => normalizeVendorOrThrow(w, v))
+        .filter((v, i, all) => v.toLowerCase() !== main.toLowerCase() && all.indexOf(v) === i);
+      const have = byName.get(name.toLowerCase());
+      if (!have) {
+        fresh.push({ name: name, primaryVendor: main, eligible: backups, pack: row.pack, notes: row.notes });
+        continue;
+      }
+      if (have.active !== true) { skipped.push({ name: s_(have.name), reason: 'inactive here' }); continue; }
+      const listed = new Set([s_(have.primaryVendor)].concat(have.eligible || []).map(v => s_(v).toLowerCase()));
+      const added = [];
+      for (const v of [main].concat(backups)) {
+        if (listed.has(v.toLowerCase())) continue;
+        const res = setItemsVendor(w, [have.id], v, true);
+        if (res.changed) { added.push(v); listed.add(v.toLowerCase()); }
+        else if (res.skipped.length) { skipped.push({ name: s_(have.name), reason: res.skipped[0].reason }); break; }
+      }
+      if (added.length) backupsAdded.push({ id: s_(have.id), name: s_(have.name), vendors: added });
+      else if (!skipped.some(x => x.name === s_(have.name))) skipped.push({ name: s_(have.name), reason: 'already here' });
+    }
+    const had = new Set(w.items.map(it => it));
+    const imported = fresh.length ? importItems(w, { items: fresh }) : { itemsAdded: 0, skipped: [] };
+    const itemsAdded = fresh.map(r => r.name).filter(n => !imported.skipped.some(x => x.name === n));
+    const lto = s_(p.lto);
+    if (lto) for (const it of w.items) if (!had.has(it)) it.lto = lto;
+    return { ok: true, label: s_(p.label), vendorsAdded: vendorsAdded, itemsAdded: itemsAdded, backupsAdded: backupsAdded,
+             skipped: skipped.concat(imported.skipped) };
+  }
+
+  // ---- An HQ item's routes at one store (hq/, schema v21) ------------------
+  // p = { product: { id, name, pack },
+  //       routes:  [{ itemId,                  the store's item (or newItem: { name, notes }: added, no par, no area)
+  //                   place: id | null,        where it comes from (null = HEH's own, Happy Supply)
+  //                   placeName,               for the change log
+  //                   vendor,                  the store's vendor its KMs order it under
+  //                   newVendor: { name, mults, cutoff, contact } | null }],  added first, the Vendors page's way
+  //       end:     [itemId]   the route and the link come off; the item stays as it is
+  //       putBack: [itemId] } the route's vendor becomes the item's main vendor again
+  // A route is the item's whProduct, whPlace (left out = HEH's own) and
+  // whVendor, on its row. Its vendor becomes the main vendor (the old one
+  // stays a backup) and its pack the HQ item's case. One item per HQ item.
+  function hqRoutes(w, p) {
+    p = p || {};
+    const prod = p.product || {};
+    const pid = Number(prod.id);
+    if (!Number.isInteger(pid) || pid <= 0) throw new Error('Which HQ item?');
+    const pack = s_(prod.pack);
+    const out = { ok: true, product: s_(prod.name), linked: [], ended: [], putBack: [], vendorsAdded: [] };
+    const itemOf = id => {
+      const it = w.items.find(x => s_(x.id) === s_(id));
+      if (!it) throw new Error('That item isn\'t at the store any more.');
+      return it;
+    };
+    const makeMain = (it, vend) => {
+      const old = s_(it.primaryVendor);
+      if (!old) {
+        it.primaryVendor = vend;
+        it.eligible = [vend].concat((it.eligible || []).filter(v => s_(v).toLowerCase() !== vend.toLowerCase()));
+      } else if (old.toLowerCase() !== vend.toLowerCase()) {
+        if (!(it.eligible || []).some(v => s_(v).toLowerCase() === vend.toLowerCase())) setItemsVendor(w, [s_(it.id)], vend, true);
+        switchActiveVendor(w, s_(it.id), vend);
+      }
+      return old && old.toLowerCase() !== vend.toLowerCase() ? old : '';
+    };
+    // Ends first: a store moving its route to another of its items unlinks the old one.
+    for (const id of (Array.isArray(p.end) ? p.end : [])) {
+      const it = itemOf(id);
+      if (it.whProduct == null || Number(it.whProduct) !== pid) throw new Error('"' + s_(it.name) + '" isn\'t linked to ' + s_(prod.name) + ' here.');
+      delete it.whProduct; delete it.whPlace; delete it.whVendor;
+      out.ended.push(s_(it.name));
+    }
+    for (const r of (Array.isArray(p.routes) ? p.routes : [])) {
+      if (r && r.newVendor) out.vendorsAdded.push(saveVendor(w, Object.assign({}, r.newVendor, { mode: 'add' })).name);
+      let it;
+      if (r && r.newItem) {   // a store without it: a new item, no par and no storage area (Needs setup), like an LTO's
+        const name = s_(r.newItem.name) || s_(prod.name);
+        const same = w.items.find(x => s_(x.name).toLowerCase() === name.toLowerCase());
+        if (same) throw new Error('The store has "' + s_(same.name) + '" already: pick it instead.');
+        const had = new Set(w.items);
+        importItems(w, { items: [{ name: name, primaryVendor: normalizeVendorOrThrow(w, r.vendor), pack: pack, notes: s_(r.newItem.notes) }] });
+        it = w.items.find(x => !had.has(x));
+        out.added = (out.added || []).concat(s_(it.name));
+      } else it = itemOf(r && r.itemId);
+      if (it.active !== true) throw new Error('"' + s_(it.name) + '" is inactive here.');
+      const other = w.items.find(x => x !== it && x.whProduct != null && Number(x.whProduct) === pid);
+      if (other) throw new Error('"' + s_(other.name) + '" is linked to ' + s_(prod.name) + ' here already.');
+      const vend = normalizeVendorOrThrow(w, r.vendor);
+      const place = r.place == null || r.place === '' ? null : Number(r.place);
+      if (place !== null && !(Number.isInteger(place) && place > 0)) throw new Error('Which place?');
+      const oldPack = s_(it.pack);
+      const oldMain = makeMain(it, vend);
+      if (pack) it.pack = pack;
+      it.whProduct = pid;
+      if (place === null) delete it.whPlace; else it.whPlace = place;
+      it.whVendor = vend;
+      out.linked.push({ id: s_(it.id), name: s_(it.name), vendor: vend, place: s_(r.placeName) || (place === null ? 'HEH\'s own' : 'place ' + place),
+                        oldMain: oldMain, packFrom: oldPack !== s_(it.pack) ? oldPack : null, pack: s_(it.pack) });
+    }
+    for (const id of (Array.isArray(p.putBack) ? p.putBack : [])) {
+      const it = itemOf(id);
+      if (it.whProduct == null || Number(it.whProduct) !== pid) throw new Error('"' + s_(it.name) + '" isn\'t linked to ' + s_(prod.name) + ' here.');
+      const vend = s_(it.whVendor);
+      if (!vend || !findVendor(w, vend)) throw new Error('"' + s_(it.name) + '" has no vendor for ' + s_(prod.name) + ' here any more: set its route again, or end it.');
+      makeMain(it, vend);
+      out.putBack.push({ name: s_(it.name), vendor: vend });
+    }
+    return out;
+  }
+
+  // The store's active items closest to a product's name, best first, for
+  // HQ's "Link an item it has" (pick-only). best: one close enough to link
+  // by default (the same name ignoring case and punctuation, one inside the
+  // other, or two letters apart).
+  function productCandidates(t, productName) {
+    const norm = s => s_(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const want = norm(productName);
+    const words = want.split(' ').filter(x => x.length > 2);
+    const scored = t.items.filter(it => it.active === true && s_(it.name)).map(it => {
+      const n = norm(it.name);
+      const close = !!want && (n === want || n.indexOf(want) >= 0 || want.indexOf(n) >= 0 || editDistance(n, want) <= 2);
+      const shared = words.filter(x => n.split(' ').indexOf(x) >= 0).length;
+      return { id: s_(it.id), name: s_(it.name), vendor: s_(it.primaryVendor), linked: it.whProduct != null, close: close, shared: shared };
+    }).filter(x => x.close || x.shared > 0)
+      .sort((a, b) => (b.close - a.close) || (b.shared - a.shared) || a.name.localeCompare(b.name));
+    const best = scored.find(x => x.close && !x.linked) || null;
+    return { best: best ? best.id : '', items: scored };
+  }
+
+  // ---- An LTO at one store (hq/, schema v14) --------------------------------
+  // p = { action: 'end' | 'rollback' | 'standard', lto: id,
+  //       vendorsAdded, backupsAdded }   what sending it added here (mog.lto_stores)
+  // Its items are the ones that carry its id.
+  //   end       each active one made inactive, as the Items page's bulk bar
+  //             does (off every count list, par kept, storage area dropped);
+  //   rollback  each one deleted, the backups it added to the store's own
+  //             items taken off again (when still there), and each vendor it
+  //             added removed when no item names it any more: as if never sent;
+  //   standard  each one keeps everything but the link, so it's the store's own.
+  function hqLto(w, p) {
+    p = p || {};
+    const id = s_(p.lto);
+    if (!id) throw new Error('Which LTO?');
+    const mine = w.items.filter(it => s_(it.lto) === id);
+    const names = mine.map(it => s_(it.name));
+    if (p.action === 'end') {
+      const live = mine.filter(it => it.active === true).map(it => s_(it.id));
+      if (live.length) setItemsActive(w, live, false);
+      return { ok: true, action: 'end', items: names, changed: live.length };
+    }
+    if (p.action === 'standard') {
+      for (const it of mine) delete it.lto;
+      return { ok: true, action: 'standard', items: names, changed: mine.length };
+    }
+    if (p.action !== 'rollback') throw new Error('An LTO is ended, rolled back or made standard.');
+    for (const it of mine) deleteItem(w, s_(it.id));
+    const backupsRemoved = [];
+    for (const b of (Array.isArray(p.backupsAdded) ? p.backupsAdded : [])) {
+      const it = w.items.find(x => s_(x.id) === s_(b && b.id));
+      if (!it) continue;
+      const took = [];
+      for (const v of (Array.isArray(b.vendors) ? b.vendors : [])) {
+        const vl = s_(v).toLowerCase();
+        if (!vl || s_(it.primaryVendor).toLowerCase() === vl || !(it.eligible || []).some(x => s_(x).toLowerCase() === vl)) continue;
+        if (setItemsVendor(w, [s_(it.id)], v, false).changed) took.push(s_(v));
+      }
+      if (took.length) backupsRemoved.push({ name: s_(it.name), vendors: took });
+    }
+    const vendorsRemoved = [];
+    for (const v of (Array.isArray(p.vendorsAdded) ? p.vendorsAdded : [])) {
+      const vend = findVendor(w, s_(v));
+      if (!vend) continue;
+      const low = s_(vend.name).toLowerCase();
+      const used = w.items.some(it => s_(it.primaryVendor).toLowerCase() === low || (it.eligible || []).some(x => s_(x).toLowerCase() === low));
+      if (!used) { removeVendor(w, vend.name); vendorsRemoved.push(vend.name); }
+    }
+    return { ok: true, action: 'rollback', items: names, changed: mine.length, backupsRemoved: backupsRemoved, vendorsRemoved: vendorsRemoved };
+  }
+
+  // Where an LTO stands at one store, from its tables: each of its items
+  // there, set up (active, a par and a storage area), needing setup (active,
+  // a par or an area missing) or inactive. An item the store deleted is
+  // simply not listed.
+  function ltoStoreState(t, ltoId) {
+    const id = s_(ltoId);
+    const areaOf = new Set(t.pickRows.filter(r => s_(r.area)).map(r => s_(r.id)));
+    const items = t.items.filter(it => id && s_(it.lto) === id).map(it => {
+      const ready = it.par !== null && it.par !== undefined && it.par !== '' && areaOf.has(s_(it.id));
+      return { id: s_(it.id), name: s_(it.name), state: it.active !== true ? 'inactive' : ready ? 'ready' : 'setup',
+               par: it.par === null || it.par === undefined ? '' : Number(it.par), area: firstArea(t, s_(it.id)) };
+    });
+    const count = st => items.filter(x => x.state === st).length;
+    return { items: items, ready: count('ready'), setup: count('setup'), inactive: count('inactive') };
+  }
+
+  // The Items page's "new from LTOs" group (docs/MOG_LTO_Spec.md step 5),
+  // from getAllItemsForView's rows: each running LTO with its items still
+  // waiting for a par or a storage area (active only, as ltoStoreState counts
+  // them), the newest LTO first, its items A to Z. An LTO with nothing left to
+  // set up isn't listed, so its items go back to their place in the list.
+  function ltoWaiting(rows) {
+    const byLto = new Map();
+    for (const r of (Array.isArray(rows) ? rows : [])) {
+      const l = r && r.lto;
+      if (!l || l.status !== 'running' || r.active !== true || (r.par !== '' && r.hasArea)) continue;
+      if (!byLto.has(l.id)) byLto.set(l.id, { id: l.id, name: l.name, sentAt: l.sentAt || '', items: [] });
+      byLto.get(l.id).items.push(r);
+    }
+    const out = Array.from(byLto.values());
+    for (const g of out) g.items.sort((a, b) => a.name.localeCompare(b.name));
+    return out.sort((a, b) => (a.sentAt < b.sentAt ? 1 : a.sentAt > b.sentAt ? -1 : a.name.localeCompare(b.name)));
+  }
+
+  // ---- The concept library (hq/, schema v12) ---------------------------------
+  // A concept's standard items for one side, kept by HQ: name, pack, main
+  // vendor and backups (HQ's vendor names), notes. No par and no storage area:
+  // those are each store's, and a store gets the items through
+  // commitHqRollout, like an LTO. mog.library_put keeps the same rules.
+
+  // A list as the database keeps it: trimmed, backups without the main vendor
+  // or repeats (a comma list or an array), each name once ignoring case.
+  // Throws on the first row it can't keep, naming it.
+  function cleanLibrary(items) {
+    const rows = Array.isArray(items) ? items : [];
+    if (rows.length > 2000) throw new Error('A library holds at most 2000 items.');
+    const seen = new Set();
+    return rows.map((row, i) => {
+      const name = s_(row && row.name);
+      if (!name) throw new Error('Item ' + (i + 1) + ' has no name.');
+      const what = '"' + name.substring(0, 60) + '"';
+      if (name.length > 300) throw new Error(what + ' is longer than 300 characters.');
+      if (seen.has(name.toLowerCase())) throw new Error(what + ' is in the library twice.');
+      seen.add(name.toLowerCase());
+      const vendor = s_(row.vendor);
+      if (!vendor) throw new Error(what + ' has no main vendor.');
+      if (vendor.length > 100) throw new Error(what + '\'s main vendor is longer than 100 characters.');
+      const backups = [], listed = new Set([vendor.toLowerCase()]);
+      for (const raw of (Array.isArray(row.backups) ? row.backups : String(row.backups || '').split(','))) {
+        const v = typeof raw === 'string' ? s_(raw) : '';
+        if (!v || listed.has(v.toLowerCase())) continue;
+        if (v.length > 100) throw new Error(what + '\'s backup vendor "' + v.substring(0, 40) + '" is longer than 100 characters.');
+        listed.add(v.toLowerCase());
+        backups.push(v);
+      }
+      if (backups.length > 20) throw new Error(what + ' has more than 20 backup vendors.');
+      const pack = s_(row.pack), notes = s_(row.notes);
+      if (pack.length > 300) throw new Error(what + '\'s pack is longer than 300 characters.');
+      if (notes.length > 1000) throw new Error(what + '\'s notes are longer than 1000 characters.');
+      return { name: name, pack: pack, vendor: vendor, backups: backups, notes: notes };
+    });
+  }
+
+  // A store's items as a library's start, in its list order, with its vendor
+  // names (they become HQ's): its active items that have a main vendor. A
+  // name listed twice (one row per vendor) becomes one item: the first row's
+  // vendor is the main one, the other rows' vendors are backups.
+  function librarySeed(t) {
+    const out = [], byName = new Map(), merged = [];
+    let inactive = 0, noVendor = 0;
+    for (const it of t.items.slice().sort((a, b) => a.seq - b.seq)) {
+      const name = s_(it.name);
+      if (!name) continue;
+      if (it.active !== true) { inactive++; continue; }
+      const main = s_(it.primaryVendor);
+      if (!main) { noVendor++; continue; }
+      let row = byName.get(name.toLowerCase());
+      if (row) { if (merged.indexOf(row.name) < 0) merged.push(row.name); }
+      else {
+        row = { name: name, pack: s_(it.pack), vendor: main, backups: [], notes: s_(it.notes) };
+        byName.set(name.toLowerCase(), row);
+        out.push(row);
+      }
+      for (const v of [main].concat(it.eligible || []).map(s_)) {
+        if (v && v.toLowerCase() !== row.vendor.toLowerCase() && !row.backups.some(b => b.toLowerCase() === v.toLowerCase())) row.backups.push(v);
+      }
+    }
+    return { items: cleanLibrary(out), inactive: inactive, noVendor: noVendor, merged: merged };
+  }
+
+  // An LTO's items added to a library: a name it doesn't have goes at the
+  // end; a name it has keeps its own row (edited in the library itself).
+  function libraryAdd(items, adds) {
+    const list = cleanLibrary(items);
+    const have = new Set(list.map(r => r.name.toLowerCase()));
+    const added = [], kept = [];
+    for (const row of cleanLibrary(adds)) {
+      if (have.has(row.name.toLowerCase())) { kept.push(row.name); continue; }
+      have.add(row.name.toLowerCase());
+      list.push(row);
+      added.push(row.name);
+    }
+    return { items: list, added: added, kept: kept };
+  }
+
+  // A library save in words (mog.library_log's label). A renamed item is one
+  // removed and one added.
+  function libraryLabel(before, after) {
+    const was = new Map(cleanLibrary(before).map(r => [r.name.toLowerCase(), r]));
+    const now = cleanLibrary(after);
+    let added = 0, changed = 0;
+    for (const r of now) {
+      const old = was.get(r.name.toLowerCase());
+      if (!old) added++;
+      else if (JSON.stringify(old) !== JSON.stringify(r)) changed++;
+      was.delete(r.name.toLowerCase());
+    }
+    const parts = [];
+    if (added) parts.push(added + ' added');
+    if (changed) parts.push(changed + ' changed');
+    if (was.size) parts.push(was.size + ' removed');
+    return 'Saved the library' + (parts.length ? ': ' + parts.join(', ') : ' (new order)');
+  }
+
+  // ---- Storage Areas (PickPath.gs) ---------------------------------------------
+
+  const MAX_AREAS = 18;   // Core.gs AREA_TABLE: SETUP rows 2-19
+
+  // A rename, as the database does it (on update cascade): the area and its
+  // pick rows take the new name.
+  function renameArea(t, from, to) {
+    for (const a of t.areas) if (a.name === from) a.name = to;
+    for (const r of t.pickRows) if (r.area === from) r.area = to;
+  }
+
+  // A vendor renamed (schema v15), as the database does it: the vendor, its
+  // items' main vendor and its pick rows follow (on update cascade), and the
+  // rename step renames it in every item's vendor list too.
+  function renameVendor(t, from, to) {
+    for (const v of t.vendors) if (v.name === from) v.name = to;
+    for (const it of t.items) {
+      if (it.primaryVendor === from) it.primaryVendor = to;
+      if (it.whVendor === from) it.whVendor = to;   // v21: the route's vendor follows (on update cascade)
+      if ((it.eligible || []).indexOf(from) >= 0) it.eligible = it.eligible.map(x => (x === from ? to : x));
+    }
+    for (const r of t.pickRows) if (r.vendor === from) r.vendor = to;
+  }
+
+  // commitStorageAreasDraft_: the whole list at once. Each entry is
+  // { name, origName }: origName is the area it was when the page loaded
+  // (renamed when the names differ), none for a new area. A current area no
+  // entry names is deleted, and its pick rows with it (the items lose that
+  // area). The list's order becomes the areas' order (10, 20, 30...).
+  // Renames are recorded in `renames`, for the rename ops.
+  function storageAreasDraft(w, finalList, renames) {
+    if (!Array.isArray(finalList)) throw new Error('No areas provided.');
+    if (finalList.length > MAX_AREAS) throw new Error('Too many areas — the maximum is ' + MAX_AREAS + '.');
+    const current = getStorageAreaList(w);
+    const currentByLower = new Map(current.map(a => [a.name.toLowerCase(), a.name]));
+    const seenNames = new Set(), seenOrigNames = new Set(), kept = new Set(), pairs = [];
+    for (const entry of finalList) {
+      const name = String((entry && entry.name) || '').trim();
+      if (!name) throw new Error('Area name cannot be blank.');
+      const nameLower = name.toLowerCase();
+      if (seenNames.has(nameLower)) throw new Error('"' + name + '" is listed twice.');
+      seenNames.add(nameLower);
+      const orig = String((entry && entry.origName) || '').trim();
+      if (orig) {
+        const origLower = orig.toLowerCase();
+        if (!currentByLower.has(origLower)) throw new Error('"' + orig + '" no longer exists — reopen the editor and try again.');
+        if (seenOrigNames.has(origLower)) throw new Error('"' + orig + '" is referenced twice.');
+        seenOrigNames.add(origLower);
+        kept.add(origLower);
+        const from = currentByLower.get(origLower);
+        if (from !== name) pairs.push({ from: from, to: name });
+      }
+      if (name.length > 100) throw new Error('Area name "' + name + '" is longer than 100 characters.');
+    }
+    const deleted = new Set(current.map(a => a.name.toLowerCase()).filter(low => !kept.has(low)));
+    const inUse = w.pickRows.filter(r => deleted.has(s_(r.area).toLowerCase())).length;
+
+    // Renames run before deletes (the op order), so a name still in use goes
+    // through a temporary one: a deleted area another one is renamed to steps
+    // aside first, and a kept one (a swap, A to B and B to A) too.
+    const step = (from, to) => { renameArea(w, from, to); renames.push({ rename: 'areas', from: from, to: to }); };
+    let n = 0;
+    const tempName = function () {
+      let tmp;
+      do { tmp = '(renaming ' + (++n) + ')'; }
+      while (w.areas.some(a => a.name.toLowerCase() === tmp.toLowerCase()) || seenNames.has(tmp.toLowerCase()));
+      return tmp;
+    };
+    const targets = new Set(pairs.map(p => p.to.toLowerCase()));
+    const doomed = new Set();
+    for (const a of w.areas.slice()) {
+      const low = s_(a.name).toLowerCase();
+      if (!deleted.has(low)) continue;
+      if (targets.has(low)) { const tmp = tempName(); step(a.name, tmp); doomed.add(tmp.toLowerCase()); }
+      else doomed.add(low);
+    }
+    const taken = new Set(w.areas.map(a => a.name.toLowerCase()));
+    const viaTemp = pairs.filter(p => p.from.toLowerCase() !== p.to.toLowerCase() && taken.has(p.to.toLowerCase()));
+    const direct = pairs.filter(p => viaTemp.indexOf(p) < 0);
+    const temps = viaTemp.map(function (p) { const tmp = tempName(); step(p.from, tmp); return { from: tmp, to: p.to }; });
+    direct.forEach(p => step(p.from, p.to));
+    temps.forEach(p => step(p.from, p.to));
+
+    // Deleted areas go with their pick rows: those items lose that area.
+    w.pickRows = w.pickRows.filter(r => !doomed.has(s_(r.area).toLowerCase()));
+    w.areas = w.areas.filter(a => !doomed.has(s_(a.name).toLowerCase()));
+
+    finalList.forEach(function (entry, i) {
+      const name = String(entry.name).trim();
+      const a = w.areas.find(x => x.name === name);
+      if (a) a.ord = (i + 1) * 10;
+      else w.areas.push({ name: name, ord: (i + 1) * 10 });
+    });
+    w.areas.sort((a, b) => a.ord - b.ord);
+    return { ok: true, inUseCount: inUse, deletedCount: deleted.size, savedCount: finalList.length };
+  }
+
+  // The Storage areas page (the app's own since 2026-11-11; StorageAreas.html
+  // stays for the Sheet dialog and /exec): each area in its order with the
+  // active items on any vendor's list there, how many vendors' lists, and
+  // how many of those items have no other area (what a delete takes off
+  // every count list). It saves with commitStorageAreasDraft.
+  function getAreasPage(t) {
+    const active = new Set(t.items.filter(it => it.active === true && s_(it.id)).map(it => s_(it.id)));
+    const areasOf = new Map();
+    for (const r of t.pickRows) {
+      const id = s_(r.id), area = s_(r.area);
+      if (!area || !active.has(id)) continue;
+      if (!areasOf.has(id)) areasOf.set(id, new Set());
+      areasOf.get(id).add(area);
+    }
+    return getStorageAreaList(t).map(a => {
+      const rows = t.pickRows.filter(r => s_(r.area) === a.name && active.has(s_(r.id)));
+      const ids = Array.from(new Set(rows.map(r => s_(r.id))));
+      return { name: a.name, order: a.order, items: ids.length,
+               vendors: new Set(rows.map(r => s_(r.vendor).toLowerCase())).size,
+               onlyHere: ids.filter(id => areasOf.get(id).size === 1).length };
+    });
+  }
+
+  // ---- Shelf to Sheet (PickPath.gs) --------------------------------------------
+
+  const itemNameOf = (t, id) => { const it = t.items.find(x => x.id === id); return it ? s_(it.name) : ''; };
+
+  // getPickPathForSidebar_compute_: the vendor's list by area and shelf order,
+  // then the areas with nothing on it yet; plus its active items (as their
+  // primary vendor) with no area on its list.
+  function pickPathForSidebar(t, vendor) {
+    const orders = areaOrderMap(t);
+    const vLow = String(vendor || '').trim().toLowerCase();
+    const rows = t.pickRows
+      .filter(r => s_(r.vendor).toLowerCase() === vLow && s_(r.id))
+      .map(r => ({ id: s_(r.id), name: itemNameOf(t, s_(r.id)), area: s_(r.area),
+                   areaOrder: orders.has(s_(r.area)) ? orders.get(s_(r.area)) : 0, shelfOrder: Number(r.shelfOrder) }));
+    const assigned = new Set(rows.filter(r => r.area).map(r => r.id));
+    const unassigned = [];
+    for (const it of t.items) {
+      const id = s_(it.id), name = s_(it.name);
+      if (s_(it.primaryVendor) === String(vendor).trim() && it.active === true && id && name && !assigned.has(id)) {
+        unassigned.push({ id: id, name: name });
+      }
+    }
+    const sorted = rows.filter(r => r.area).sort((a, b) => (a.areaOrder !== b.areaOrder ? a.areaOrder - b.areaOrder : a.shelfOrder - b.shelfOrder));
+    const groupMap = new Map(), groupOrder = [];
+    for (const r of sorted) {
+      if (!groupMap.has(r.area)) { groupMap.set(r.area, []); groupOrder.push(r.area); }
+      groupMap.get(r.area).push({ id: r.id, name: r.name });
+    }
+    const emptyAreas = Array.from(orders.entries()).sort((a, b) => a[1] - b[1]).filter(([area]) => !groupMap.has(area));
+    const groups = groupOrder.map(area => ({ area: area, areaOrder: orders.has(area) ? orders.get(area) : 999, items: groupMap.get(area) }))
+      .concat(emptyAreas.map(([area, order]) => ({ area: area, areaOrder: order, items: [] })));
+    return { vendor: String(vendor).trim(), unassigned: unassigned, groups: groups };
+  }
+
+  // commitReorderPickPath_: the vendor's whole list as the page now has it,
+  // [{ id, name, area }] in order; rows without an area leave the list. Shelf
+  // orders restart at 10 in each area, and the vendor's rows go to the end of
+  // the pick path, as the Sheet rewrites them. The database holds only listed
+  // vendors, items and areas, so anything else is refused.
+  function reorderPickPath(w, vendor, payload) {
+    if (!vendor) throw new Error('Vendor is required.');
+    if (!Array.isArray(payload) || !payload.length) throw new Error('No items provided.');
+    const canon = normalizeVendorOrThrow(w, vendor);
+    const orders = areaOrderMap(w);
+    const counters = new Map(), seen = new Set();
+    const rows = payload.filter(x => x.id && x.area).map(function (x) {
+      if (!orders.has(x.area)) throw new Error('"' + x.area + '" is not a recognised Storage Area.');
+      if (!w.items.some(it => it.id === x.id)) throw new Error('Item not found: ' + x.id);
+      if (seen.has(x.id)) throw new Error('Item ' + x.id + ' is on the list twice.');
+      seen.add(x.id);
+      const count = (counters.get(x.area) || 0) + 1;
+      counters.set(x.area, count);
+      return { vendor: canon, id: x.id, area: x.area, shelfOrder: count * 10 };
+    });
+    const vLow = String(vendor).toLowerCase();
+    const kept = w.pickRows.filter(r => s_(r.vendor).toLowerCase() !== vLow);
+    let seq = kept.reduce((m, r) => Math.max(m, Number(r.seq) || 0), 0);
+    w.pickRows = kept.concat(rows.map(r => Object.assign(r, { seq: ++seq })));
+    return { ok: true, count: rows.length };
+  }
+
+  // The Shelf to Sheet page (the app's own since 2026-11-11;
+  // ReorderPickPath.html stays for the Sheet dialog and /exec): every vendor
+  // A to Z with the items on its list and its own active items not on it yet
+  // (the vendor column), and for the vendor asked for, pickPathForSidebar
+  // with each item's pack and the name of the LTO that made it (schema v14),
+  // if any. It saves with commitReorderPickPath.
+  function getShelfPage(t, vendor) {
+    const ltoName = new Map((t.ltos || []).map(l => [s_(l.id), s_(l.name)]));
+    const byId = new Map(t.items.map(it => [s_(it.id), it]));
+    const withPack = x => {
+      const it = byId.get(x.id) || {};
+      return { id: x.id, name: x.name, pack: s_(it.pack), lto: (it.lto && ltoName.get(s_(it.lto))) || '' };
+    };
+    const vendors = vendorList(t).slice().sort((a, b) => a.localeCompare(b)).map(name => {
+      const p = pickPathForSidebar(t, name);
+      return { name: name, onList: p.groups.reduce((n, g) => n + g.items.length, 0), notYet: p.unassigned.length };
+    });
+    const want = s_(vendor);
+    if (!want) return { vendors: vendors, path: null };
+    const canon = normalizeVendorOrThrow(t, want);
+    const p = pickPathForSidebar(t, canon);
+    return { vendors: vendors,
+             path: { vendor: p.vendor, unassigned: p.unassigned.map(withPack),
+                     groups: p.groups.map(g => ({ area: g.area, areaOrder: g.areaOrder, items: g.items.map(withPack) })) } };
+  }
+
+  // ---- CSV (Import Vendor, Import from MarginEdge) -------------------------------
+
+  // RFC 4180: quoted fields, "" inside quotes, commas and line breaks in
+  // quotes, a byte-order mark. Blank lines are dropped.
+  function parseCsv(text) {
+    const s = String(text == null ? '' : text).replace(/^﻿/, '');
+    const rows = [];
+    let row = [], field = '', quoted = false;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (quoted) {
+        if (c !== '"') field += c;
+        else if (s[i + 1] === '"') { field += '"'; i++; }
+        else quoted = false;
+      } else if (c === '"') {
+        quoted = true;
+      } else if (c === ',') {
+        row.push(field); field = '';
+      } else if (c === '\n' || c === '\r') {
+        if (c === '\r' && s[i + 1] === '\n') i++;
+        row.push(field); rows.push(row); row = []; field = '';
+      } else {
+        field += c;
+      }
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    return rows.filter(r => r.some(f => String(f).trim() !== ''));
+  }
+
+  // Import from MarginEdge (meImport.js builds the payload). Supabase editor
+  // only, so unlike the calls above it has no Items.gs twin. New vendors start
+  // with no delivery days, so they order nothing until Manage Vendors sets
+  // them. Items come in active, with no par and no storage area, at the
+  // end of the list, so they wait under Unassigned. A name already in the catalog is
+  // skipped, never doubled.
+  // payload = { newVendors: [name], items: [{ name, primaryVendor, eligible: [name], sku, category }] }
+  function importItems(w, payload) {
+    const newVendors = Array.isArray(payload.newVendors) ? payload.newVendors : [];
+    const rows = Array.isArray(payload.items) ? payload.items : [];
+    const known = vendorMap(w);
+    const vendorsAdded = [];
+    for (const raw of newVendors) {
+      const name = String(raw || '').trim();
+      if (!name) throw new Error('Vendor name is required.');
+      if (name.length > 100) throw new Error('Vendor name "' + name + '" is longer than 100 characters.');
+      if (known.has(name.toLowerCase())) throw new Error('Vendor "' + name + '" already exists.');
+      known.set(name.toLowerCase(), name);
+      w.vendors.push({ name: name, mults: [0, 0, 0, 0, 0, 0, 0], cutoff: null });
+      vendorsAdded.push(name);
+    }
+
+    let maxN = 0, seq = 0;
+    const taken = new Set();
+    for (const it of w.items) {
+      const m = /^ITEM-(\d+)$/i.exec(s_(it.id));
+      if (m) maxN = Math.max(maxN, Number(m[1]));
+      seq = Math.max(seq, Number(it.seq) || 0);
+      if (s_(it.name)) taken.add(s_(it.name).toLowerCase());
+    }
+    const skipped = [];
+    let itemsAdded = 0;
+    for (const row of rows) {
+      const name = String((row && row.name) || '').trim();
+      if (!name) throw new Error('Item Name is required.');
+      if (name.length > 300) throw new Error('Item name "' + name.substring(0, 60) + '…" is longer than 300 characters.');
+      if (taken.has(name.toLowerCase())) { skipped.push({ name: name, reason: 'already in the catalog' }); continue; }
+      const primary = normalizeVendorOrThrow(w, row.primaryVendor);
+      const eligible = [primary];
+      for (const v of (Array.isArray(row.eligible) ? row.eligible : [])) {
+        const canon = normalizeVendorOrThrow(w, v);
+        if (eligible.indexOf(canon) < 0) eligible.push(canon);
+      }
+      taken.add(name.toLowerCase());
+      maxN++;
+      seq++;
+      w.items.push({ id: 'ITEM-' + String(maxN).padStart(4, '0'), name: name, primaryVendor: primary, pack: s_(row.pack), par: null,
+                     active: true, useMult: true, notes: s_(row.notes), sku: s_(row.sku), category: s_(row.category),
+                     eligible: eligible, seq: seq });
+      itemsAdded++;
+    }
+    return { ok: true, vendorsAdded: vendorsAdded, itemsAdded: itemsAdded, skipped: skipped };
+  }
+
+  // ---- Changes ---------------------------------------------------------------
+
+  function sameRow(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+
+  // The row changes from base to work, once base has the same seq shifts and
+  // area renames. In the order the header describes, so every step keeps the
+  // tables' links valid.
+  function diff(base, work, shifts, renames) {
+    const b = clone(base);
+    for (const from of shifts) for (const it of b.items) if (it.seq >= from) it.seq += 1;
+    for (const r of renames) (r.rename === 'vendors' ? renameVendor : renameArea)(b, r.from, r.to);
+    const dels = [], puts = [];
+    for (const t of TABLES) {
+      const before = new Map(b[t].map(r => [keyOf(t, r), r]));
+      const after = new Map(work[t].map(r => [keyOf(t, r), r]));
+      for (const [k, r] of before) if (!after.has(k)) dels.push({ t: t, key: k, before: r, after: null });
+      for (const [k, r] of after) {
+        const old = before.has(k) ? before.get(k) : null;
+        if (!old || !sameRow(old, r)) puts.push({ t: t, key: k, before: old, after: r });
+      }
+    }
+    const rank = op => TABLES.indexOf(op.t);
+    const early = dels.filter(op => op.t === 'pickRows' || op.t === 'areas').sort((x, y) => rank(y) - rank(x));
+    const late = dels.filter(op => op.t === 'items' || op.t === 'vendors').sort((x, y) => rank(y) - rank(x));
+    puts.sort((x, y) => rank(x) - rank(y));
+    return shifts.map(from => ({ shift: 'items', from: from })).concat(renames, early, puts, late);
+  }
+
+  // The fields a row's "before" must still match for a change to apply. The
+  // order fields (seq) are not part of it: they only place a row.
+  const USER_FIELDS = {
+    vendors:  ['mults', 'cutoff', 'contact'],
+    areas:    ['ord'],
+    items:    ['name', 'primaryVendor', 'pack', 'par', 'active', 'useMult', 'notes', 'sku', 'category', 'eligible', 'lto', 'whProduct', 'whPlace', 'whVendor'],
+    pickRows: ['area', 'shelfOrder']
+  };
+  function matches(t, row, want) {
+    const v = (f, x) => (f === 'contact' ? contactKey(x) : JSON.stringify(x === undefined ? null : x));
+    return USER_FIELDS[t].every(f => v(f, row[f]) === v(f, want[f]));
+  }
+
+  // Apply ops to tables (a copy), as mog_editor_apply does: refused with
+  // CONFLICT when a row isn't what the change expects. An updated item keeps
+  // its own seq; an updated pick row takes the new one.
+  function applyOps(tables, ops) {
+    const t = clone(tables);
+    for (const op of ops) {
+      if (op.shift) {
+        for (const it of t.items) if (it.seq >= op.from) it.seq += 1;
+        continue;
+      }
+      if (op.rename) {
+        const kind = op.rename === 'vendors' ? 'vendors' : 'areas';
+        if ((op.rename !== 'areas' && op.rename !== 'vendors') || !t[kind].some(a => a.name === op.from)) throw new Error('CONFLICT: ' + kind + ' ' + op.from + ' changed');
+        if (op.from.toLowerCase() !== op.to.toLowerCase() && t[kind].some(a => a.name.toLowerCase() === op.to.toLowerCase())) {
+          throw new Error('CONFLICT: ' + kind + ' ' + op.to + ' already exists');
+        }
+        (kind === 'vendors' ? renameVendor : renameArea)(t, op.from, op.to);
+        continue;
+      }
+      const list = t[op.t];
+      const i = list.findIndex(r => keyOf(op.t, r) === op.key);
+      if (op.before === null) {
+        if (i >= 0) throw new Error('CONFLICT: ' + op.t + ' ' + op.key + ' already exists');
+      } else if (i < 0 || !matches(op.t, list[i], op.before)) {
+        throw new Error('CONFLICT: ' + op.t + ' ' + op.key + ' changed');
+      }
+      if (op.after === null) list.splice(i, 1);
+      else if (i < 0) list.push(clone(op.after));
+      else list[i] = Object.assign(clone(op.after), op.t === 'items' ? { seq: list[i].seq } : {});
+    }
+    t.items.sort((a, b) => a.seq - b.seq);
+    t.pickRows.sort((a, b) => a.seq - b.seq);
+    t.areas.sort((a, b) => a.ord - b.ord);
+    return t;
+  }
+
+  // Undo: each change reversed, last first; a rename goes back. Seq shifts
+  // stay (a gap in the order changes nothing).
+  function inverseOps(ops) {
+    return ops.filter(op => !op.shift).slice().reverse()
+      .map(op => (op.rename ? { rename: op.rename, from: op.to, to: op.from }
+                            : { t: op.t, key: op.key, before: op.after, after: op.before }));
+  }
+
+  // ---- What a change was, in words (the change log) -------------------------
+
+  const fmt = v => (v === null || v === undefined || v === '') ? '(blank)' :
+    Array.isArray(v) ? (v.join(', ') || '(none)') : (v === true ? 'yes' : v === false ? 'no' : String(v));
+  const FIELD_LABEL = { name: 'name', primaryVendor: 'primary vendor', pack: 'pack', par: 'par', active: 'active',
+                        useMult: 'use multiplier', notes: 'notes', eligible: 'vendors' };
+  const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
+  function describe(fn, args, base, result, work) {
+    const nameOf = id => { const it = base.items.find(x => x.id === id); return it ? s_(it.name) : id; };
+    if (fn === 'commitUpsertItem' && result.mode === 'add') {
+      return 'Added "' + s_(args[0].name) + '" (' + result.id + ') to ' + normalizeVendorOrThrow(base, args[0].vendor);
+    }
+    if (fn === 'commitUpsertItem') {
+      const before = base.items.find(x => x.id === result.id);
+      const after = work.items.find(x => x.id === result.id);
+      const parts = [];
+      if (before && after) {
+        for (const f of Object.keys(FIELD_LABEL)) {
+          if (JSON.stringify(before[f]) !== JSON.stringify(after[f])) parts.push(FIELD_LABEL[f] + ' ' + fmt(before[f]) + ' → ' + fmt(after[f]));
+        }
+      }
+      if (result.assignedArea) parts.push('area ' + result.assignedArea);
+      return 'Edited "' + nameOf(result.id) + '"' + (parts.length ? ': ' + parts.join('; ') : '');
+    }
+    if (fn === 'commitSwitchActiveVendor') return 'Made ' + result.vendor + ' the primary vendor of "' + nameOf(result.id) + '"';
+    if (fn === 'commitSetVendorItems') return 'Assigned items to ' + result.vendor + ': ' + result.added + ' added, ' + result.removed + ' removed';
+    if (fn === 'commitDeleteItem') return 'Deleted "' + result.name + '" (' + result.id + ')';
+    if (fn === 'commitSetItemsArea') return 'Moved ' + plural(result.moved, 'item') + ' to ' + result.area;
+    if (fn === 'commitSetItemsActive') return 'Made ' + plural(result.changed, 'item') + (result.active ? ' active' : ' inactive');
+    if (fn === 'commitSetItemsVendor') return (result.add ? 'Added ' : 'Removed ') + plural(result.changed, 'item') + (result.add ? ' to ' : ' from ') + result.vendor;
+    if (fn === 'commitImportItems') {
+      const v = result.vendorsAdded.length;
+      const names = v <= 6 ? ' (' + result.vendorsAdded.join(', ') + ')' : '';   // the log keeps 300 characters
+      const vendors = plural(v, 'vendor') + names;
+      if (!result.itemsAdded) return 'Added ' + vendors + ' from MarginEdge';
+      return 'Imported ' + plural(result.itemsAdded, 'item') + ' from MarginEdge' + (v ? ' and added ' + vendors : '');
+    }
+    if (fn === 'commitAddVendor') return 'Added vendor "' + result.name + '"';
+    if (fn === 'commitUpdateVendorMultsAndCutoff') {
+      const before = findVendor(base, s_(args[0])), after = findVendor(work, s_(args[0]));
+      const parts = [];
+      if (before && after && JSON.stringify(before.mults) !== JSON.stringify(after.mults)) {
+        parts.push('day multipliers ' + before.mults.join(' ') + ' → ' + after.mults.join(' '));
+      }
+      if (before && after && before.cutoff !== after.cutoff) parts.push('cutoff ' + fmt(before.cutoff) + ' → ' + fmt(after.cutoff));
+      return 'Updated vendor "' + (before ? before.name : s_(args[0])) + '"' + (parts.length ? ': ' + parts.join('; ') : '');
+    }
+    if (fn === 'commitRemoveVendor') {
+      const v = findVendor(base, s_(args[0]));
+      return 'Removed vendor "' + (v ? v.name : s_(args[0])) + '"';
+    }
+    if (fn === 'commitHqLto') {
+      const few = names => (names.length <= 6 ? ' (' + names.join(', ') + ')' : '');
+      const lto = 'LTO "' + s_(args[0].name) + '"';
+      if (result.action === 'end') return 'HQ ended ' + lto + ': made ' + plural(result.changed, 'item') + ' inactive' + few(result.items);
+      if (result.action === 'standard') return 'HQ made ' + lto + ' standard: ' + plural(result.changed, 'item') + few(result.items);
+      const parts = [];
+      if (result.changed) parts.push('deleted ' + plural(result.changed, 'item') + few(result.items));
+      for (const b of result.backupsRemoved) parts.push(b.name + ' no longer from ' + b.vendors.join(', '));
+      if (result.vendorsRemoved.length) parts.push('removed vendor' + (result.vendorsRemoved.length === 1 ? ' ' : 's ') + result.vendorsRemoved.join(', '));
+      return 'HQ rolled back ' + lto + (parts.length ? ': ' + parts.join('; ') : '');
+    }
+    if (fn === 'commitHqRoutes') {
+      const parts = [];
+      if (result.vendorsAdded.length) parts.push('added vendor ' + result.vendorsAdded.join(', '));
+      if (result.added && result.added.length) parts.push('added ' + result.added.map(n => '"' + n + '"').join(', ') + ' (no par, no area)');
+      for (const x of result.linked) {
+        parts.push('"' + x.name + '" from ' + x.place + ' as ' + x.vendor + (x.oldMain ? ' (' + x.oldMain + ' a backup)' : '') +
+                   (x.packFrom !== null ? ', pack ' + fmt(x.packFrom) + ' → ' + x.pack : ''));
+      }
+      if (result.ended.length) parts.push('ended the route for ' + result.ended.join(', '));
+      for (const x of result.putBack) parts.push('"' + x.name + '" back on ' + x.vendor);
+      return ('HQ ' + result.product + ': ' + parts.join('; ')).slice(0, 300);
+    }
+    if (fn === 'commitHqRollout') {
+      const parts = [];
+      const few = names => (names.length <= 6 ? ' (' + names.join(', ') + ')' : '');
+      if (result.vendorsAdded.length) parts.push('added vendor' + (result.vendorsAdded.length === 1 ? ' ' : 's ') + result.vendorsAdded.join(', '));
+      if (result.itemsAdded.length) parts.push('added ' + plural(result.itemsAdded.length, 'item') + few(result.itemsAdded));
+      for (const b of result.backupsAdded) parts.push(b.name + ' also from ' + b.vendors.join(', '));
+      return 'HQ' + (result.label ? ' "' + result.label + '"' : '') + (parts.length ? ': ' + parts.join('; ') : '');
+    }
+    if (fn === 'commitSaveVendor' && result.mode === 'add') {
+      return 'Added vendor "' + result.name + '"' + (Object.keys(result.contact).length ? ' with its contact' : '');
+    }
+    if (fn === 'commitSaveVendor') {
+      const before = findVendor(base, result.renamedFrom || result.name), after = findVendor(work, result.name);
+      const parts = [];
+      if (before && after && JSON.stringify(before.mults) !== JSON.stringify(after.mults)) {
+        parts.push('day multipliers ' + before.mults.join(' ') + ' → ' + after.mults.join(' '));
+      }
+      if (before && after && before.cutoff !== after.cutoff) parts.push('cutoff ' + fmt(before.cutoff) + ' → ' + fmt(after.cutoff));
+      const was = (before && before.contact) || {}, now = (after && after.contact) || {};
+      const changed = CONTACT_KEYS.filter(k => (was[k] || '') !== (now[k] || '')).map(k => CONTACT_LABEL[k]);
+      if (changed.length) parts.push('contact (' + changed.join(', ') + ')');
+      if (result.renamedFrom) return 'Renamed vendor "' + result.renamedFrom + '" to "' + result.name + '"' + (parts.length ? '; ' + parts.join('; ') : '');
+      return 'Updated vendor "' + result.name + '"' + (parts.length ? ': ' + parts.join('; ') : '');
+    }
+    if (fn === 'commitStorageAreasDraft') {
+      const oldNames = new Map(base.areas.map(a => [a.name.toLowerCase(), a.name]));
+      const parts = [];
+      const added = args[0].filter(e => !s_(e && e.origName)).map(e => s_(e.name));
+      const renamed = args[0].filter(e => s_(e && e.origName) && oldNames.get(s_(e.origName).toLowerCase()) !== s_(e.name))
+        .map(e => oldNames.get(s_(e.origName).toLowerCase()) + ' → ' + s_(e.name));
+      const kept = new Set(args[0].map(e => s_(e && e.origName).toLowerCase()).filter(Boolean));
+      const removed = base.areas.map(a => a.name).filter(n => !kept.has(n.toLowerCase()));
+      if (added.length) parts.push('added ' + added.join(', '));
+      if (renamed.length) parts.push('renamed ' + renamed.join(', '));
+      if (removed.length) parts.push('removed ' + removed.join(', '));
+      return 'Saved the storage areas' + (parts.length ? ': ' + parts.join('; ') : ' (new order)');
+    }
+    if (fn === 'commitReorderPickPath') return 'Saved the ' + normalizeVendorOrThrow(base, args[0]) + ' list (' + plural(result.count, 'item') + ')';
+    if (fn === 'commitPlaceBackupVendors') return 'Placed ' + plural(result.placed, 'item') + ' on their backup vendors\' lists (Health Check)';
+    return fn;
+  }
+
+  // ---- The page's server calls, by name -------------------------------------
+
+  const READS = {
+    getManageItemsBootstrap: (t, args) => getManageItemsBootstrap(t, args[0], args[1]),
+    getStoreHealthReport: (t, args) => getStoreHealthReport(t, args[0], args[1]),
+    getOverviewCounts: (t, args) => getOverviewCounts(t, args[0]),
+    getAllItemsForView: t => getAllItemsForView(t),
+    getUnassignedActiveItems: t => getUnassignedActiveItems(t),
+    getItemForEdit: (t, args) => getItemForEdit(t, args[0]),
+    getVendorList: t => vendorList(t),
+    getStorageAreaList: t => getStorageAreaList(t),
+    getVendorTableData: t => getVendorTableData(t),
+    getVendorsPage: t => getVendorsPage(t),
+    getPickPathForSidebar: (t, args) => pickPathForSidebar(t, args[0]),
+    getAreasPage: t => getAreasPage(t),
+    getShelfPage: (t, args) => getShelfPage(t, args[0])
+  };
+  const WRITES = {
+    commitUpsertItem: (w, args, shifts) => upsertItem(w, args[0] || {}, shifts),
+    commitSwitchActiveVendor: (w, args) => switchActiveVendor(w, args[0], args[1]),
+    commitSetVendorItems: (w, args) => setVendorItems(w, args[0], args[1]),
+    commitDeleteItem: (w, args) => deleteItem(w, args[0]),
+    commitSetItemsArea: (w, args) => setItemsArea(w, args[0], args[1]),
+    commitSetItemsActive: (w, args) => setItemsActive(w, args[0], args[1]),
+    commitSetItemsVendor: (w, args) => setItemsVendor(w, args[0], args[1], args[2]),
+    commitImportItems: (w, args) => importItems(w, args[0] || {}),
+    commitAddVendor: (w, args) => addVendor(w, args[0], args[1], args[2]),
+    commitUpdateVendorMultsAndCutoff: (w, args) => updateVendor(w, args[0], args[1], args[2]),
+    commitRemoveVendor: (w, args) => removeVendor(w, args[0]),
+    commitSaveVendor: (w, args, shifts, renames) => saveVendor(w, args[0], renames),
+    commitHqRollout: (w, args) => hqRollout(w, args[0]),
+    commitHqLto: (w, args) => hqLto(w, args[0]),
+    commitHqRoutes: (w, args) => hqRoutes(w, args[0]),
+    commitStorageAreasDraft: (w, args, shifts, renames) => storageAreasDraft(w, args[0], renames),
+    commitReorderPickPath: (w, args) => reorderPickPath(w, args[0], args[1]),
+    commitPlaceBackupVendors: w => placeBackupVendors(w)
+  };
+
+  // A read answers { result }; a write { result, ops, label }. A name this
+  // file doesn't serve throws, like webeditDispatch_ refusing an unlisted one.
+  function call(tables, fn, args) {
+    args = args || [];
+    if (READS[fn]) return { result: READS[fn](tables, args) };
+    if (!WRITES[fn]) throw new Error('"' + fn + '" is not allowed.');
+    const work = clone(tables), shifts = [], renames = [];
+    const result = WRITES[fn](work, args, shifts, renames);
+    const ops = diff(tables, work, shifts, renames);
+    return { result: result, ops: ops, label: ops.length ? describe(fn, args, tables, result, work) : '' };
+  }
+
+  const api = { call: call, applyOps: applyOps, inverseOps: inverseOps, reads: Object.keys(READS),
+                writes: Object.keys(WRITES), vendorList: vendorList, parseCsv: parseCsv,
+                multsFromDays: multsFromDays, daysFromMults: daysFromMults, matchVendor: matchVendor,
+                cleanLibrary: cleanLibrary, librarySeed: librarySeed, libraryAdd: libraryAdd, libraryLabel: libraryLabel,
+                ltoStoreState: ltoStoreState, ltoWaiting: ltoWaiting, productCandidates: productCandidates,
+                healthRows: healthRows };
+  root.CatalogEdit = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof window !== 'undefined' ? window : this);

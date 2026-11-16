@@ -88,5 +88,14 @@
     "deployment": "https://script.google.com/macros/s/AKfycbyGQeDq3M8MmHx4Ves1-youGAe3_PfFEUsl2jGbXfbLzLUO4yyvt7WgH9P2Xjfj3Rd0/exec",
     "ns": "AKfycbyGQeDq",
     "editor": "supabase"
+  },
+  {
+    "slug": "leidtyson",
+    "concept": "Lei’d Poke",
+    "location": "Tyson BOH",
+    "address": "8032 Leesburg Pike Ste D, Vienna, VA 22182",
+    "editor": "supabase",
+    "ns": "s_leidtyson",
+    "test": true
   }
 ]
