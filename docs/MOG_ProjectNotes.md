@@ -83,6 +83,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
     - **Creating it** (once, done by Claude on Sebastian's go): `clasp create-script --type standalone --title "MOG mail relay" --rootDir mail-relay`, then `clasp push -f` and `clasp create-deployment` from `mail-relay/`; the script and deployment IDs go into `relay-target.json` and `RELAY_URL`, then the function is redeployed.
     - **A key** (cycle, store, person) is kept 6 hours in the relay's cache: a retry after a lost answer never emails twice.
     - **It runs as Sebastian's account:** MailApp's 1,500 recipients a day are shared with his other scripts (about 21 a night). If he leaves, the relay moves with a new owner's `create-script` and deploy.
+    - **The recaps it sends aren't in Sebastian's mailbox** (not even under Sent) unless he is a recipient of that store (checked 2026-11-16 with the Gmail connector). The morning check reads `mog.night_log`'s `recap` rows (`sent`, `failed`, `attempt`, `recipients`); the sender and the layout are seen only by a recipient.
 
 ## HQ control (schema v11)
 

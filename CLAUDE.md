@@ -16,7 +16,7 @@ Project facts and gotchas live in `docs/MOG_ProjectNotes.md`. It is not auto-loa
 
 Replace the path here with the newest handoff at the end of each session that ships material changes. (The `mog-session-handoff` skill rewrites this line.)
 
-@docs/MOG_SessionHandoff_2026_11_15.md
+@docs/MOG_SessionHandoff_2026_11_16.md
 If `docs/` holds a newer `MOG_SessionHandoff_*.md` than the import above (sort by name), read the newest one first. The SessionStart context guard flags a lagging import.
 
 ## Quick orientation
