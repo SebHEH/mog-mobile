@@ -1,6 +1,6 @@
 # MOG (Master Ordering Guide): Logic Blueprint
 
-`current_as_of: 67232ca (2026-11-15) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
+`current_as_of: f0c7882 (2026-11-15) · covers: Layers 1 to 3, owner-verified via the blueprint questionnaire`
 · maintained in `docs/MOG_LogicBlueprint.md`
 <!-- Regenerate the presentable HTML any time with:
      python C:/Users/sebcn/.claude/skills/project-logic-blueprint/scripts/render_blueprint_html.py docs/MOG_LogicBlueprint.md -->
@@ -83,7 +83,7 @@ rebuild can replace. The stated goal for a rebuild is to capture the logic; the 
 | **Count session (the daily order)** | The set of counts plus suggested quantities a user submits for a vendor on a given day. |
 | **Recap email** | The email of the day's logged order, sent to the store's recipients once per order cycle after the midnight close: the day's record. Until 2026-11-15 a "Daily summary" sent the same email during the day as the list to order from; orders are now placed from the app. |
 | **Reset / new day** | Clearing the day's on-hand counts and snapshotting the completed session to history so the next day starts fresh. |
-| **Store PIN vs. master PIN** | The store PIN (the store's street number) gates the phone app and the desktop editor; a separate master PIN gates destructive/admin actions. |
+| **Store PIN vs. master PIN** | The store PIN (the store's street number) gates the phone app and the desktop editor; a separate master PIN, the same at every store, gates destructive/admin actions. Both are set in HQ (R15a). |
 | **Web editor** | A desktop, PIN-gated web app (same URL, different door) where a user manages items, vendors, storage areas, pick path, and views order history. |
 | **Hub** | The landing page that routes a user to their concept, site, and store before the store app opens. Prevents one store accidentally using another store's guide. |
 
@@ -282,6 +282,27 @@ naive rebuild silently loses.*
   a 12-hour session. PINs are stored there only as hashes, with the same lockout. *(Confirmed:
   `checkPin_`, lockout, `sessionStorage` mirror re-validated via `tryPin` on boot, `webedit_call` +
   `tests/public_surface.test.js`, `mog_login`; owner-confirmed why.)*
+- **R15a. PINs are set in HQ, and there is one manager PIN for every store** (since 2026-11-15,
+  schema v26). A store's PIN is changed in HQ → Stores by someone with the hq role; the change ends
+  every sign-in at that store, and who changed it and when are kept. The manager (master) PIN is
+  **one code for every store and concept, locked**: it is set once in HQ, every store gets it at once,
+  a store made later gets it too, and nothing can give one store a different one. It must differ from
+  every store's PIN (sign-in checks the store PIN first, so a shared code would always sign in as the
+  store), and no store PIN may be set to it. Changing it ends every manager-mode sign-in, not the
+  stores' own. Until it is first set in HQ, each store keeps the manager PIN its Sheet gave it. Once
+  the database closes a store, a Sheet can no longer push that store's PINs (it would overwrite what
+  HQ set). *(Confirmed: `mog_hq_stores` `pin` / `managerPin`, `mog.manager_pin`, the trigger
+  `stores_manager_pin`, `mog_sync_set_pins` answering `PINS_IN_HQ`; smoke_v26 30/30 live 2026-11-15;
+  owner-confirmed: "the same across all stores and concepts, locked to one PIN".)*
+- **R15b. A new store is made in HQ in one step, with no Sheet** (since 2026-11-15, schema v26). HQ →
+  Stores → New store takes the concept, side, site, time zone, address, web address, store code,
+  store PIN and the GM's email, and makes the whole store at once or nothing: its record (phones,
+  Manage and the nightly close all on the database), today's day in its time zone, an empty catalog
+  the phones can read, and the GM as its first recap recipient. Its name is "<concept> <site>
+  <side>", with " (TEST)" for a test store, which is published but never listed on the hub. It is then
+  put on the web (the store list and a build), and its items come from a concept library or its own
+  Overview checklist. *(Confirmed: `mog_hq_stores('create')`, `mog.store_create`, `build.py` taking
+  a store with no `/exec`, skill `mog-add-store`; owner-confirmed 2026-11-15.)*
 - **R16. Every store is strictly isolated**: one store's app only ever sees its own items, vendors,
   orders, and recipients. A user has no need to see another store's ordering, and it keeps the app
   simple. *(Confirmed: per-store Sheet + per-store deployment; owner-confirmed why.)*
@@ -439,7 +460,7 @@ per store; a rebuild would model them as tables. Column letters are breadcrumbs 
 | location name | text | Display name, for example "Rosslyn BOH". Encodes BOH vs. FOH. |
 | side | BOH / FOH | Read from the location name; picks the store's concept library (R29). |
 | store PIN | secret | The store's street number. Gates app + editor. |
-| master PIN | secret | Gates destructive/admin actions. |
+| master PIN | secret | Gates destructive/admin actions. One code for every store, set in HQ (R15a). |
 | recipients | list of {name, email, active, GM?} | Who gets the recap email; the GM row comes first and changes only on a computer. Owned by the database once the store's editor moved (R23). |
 | configured? | boolean | False until first-run setup completes. |
 
