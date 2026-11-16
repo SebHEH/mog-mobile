@@ -27,7 +27,8 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 **2026-11-15 (evening): Sheet retirement step 5 decided; items 1 and 2 built** (`docs/MOG_SheetRetirement_Spec.md`, "Step 5").
 - **Decided (all four as proposed):** v27 refuses Apps Script's close and recap flag; a fixed `ns` per store; archive all 10 store deployments once the nights and the TEST trial are clean; rollback is fix forward plus the nightly backup.
 - **Live (about 9 to 9:20 PM ET):** schema v26 (pasted by Grok Bot; smoke_v26 30/30), schema v27 (`ea6d4d6`, connector; smoke_v27 14/14; probe 160/160), `ns` in `stores.json` (`4008355`), app v0.35.0 / cache v79 without `/exec` at all 10 stores (canary rprfo `67232ca`, signed in and a count saved in a desktop browser; fan-out `f0c7882`, CI green). Logic Blueprint R14, R15a (PINs in HQ, one manager PIN) and R15b (a store made in HQ).
-- **Next:** the manager PIN set once in HQ → Stores, a TEST store made there and published (`mog-add-store`), its close and a PIN change the next morning. The first all-Supabase night is tonight (cycle 11-15, due 12:16 AM). rprfo's only count today is the canary's test (Chopsticks, on hand 1): par 0.33 × 2 = 0.66 minus 1 orders nothing, so no recap line.
+- **2026-11-16 morning:** the manager PIN is set in HQ (one hash at every store). The TEST store `leidtyson` (Lei'd Poke Tyson BOH (TEST)) was made in HQ and published (`fd8b786`, no `/exec`, not on the hub); left: its items, a phone sign-in and count, its first close, and a PIN changed in HQ that works the next morning.
+- **The first all-Supabase night (cycle 11-15) was clean** (read 8:46 AM ET on 11-16): all 10 stores closed just after midnight (`close` ok); rpr (70 lines) and rpfr (15) sent their recap on the first try, 2 of 2 recipients each, none failed; rpt (27) and tnytf (61) owed none (their Daily summaries had gone out at 1:43 and 1:47 PM); the other six ordered nothing. Each Sheet's 3:30 AM trigger retired itself between 3:23 and 3:37 AM (`sheet_trigger_off_at` at all 10). The recaps went through the mail relay, so they aren't in Sebastian's mailbox; the sender wasn't seen.
 
 **2026-11-15 (later): Sheet retirement step 4 built; schema v26 waits to run** (`docs/MOG_SheetRetirement_Spec.md`, "Step 4").
 - **Approved:** the walkthrough, then the mockups (https://claude.ai/artifact/665XFnU7VfRaKXntyXLtxu) with two changes: one manager PIN for every store and concept, locked; the New store form in the picked concept's colours and logo.
@@ -203,7 +204,7 @@ See `CLAUDE.md` → "Standing invariants" (10 rules). They aren't repeated here 
 
 ## Live stores (stores.json)
 
-10 entries, all with `"editor": "supabase"`. The template isn't published. Hub: `https://sebheh.github.io/mog-mobile/`.
+11 entries, all with `"editor": "supabase"`: the 10 stores from Sheets and one test store made in HQ (`leidtyson`, no Sheet, not on the hub). The template isn't published. Hub: `https://sebheh.github.io/mog-mobile/`.
 
 | Slug | Concept | Location |
 |---|---|---|
@@ -217,6 +218,7 @@ See `CLAUDE.md` → "Standing invariants" (10 rules). They aren't repeated here 
 | `tnytf` | Teas’n You | Tysons FOH |
 | `tnyr` | Teas’n You | Rockville BOH |
 | `tnyrf` | Teas’n You | Rockville FOH |
+| `leidtyson` | Lei’d Poke | Tyson BOH (TEST): made in HQ 2026-11-16, published `fd8b786`, no `/exec` |
 
 ---
 
