@@ -16,7 +16,9 @@ Usage (from the repo root, after `git push`):
         --marker "hq/warehouse.js=routesStopped" \\
         --marker "{store}/sw.js=CACHE_VERSION = 'v75'"
 
-A path with {store} expands to all 10 stores in stores.json. --base REV checks
+A path with {store} expands to every store in stores.json; --skip SLUG leaves one
+out (the fan-out after a canary: the canary's old file already has the marker, so
+without it the check refuses; 2026-11-15). --base REV checks
 "not in the old file" against REV instead of HEAD~1 (use it when the marker
 landed a few commits back). --timeout is in minutes (default 10). Exit 0 =
 live everywhere and gates passed; 1 = gates failed; 2 = timed out or refused.
@@ -55,10 +57,16 @@ def main():
     ap.add_argument('--marker', action='append', required=True, help='PATH=TEXT (PATH may contain {store})')
     ap.add_argument('--base', default='HEAD~1', help='the old build to check the marker is NOT in (default HEAD~1)')
     ap.add_argument('--timeout', type=float, default=10, help='minutes (default 10)')
+    ap.add_argument('--skip', action='append', default=[],
+                    help='a store {store} leaves out: the canary on a fan-out, whose old file already has the marker')
     a = ap.parse_args()
 
     with open(os.path.join(REPO, 'stores.json'), encoding='utf-8') as f:
         stores = [s['slug'] for s in json.load(f)]
+    unknown = [s for s in a.skip if s not in stores]
+    if unknown:
+        sys.exit('--skip names no store in stores.json: ' + ', '.join(unknown))
+    stores = [s for s in stores if s not in a.skip]
     checks = []   # (path, text)
     for m in a.marker:
         if '=' not in m:
