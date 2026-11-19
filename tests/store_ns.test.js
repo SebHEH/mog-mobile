@@ -3,15 +3,18 @@
 // step 5, item 2). Every phone files a store's drafts, unsent counts,
 // reviewed flags and caches under 'mog_<ns>_...'. App v0.34.1 and older took
 // <ns> from the store's /exec address (the first 12 characters of its
-// deployment id; s_<slug> for a store with none). Once the app stops using
-// /exec and the address goes, the key must not move, or the phones lose what
-// they hold. So:
+// deployment id; s_<slug> for a store with none). The addresses are gone
+// (deployments archived, `deployment` out of stores.json, 2026-11-20), but the
+// key must never move, or the phones lose what they hold. So:
 //   - for every store in stores.json, the key the app computes now (storeNs_,
 //     from the page build.py writes) equals what v0.34.1's deploymentNs_
-//     computed from that store's address; likewise for a store made in HQ;
+//     computed from the address stores.json held at v0.34.1 (git history);
+//     likewise for a store made in HQ;
+//   - build.py's frozen LEGACY_NS holds exactly those keys, one per store
+//     that had an address;
 //   - every committed <slug>/index.html carries its store's ns (build.py ran);
-//   - build.py refuses a store with no ns, an ns that differs from its
-//     deployment's, an HQ store's ns other than s_<slug>, and a shared ns.
+//   - build.py refuses a store with no ns, an ns other than LEGACY_NS's or
+//     s_<slug>, and a `deployment` field (retired).
 // Each has a planted-defect control.
 //
 // Run bare: node tests/store_ns.test.js. A passing run ends with "store_ns: ALL PASS".
@@ -29,6 +32,10 @@ const PY = process.env.PYTHON || 'python';
 const OLD = '7535744';   // app v0.34.1: the last namespace taken from the /exec address
 const T = 'template/index.html';
 const SRC = file => F.source(null, file);
+
+// Each store's /exec address as stores.json held it at v0.34.1.
+const OLD_ADDRESS = {};
+for (const s of JSON.parse(F.source(OLD, 'stores.json'))) if (s.deployment) OLD_ADDRESS[s.slug] = s.deployment;
 
 // The page's window.MOG_STORE, as build.py wrote it.
 function storeProfile(page) {
@@ -60,13 +67,12 @@ function newNs(template, slug, profile) {
 function runBuild(buildSrc, stores) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mog-storens-'));
   fs.writeFileSync(path.join(dir, 'build_src.py'), buildSrc);
-  const dep = s => 'https://script.google.com/macros/s/' + s + '/exec';
   const cases = {
-    missing: [{ slug: 'zzns1', concept: 'Roll Play', location: 'X BOH', deployment: dep('AKfycbzzzzzzzzzzQQ'), editor: 'supabase' }],
-    differs: [{ slug: 'zzns1', concept: 'Roll Play', location: 'X BOH', deployment: dep('AKfycbzzzzzzzzzzQQ'), editor: 'supabase', ns: 'AKfycbzzzzzY' }],
+    missing: [{ slug: 'zzns1', concept: 'Roll Play', location: 'X BOH', editor: 'supabase' }],
+    differs: [{ slug: 'rprfo', concept: 'Roll Play', location: 'Rosslyn FOH', editor: 'supabase', ns: 'AKfycby8-_gX' }],
     hqOther: [{ slug: 'zzns2', concept: 'Roll Play', location: 'X FOH', editor: 'supabase', ns: 'zzns2' }],
-    shared:  [{ slug: 'zzns3', concept: 'Roll Play', location: 'X BOH', editor: 'supabase', ns: 's_zzns3' },
-              { slug: 'zzns4', concept: 'Roll Play', location: 'Y BOH', deployment: dep('s_zzns3'), editor: 'supabase', ns: 's_zzns3' }],
+    retired: [{ slug: 'zzns3', concept: 'Roll Play', location: 'X BOH', editor: 'supabase', ns: 's_zzns3',
+                deployment: 'https://script.google.com/macros/s/AKfycbzzzzzzzzzzQQ/exec' }],
     hqOk:    [{ slug: 'zzns5', concept: 'Roll Play', location: 'X BOH', editor: 'supabase', ns: 's_zzns5' }]
   };
   const code = [
@@ -75,7 +81,7 @@ function runBuild(buildSrc, stores) {
     'build = types.ModuleType("build")',
     'build.__file__ = os.path.join(' + JSON.stringify(REPO) + ', "build.py")',
     'exec(compile(io.open(os.path.join(' + JSON.stringify(dir) + ', "build_src.py"), encoding="utf-8").read(), build.__file__, "exec"), build.__dict__)',
-    'cases = json.loads(sys.argv[1]); stores = json.loads(sys.argv[2]); out = {"cases": {}, "built": {}}',
+    'cases = json.loads(sys.argv[1]); stores = json.loads(sys.argv[2]); out = {"cases": {}, "built": {}, "legacy": build.LEGACY_NS}',
     'for name, rows in cases.items():',
     '    try:',
     '        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()): build.validate_stores(rows)',
@@ -109,12 +115,21 @@ function runSuite(srcOf) {
   try { b = runBuild(srcOf('build.py'), stores); } catch (e) { fail('build', e.message); return fails; }
 
   // build.py's refusals.
-  const want = { missing: 'refused', differs: 'refused', hqOther: 'refused', shared: 'refused', hqOk: 'accepted' };
+  const want = { missing: 'refused', differs: 'refused', hqOther: 'refused', retired: 'refused', hqOk: 'accepted' };
   for (const k of Object.keys(want)) if (b.cases[k] !== want[k]) fail('refuse', k + ': ' + b.cases[k] + ' (want ' + want[k] + ')');
 
-  // Every store: v0.34.1's key from its address == today's key from its built page.
+  // build.py's frozen keys: exactly the stores that had an address, each the key v0.34.1 used.
+  const legacy = b.legacy || {};
+  for (const slug of Object.keys(OLD_ADDRESS)) {
+    const before = oldNs(slug, OLD_ADDRESS[slug]);
+    if (legacy[slug] !== before) fail('legacy', slug + ': LEGACY_NS has ' + legacy[slug] + ', v0.34.1 used ' + before);
+  }
+  for (const slug of Object.keys(legacy)) if (!OLD_ADDRESS[slug]) fail('legacy', slug + ' is in LEGACY_NS but had no address');
+  if (new Set(Object.values(legacy)).size !== Object.keys(legacy).length) fail('legacy', 'two stores share a key in LEGACY_NS');
+
+  // Every store: v0.34.1's key from its old address == today's key from its built page.
   for (const s of stores) {
-    const before = oldNs(s.slug, s.deployment || '');
+    const before = oldNs(s.slug, OLD_ADDRESS[s.slug] || '');
     const prof = storeProfile(b.built[s.slug]);
     const now = newNs(template, s.slug, prof);
     if (now !== before) fail('same key', s.slug + ': v0.34.1 used ' + before + ', the new page uses ' + now);
@@ -142,10 +157,14 @@ const CONTROLS = [
     find: '    if (st && st.ns) return st.ns;', replace: '' },
   { name: 'build.py leaves ns out of the page', file: 'build.py', bites: 'same key',
     find: "'concept': entry['concept'], 'ns': entry['ns']}", replace: "'concept': entry['concept']}" },
-  { name: 'build.py takes an ns that differs from the deployment', file: 'build.py', bites: 'refuse',
-    find: '        if want is not None and ns != want:', replace: '        if False:' },
-  { name: 'build.py takes a shared ns', file: 'build.py', bites: 'refuse',
-    find: '        if ns in ns_seen:', replace: '        if False:' },
+  { name: 'build.py takes an ns other than the frozen one', file: 'build.py', bites: 'refuse',
+    find: '        if ns != want:', replace: '        if False:' },
+  { name: 'build.py takes a retired deployment', file: 'build.py', bites: 'refuse',
+    find: "        if 'deployment' in entry:", replace: '        if False:' },
+  { name: 'a frozen key typed wrong in build.py', file: 'build.py', bites: 'legacy',
+    find: "'tnyr':  'AKfycbxTnTOX'", replace: "'tnyr':  'AKfycbxTnTOY'", throws: true },
+  { name: 'a frozen key for a store that had no address', file: 'build.py', bites: 'legacy',
+    find: "'tnyrf': 'AKfycbyGQeDq',", replace: "'tnyrf': 'AKfycbyGQeDq', 'zzns9': 's_zzns9'," },
   { name: 'a store\'s ns typed wrong in stores.json', file: 'stores.json', bites: 'refuse',
     find: '"ns": "AKfycby8-_go"', replace: '"ns": "AKfycby8-_gX"', throws: true }
 ];
@@ -158,7 +177,7 @@ if (keys.length) {
   console.log('FAIL  ' + keys.map(k => k + ': ' + res[k].slice(0, 3).join(' | ')).join('\n      '));
 } else {
   console.log('PASS  every store keeps the key v0.34.1 used (' + JSON.parse(SRC('stores.json')).length +
-              ' stores and an HQ store); the built pages carry it; build.py refuses a missing, changed or shared ns');
+              ' stores and an HQ store) and LEGACY_NS holds exactly those keys; the built pages carry them; build.py refuses a missing or changed ns and a retired deployment');
 }
 for (const c of CONTROLS) {
   let r;

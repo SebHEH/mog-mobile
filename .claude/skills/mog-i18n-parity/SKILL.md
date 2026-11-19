@@ -43,7 +43,6 @@ Baseline (2026-10-20, `--all` passes 10, skips 2): StorageAreas 14 keys, templat
 
 ## Composition with other skills
 
-- [[mog-modal-ux-sweep]] changes modal markup/CSS; this verifies the i18n side stayed balanced afterward.
 - [[rhino-safe-html]] governs the JS syntax of the glossary block (ES5-safe object literal).
 - [[checker-script-sync]] owns the canonical↔fork relationship for this and the other deterministic checkers.
 - [[mog-session-handoff]] — run this before writing the handoff so "EN/ES at parity" is a verified claim, not an eyeballed one.

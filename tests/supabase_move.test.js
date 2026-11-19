@@ -17,15 +17,11 @@
 //   - Switch back to the Sheet turns direct phone access off first (schema
 //     v3), changes nothing if it can't, and goes ahead when v3 isn't installed;
 //     after it, Move switches again without a code
-//   - supabase/provision_stores.sql lists exactly the deploy targets' stores,
-//     with their Sheets, and never re-keys a store that already connected
 // Each has a planted-defect control.
 //
 // Run bare: node tests/supabase_move.test.js [stores]   (default 40)
 // A passing run ends with "supabase_move: ALL PASS".
 
-const fs = require('fs');
-const path = require('path');
 const vm = require('vm');
 const F = require('./fake_apps_script.js');
 const { makeStore } = require('./mog_fixture.js');
@@ -249,32 +245,6 @@ function runSuite(srcOf, stores) {
   return { failures, stats };
 }
 
-// ---- provision_stores.sql vs the deploy targets ------------------------------
-function provisionProblems(sql) {
-  const rows = [];
-  const re = /\(\s*\d+,\s*'([a-z0-9]+)',\s*'((?:[^']|'')*)',\s*'((?:[^']|'')*)'\)/g;
-  let m;
-  while ((m = re.exec(sql))) rows.push({ slug: m[1], store: m[2].replace(/''/g, "'"), sheet: m[3].replace(/''/g, "'") });
-  const targets = JSON.parse(fs.readFileSync(path.join(F.REPO, 'apps-script/.clasp-targets.json'), 'utf8'))
-    .filter(t => t.slug !== '_template');
-  const stores = JSON.parse(fs.readFileSync(path.join(F.REPO, 'stores.json'), 'utf8'));
-  const list = Array.isArray(stores) ? stores : stores.stores;
-  const straight = s => String(s).replace(/[‘’]/g, "'");
-  const problems = [];
-  for (const t of targets) {
-    const r = rows.find(x => x.slug === t.slug);
-    if (!r) { problems.push(t.slug + ' is missing'); continue; }
-    if (r.sheet !== t.sheet.title) problems.push(t.slug + ': Sheet "' + r.sheet + '" vs "' + t.sheet.title + '"');
-    const s = list.find(x => x.slug === t.slug);
-    if (s && straight(r.store) !== straight(s.concept + ' ' + s.location)) problems.push(t.slug + ': name "' + r.store + '"');
-  }
-  for (const r of rows) if (!targets.some(t => t.slug === r.slug)) problems.push(r.slug + ' is not a deploy target');
-  if (!/where not exists \(select 1 from mog\.catalog c where c\.slug = v\.slug\)/.test(sql)) {
-    problems.push('the guard that skips stores already connected is gone');
-  }
-  return problems;
-}
-
 // ---------------------------------------------------------------------------
 let failed = 0;
 const main = runSuite(null, STORES);
@@ -287,11 +257,6 @@ if (main.failures.length) {
   console.log('PASS  nothing changes before the code checks out and Yes; a move matches the step-4 seed path; failures and rollbacks resume');
 }
 if (!main.stats.countsCopied) { failed++; console.log('FAIL  fixtures never had counts to copy'); }
-
-const SQL = SRC('supabase/provision_stores.sql');
-const sqlProblems = provisionProblems(SQL);
-if (sqlProblems.length) { failed++; console.log('FAIL  provision_stores.sql: ' + sqlProblems.join('; ')); }
-else console.log('PASS  provision_stores.sql lists every deploy target with its Sheet, and skips stores already connected');
 
 const CONTROLS = [
   { name: 'the code is saved before it is checked', scenario: 'wrong key',
@@ -338,16 +303,5 @@ for (const c of CONTROLS) {
   if (hits) console.log(`PASS  control "${c.name}" bites (${hits} in "${c.scenario}")`);
   else { failed++; console.log(`FAIL  control "${c.name}" did NOT bite "${c.scenario}"`); }
 }
-for (const c of [
-  { name: 'a deploy target dropped from provision_stores.sql', find: "  ( 5, 'rpfr',  'Roll Play Founders BOH',  'RP_FOUNDERS_ORDERING_GUIDE'),\r\n", replace: '' },
-  { name: 'the already-connected guard dropped from provision_stores.sql', find: 'where not exists (select 1 from mog.catalog c where c.slug = v.slug)\r\n', replace: '' }
-]) {
-  let bit;
-  try { bit = provisionProblems(F.plant(SQL, c.find, c.replace)).length > 0; }
-  catch (e) { failed++; console.log(`FAIL  control "${c.name}" crashed: ${e.message}`); continue; }
-  if (bit) console.log(`PASS  control "${c.name}" bites`);
-  else { failed++; console.log(`FAIL  control "${c.name}" did NOT bite`); }
-}
-
 console.log(failed ? `supabase_move: ${failed} FAILED` : 'supabase_move: ALL PASS');
 process.exit(failed ? 1 : 0);

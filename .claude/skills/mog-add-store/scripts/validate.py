@@ -22,8 +22,8 @@ Usage (from the repo root):
             ({"slug", "location", "concept", "address", "is_test"}), turned
             into its stores.json entry, printed for pasting: the concept's
             stores.json spelling, the location without the concept and
-            "(TEST)", "editor": "supabase", no /exec address, and
-            "test": true for a test store.
+            "(TEST)", "editor": "supabase", "ns": "s_<slug>", no
+            deployment field, and "test": true for a test store.
   wired     the store's stores.json entry and its built pages agree: a
             known concept, "<Site> BOH|FOH", the app editor, its folder and
             editor built, and the hub listing it (a test store: not listed).
@@ -49,7 +49,6 @@ HUB_FILE    = os.path.join(ROOT, 'index.html')
 # Supabase is the strictest consumer of a slug: mog.stores and
 # mog.store_create (schema v26) refuse anything else.
 SLUG_RE = re.compile(r'^[a-z0-9]{2,20}$')
-EXEC_URL_RE = re.compile(r'^https://script\.google\.com/macros/s/([^/]+)/exec$')
 
 
 def load_json(path):
@@ -209,10 +208,15 @@ def check_wired(slug, published):
         problems.append('stores.json: location should be "<Site> BOH" or "<Site> FOH" (the hub splits it into site and area)')
     if store.get('editor') != 'supabase':
         problems.append('stores.json: "editor": "supabase" missing')
-    if 'deployment' in store and not EXEC_URL_RE.match(str(store['deployment'])):
-        problems.append('stores.json: deployment is not an /exec URL (a store made in HQ has none: leave the field out)')
-    if 'deployment' not in store and store.get('ns') != 's_' + slug:
-        problems.append('stores.json: "ns": "s_' + slug + '" missing (the phones\' storage key; build.py refuses the store without it)')
+    if 'deployment' in store:
+        problems.append('stores.json: a "deployment" field (retired with the stores\' /exec addresses, Sheet '
+                        'retirement step 5; build.py refuses it): leave it out')
+    # The phones' storage key, fixed for good: build.py's LEGACY_NS for the 10
+    # stores that came from Sheets, s_<slug> for every other store.
+    want_ns = getattr(build_module(), 'LEGACY_NS', {}).get(slug, 's_' + slug)
+    if store.get('ns') != want_ns:
+        problems.append('stores.json: "ns": "' + want_ns + '" missing or different (the phones\' storage key; '
+                        'build.py refuses the store without it)')
     if not str(store.get('address', '')).strip():
         notes.append('NOTE: stores.json has no address (Copy order for email leaves it out)')
     built = [os.path.join(slug, 'index.html'), os.path.join(slug, 'sw.js'), os.path.join(slug, 'editor', 'index.html')]

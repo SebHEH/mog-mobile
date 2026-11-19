@@ -1,6 +1,6 @@
 ---
 name: mog-supabase-schema
-description: MOG's specializer for any change to the Supabase layer (a supabase/*.sql file, a new or changed public.mog_* function, a new mog.* table or column), stemming off the global supabase-schema-change skill. Pins the files every schema version touches (schema_vN.sql, smoke_vN.sql, check_api.sh, tests/fake_supabase.js, the migration doc's function table), the ship order (the SQL first, on the maintainer's go per file: Claude runs it through the connector or the maintainer pastes it; then the gates, then deploy.py --redeploy on the rprfo canary, then build.py), the probe rule that keeps a real store's PIN lockout untouched, and how to check the live database with reads only. Trigger on "add a Supabase function", "a new column in mog.items", "schema v10", "write the migration", "check_api failed", "PGRST205", or any edit under supabase/. Skip when only reading live data (query the connector directly, selects only) and for a new store's provisioning (mog-add-store).
+description: MOG's specializer for any change to the Supabase layer (a supabase/*.sql file, a new or changed public.mog_* function, a new mog.* table or column), stemming off the global supabase-schema-change skill. Pins the files every schema version touches (schema_vN.sql, smoke_vN.sql, check_api.sh, tests/fake_supabase.js, the migration doc's function table), the ship order (the SQL first, on the maintainer's go per file: Claude runs it through the connector or the maintainer pastes it; then the gates, then build.py with the rprfo canary first), the probe rule that keeps a real store's PIN lockout untouched, and how to check the live database with reads only. Trigger on "add a Supabase function", "a new column in mog.items", "schema v10", "write the migration", "check_api failed", "PGRST205", or any edit under supabase/. Skip when only reading live data (query the connector directly, selects only) and for a new store's provisioning (mog-add-store).
 ---
 
 # mog-supabase-schema
@@ -196,8 +196,11 @@ file is run once, in order. Re-running any of them must stay harmless.
    Sebastian's connector runs as `postgres` with read-only off (measured 2026-11-06), so a check is
    only ever a `select`.
 4. **Then the code that calls it** (`mog-deploy-workflow`):
-   - Apps Script: `python deploy.py --redeploy`, canary rprfo first;
-   - the app: `python build.py`, then commit and push.
+   - the app: `python build.py`, then commit and push, canary rprfo first;
+   - the nightly close: redeploy the Edge Function `close` through the connector, when the change
+     is one it calls.
+
+   Nothing deploys to a store's Apps Script any more (Sheet retirement step 5, 2026-11-20).
 5. **The database always ships before the code that relies on it.** Schema v1's `mog_login` had no
    `phone_direct` check, so app v0.18 shipped before schema v3 would have sent rprfo's phones direct
    with no switch. Client code that can meet an older schema needs a fallback: the app falls back to
@@ -207,14 +210,12 @@ file is run once, in order. Re-running any of them must stay harmless.
 
 - **A function:** re-run its previous definition from git in the SQL Editor (`create or replace`).
   A changed parameter list also needs the new signature dropped.
-- **A store's switch:** `update mog.stores set phone_direct = false where slug = '<slug>';` takes
-  effect on each phone's next call.
-- **A store's editor (emergency only):**
-  1. `update mog.stores set editor_direct = false where slug = '<slug>';` in the SQL Editor.
-  2. Then `editorBackToSheet` in `Sync.gs`, run from that store's Apps Script editor
-     (`python editor_link.py editorBackToSheet <slug>`).
-  3. Then push the catalog from the Store Health Check.
-
-  Anything edited in the app since the move is not in the Sheet.
+- **No switch back to a Sheet.** The stores' `/exec` deployments are archived (Sheet retirement
+  step 5, 2026-11-20), so turning `phone_direct`, `editor_direct` or `close_direct` off leaves a
+  store with nothing to fall back to. A bad change is fixed forward (a new schema version, or the
+  Edge Function redeployed); a bad close is run again with `select mog.night_tick();` once fixed
+  (`pg_cron` also retries every 15 minutes).
+- **Lost or wrong data** comes back from the nightly off-site backup (`SebHEH/mog-backup`, restore
+  steps in its README).
 - **A file that deletes or rewrites data** can't be undone by re-running an older file. Say so in its
   header and get Sebastian's OK before anyone runs it.

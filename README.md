@@ -23,29 +23,25 @@ mog-mobile/
 │   ├── index.html          The store PWA — DO NOT edit copies in store dirs
 │   └── sw.js               The store SW
 ├── rpr/                    GENERATED — Roll Play Rosslyn
-│   ├── index.html          Built from template/index.html with deployment URL injected
+│   ├── index.html          Built from template/index.html with the Supabase config, store profile and order math injected
 │   └── sw.js               Copy of template/sw.js
-├── apps-script/            Apps Script backend (the .gs + HTML modals bound to each store Sheet)
+├── apps-script/            The retired per-Sheet backend, kept as a build source (OrderMath.gs, editor pages, the close's shared code)
 │   ├── MOGApi.gs           doGet/doPost + api_* surface the PWA calls
 │   ├── Core.gs             Constants, helpers, menu/triggers, order-cycle date helpers
 │   ├── Vendors.gs Items.gs PickPath.gs ResetLog.gs History.gs Dashboard.gs   (domain modules)
 │   ├── Editor.gs Health.gs Recap.gs Admin.gs   (KM web editor, health check, recap email, admin/test fns)
 │   ├── *.html              (Manage*, OrderHistory, ReorderPickPath, StorageAreas, etc.)
-│   ├── .clasp-targets.json Slug → {scriptId, deploymentId} map consumed by deploy.py
 │   └── README.md           Apps Script workflow docs
-├── deploy.py               Push (and optionally --redeploy) apps-script/ to all stores + the master template
+├── mail-relay/             The mail relay: the one Apps Script project still deployed (the nightly recap emails)
+├── deploy.py               python deploy.py --relay: push and redeploy the mail relay (nothing else)
 └── README.md               This file
 ```
 
 Per-store directories (`rpr/`, future `rpt/`, `rpfc/`, etc.) are **generated** by `build.py`. Never edit them directly — your changes will be overwritten on the next build. Edit `template/` instead, then run `build.py`.
 
-## Apps Script backend
+## Backend
 
-The server-side code that each store's Google Sheet runs lives in `apps-script/`. Code is identical across all stores; per-store config (location name, PIN, vendor data) lives in the spreadsheet itself, not in the script.
-
-Edit a file in `apps-script/`, then run `python deploy.py` from the repo root to push the change to every store + the master template in one command. Add `--redeploy` when the change is in `MOGApi.gs` (or anything the PWA calls via `/exec`) — that bumps each store's web-app version so the live URL serves the new code. Spreadsheet data, triggers, and named ranges are never touched — clasp only updates the bound script project.
-
-See `apps-script/README.md` for the one-time setup (Node.js + clasp install, Script ID collection, reconciliation diff) and the day-to-day workflow.
+Every store runs on Supabase: the phones, the Manage pages and HQ call it directly, and it closes each store just after midnight and sends the recap email through the mail relay (`mail-relay/`, deployed with `python deploy.py --relay`). The stores' Google Sheets and their Apps Script are retired (Sheet retirement step 5, 2026-11-20): frozen in Drive, their web apps archived. `apps-script/` stays as a source that `build.py` reads. See `CLAUDE.md` for the layers and `docs/MOG_SheetRetirement_Spec.md` for how the move went.
 
 ## Day-to-day workflow
 
@@ -64,69 +60,11 @@ If you only edited the hub (`index.html` or `sw.js` at root), you don't strictly
 
 ## Adding a new store
 
-The full sequence, end to end:
+HQ → Stores → **New store** makes it in Supabase in one step (no Sheet); then it is published with `stores.json` and `build.py`. The steps are in `.claude/skills/mog-add-store/SKILL.md`. Each entry in `stores.json` holds `slug`, `concept`, `location`, an optional `address`, `"editor": "supabase"` and `ns` (the phones' storage key, `s_<slug>` for a new store); `build.py` refuses anything else it can't use.
 
-### 1. Set up the spreadsheet + Apps Script for the new location
+## Store PINs and the manager PIN
 
-In the new location's spreadsheet:
-
-1. Add all the `.gs` files (`MOGApi.gs`, `Core.gs`, `Vendors.gs`, `Items.gs`, `PickPath.gs`, `ResetLog.gs`, `History.gs`, `Dashboard.gs`, `Editor.gs`, `Health.gs`, `Recap.gs`, `Admin.gs`) plus all the HTML modal files from this repo's `apps-script/` folder. (After initial setup, append the new store's Script ID to `apps-script/.clasp-targets.json` and future updates push automatically — see `apps-script/README.md`.)
-2. From the Sheet menu **Ordering Guide → 📱 Mobile API → Setup / Re-run Setup** (`setupMobileApi_` in `Admin.gs`; private since 2026-10-16, so it isn't in the editor's Run menu). Five prompts:
-   - 4–8 digit store PIN
-   - Location name (e.g. "Roll Play Tysons")
-   - 2–5 letter abbreviation (e.g. "RPT")
-   - GM email (optional)
-   - Master PIN (optional — leave blank if you don't want this location accessible via manager mode, or enter the shared HEH master PIN)
-3. Deploy: **Deploy → New deployment → Web app**, Execute as Me, Anyone access.
-4. Copy the deployment URL.
-
-### 2. Register the store in the hub
-
-Edit `stores.json` and add an entry:
-
-```json
-{
-  "slug": "rpt",
-  "concept": "Roll Play",
-  "location": "Tysons",
-  "deployment": "https://script.google.com/macros/s/...XYZ.../exec"
-}
-```
-
-`slug` must be lowercase letters/digits/hyphens only. `deployment` must match the Apps Script web app pattern. `build.py` validates both — it'll refuse to run with a clear error if either is wrong.
-
-### 3. Build, commit, push
-
-```bash
-python3 build.py
-git add -A
-git commit -m "Add Roll Play Tysons to hub"
-git push
-```
-
-`build.py` will:
-- Create `rpt/` with `index.html` (deployment URL injected) and `sw.js`
-- Update the hub's `STORE_REGISTRY` so the picker shows the new store
-
-### 4. Smoke test
-
-Open the hub URL in a private/incognito window:
-- New store appears in the concept picker (or as an additional card if the concept already exists)
-- Tapping it loads `/<slug>/`
-- PIN gate accepts the store PIN you set in step 1
-- If you set a master PIN, the manager-mode flow also works
-
-## Setting / rotating the master PIN
-
-Two ways:
-
-**Per-store, manually.** For each Apps Script: open the editor, select `setMasterPin` from the function dropdown, run it. Prompt asks for the new master PIN; leave blank to remove. This is what you do for ad-hoc rotation.
-
-**Per-store, at setup.** The 5th prompt of Setup / Re-run Setup (`setupMobileApi_`) accepts the master PIN. Use this when onboarding a new store.
-
-The master PIN is shared across all stores that should be reachable in manager mode. Today that's: whichever stores have a master PIN set. A store without a master PIN cannot be accessed via manager mode — its store PIN remains the only credential.
-
-To rotate the master PIN org-wide, you need to update every store's Apps Script properties manually (5 minutes for 5 stores). Future improvement candidate: a one-shot admin script that does this via the Apps Script API.
+Both are set in HQ → Stores: **Change PIN** per store (every phone there is signed out), and one **Manager PIN** for every store, which must differ from each store's PIN.
 
 ## Manager-mode flow (from a user's perspective)
 
@@ -153,7 +91,7 @@ The master PIN is stored in `sessionStorage`, which dies when the browser tab cl
 
 - **Generated store directories** (`rpr/`, `rpt/`, etc.) — overwritten by `build.py`.
 - **The `__STORE_REGISTRY__` marker line** in `index.html` — `build.py` rewrites it on every build.
-- **The `__MOG_API_URL__` placeholder** in `template/index.html` — substituted by `build.py` per store.
+- **The build placeholders** in `template/index.html` (CLAUDE.md invariant 5): substituted by `build.py` per store.
 
 ## What IS safe to edit
 
@@ -168,11 +106,11 @@ The master PIN is stored in `sessionStorage`, which dies when the browser tab cl
 **Hub auto-redirects me but I want to switch stores.**
 Visit `/?force_picker=1` once. To make this permanent, sign out from inside the store PWA — that clears the cached PIN but not `mog_hub_last_slug`. Sign out + `?force_picker=1` covers it. (We can add an in-PWA "switch store" button if this becomes annoying.)
 
-**A KM types their PIN and it's rejected after a deploy.**
-Check that the store's Apps Script was redeployed (not just its source edited). Apps Script changes don't take effect until you redeploy. **Edit deployment → New version** keeps the same URL; **New deployment** gives a new URL that you'd need to update in `stores.json`.
+**A KM types their PIN and it's rejected.**
+PINs live in Supabase: check HQ → Stores (was it changed there?). Five misses lock the store for 5 minutes; a signed-in computer can clear it from Manage → Overview's "PIN lockout" fix.
 
-**The manager banner doesn't show even though I entered the master code.**
-Either the master PIN isn't set on that store's Apps Script (run `setMasterPin` to verify), or the master PIN entered doesn't match what that store has stored. Different stores can have different master PINs; for org-wide manager mode, set the same master PIN on every store.
+**The manager banner doesn't show even though I entered the manager code.**
+The manager PIN is one code for every store, set in HQ → Stores → Manager PIN. Check it was set there and that the code typed matches.
 
 **A store is missing from the picker.**
 Check `stores.json` — is the entry there? Run `python3 build.py` and check the output. The registry is injected on every build.

@@ -509,9 +509,12 @@ async function liveSuite(srcOf, stores) {
 
 // ---- The build placeholders -------------------------------------------------
 function placeholderProblems(html) {
-  const want = ['__MOG_API_URL__', '__MOG_THEME__', '__MOG_APPLE_TOUCH_ICON__',
+  const want = ['__MOG_THEME__', '__MOG_APPLE_TOUCH_ICON__',
                 '/*__MOG_SUPABASE__*/null', '/* __MOG_ORDER_MATH__ build-injected */', '/*__MOG_STORE__*/null'];
-  return want.map(p => [p, html.split(p).length - 1]).filter(([, n]) => n !== 1).map(([p, n]) => p + ' x' + n);
+  const out = want.map(p => [p, html.split(p).length - 1]).filter(([, n]) => n !== 1).map(([p, n]) => p + ' x' + n);
+  // Retired with the store /exec deployments (Sheet retirement step 5).
+  if (html.indexOf('__MOG_API_URL__') >= 0 || html.indexOf('MOG_API_URL') >= 0) out.push('__MOG_API_URL__ is back');
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -534,7 +537,7 @@ function placeholderProblems(html) {
 
   const ph = placeholderProblems(SRC('template/index.html'));
   if (ph.length) { failed++; console.log('FAIL  template placeholders: ' + ph.join(', ')); }
-  else console.log('PASS  template/index.html carries each build placeholder exactly once');
+  else console.log('PASS  template/index.html carries each of the five build placeholders exactly once, and no /exec address');
 
   const T = 'template/index.html';
   const CONTROLS = [

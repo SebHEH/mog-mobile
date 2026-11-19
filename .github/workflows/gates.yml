@@ -21,7 +21,7 @@ jobs:
           node-version: 24
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'  # editor_link.test.js runs editor_link.py
+          python-version: '3.12'  # store_ns and hq_stores run build.py
       - run: node tests/run_all.js
       # The real SQL in Postgres (PGlite, the one npm package): every schema
       # file in order, every smoke test, then the newest file again, which

@@ -1,77 +1,53 @@
 #!/usr/bin/env python3
 """
-deploy.py - push the local apps-script/ folder to one or more bound Apps
-Script projects, optionally bumping each Sheet's web-app deployment so the
-/exec URL the PWA hits serves the new code.
+deploy.py - push mail-relay/ to the mail relay's Apps Script project and
+redeploy its one web-app deployment, so the /exec address Supabase's nightly
+close calls never changes.
 
-Reads apps-script/.clasp-targets.json. For each target, writes a temporary
-apps-script/.clasp.json pointing at that target's scriptId and runs
-`clasp push -f` from inside apps-script/. With --redeploy, also runs
-`clasp deploy --deploymentId <id>` per target to publish a new version
-under each Sheet's existing /exec URL.
+The mail relay is the only Apps Script MOG still deploys. The stores' own
+projects (one per Google Sheet) were retired in Sheet retirement step 5
+(2026-11-20): their web-app deployments were archived, the Sheets stay in
+Drive frozen, and apps-script/ is now only a source for build.py (the
+order math in every store page, the editor pages, the nightly close's shared
+code) and for the gates. Their targets (.clasp-targets.json), --target,
+--redeploy and --discover are gone; this script refuses them with a pointer.
 
-Two distinct concepts to keep straight:
-  - Source push (clasp push): updates the script project. Bound sidebars
-    (ManageVendors.html, ManageItems.html, etc.) read from HEAD and pick up
-    changes on next sidebar open. THIS IS THE DEFAULT.
-  - Web-app redeploy (clasp deploy --deploymentId <id>): bumps the version
-    served at each Sheet's /exec URL, which is what the PWA actually calls.
-    REQUIRED when MOGApi.gs changes — pushes alone don't reach the /exec URL.
-    Use --redeploy. When unsure, just pass --redeploy (~3s extra per target).
-
-Discovery mode (--discover) loops the targets and finds each Sheet's
-highest-versioned non-@HEAD deployment, then prints a JSON snippet you can
-paste into .clasp-targets.json. Use once per fresh checkout if the
-deploymentId fields contain "FILL_ME_IN", or after onboarding a new store.
+The relay's IDs are in mail-relay/relay-target.json. It is a standalone
+project, bound to no Sheet: Supabase's nightly close (the Edge Function
+`close`) sends every recap email through it.
 
 Prerequisites:
   - Node.js LTS installed
   - clasp installed globally:  npm install -g @google/clasp
   - Logged in once:            clasp login
-  - apps-script/.clasp-targets.json filled in with real Script IDs
-  - For --redeploy: deploymentIds populated too (run --discover if not)
 
-Git check (two maintainers): every deploy first fetches origin/main and
-refuses if this copy is missing commits from it. A deploy to every store
-also needs the main branch with apps-script/ committed; --target <slug>
-(a canary) may run from a branch with uncommitted edits.
---skip-git-check bypasses all of this (emergencies only).
+Git check (two maintainers): the deploy first fetches origin/main and refuses
+if this copy is missing commits from it, and refuses uncommitted changes in
+mail-relay/. --skip-git-check bypasses that (emergencies only).
 
 Usage:
-  python deploy.py                              push to all targets
-  python deploy.py --target rpr                 push to one target
-  python deploy.py --redeploy                   push + redeploy all targets
-  python deploy.py --redeploy --description "Dashboard cache"
-                                                push + tagged redeploy
-  python deploy.py --dry-run                    preview push
-  python deploy.py --dry-run --redeploy         preview push + redeploy
-  python deploy.py --discover                   find all deploymentIds
-  python deploy.py --discover --target tnytf    find one deploymentId
   python deploy.py --relay                      push mail-relay/ and redeploy it
   python deploy.py --relay --dry-run            preview that
-
-The mail relay (--relay) is a separate standalone project, bound to no
-Sheet: Supabase's nightly close sends its recap emails through it. Its IDs
-are in mail-relay/relay-target.json, and --relay always redeploys that one
-deployment, so the /exec address the function calls never changes. It
-never touches the stores, and a store deploy never touches it.
+  python deploy.py --relay --description "Retry on 429"
+                                                tag the new version
 """
 
 import argparse
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-APPS_SCRIPT_DIR = os.path.join(ROOT, 'apps-script')
-TARGETS_FILE    = os.path.join(APPS_SCRIPT_DIR, '.clasp-targets.json')
-CLASP_FILE      = os.path.join(APPS_SCRIPT_DIR, '.clasp.json')
 RELAY_DIR         = os.path.join(ROOT, 'mail-relay')
 RELAY_TARGET_FILE = os.path.join(RELAY_DIR, 'relay-target.json')
 RELAY_CLASP_FILE  = os.path.join(RELAY_DIR, '.clasp.json')
+
+RETIRED = ('the stores\' Apps Script deploys were retired in Sheet retirement step 5 (2026-11-20):\n'
+           '  their /exec deployments are archived and nothing deploys to the Sheets any more.\n'
+           '  A change under apps-script/ ships with python build.py and a git push (skill mog-deploy-workflow).\n'
+           '  The only Apps Script deploy left is the mail relay: python deploy.py --relay')
 
 
 def die(msg, code=1):
@@ -87,139 +63,9 @@ def find_clasp():
     return path
 
 
-def load_targets(target_filter=None):
-    if not os.path.exists(TARGETS_FILE):
-        die(TARGETS_FILE + ' not found.')
-    with open(TARGETS_FILE, 'r', encoding='utf-8') as f:
-        targets = json.load(f)
-    if target_filter:
-        targets = [t for t in targets if t.get('slug') == target_filter]
-        if not targets:
-            die("no target with slug '" + target_filter + "' in .clasp-targets.json")
-    return targets
-
-
-def check_placeholder_script_ids(targets):
-    bad = [t for t in targets if not t.get('scriptId') or t.get('scriptId') == 'FILL_ME_IN']
-    if bad:
-        print('ERROR: these targets still have a placeholder Script ID:', file=sys.stderr)
-        for t in bad:
-            print('  - ' + t.get('slug', '?') + ' (' + t.get('label', '?') + ')', file=sys.stderr)
-        print("Edit apps-script/.clasp-targets.json and replace FILL_ME_IN with each Sheet's real Script ID.", file=sys.stderr)
-        print("(In the Sheet: Extensions > Apps Script > Project Settings > Script ID)", file=sys.stderr)
-        sys.exit(1)
-
-
-def check_placeholder_deployment_ids(targets):
-    """Only enforced when --redeploy is set."""
-    bad = [
-        t for t in targets
-        if not t.get('isTemplate') and (
-            not t.get('deploymentId') or t.get('deploymentId') == 'FILL_ME_IN'
-        )
-    ]
-    if bad:
-        print('ERROR: --redeploy requested but these targets are missing a deploymentId:', file=sys.stderr)
-        for t in bad:
-            print('  - ' + t.get('slug', '?') + ' (' + t.get('label', '?') + ')', file=sys.stderr)
-        print('Run: python deploy.py --discover', file=sys.stderr)
-        print('Paste the printed IDs into apps-script/.clasp-targets.json.', file=sys.stderr)
-        sys.exit(1)
-
-
-def write_clasp_json(script_id):
-    """Write apps-script/.clasp.json pointing at this target's script."""
-    payload = {'scriptId': script_id, 'rootDir': '.'}
-    with open(CLASP_FILE, 'w', encoding='utf-8') as f:
-        json.dump(payload, f)
-
-
-def cleanup_clasp_json():
-    if os.path.exists(CLASP_FILE):
-        try:
-            os.remove(CLASP_FILE)
-        except OSError:
-            pass
-
-
-def run_clasp(clasp_path, args, capture_output=False, cwd=APPS_SCRIPT_DIR):
-    """Run clasp from inside apps-script/ (or cwd). Returns (exit_code, stdout, stderr)."""
-    result = subprocess.run(
-        [clasp_path] + args,
-        cwd=cwd,
-        capture_output=capture_output,
-        text=True,
-    )
-    return result.returncode, result.stdout, result.stderr
-
-
-def push_target(clasp_path, target):
-    write_clasp_json(target['scriptId'])
-    code, _, _ = run_clasp(clasp_path, ['push', '-f'])
-    if code == 0:
-        print('PUSH OK: ' + target['slug'])
-        return 'ok'
-    print('PUSH FAILED: ' + target['slug'] + ' (exit ' + str(code) + ')', file=sys.stderr)
-    return 'fail (exit ' + str(code) + ')'
-
-
-def redeploy_target(clasp_path, target, description):
-    deployment_id = target.get('deploymentId')
-    if not deployment_id:
-        print('DEPLOY SKIPPED: ' + target['slug'] + ' (no deploymentId)')
-        return 'skipped'
-    args = ['deploy', '--deploymentId', deployment_id]
-    if description:
-        args += ['--description', description]
-    code, _, _ = run_clasp(clasp_path, args)
-    if code == 0:
-        print('DEPLOY OK: ' + target['slug'])
-        return 'ok'
-    print('DEPLOY FAILED: ' + target['slug'] + ' (exit ' + str(code) + ')', file=sys.stderr)
-    return 'fail (exit ' + str(code) + ')'
-
-
-DEPLOYMENT_LINE_RE = re.compile(r'^\s*-\s+(\S+)\s+@(\d+)')
-
-
-def discover_target(clasp_path, target):
-    """Run `clasp deployments` and return the highest-versioned non-@HEAD id, or None."""
-    write_clasp_json(target['scriptId'])
-    code, stdout, stderr = run_clasp(clasp_path, ['deployments'], capture_output=True)
-    if code != 0:
-        print('FAILED: clasp deployments exit ' + str(code), file=sys.stderr)
-        if stdout:
-            print(stdout)
-        if stderr:
-            print(stderr, file=sys.stderr)
-        return None
-    best_id, best_version = None, -1
-    for line in stdout.splitlines():
-        m = DEPLOYMENT_LINE_RE.match(line)
-        if m:
-            version = int(m.group(2))
-            if version > best_version:
-                best_version = version
-                best_id = m.group(1)
-    if best_id:
-        print('Found deployment @' + str(best_version) + ': ' + best_id)
-    else:
-        print('No versioned web-app deployment found for this Sheet.')
-        print('Output was:')
-        print(stdout)
-    return best_id
-
-
-def print_summary(results):
-    print('')
-    print('=== Summary ===')
-    # Plain text table — keep deps zero.
-    slugs = [r['slug'] for r in results]
-    width = max([len(s) for s in slugs] + [4])
-    print('slug'.ljust(width) + '  push        redeploy')
-    print('-' * (width + 22))
-    for r in results:
-        print(r['slug'].ljust(width) + '  ' + r['push'].ljust(10) + '  ' + r['redeploy'])
+def run_clasp(clasp_path, args, cwd):
+    """Run clasp in cwd. Returns its exit code."""
+    return subprocess.run([clasp_path] + args, cwd=cwd, text=True).returncode
 
 
 def git(*args):
@@ -239,86 +85,11 @@ def check_not_behind():
     code, behind = git('rev-list', '--count', 'HEAD..origin/main')
     if code == 0 and behind not in ('', '0'):
         die('this copy is missing ' + behind + ' commit(s) that are on origin/main.\n'
-            '  Deploying now would put the older Apps Script back on every target you push to.\n'
+            '  Deploying now could put an older relay back.\n'
             '  Run git pull (or merge main into your branch), then deploy again.')
 
 
-def check_git_state(args):
-    """Two people deploy from their own copies (CLAUDE.md, Two maintainers).
-    clasp pushes the local folder as it is, so a copy missing the other
-    person's commits would quietly roll their Apps Script back on every
-    store. Refuse that; and send a deploy to every store only from main with
-    apps-script/ committed. A one-store canary may run from a branch or with
-    uncommitted edits."""
-    if args.skip_git_check:
-        print('WARNING: --skip-git-check: not comparing with origin/main.')
-        return
-    check_not_behind()
-    if args.target:
-        return
-    _, branch = git('rev-parse', '--abbrev-ref', 'HEAD')
-    if branch != 'main':
-        die('a deploy to every store runs from main (this copy is on ' + (branch or '?') + ').\n'
-            '  Merge first, or test on one store: python deploy.py --redeploy --target rprfo')
-    _, dirty = git('status', '--porcelain', '--', 'apps-script')
-    if dirty:
-        die('apps-script/ has uncommitted changes; commit them before a deploy to every store,\n'
-            '  so what the stores run is in git:\n' + dirty)
-
-
-def cmd_deploy(args, clasp_path):
-    """Push (and optionally redeploy) to selected targets."""
-    check_git_state(args)
-    targets = load_targets(args.target)
-    check_placeholder_script_ids(targets)
-    if args.redeploy:
-        check_placeholder_deployment_ids(targets)
-
-    results = []
-    try:
-        for t in targets:
-            print('')
-            print('=== ' + t['slug'] + ' (' + t.get('label', '') + ') ===')
-            print('Script ID: ' + t['scriptId'])
-            if args.redeploy and t.get('deploymentId'):
-                print('Deployment ID: ' + t['deploymentId'])
-
-            if args.dry_run:
-                print('[dry run] would: clasp push -f')
-                redeploy_status = 'n/a'
-                if args.redeploy:
-                    if t.get('deploymentId'):
-                        desc = ''
-                        if args.description:
-                            desc = ' --description "' + args.description + '"'
-                        print('[dry run] would: clasp deploy --deploymentId ' + t['deploymentId'] + desc)
-                        redeploy_status = 'dry-run'
-                    else:
-                        print('[dry run] would: SKIP redeploy (no deploymentId, e.g. template)')
-                        redeploy_status = 'skipped'
-                results.append({'slug': t['slug'], 'push': 'dry-run', 'redeploy': redeploy_status})
-                continue
-
-            push_status = push_target(clasp_path, t)
-            redeploy_status = 'n/a'
-            if args.redeploy and push_status == 'ok':
-                redeploy_status = redeploy_target(clasp_path, t, args.description)
-            results.append({'slug': t['slug'], 'push': push_status, 'redeploy': redeploy_status})
-    finally:
-        cleanup_clasp_json()
-
-    print_summary(results)
-
-    failed = [
-        r for r in results
-        if r['push'] not in ('ok', 'dry-run')
-        or r['redeploy'] not in ('ok', 'dry-run', 'skipped', 'n/a')
-    ]
-    if failed:
-        sys.exit(1)
-
-
-def cmd_relay(args, clasp_path):
+def cmd_relay(args):
     """Push mail-relay/ to its own project and redeploy its one deployment
     (Supabase's nightly recap sender; the address never changes)."""
     if not os.path.exists(RELAY_TARGET_FILE):
@@ -336,6 +107,7 @@ def cmd_relay(args, clasp_path):
     if args.dry_run:
         print('[dry run] would: clasp push -f, then clasp redeploy ' + deployment_id)
         return
+    clasp_path = find_clasp()
     if args.skip_git_check:
         print('WARNING: --skip-git-check: not comparing with origin/main.')
     else:
@@ -346,16 +118,14 @@ def cmd_relay(args, clasp_path):
     with open(RELAY_CLASP_FILE, 'w', encoding='utf-8') as f:
         json.dump({'scriptId': script_id, 'rootDir': '.'}, f)
     try:
-        code, _, _ = run_clasp(clasp_path, ['push', '-f'], cwd=RELAY_DIR)
-        if code != 0:
-            die('PUSH FAILED: mail relay (exit ' + str(code) + ')')
+        if run_clasp(clasp_path, ['push', '-f'], RELAY_DIR) != 0:
+            die('PUSH FAILED: mail relay')
         print('PUSH OK: mail relay')
         args_deploy = ['deploy', '--deploymentId', deployment_id]
         if args.description:
             args_deploy += ['--description', args.description]
-        code, _, _ = run_clasp(clasp_path, args_deploy, cwd=RELAY_DIR)
-        if code != 0:
-            die('DEPLOY FAILED: mail relay (exit ' + str(code) + ')')
+        if run_clasp(clasp_path, args_deploy, RELAY_DIR) != 0:
+            die('DEPLOY FAILED: mail relay')
         print('DEPLOY OK: mail relay')
     finally:
         if os.path.exists(RELAY_CLASP_FILE):
@@ -365,73 +135,23 @@ def cmd_relay(args, clasp_path):
                 pass
 
 
-def cmd_discover(args, clasp_path):
-    """Find deploymentIds for non-template targets."""
-    targets = load_targets(args.target)
-    targets = [t for t in targets if not t.get('isTemplate')]
-    if not targets:
-        die('no non-template targets to discover.')
-    check_placeholder_script_ids(targets)
-
-    discovered = []
-    try:
-        for t in targets:
-            print('')
-            print('=== ' + t['slug'] + ' (' + t.get('label', '') + ') ===')
-            dep_id = discover_target(clasp_path, t)
-            discovered.append({'slug': t['slug'], 'deploymentId': dep_id})
-    finally:
-        cleanup_clasp_json()
-
-    print('')
-    print('=== Discovered deployment IDs ===')
-    print('Paste these into the matching entries in apps-script/.clasp-targets.json:')
-    print('')
-    for d in discovered:
-        if d['deploymentId']:
-            print('  "' + d['slug'] + '": "deploymentId": "' + d['deploymentId'] + '"')
-        else:
-            print('  "' + d['slug'] + '": (not found - check the Sheet has a published web-app deployment)')
-
-
 def main():
     parser = argparse.ArgumentParser(
-        description='Push (and optionally redeploy) the apps-script/ folder to bound Apps Script projects.',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            'When to use --redeploy:\n'
-            '  Bound-sidebar-only change (ManageVendors.html, ManageItems.html, OrderHistory.html,\n'
-            '  etc., and the .gs functions called from those sidebars): NO. Push alone is enough.\n'
-            '  Any change to MOGApi.gs or any api_* function the PWA calls: YES, --redeploy required.\n'
-            '  Unsure: pass --redeploy. ~3s extra per target.\n'
-        ),
-    )
-    parser.add_argument('--target', help='Slug of a single target to push to. Default: all.')
+        description='Push mail-relay/ (the nightly recap sender) and redeploy it. The only Apps Script deploy left.')
+    parser.add_argument('--relay', action='store_true', help='Push mail-relay/ and redeploy it (required).')
     parser.add_argument('--dry-run', action='store_true', help='Preview without running clasp.')
-    parser.add_argument('--redeploy', action='store_true',
-                        help='After pushing, bump each web-app deployment (skipped for template).')
-    parser.add_argument('--description', help='Description tag for --redeploy (passed to clasp deploy).')
-    parser.add_argument('--discover', action='store_true',
-                        help='Discovery mode: print deploymentIds to paste into .clasp-targets.json.')
+    parser.add_argument('--description', help='Description tag for the new relay version.')
     parser.add_argument('--skip-git-check', action='store_true',
                         help='Deploy without comparing this copy with origin/main (emergencies only).')
-    parser.add_argument('--relay', action='store_true',
-                        help='Push mail-relay/ (the nightly recap sender) and redeploy it. Nothing else.')
+    # Retired with the store deploys; kept only to answer with a pointer.
+    parser.add_argument('--target', help=argparse.SUPPRESS)
+    parser.add_argument('--redeploy', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--discover', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
 
-    if args.relay and (args.target or args.discover or args.redeploy):
-        die('--relay runs on its own (it always redeploys); leave out --target, --discover and --redeploy.')
-    if args.description and not (args.redeploy or args.relay):
-        die('--description only makes sense with --redeploy or --relay.')
-
-    clasp_path = find_clasp()
-
-    if args.relay:
-        cmd_relay(args, clasp_path)
-    elif args.discover:
-        cmd_discover(args, clasp_path)
-    else:
-        cmd_deploy(args, clasp_path)
+    if args.target or args.redeploy or args.discover or not args.relay:
+        die(RETIRED)
+    cmd_relay(args)
 
 
 if __name__ == '__main__':

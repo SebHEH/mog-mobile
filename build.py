@@ -6,14 +6,15 @@ hub registry into the root index.html.
 Reads stores.json at repo root. For each entry:
   - Validates required fields and value formats
   - Creates <slug>/ directory if missing
-  - Writes <slug>/index.html = template/index.html with __MOG_API_URL__
-    substituted with the entry's deployment URL, the Supabase config
-    (URL + publishable key from apps-script/Sync.gs, plus the slug), and
-    apps-script/OrderMath.gs copied in verbatim at its marker
+  - Writes <slug>/index.html = template/index.html with the Supabase config
+    (URL + publishable key from apps-script/Sync.gs, plus the slug), the
+    store profile (stores.json: address, concept, ns) and
+    apps-script/OrderMath.gs copied in verbatim at its marker. No store has
+    an /exec address since Sheet retirement step 5 (2026-11-20).
   - Writes <slug>/sw.js = verbatim copy of template/sw.js
 
 If root index.html exists with the STORE_REGISTRY marker line, the registry
-(concept + location + slug only — no deployment URLs) is injected into it.
+(concept + location + slug only) is injected into it.
 
 Idempotent: re-running with unchanged inputs produces unchanged outputs.
 Removing a store from stores.json does NOT auto-delete its directory; that's
@@ -103,23 +104,29 @@ RESERVED_SLUGS = {
 # Supabase's rule (mog.stores, mog.provision_store, the Move this store to
 # Supabase prompt): a slug it refuses could be built and published but never
 # connect.
-SLUG_RE       = re.compile(r'^[a-z0-9]{2,20}$')
-DEPLOY_URL_RE = re.compile(r'^https://script\.google\.com/macros/s/[^/]+/exec$')
-NS_RE = re.compile(r'^[A-Za-z0-9_-]{1,40}$')
+SLUG_RE = re.compile(r'^[a-z0-9]{2,20}$')
+NS_RE   = re.compile(r'^[A-Za-z0-9_-]{1,40}$')
+
+# The phones' storage key of each store that came from a Sheet, frozen: the
+# first 12 characters of its old /exec deployment id, which app v0.34 and
+# older read from the address. The deployments were archived in Sheet
+# retirement step 5 (2026-11-20) and the addresses left stores.json, but the
+# key must never move: every phone files its drafts and unsent counts under
+# it. tests/store_ns.test.js checks each value against v0.34.1's own code and
+# the address it had. Any other store (made in HQ) has s_<slug>.
+LEGACY_NS = {
+    'rpr':   'AKfycbxRbLvq', 'rprfo': 'AKfycby8-_go',
+    'rpt':   'AKfycbybndYI', 'rptfo': 'AKfycbxR7VJb',
+    'rpfr':  'AKfycbzdQyjN', 'rpfrf': 'AKfycbyQ9f6J',
+    'tnyt':  'AKfycbzb2173', 'tnytf': 'AKfycbwu1tg8',
+    'tnyr':  'AKfycbxTnTOX', 'tnyrf': 'AKfycbyGQeDq',
+}
 
 
 def store_ns_from(entry):
-    """The phones' storage key a store must keep: the first 12 characters of
-    its /exec deployment id (what app v0.34 and older took from the address),
-    s_<slug> for a store made in HQ (no deployment). None when it can't be
-    worked out (a malformed deployment; validate_stores refuses that first)."""
-    dep = entry.get('deployment')
-    if dep is None:
-        return 's_' + entry['slug']
-    m = re.match(r'^https://script\.google\.com/macros/s/([^/]+)/exec$', str(dep))
-    return m.group(1)[:12] if m else None
+    """The phones' storage key a store must keep (LEGACY_NS, else s_<slug>)."""
+    return LEGACY_NS.get(entry['slug'], 's_' + entry['slug'])
 
-API_URL_PLACEHOLDER = '__MOG_API_URL__'
 THEME_PLACEHOLDER   = '__MOG_THEME__'
 ICON_PLACEHOLDER    = '__MOG_APPLE_TOUCH_ICON__'
 SUPABASE_PLACEHOLDER   = '/*__MOG_SUPABASE__*/null'
@@ -170,12 +177,11 @@ def validate_stores(stores):
     if not stores:
         fail("stores.json is empty — at least one store entry required")
 
-    # 'deployment' (its Sheet's /exec address) is optional since schema v26:
-    # a store made in HQ has no Sheet, so its page makes every call to
-    # Supabase. Such a store must be an app-editor store ("editor": "supabase").
+    # Every store's page makes every call to Supabase; no store has an /exec
+    # address (Sheet retirement step 5), and every store's editor is the app's
+    # ("editor": "supabase").
     required_fields = ('slug', 'concept', 'location')
     slugs_seen = set()
-    ns_seen = set()
 
     for idx, entry in enumerate(stores):
         prefix = f"stores.json[{idx}]"
@@ -216,31 +222,26 @@ def validate_stores(stores):
         if 'test' in entry and entry['test'] is not True:
             fail(f"{prefix}: field 'test' must be true when present")
 
-        if 'deployment' not in entry:
-            if entry.get('editor') != 'supabase':
-                fail(f"{prefix}: a store with no 'deployment' (made in HQ, no Sheet) must have \"editor\": \"supabase\"")
-        elif not isinstance(entry['deployment'], str) or not DEPLOY_URL_RE.match(entry['deployment']):
-            fail(f"{prefix}: deployment URL does not match Apps Script pattern\n"
-                 f"  expected: https://script.google.com/macros/s/<id>/exec\n"
-                 f"  got:      {entry['deployment']!r}")
+        if 'deployment' in entry:
+            fail(f"{prefix}: field 'deployment' is retired: the stores' /exec deployments were archived "
+                 f"(Sheet retirement step 5) and every page talks to Supabase only")
+        if entry.get('editor') != 'supabase':
+            fail(f"{prefix}: field 'editor' must be \"supabase\" (the app's editor; the Sheets are retired)")
 
         # Required: the key every phone files this store's drafts, unsent
         # counts and caches under (Sheet retirement step 5, item 2). It never
-        # changes, like the slug: a store from a Sheet keeps the first 12
-        # characters of its deployment id, which v0.34 and older read from the
-        # /exec address; a store made in HQ has s_<slug>. Checked against the
-        # deployment while one is listed, so the two can't drift apart.
+        # changes, like the slug: a store from a Sheet keeps LEGACY_NS's value;
+        # a store made in HQ has s_<slug>.
         ns = entry.get('ns')
         if not isinstance(ns, str) or not NS_RE.match(ns):
             fail(f"{prefix}: field 'ns' is required: 1-40 letters, digits, _ or - "
-                 f"(the first 12 characters of the deployment id, or s_<slug> for a store made in HQ)")
+                 f"(s_<slug> for a store made in HQ)")
         want = store_ns_from(entry)
-        if want is not None and ns != want:
+        if ns != want:
             fail(f"{prefix}: ns {ns!r} must stay {want!r}: every phone at this store keeps its drafts and "
                  f"unsent counts under it")
-        if ns in ns_seen:
-            fail(f"{prefix}: duplicate ns {ns!r}: two stores would share their phones' drafts")
-        ns_seen.add(ns)
+        # No shared-ns check: each slug's key is its own (LEGACY_NS's values
+        # are distinct, checked by the store_ns gate; s_<slug> is per slug).
 
 
 # ---------------------------------------------------------------------------
@@ -430,15 +431,7 @@ def generate_store(entry, template_html, template_sw, dry_run, order_math, supab
     target_index = os.path.join(target_dir, 'index.html')
     target_sw    = os.path.join(target_dir, 'sw.js')
 
-    # Substitute deployment URL. The placeholder count check defends against
-    # template corruption (someone manually edited the placeholder out, or
-    # an earlier build accidentally substituted it).
-    count = template_html.count(API_URL_PLACEHOLDER)
-    if count != 1:
-        fail(f"template/index.html: expected exactly 1 {API_URL_PLACEHOLDER!r}, "
-             f"found {count}. Template may be corrupted.")
-    # A store made in HQ (schema v26) has none: '' means "no /exec".
-    rendered_html = template_html.replace(API_URL_PLACEHOLDER, entry.get('deployment', ''))
+    rendered_html = template_html
 
     # Theme substitution. Concept-derived; validate_stores already refused an
     # unknown concept ('default' is a no-op in the template's theme CSS).
@@ -552,8 +545,7 @@ def inject_hub_registry(stores, dry_run):
     """
     If root index.html exists and contains the STORE_REGISTRY marker line,
     replace that line with the build-injected version. Hub registry contains
-    concept/location/slug only — deployment URLs are NOT exposed to the
-    hub's client-side code.
+    concept/location/slug only.
     """
     if not os.path.exists(HUB_INDEX):
         print("[hub] root index.html not found — skipping registry injection")
@@ -618,12 +610,6 @@ def arg_after(flag):
     return sys.argv[i + 1]
 
 
-# The preview app's /exec address leads nowhere on purpose: a test store has
-# no Sheet, and the store it copies (--like) is a real one, so anything that
-# falls back to /exec (history, the reset) must fail, never reach its Sheet.
-PREVIEW_EXEC = 'https://script.google.com/macros/s/PREVIEW-HAS-NO-EXEC/exec'
-
-
 def build_preview(stores, slug, like, dry_run):
     """A test store's app and editor (e.g. rprfotest, D21) under
     _preview/<slug>/, which git ignores: nothing here is ever published. It
@@ -645,7 +631,7 @@ def build_preview(stores, slug, like, dry_run):
         template_html = f.read()
     with open(TEMPLATE_SW, 'r', encoding='utf-8') as f:
         template_sw = f.read()
-    app_entry = dict(entry, slug=slug, location=entry['location'] + ' (TEST)', deployment=PREVIEW_EXEC, ns='s_' + slug)
+    app_entry = dict(entry, slug=slug, location=entry['location'] + ' (TEST)', ns='s_' + slug)
     generate_store(app_entry, template_html, template_sw, dry_run, read_order_math(), supabase, target_dir=target)
     generate_editor(target, entry, slug, entry['location'] + ' (TEST)', supabase, themes, dry_run)
     print(f"[done] serve the repo root and open /_preview/{slug}/ (the app) or /_preview/{slug}/editor/ (the editor)")

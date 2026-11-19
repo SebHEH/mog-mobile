@@ -174,31 +174,16 @@ See `CLAUDE.md` → "Standing invariants" (10 rules). They aren't repeated here 
 
 ---
 
-## Deploy targets (apps-script/.clasp-targets.json)
+## Deploys
 
-11 targets: the master template plus 10 stores. The code is identical across all of them, and per-store config lives in each Sheet. Each target has a `scriptId` (for `clasp push`) and a `deploymentId` (for bumping its web app's `/exec` version).
-
-| Slug | Store | Notes |
-|---|---|---|
-| `_template` | Master template | Copied to seed new stores. Push keeps it current. |
-| `rpr` | Roll Play - Rosslyn BOH | |
-| `rprfo` | Roll Play - Rosslyn FOH | Canary: the first to get every deploy. |
-| `rpt` | Roll Play - Tysons BOH | In use (219 order lines in the 30 days to 11-04). |
-| `rptfo` | Roll Play - Tysons FOH | Not used yet. |
-| `rpfr` | Roll Play - Founders BOH | In use since 2026-11 (Founders Row is its own store now). |
-| `rpfrf` | Roll Play - Founders FOH | Not used yet. |
-| `tnyt` | Teas'n You - Tysons BOH | Being set up by its KMs since 10-26. Its `/exec` flaked after redeploys (10-16, 10-19) and recovered both times. |
-| `tnytf` | Teas'n You - Tysons FOH | |
-| `tnyr` | Teas'n You - Rockville BOH | Started empty; KMs setting it up. |
-| `tnyrf` | Teas'n You - Rockville FOH | Started empty; KMs setting it up. |
+No store has an Apps Script deploy target since Sheet retirement step 5 (2026-11-20): the store web apps are archived and `apps-script/` is a build source. `python .claude/skills/mog-deploy-workflow/scripts/route.py <changed paths>` lists what a change needs.
 
 | Goal | Command |
 |---|---|
-| Push + redeploy the web app (the default for any `.gs` or page change) | `python deploy.py --redeploy` |
-| Push only (bound Sheet dialogs) | `python deploy.py` |
-| One target | `python deploy.py --redeploy --target <slug>` |
-| Dry run | `python deploy.py --dry-run` (add `--redeploy` to preview that step too) |
-| Find deploymentIds on a fresh checkout | `python deploy.py --discover` |
+| An app, HQ or `apps-script/` change | `python build.py`, commit, push (an app change: canary `rprfo` first), then `wait_live.py` |
+| `OrderMath.gs`, `Concepts.gs`, `RecapEmail.gs` or `supabase/functions/close/` | the above, then the Edge Function `close` through the connector's `deploy_edge_function` |
+| A schema change | the SQL first, on the maintainer's go (`mog-supabase-schema`) |
+| The mail relay | `python deploy.py --relay` (`--dry-run` to preview) |
 
 ---
 
@@ -225,30 +210,23 @@ See `CLAUDE.md` → "Standing invariants" (10 rules). They aren't repeated here 
 ## Open issues / risks
 
 - **CI runs the gates on GitHub's Linux runner** (`.github/workflows/gates.yml`), with LF files. Run `node tests/run_all.js` before every deploy anyway; the live URL is still the final check. Reproducing a CI-only failure: see [docs/MOG_ProjectNotes.md](MOG_ProjectNotes.md), CI and tests.
-- **Two maintainers deploy from two computers.** `deploy.py`'s git check is the backstop: it refuses a copy that is behind `origin/main`. Whoever continues pulls the latest first.
+- **Two maintainers work from two computers.** Whoever continues pulls the latest first; app changes go live only from `main`, and `deploy.py --relay` refuses a copy that is behind `origin/main`.
 - **`python3` on Windows** is the Microsoft Store stub; use `python` or `py`.
 - **PowerShell PATH goes stale** after a `winget install` (see `CLAUDE.md` convention #7).
-- **A store's `/exec` can rot or flake.** Test a freshly cut deployment before repointing: if it flakes too, it isn't rot (`mog-exec-repoint`).
 
 ---
 
 ## Architecture notes worth remembering
 
 - **Two `CACHE_VERSION` constants**, `sw.js` (hub) and `template/sw.js` (stores), move independently. Bump the one whose shell changed.
-- **`build.py` is idempotent.** It injects six placeholders into each store's page, `OrderMath.gs` among them, so the phone runs the server's order math verbatim. `--dry-run` previews; `--preview <slug> --like <slug>` builds a test store into `_preview/`.
+- **`build.py` is idempotent.** It injects five placeholders into each store's page, `OrderMath.gs` among them, so the phone runs the server's order math verbatim. `--dry-run` previews; `--preview <slug> --like <slug>` builds a test store into `_preview/`.
 - **The phone's live order quantity** calls `computeSuggestedQty_` from that injected copy and has no rounding of its own; `tests/phone_rounding.test.js` holds it there.
-- **`deploy.py`:**
-  - writes a temporary `apps-script/.clasp.json` per target, pushes, then cleans up;
-  - is stdlib-only and serial on purpose;
-  - treats source push and web-app redeploy as separate phases.
-
-  The web app is the primary surface, so default to `--redeploy`.
+- **`deploy.py`** deploys only the mail relay (`--relay`); it refuses the retired store flags with a pointer. It is stdlib-only.
 - **All `apps-script/` files share one global scope.**
   - **17 `.gs`:** Admin, Concepts, Core, Dashboard, DbApi, Editor, Health, History, Items, MOGApi, OrderMath, PickPath, Recap, RecapEmail, ResetLog, Sync, Vendors.
   - **11 `.html`:** AdminReset, EditorHome, EditorShell, HealthCheck, ManageItems, ManageVendors, OrderHistory, ReorderPickPath, Setup, StorageAreas, Styles.
   - A `.gs` and an `.html` can't share a basename, which is why the server file is `Health.gs`.
-- **Never put `.js` under `apps-script/`:** clasp pushes it to every store. Tests live in `tests/`.
-- **`apps-script/.clasp-targets.json` is committed** with real Script IDs. They identify projects and aren't secrets; pushing still needs `clasp login`.
+- **Tests live in `tests/`,** never under `apps-script/`.
 - **The `STORE_REGISTRY` marker** in root `index.html` is build-injected. Edit `stores.json`, never the line.
 - **Every server function is private (`_`)** unless it's on the reviewed list in `tests/public_surface.test.js` (D18). Pages reach the server only through `webedit_call` and the auth layer.
 

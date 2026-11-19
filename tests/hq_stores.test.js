@@ -286,7 +286,7 @@ function buildChecks(plant) {
     'sw = io.open(build.TEMPLATE_SW, encoding="utf-8").read()',
     'build.generate_store(stores[0], tpl, sw, False, build.read_order_math(), build.read_supabase_project(), target_dir=sys.argv[2])',
     'page = io.open(sys.argv[2] + "/index.html", encoding="utf-8").read()',
-    'out["api"] = page.split("window.MOG_API_URL = ")[1].split(";")[0]',
+    'out["api"] = ("MOG_API_URL" in page) or ("script.google.com/macros" in page)',
     'build.HUB_INDEX = sys.argv[3]',
     'build.inject_hub_registry(stores, False)',
     'out["hub"] = io.open(sys.argv[3], encoding="utf-8").read()',
@@ -295,14 +295,14 @@ function buildChecks(plant) {
   const stores = [
     { slug: 'zzhq26', concept: 'Roll Play', location: 'Navy Yard FOH', editor: 'supabase', ns: 's_zzhq26' },
     { slug: 'zzhq26t', concept: 'Roll Play', location: 'HQ Test FOH', editor: 'supabase', test: true, ns: 's_zzhq26t' },
-    { slug: 'rpr', concept: 'Roll Play', location: 'Rosslyn BOH', deployment: 'https://script.google.com/macros/s/AKfycbx_abc123/exec', editor: 'supabase', ns: 'AKfycbx_abc1' }
+    { slug: 'rpr', concept: 'Roll Play', location: 'Rosslyn BOH', editor: 'supabase', ns: 'AKfycbxRbLvq' }
   ];
   const r = spawnSync(PY, ['-B', '-c', plant ? plant(code) : code, JSON.stringify(stores), path.join(dir, 'out'), hub], { encoding: 'utf8', cwd: REPO });
   const line = (r.stdout || '').split('\n').find(l => l.indexOf('RESULT ') === 0);
   if (!line) { fail('build', 'python: ' + (r.stderr || r.stdout).slice(-400)); return fails; }
   const out = JSON.parse(line.slice(7));
   if (out.noEditor !== 'refused') fail('build', 'a store with no /exec and no app editor was accepted');
-  if (out.api !== "''") fail('build', 'its /exec address: ' + out.api);
+  if (out.api !== false) fail('build', 'the page still carries an /exec address');
   if (!/"zzhq26"/.test(out.hub) || /"zzhq26t"/.test(out.hub) || !/"rpr"/.test(out.hub)) fail('build', 'the hub list: ' + out.hub.slice(0, 200));
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* the OS cleans tmp */ }
   return fails;

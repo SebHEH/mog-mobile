@@ -113,7 +113,7 @@ midnight its time; if anything was ordered, a `recap` row and the email at its r
 - **No Manage in the sidebar on a computer:** the window is under 900px wide.
 - **The hub tile shows a generic icon:** the hub has no `CONCEPT_VISUALS` entry for that exact
   concept string (`validate.py concept` warns).
-- **Sign-in says the setup is wrong when Supabase is down:** a store made in HQ has no `/exec` to
+- **Sign-in says offline or the setup is wrong when Supabase is down:** no store has an `/exec` to
   fall back to; it signs in once Supabase answers again.
 
 ## A new concept
@@ -137,7 +137,10 @@ Not this runbook: it's a code change, walked through first. The same name, spell
 
 - **Publishing before the store exists in Supabase.** The page would sign in to nothing
   ("Unknown store"). HQ first, always.
-- **A `deployment` field for a store made in HQ.** It has no Sheet; leave the field out.
+- **A `deployment` field.** No store has one since Sheet retirement step 5 (the stores' `/exec`
+  addresses are archived); `build.py` refuses it.
+- **Any `ns` but `s_<slug>` for a new store.** The 10 stores from Sheets keep their old keys,
+  pinned in `build.py`'s `LEGACY_NS`; every other store's is `s_<slug>`, fixed for good.
 - **Reusing a retired web address.** Old home-screen icons still point at it.
 - **Copying a Sheet to make a store.** The 11-step Sheet runbook (in git history before 2026-11-15)
   is retired with the Sheets.

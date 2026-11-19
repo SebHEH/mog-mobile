@@ -34,7 +34,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 
 ## Deploys and rollout
 
-- **Default every Apps Script deploy to `--redeploy`.** `/exec` serves a versioned snapshot, so a push alone leaves it stale.
+- **No store has an Apps Script deploy since Sheet retirement step 5 (2026-11-20).** The 10 store web-app deployments (and tnyt's older one) were archived with `clasp undeploy`; their `/exec` addresses can't come back. `deploy.py` deploys only the mail relay (`--relay`). The Script and Sheet IDs of the retired projects are in git history (`apps-script/.clasp-targets.json`, last at the commit before its removal).
 - **Canary first is the default.**
   - **A deploy that changes nothing a live store does runs without a question** (Sebastian, 2026-11-12; CLAUDE.md, Working conventions 2): code behind a switch that's off (like `close_direct`), a canary of it, the close function while no store is switched. Do it, then say what changed, what the gates prove, what's visible, and the rollback.
   - **Cutovers run without a question too** (Sebastian, 2026-11-15): turning on a store's `close_direct`, or another switch that changes what a live store does, once its gates pass and the canary store's nights are clean. Report what ran, the gate line and the rollback. A change to the order math for everyone, or a schema migration, still gets its own question here.
@@ -44,10 +44,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
   - Pages takes about 30-60 s, sometimes several minutes (HQ took about 4.5 on 2026-11-06).
   - Poll each store's file with a cache-busting query (`?x=$RANDOM`), in the background, and check all 10 stores.
   - Match a marker that exists only in the new build. Grep the old file first: it must return 0. On 2026-10-20, `it-panel` matched the old page's `edit-panel` and reported "live" early.
-- **`/exec` links:**
-  - Open them in a real browser; a chat app's in-app browser breaks `/exec`.
-  - Use one Google account, or Incognito, or the `https://script.google.com/u/0/macros/s/<id>/exec` form.
-  - Probes with a made-up PIN trip that store's shared 5-minute PIN lockout.
+- **Probes with a made-up PIN trip that store's shared 5-minute PIN lockout.** A probe never sends a PIN to a real store.
 
 ## Supabase
 
@@ -99,7 +96,7 @@ Facts and gotchas every Claude session in this repo needs, whoever is running it
 - **Stores (schema v26, Sheet retirement step 4):** HQ → Stores lists every store with its PIN record and nightly close, changes a store's PIN (every sign-in there ends) and sets the one manager PIN for every store; New store makes a store with no Sheet in one save, then Claude publishes it (`mog-add-store`).
   - **The manager PIN is one code for every store, locked** (Sebastian, 2026-11-15): `mog.manager_pin` plus the trigger `stores_manager_pin`, so no write can give one store another one. It can't be any store's PIN (sign-in checks the store PIN first, so it would never open manager mode there).
   - **PINs are set in HQ only:** a Sheet's PIN push (Setup, Set Master PIN, Move) answers `PINS_IN_HQ` at a store Supabase closes.
-  - **A store made in HQ has no `/exec`:** its `stores.json` entry has no `deployment`, and its phones keep their local storage under `s_<slug>`. Stores from a Sheet keep their deployment-id keys: removing their `deployment` would orphan the drafts and save queues on their phones (step 5 must keep those keys).
+  - **The phones' storage key never moves:** a store made in HQ keeps its local storage under `s_<slug>`; the 10 stores from Sheets keep the first 12 characters of their old deployment ids, frozen in `build.py`'s `LEGACY_NS` since the addresses left `stores.json` (step 5). Changing one would orphan the drafts and save queues on that store's phones (gate `store_ns`).
   - **Schema files with `delete` anywhere (a function body too) hang the connector:** v26 was pasted in the SQL Editor (2026-11-15).
 - **Libraries (schema v12):** one per concept and side, on HQ's Libraries page. Start an empty one from a store, then edit it item by item (each save is the whole list, versioned). "Set up stores from it" sends it like an LTO: no par, no area. Seeds: Rosslyn BOH and FOH for Roll Play, Tysons BOH and Rockville FOH for Teas'n You.
   - A wrong save is put back in the SQL Editor from `mog.library_log.items_before` (there's no Restore button).

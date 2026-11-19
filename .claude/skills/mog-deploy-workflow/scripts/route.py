@@ -1,116 +1,108 @@
 #!/usr/bin/env python
 """Deterministic deploy router for the MOG repo.
 
-Given one or more changed file paths (relative to repo root), prints the layer,
-the exact deploy command, and whether canary-first applies. This is the single
-source of truth for the push-vs-`--redeploy` decision — it guards pitfall #4a
-(forgetting `--redeploy` after a MOGApi.gs change, which leaves the PWA's /exec
-URL serving stale code).
+Given one or more changed file paths (relative to repo root), prints each
+file's layer and every action the set needs: a build and push, a redeploy of
+the Edge Function `close`, the mail relay, SQL first. Actions are listed, not
+ranked: a change can need a build AND an Edge Function deploy.
+
+Since Sheet retirement step 5 (2026-11-20) no store's Apps Script is deployed:
+the stores' /exec deployments are archived and apps-script/ is only a source
+for build.py (OrderMath.gs in every store page, Sync.gs's Supabase config, the
+editor pages, the close function's shared.mjs) and for the gates. The only
+Apps Script deploy left is the mail relay (`python deploy.py --relay`).
 
 Usage:
     python .claude/skills/mog-deploy-workflow/scripts/route.py <path> [<path> ...]
 
 Example:
-    python route.py apps-script/MOGApi.gs apps-script/ManageVendors.html
-    -> recommends `python deploy.py --redeploy` (the strongest action wins)
+    python route.py apps-script/OrderMath.gs template/index.html
+    -> python build.py + push (canary rprfo first), then redeploy `close`
 
-Pure stdlib, Python 3, zero deps. Matches build.py / deploy.py conventions.
-The path-based rules are deterministic; genuinely ambiguous cases (e.g. an
-appsscript.json scope change that may or may not touch PWA scopes) print a
-VERIFY note rather than guessing — that's where human judgment stays.
+Pure stdlib, Python 3, zero deps. Ambiguous cases print a VERIFY note rather
+than guessing.
 """
 import sys
 import posixpath
 
 # Single source of truth for the canary store. The canary is a ROLE (the store
-# we smoke-test first before fanning out), not a fixed identity — it moved from
+# we smoke-test first before fanning out), not a fixed identity: it moved from
 # rpr to rprfo on 2026-05-27 (rprfo is the least dangerous store; rpr's pars may
-# not be true 1-day pars). Every skill that names the canary should derive it
-# from here (or from this script's output), never hardcode it again — that's the
-# drift this constant exists to kill.
+# not be true 1-day pars). Every skill that names the canary derives it from
+# here (or from this script's output), never hardcodes it again.
 CANARY = "rprfo"
 
-# Action ranking — the strongest action across all changed files wins.
-GIT_ONLY, BUILD, PUSH, REDEPLOY = 0, 1, 2, 3
-ACTION_NAME = {
-    GIT_ONLY: "git push only",
-    BUILD: "python build.py  ->  git commit + push",
-    PUSH: "python deploy.py            (canary: --target %s first)" % CANARY,
-    REDEPLOY: "python deploy.py --redeploy (canary: --target %s --redeploy first)" % CANARY,
+# The .gs files build.py copies into supabase/functions/close/shared.mjs: a
+# change to one also changes what the nightly close runs.
+CLOSE_SOURCES = ("OrderMath.gs", "Concepts.gs", "RecapEmail.gs")
+
+GIT, BUILD, EDGE, RELAY, SQL = "git", "build", "edge", "relay", "sql"
+ACTIONS = {
+    SQL: "FIRST: run the SQL through the Supabase connector or the SQL Editor on the maintainer's go, "
+         "then its smoke file and check_api.sh (skill mog-supabase-schema). The database ships before the code.",
+    BUILD: "python build.py  ->  commit + push (GitHub Pages deploys); an app change goes to the canary %s first, "
+           "then fans out; wait_live.py checks it." % CANARY,
+    EDGE: "Redeploy the Edge Function `close` through the Supabase connector's deploy_edge_function "
+          "(index.ts, core.mjs and the generated shared.mjs as committed; verify_jwt false) after build.py.",
+    RELAY: "python deploy.py --relay  (push mail-relay/ and redeploy its one deployment).",
+    GIT: "git push only.",
 }
+ORDER = (SQL, BUILD, EDGE, RELAY, GIT)
 
 
 def classify(path):
-    """Return (action, layer, reason, verify_note_or_None) for one path."""
+    """Return (actions, layer, verify_note_or_None) for one path."""
     p = path.replace("\\", "/").lstrip("./")
     base = posixpath.basename(p)
 
-    # Apps Script backend
     if p.startswith("apps-script/"):
-        if base == "MOGApi.gs":
-            return (REDEPLOY, "Apps Script backend (PWA-facing)",
-                    "MOGApi.gs is served via /exec (a versioned snapshot); "
-                    "push alone won't reach the PWA.", None)
-        if base.endswith(".html"):
-            return (PUSH, "Apps Script backend (bound sidebar)",
-                    "Bound sidebars read HEAD; no web-app version bump needed.", None)
-        if base == "appsscript.json":
-            return (PUSH, "Apps Script backend (manifest)",
-                    "Manifest push.",
-                    "If PWA-facing OAuth scopes changed, use --redeploy and "
-                    "re-authorize each Sheet.")
-        if base.endswith(".gs"):
-            return (PUSH, "Apps Script backend (bound sidebar)",
-                    "Bound-sidebar .gs logic reads HEAD.",
-                    "If you added/edited an api_* function the PWA calls, "
-                    "switch to --redeploy.")
-        if base == ".clasp-targets.json":
-            return (GIT_ONLY, "Deploy infrastructure (config)",
-                    "Config only; next deploy.py run picks it up.", None)
-        return (PUSH, "Apps Script backend",
-                "Default for apps-script/ source.", None)
+        if base in CLOSE_SOURCES:
+            return ({BUILD, EDGE}, "Shared source (store pages and the nightly close)",
+                    "OrderMath.gs runs on every phone and in the close: run node tests/run_all.js first."
+                    if base == "OrderMath.gs" else None)
+        return ({BUILD}, "Build source (apps-script/ is no longer deployed)",
+                "build.py reads only some apps-script/ files (Sync.gs's config, the editor pages and their "
+                "includes); a change elsewhere ships nowhere, so check it is still used before editing.")
 
-    # Per-store PWA  /  hub registry
-    if p.startswith("template/") or base == "stores.json":
-        return (BUILD, "Per-store PWA / hub registry",
-                "Regenerate per-store dirs from template + stores.json, then "
-                "git push (GitHub Pages auto-deploys).",
-                "If the shell changed, bump CACHE_VERSION in template/sw.js first.")
+    if p.startswith("mail-relay/"):
+        return ({RELAY}, "Mail relay (Apps Script)", None)
 
-    # Deploy infra tools
-    if base in ("build.py", "deploy.py"):
-        return (GIT_ONLY, "Deploy infrastructure",
-                "Tooling change; test with --dry-run, then git push.", None)
+    if p.startswith("supabase/functions/"):
+        if base == "shared.mjs":
+            return ({EDGE}, "Edge Function `close` (generated)",
+                    "shared.mjs is written by build.py from apps-script/: edit the .gs source, never this file.")
+        return ({EDGE}, "Edge Function `close`", None)
 
-    # Hub / static / docs
-    if base in ("index.html", "sw.js", "manifest.json"):
-        return (GIT_ONLY, "Hub",
-                "Hub change; git push (no build unless stores.json also changed).",
-                "If sw.js (hub) shell changed, bump its CACHE_VERSION.")
-    if p.startswith("icons/") or p.startswith("docs/"):
-        return (GIT_ONLY, "Static assets / docs", "git push.", None)
-
-    # Supabase: nothing here deploys; a maintainer runs the SQL (skill mog-supabase-schema)
     if p.startswith("supabase/"):
         if base.startswith("schema") and base.endswith(".sql"):
-            return (GIT_ONLY, "Supabase (a maintainer runs it in the SQL Editor)",
-                    "The SQL runs before any deploy; the file itself is just committed.",
-                    "Run it, then its smoke file (every row PASS), then "
-                    "check_api.sh - BEFORE the deploy below. Skill: mog-supabase-schema.")
+            return ({SQL}, "Supabase schema", None)
         if p.startswith("supabase/tests/"):
-            return (GIT_ONLY, "Supabase tests",
-                    "Run in the SQL Editor (smoke) or by bash (check_api.sh); commit.",
-                    "A probe must never send a PIN to a real store (lockout counter).")
-        return (GIT_ONLY, "Supabase (one-off SQL)",
-                "Run by a maintainer only when a runbook says so (mog-add-store).", None)
+            return ({GIT}, "Supabase tests",
+                    "Run in the SQL Editor or the connector (smoke) or by bash (check_api.sh); "
+                    "a probe never sends a PIN to a real store (lockout counter).")
+        return ({GIT}, "Supabase (one-off SQL)",
+                "Run by a maintainer only when a runbook says so.")
 
-    # Node gates
+    if p.startswith("template/") or base == "stores.json":
+        return ({BUILD}, "Per-store PWA / HQ / hub registry",
+                "If the store shell changed, bump CACHE_VERSION in template/sw.js first.")
+
+    if base in ("build.py", "deploy.py"):
+        return ({GIT}, "Deploy infrastructure",
+                "Tooling change; try it with --dry-run. A build.py change that alters its output also needs "
+                "python build.py and the canary.")
+
+    if base in ("index.html", "sw.js", "manifest.json") and "/" not in p:
+        return ({GIT}, "Hub",
+                "If the hub shell changed, bump its CACHE_VERSION in sw.js.")
+    if p.startswith("icons/") or p.startswith("docs/"):
+        return ({GIT}, "Static assets / docs", None)
     if p.startswith("tests/"):
-        return (GIT_ONLY, "Gates", "node tests/run_all.js; nothing deploys.", None)
+        return ({GIT}, "Gates", "node tests/run_all.js; nothing deploys.")
+    if p.startswith(".claude/"):
+        return ({GIT}, "Skills", None)
 
-    return (PUSH, "UNKNOWN",
-            "Path didn't match a known rule.",
-            "Route manually — confirm the layer before deploying.")
+    return ({GIT}, "UNKNOWN", "Path didn't match a known rule: confirm the layer before shipping.")
 
 
 def main(argv):
@@ -119,28 +111,21 @@ def main(argv):
         print(__doc__)
         return 2
 
-    results = [(path,) + classify(path) for path in paths]
-    winner = max(r[1] for r in results)  # strongest action across all files
-
+    needed = set()
     print("Changed files:")
-    for path, action, layer, reason, verify in results:
-        print("  - {}  ->  {} [{}]".format(path, ACTION_NAME[action].split("(")[0].strip(), layer))
+    for path in paths:
+        actions, layer, verify = classify(path)
+        needed |= actions
+        print("  - {}  ->  {} [{}]".format(path, ", ".join(a for a in ORDER if a in actions), layer))
         if verify:
             print("      VERIFY: " + verify)
+    if len(needed) > 1:
+        needed.discard(GIT)  # every other action ends in a push anyway
 
-    schema = [path for path in paths
-              if path.replace("\\", "/").lstrip("./").startswith("supabase/schema")]
-    if schema:
-        print("\nFIRST: run " + ", ".join(schema) + " in the Supabase SQL Editor (Sebastian or Donny, "
-              "on the maintainer's go), then its smoke file and check_api.sh. The database ships "
-              "before the code that relies on it.")
-
-    print("\nDeploy: " + ACTION_NAME[winner])
-    reasons = sorted({r[3] for r in results if r[1] == winner})
-    for reason in reasons:
-        print("Reason: " + reason)
-    if winner in (PUSH, REDEPLOY):
-        print("Canary-first: yes - smoke-test %s, then fan out." % CANARY)
+    print("\nDo, in this order:")
+    for i, a in enumerate((a for a in ORDER if a in needed), 1):
+        print("  %d. %s" % (i, ACTIONS[a]))
+    print("\nCanary-first: " + ("yes - %s, then fan out." % CANARY if BUILD in needed else "no store build involved."))
     return 0
 
 
