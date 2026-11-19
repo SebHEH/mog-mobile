@@ -1859,10 +1859,6 @@
      CONFIG — injected by build.py
      ============================================================ -->
 <script>
-  // The store's old Apps Script /exec address. Unused since app v0.35.0
-  // (Sheet retirement step 5: every call goes to Supabase); it leaves with
-  // the store deployments and stores.json's `deployment`.
-  window.MOG_API_URL = 'https://script.google.com/macros/s/AKfycbzdQyjNQrd0PZv0X4c8uJxSiniKtWoramL3YNH1RxpGZubBRcoGPyBMIxWyI-RqW47Q/exec';
   // Supabase (step 5, docs/MOG_SupabaseMigration.md D12-D14): the project's
   // public URL and publishable key plus this store's slug, injected by
   // build.py. Public by design. Supabase decides per store whether phones
@@ -8990,7 +8986,7 @@ function parFlagCutoff_(today) {
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.35.0';
+    const versionStr = '0.35.1';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
