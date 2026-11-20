@@ -225,7 +225,7 @@ Stop it: `update mog.backup_watch set alert_to = null;`.
 
 **Docs:** the KM brief and the Logic Blueprint (R0, R12, R13, R13a, the new-day flow and contract, the parts diagram, the integrations table; stamp `aeb165d`) say so. Step 3 is done apart from the sign-in fallback, moved to step 5.
 
-### Step 4: PINs and New store in HQ; built 2026-11-15, schema v26 waiting to run
+### Step 4: PINs and New store in HQ; live 2026-11-15, the TEST trial done 2026-11-20
 
 **Approved (Sebastian, 2026-11-15):** the walkthrough as recommended, then the mockups ("HQ Stores mockup", https://claude.ai/artifact/665XFnU7VfRaKXntyXLtxu) with two changes:
 - **One manager PIN for every store and concept, locked to one PIN** (R6 had it per store). It lives once in `mog.manager_pin`; HQ → Stores sets it for every store at once; a new store gets it; a trigger (`stores_manager_pin`) keeps every store's `master_pin_hash` equal to it whatever writes the row. It must differ from every store's PIN (sign-in checks the store PIN first), and a store PIN can't be it. Until it's first set in HQ, each store keeps the manager PIN its Sheet gave it.
@@ -244,9 +244,9 @@ Stop it: `update mog.backup_watch set alert_to = null;`.
 
 **Not yet:**
 1. ~~Schema v26 on the live database.~~ Live (above).
-2. **The TEST store trial** (success criteria 5 and 6): Sebastian makes a test store in HQ, Claude publishes it, a sign-in and a count on a phone, its first close and recap the next morning, a PIN changed in HQ that works the next morning, and the manager PIN set once for every store.
+2. ~~The TEST store trial~~ **Done 2026-11-20** (success criteria 5 and 6), on `leidtyson` (Lei'd Poke Tyson BOH (TEST)): made in HQ by Sebastian (11-16), published by Claude (`fd8b786`), the manager PIN set once in HQ (11-16). Grok Bot, in a desktop browser on 11-19: a recipient, a storage area, a vendor delivering every day, two items at par 2, both counted 0, still there after leaving the vendor. Its close at 00:00 on 11-20 logged 2 lines and sent the recap to 1 of 1 recipients on the first try. A PIN changed in HQ (11-19 8:25 AM, again 11-20 2:18 PM after a PIN mix-up on the morning try) signed in at once; nothing but HQ writes a store's PIN, so the nightly close can't undo it. The manager PIN opened manager mode. Not tried on a real phone (the same code; only the layout differs).
 
-### Step 5: the retirement checklist (researched 2026-11-15; decided the same evening)
+### Step 5: the retirement checklist (researched 2026-11-15; decided the same evening; done 2026-11-20)
 
 **Decided (Sebastian, 2026-11-15 evening, all four as proposed):**
 - **Item 1: schema v27** refuses `mog_sync_close_cycle` and `mog_sync_set_recap_sent` with `CLOSE_DIRECT` while the store's `close_direct` is on (the key is still checked first). Built and gated 11-15 (smoke_v27 14/14 in PGlite, 4 planted defects caught, a `night_close` scenario). **Live 11-15 about 9:15 PM ET** through the connector (Sebastian's go): smoke_v27 14/14 (rolled back), `check_api.sh` 160/160, tonight's close still due at all 10.
@@ -267,6 +267,13 @@ Read from the code on 11-15 (app v0.34.1). Each item says what it touches and wh
 7. **Rollback afterwards:** today's two rollbacks use Apps Script (`close_direct` off plus Move; phones off falling back to `/exec`). Step 5 removes both, so the plan names what replaces them: fix forward in the Edge Function and SQL, and the nightly backup.
 
 **Order proposed:** v27 (item 1) first; then the app without `/exec` behind a fixed namespace (item 2), canary rprfo; then archive the store deployments and retire the targets, skills and CLAUDE.md rows (items 3 to 6), once the first nights (from 11-16) and the TEST store trial are clean.
+
+**Items 3 to 6, done 2026-11-20** (after cycles 11-15 to 11-19 closed clean at every store and the TEST trial above):
+- **Archived (about 2:25 PM ET), with `clasp undeploy`:** all 12 web-app deployments: the 10 stores' live ones, tnyt's older one (@81, left from the 10-19 repoint) and the master template's (@72, Sebastian's pick). Every project now lists only @HEAD, and all 12 old `/exec` addresses answer 404 (tnyrf's answered 200 once for about a minute after, then 404). The addresses can't come back. The Sheets stay in Drive, frozen (R10).
+- **Retired in the repo:** `deploy.py`'s store targets (it deploys only the relay, `--relay`), `apps-script/.clasp-targets.json`, `editor_link.py` and its gate, `supabase/provision_stores.sql` and its check in `supabase_move`; `__MOG_API_URL__`, `window.MOG_API_URL` and `stores.json`'s `deployment` (`build.py` refuses it; each Sheet store's phone storage key is frozen in `build.py`'s `LEGACY_NS`, checked by gate `store_ns` against v0.34.1's code and the addresses in git history). App v0.35.1 / store cache v80 (canary rprfo `95eac35`, live and booting to the PIN screen with no script errors; fan-out `c020015`).
+- **Skills:** removed `mog-exec-repoint`, `mog-apps-script-caching`, `mog-rpc-consolidation`, `mog-editor-web-reskin`, `mog-health-check-extend`, `mog-sheet-formula-verify`, `mog-modal-ux-sweep`; `mog-deploy-workflow`'s `route.py` lists every action a change needs (a build, the Edge Function `close`, the relay, SQL first); `mog-cheatsheet`, `mog-supabase-schema`, `mog-pwa-audit`, `mog-session-handoff` and `mog-add-store` updated.
+- **CLAUDE.md:** the layers (Apps Script sources not deployed, the mail relay), invariants 2, 3, 5, 8, 9 and 10, the maintainer rules 4 to 6, conventions 2 and 8, the pitfalls. Also the READMEs, ONBOARDING, the file inventory and ProjectNotes. 42 gates, PGlite all pass.
+- **Not done here:** the Sheets' installable triggers (`dashboardOnEdit_`, `dailyResetOnOpen_`) stay; they're no-ops on a moved store, and a Sheet's menu can still reinstall the 3:30 AM trigger (it would retire itself again, and v27 refuses its close).
 
 ## Not verified
 

@@ -12,9 +12,9 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 
 - **Phones** count straight into Supabase (`phone_direct` on all 10 stores).
 - **The catalog, order history, recipients and People** live in Supabase and are edited in the app on a computer (`editor_direct` on all 10).
-- **Each Sheet** is frozen for catalog edits. Since 2026-11-15 Supabase closes every store just after midnight and sends the recap; the phone neither closes a cycle nor sends a Daily summary (both removed, step 3), so its only `/exec` use left is sign-in's fallback when Supabase can't be reached (step 5). The Sheet's Apps Script still holds the onboarding moves. Its LOG_ORDERS backup stopped with its trigger; the nightly off-site backup covers every table.
+- **The Sheets are retired** (Sheet retirement step 5, 2026-11-20): frozen in Drive, every store's web app and the template's archived, nothing deployed to them. Supabase closes every store just after midnight and sends the recap through the mail relay; the nightly off-site backup covers every table.
 - **On a computer** the order guide and Manage share one sidebar; Manage pages run in a frame (`?embed=1`).
-- **Versions (newest first):** app v0.35.0 / store cache v79 (no `/exec`: every call to Supabase, Supabase unreachable is offline, no PIN sent before sign-in; storage keys from `stores.json` `ns`, unchanged on every phone; Sheet retirement step 5 item 2; all 10 stores 2026-11-15 evening, `67232ca` canary, `f0c7882`); schema v27 (Apps Script's close and recap flag refused while `close_direct` is on, Sheet retirement step 5 item 1; live 2026-11-15 about 9:15 PM ET, smoke_v27 14/14, probe 160/160); schema v26 (HQ → Stores: New store, PINs in HQ, one manager PIN; live 2026-11-15 about 9 PM ET, smoke_v26 30/30); app v0.34.1 / store cache v78 (a store with no `/exec`: its own storage keys, no `/exec` fallback; no change for the 10 stores; all 10 on 2026-11-15); app v0.34.0 / store cache v77 (Sheet retirement step 3: no phone reset, no Daily summary; all 10 stores 2026-11-15); schema v25 (the nightly close from midnight, not 3:30 AM: live 2026-11-15 about 2:45 PM ET, smoke_v25 11/11, probe 149/149); schema v24 (the backup watchdog and the via/par/stores drop: live 2026-11-12, smoke_v24 28/28, probe 149/149, below); app v0.33.0 / store cache v76 (Manage finished, live on all 10 stores 2026-11-11, 41 gates since v24); schema v23 (live 2026-11-11, see Sheet retirement step 2 below); v22 (live 2026-11-06), v21 (routes, live 2026-11-05, store cache v74). Every older version with its smoke and probe counts: `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
+- **Versions (newest first):** app v0.35.1 / store cache v80 (no `/exec` address in any page: `__MOG_API_URL__` and `stores.json`'s `deployment` gone, the phones' storage keys frozen in `build.py`'s `LEGACY_NS`; step 5 items 3 to 6; canary rprfo `95eac35`, the rest `c020015`, 2026-11-20); app v0.35.0 / store cache v79 (no `/exec`: every call to Supabase, Supabase unreachable is offline, no PIN sent before sign-in; storage keys from `stores.json` `ns`, unchanged on every phone; Sheet retirement step 5 item 2; all 10 stores 2026-11-15 evening, `67232ca` canary, `f0c7882`); schema v27 (Apps Script's close and recap flag refused while `close_direct` is on, Sheet retirement step 5 item 1; live 2026-11-15 about 9:15 PM ET, smoke_v27 14/14, probe 160/160); schema v26 (HQ → Stores: New store, PINs in HQ, one manager PIN; live 2026-11-15 about 9 PM ET, smoke_v26 30/30); app v0.34.1 / store cache v78 (a store with no `/exec`: its own storage keys, no `/exec` fallback; no change for the 10 stores; all 10 on 2026-11-15); app v0.34.0 / store cache v77 (Sheet retirement step 3: no phone reset, no Daily summary; all 10 stores 2026-11-15); schema v25 (the nightly close from midnight, not 3:30 AM: live 2026-11-15 about 2:45 PM ET, smoke_v25 11/11, probe 149/149); schema v24 (the backup watchdog and the via/par/stores drop: live 2026-11-12, smoke_v24 28/28, probe 149/149, below); app v0.33.0 / store cache v76 (Manage finished, live on all 10 stores 2026-11-11, 41 gates since v24); schema v23 (live 2026-11-11, see Sheet retirement step 2 below); v22 (live 2026-11-06), v21 (routes, live 2026-11-05, store cache v74). Every older version with its smoke and probe counts: `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
 - **New stores** follow `mog-add-store`: four steps, no Sheet (HQ → Stores → New store, then "Publish <slug>"), once schema v26 runs. PINs are set in HQ → Stores; the manager PIN is one code for every store.
 - **The three stores that moved empty:**
   - Rockville BOH (`tnyr`) and FOH (`tnyrf`): their KMs set them up themselves from the Overview checklist. Both import from the same Rockville MarginEdge file, each ticking only its own items; nothing stops an item landing in both.
@@ -23,6 +23,12 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
   - all 10 stores closed between 3:23 and 3:38 AM;
   - rpr and rprfo had orders, and their recaps went to their Supabase recipients;
   - the other stores had nothing ordered, so no email (by design).
+
+**2026-11-20: Sheet retirement finished** (`docs/MOG_SheetRetirement_Spec.md`, "Step 5", items 3 to 6).
+- **Checked first:** cycles 11-15 to 11-19 closed clean at all 10 stores and `leidtyson`, every recap that was due sent on the first try; the TEST trial (Step 4's item 2) done: `leidtyson` set up and counted by Grok Bot in a desktop browser, its first close logged 2 lines and sent the recap 1 of 1, a PIN changed in HQ signed in, the manager PIN opened manager mode.
+- **Archived (about 2:25 PM ET):** all 12 web-app deployments (the 10 stores', tnyt's older @81, the template's @72); every project lists only @HEAD and every old `/exec` address answers 404.
+- **Retired in the repo:** `deploy.py`'s store targets (relay only), `.clasp-targets.json`, `editor_link.py`, `provision_stores.sql`, `__MOG_API_URL__` and `stores.json`'s `deployment`; seven obsolete skills; CLAUDE.md's layers, invariants and maintainer rules 4 to 6. App v0.35.1 / cache v80 at every store (`95eac35`, `c020015`). 42 gates.
+- **Found in the trial:** on a computer, a vendor or item added in Manage shows on Today only after a reload (next, below).
 
 **2026-11-15 (evening): Sheet retirement step 5 decided; items 1 and 2 built** (`docs/MOG_SheetRetirement_Spec.md`, "Step 5").
 - **Decided (all four as proposed):** v27 refuses Apps Script's close and recap flag; a fixed `ns` per store; archive all 10 store deployments once the nights and the TEST trial are clean; rollback is fix forward plus the nightly backup.
@@ -88,11 +94,10 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 **Older pinned entries (2026-11-11 Manage finished, the nightly backup, and everything back to 2026-11-01):** `docs/archive/MOG_CurrentState_history_2026_11_12.md`.
 ### Next-session candidates
 
-0. **Get everything ready for the full move off the Sheets** (Sebastian, 2026-11-15; `docs/MOG_SheetRetirement_Spec.md`, "Order of work"):
-   - first, read the first all-Supabase night (cycle 11-15): a close per store in `mog.night_log`, `sheet_trigger_off_at` at all 10, recaps from `noreply@` with no duplicates;
-   - step 4: **live, v26 included** (above); left: the manager PIN set once in HQ, the TEST store trial (made in HQ, published, a phone sign-in and count, its close and recap, a PIN changed in HQ that works the next morning);
-   - step 5: decided, items 1 (v27) and 2 (app without `/exec`) **live**; left, once the nights and the TEST trial are clean: archive the 10 store deployments, `deploy.py`'s store targets, `__MOG_API_URL__` and `stores.json`'s `deployment`, the Sheets' remaining triggers, the obsolete skills (`mog-exec-repoint` and six more), CLAUDE.md's layers, invariants and rules 5 and 6;
-   - tell the KMs the Daily summary is gone (Sebastian's message; Claude drafts).
+0. **After the Sheet retirement (done 2026-11-20):**
+   - **The Today list after a Manage edit** (found in the TEST trial; Sebastian: fix it after step 5): on a computer, a vendor or item added in Manage shows on Today only after a reload, the tab hidden and shown again, or 5 minutes, because Today serves its cached list and a Manage save doesn't mark it stale. Fix: a Manage save drops that cache; app v0.35.2, canary rprfo.
+   - tell the KMs the Daily summary is gone (Sebastian's message; Claude drafts);
+   - see the app on a real phone once (the TEST trial and the v0.35 canaries ran in a desktop browser).
 1. **Finish lining up after later session 4** (Sebastian's steps, live; checked 11-02 evening):
    - rename Elpis to "Elpis Wholesale" in Manage → Vendors at Rosslyn FOH, Founders FOH, RP Tysons FOH and TnY Tysons FOH (Rockville BOH and FOH have it already);
    - undo "Horse Pho" in Rosslyn FOH (TEST)'s Manage → Changes (change 237); that also takes away the TEST store's "B&T".
@@ -120,9 +125,8 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
 
    **W2b (HEH's stock at Elpis) is live too** (schema v17, `42db1a9`); the TEST store's two Elpis deliveries (`supabase/tests/test_store_elpis.sql`) are still open. **W2c (HEH's stock at three places) is live** (schema v20, `8fda25e`): Sebastian's setup steps are in `docs/MOG_SessionHandoff_2026_11_04.md`, Outstanding 2. Before Happy Supply's real use: Dan's answer on pound ordering, and Dan invited. Happy Supply goes to the Roll Play stores with W2's first products. Then W3 (chargebacks).
 4. **Finish Donny's onboarding** ([docs/MOG_SessionHandoff_2026_10_29.md](MOG_SessionHandoff_2026_10_29.md), Outstanding 1-2):
-   - Sebastian's steps: GitHub collaborator on both repos, branch protection on `main`, the Supabase Developer invite, Editor on the 11 Sheets, PINs.
-   - Then Donny consents in each store and runs `python deploy.py --redeploy --target rprfo`.
-   - Record the result in `docs/MOG_ProjectNotes.md` and CLAUDE.md rule 5.
+   - Sebastian's steps: GitHub collaborator on both repos, branch protection on `main`, the Supabase Developer invite, PINs (no Sheet access needed since step 5).
+   - Then Donny runs ONBOARDING.md's setup prompt.
 5. **Confirm the 2026-10-20 fixes held:** each store's recap goes out once, and nothing new shows up in the nightly run's log (not checked since 10-20).
 6. **Check the phone's Contact sheet live** (checked by script only). The Items page's LTO banner, the Vendors rename and HQ's library tick boxes were used live on 11-02 and looked right. (The Overview's "Give each item a storage area and a par" step opens Items on Needs setup since 11-11.)
 7. **Logic findings held back on 2026-10-20** (edge cases; decide before fixing):
@@ -135,31 +139,22 @@ If this doc and `CLAUDE.md` conflict on a fact, `CLAUDE.md` wins for structure a
      - the R10 pseudocode leaves out the per-vendor pick;
      - R27's wording;
      - R16's evidence.
-   - `audit_modals.py` (the `mog-modal-ux-sweep` skill) still looks for `google.script.host.close()`, so it flags Manage Items and Vendors, whose Close moved into EditorShell in July.
 8. **Redundancy items held back on 2026-10-20:**
    - `VENDOR_META` is empty, but the equivalence gate compiles an older revision against the same constant list.
    - The nightly recipients copy is a no-op on all 10 stores; the `recipients_people` gate is built around it.
-   - The old `/exec` editor still serves its pages for moved stores; it should send them to the app.
    - The Sheet Health Check's catalog rows still run, and three of its fixes can write to frozen Sheets.
    - Admin Reset can wipe a moved store's LOG_ORDERS backup.
    - `host.js`'s standalone rail and Changes panel only show off-app, on a narrow non-phone screen.
    - The v1 Supabase fallback (`mog_snapshot` / `mog_save_counts`) can go once old app versions are gone.
    - `template/sw.js` `FORCE_CLIENT_RELOAD`: never change `FORCE_RELOAD_ID`.
-   - Stale repo skills: `mog-apps-script-caching`, `mog-rpc-consolidation`, `mog-editor-web-reskin`, `mog-sheet-formula-verify`, `mog-health-check-extend`.
 9. **Small open items:**
    - **RP Tysons BOH's recap bounces for one recipient:** `rollplaytyson@hehfood.com` is "Address not found" (Gmail's bounce on 11-12 and 11-14, each night rpt ordered). Fix or remove it in rpt's Manage → Recipients.
    - Confirm this repo's origin in the desktop app (Help → Troubleshooting → Review Pinned Git Origins), so worktree sessions can merge `main` when it changed a skill.
    - No GitHub CLI on Sebastian's computer: pull requests are opened by hand and the app can't watch their CI (optional: install `gh`, then `gh auth login`).
-   - `mog-deploy-workflow`'s HTML-modal row still says modals run in Rhino ES5 (CLAUDE.md invariant #4 says otherwise).
    - GitHub Actions warns that `checkout@v4`, `setup-node@v4` and `setup-python@v5` target the deprecated Node 20, and that `ubuntu-latest` moves to Ubuntu 26. Bump the actions when newer majors exist, and watch the first run on Ubuntu 26.
-   - Clear Config doesn't clear the four Supabase keys (`Admin.gs`; walk through first).
-   - `supabase_move`'s `provisionProblems` counts a commented-out SQL row.
    - Lei'd has no circular logo.
-   - On the first real onboarding, record whether a copied Sheet keeps its Script Properties.
 10. **Later:**
    - keep visited Manage pages alive;
-   - send the recap email from Supabase;
-   - retire the last `/exec` uses (Daily summary button, reset fallback);
    - the MarginEdge API for pack sizes.
 
 > **Dropped (do not re-add):**
@@ -238,6 +233,7 @@ Most recent first. Keep about five; older rows move to the archive.
 
 | Date | Session | Outcome |
 |---|---|---|
+| 2026-11-19 → 11-20 | Sheet retirement finished (step 5, items 3 to 6) | Nights 11-15 to 11-19 clean at every store; the TEST trial on `leidtyson` done (Grok Bot in a desktop browser; its first close 2 lines, recap 1 of 1; a PIN changed in HQ; manager mode). All 12 web-app deployments archived (10 stores, tnyt's older one, the template's), every old `/exec` 404. `deploy.py` relay only; `.clasp-targets.json`, `editor_link.py`, `provision_stores.sql`, `__MOG_API_URL__` and `stores.json`'s `deployment` gone (keys frozen in `LEGACY_NS`, gate `store_ns`); seven skills removed, `route.py` lists every action; CLAUDE.md layers, invariants, rules 4 to 6. App v0.35.1 / cache v80 (`95eac35` canary, `c020015`). 42 gates. Found: the Today list after a Manage edit. |
 | 2026-11-15 → 11-16 | Step 5 decided and items 1 and 2 live; v26 live; the first store made in HQ | Step 5's four decisions, all as proposed. Schema v27 live (`ea6d4d6`: Apps Script's close and recap flag refused while `close_direct` is on; smoke_v27 14/14). `ns` in `stores.json` (`4008355`, gate `store_ns`). App v0.35.0 / cache v79 with no `/exec` (`67232ca` canary, `f0c7882` fan-out; a drain before sign-in no longer sends an empty PIN). Schema v26 pasted by Grok Bot, smoke_v26 30/30, probe 160/160. The first all-Supabase night was clean. Manager PIN set in HQ; `leidtyson` (TEST) made in HQ and published (`fd8b786`); its trial has only a sign-in. Blueprint R14, R15a, R15b. 43 gates. Detail: `docs/MOG_SessionHandoff_2026_11_16.md`. |
 | 2026-11-15 (later) | Step 4 built (HQ Stores), step 5 researched | Walkthrough and mockups approved with two changes (one manager PIN for every store, locked; the New store form in the concept's colours). Schema v26 (`mog_hq_stores`, `mog.manager_pin` and its lock trigger, `PINS_IN_HQ`), PGlite 30/30, 11 plants caught; **not run**: the connector hung on `delete` in function bodies, so it goes in through the SQL Editor. HQ → Stores and New store live (`efcaf52`); app v0.34.1 / cache v78 at all 10 stores (`7535744`); `build.py` takes a store with no `/exec` and test stores; `mog-add-store` four steps; gate `hq_stores` (42 gates). Step 5's checklist in the spec (old Apps Script close paths still open; the storage namespace is the deployment id). Detail: the "Later session" block of `docs/MOG_SessionHandoff_2026_11_15.md`. |
 | 2026-11-15 | Sheet retirement steps 2 and 3 live | Backups daily and shadows matched (cycles 11-11 to 11-13); Apps Script to the other 10 targets; `close_direct` on at all 10 stores (`91c562e`, `9891870`). Schema v25: the close from midnight (`ec8c9ea`, smoke_v25 11/11 rolling itself back, probe 149/149). App v0.34.0 / cache v77: no phone reset, no Daily summary (`220d3d2` canary, `aeb165d` fan-out), KM brief and Blueprint rewritten (`3e3c743`). Cutovers no longer ask first. First all-Supabase night 11-15 → 11-16, checked 7:41 AM. Detail: `docs/MOG_SessionHandoff_2026_11_15.md`. |
