@@ -33,8 +33,14 @@ for (const g of gates) {
   const out = (r.stdout || '') + (r.stderr || '');
   const last = out.trim().split('\n').pop();
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
-  if (r.status === 0) {
+  // Exit 0 alone isn't a pass: a gate whose async main awaits a promise that
+  // never settles stops with no output and exit 0 (found writing
+  // manage_today, 2026-11-20). Every gate ends with "<name>: ALL PASS".
+  if (r.status === 0 && /: ALL PASS/.test(last)) {
     console.log(`PASS  ${g} (${secs}s): ${last}`);
+  } else if (r.status === 0) {
+    failed++;
+    console.log(`FAIL  ${g} (${secs}s): exited 0 without its "ALL PASS" line, so it stopped early (last line: ${JSON.stringify(last.slice(0, 120))})`);
   } else {
     failed++;
     console.log(`FAIL  ${g} (${secs}s, exit ${r.status}):`);

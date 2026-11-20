@@ -2242,6 +2242,8 @@
     historyVendorsContext: null, // { date } — set when drilling from dates → vendors
     historyDetailContext: null, // { vendor, date }
     countContext: null, // { vendor, items, dirty: { itemId: value } }
+    // True once a Manage page opens; the next Today load fetches fresh (afterManage_).
+    manageVisited: false,
     cache: {
       dashboard: null,
       // Order History is loaded in two cheap chunks (dates, then vendors-per-date).
@@ -4731,8 +4733,22 @@
   // shorter and wrong: this is a fresh server payload, and the fast path
   // deliberately skips that reconciliation on the grounds that a cache hit was
   // already reconciled when it was first populated.
+  // A Manage page may have changed what Today and the count screens show (a
+  // vendor, an item, a par, an area; found in the TEST store trial,
+  // 2026-11-19: a new vendor stayed off Today until a reload). So the first
+  // Today load after one fetches the list again and drops the vendors'
+  // cached items, which the prefetch then reloads. The Overview's "Today's
+  // order" card keeps reading the old list until then (MOG_SHELL.today).
+  function afterManage_() {
+    if (!state.manageVisited) return false;
+    state.manageVisited = false;
+    state.cache.vendorItems = {};
+    return true;
+  }
+
   async function loadToday(preloaded) {
     const view = $('view-today');
+    const afterManage = afterManage_();
     // Fast path: if we have a dashboard cache, render it immediately and
     // skip the network round-trip. The cache is invalidated whenever the
     // user takes an action that changes server state — saving counts
@@ -4743,7 +4759,7 @@
     // The self-heal / GC pass below only needs to run on a fresh fetch;
     // on a cache hit, those localStorage states are already reconciled
     // from when the cache was first populated.
-    if (!preloaded && state.cache.dashboard) {
+    if (!preloaded && state.cache.dashboard && !afterManage) {
       renderToday(state.cache.dashboard);
       // Re-kick the prefetch in case the cache was filled by a prior
       // session and the prefetch never ran (or the user refreshed
@@ -8024,6 +8040,7 @@
       else frame.setAttribute('src', src);
     }
     state.managePage = page;
+    state.manageVisited = true;
     stopCutoffTick_();
     state.currentTab = 'manage';
     document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
@@ -8084,7 +8101,7 @@
   function renderSettings() {
     const view = $('view-settings');
     const initials = (state.location || 'L').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase();
-    const versionStr = '0.35.1';
+    const versionStr = '0.35.2';
     const langLabel = state.lang === 'en' ? 'English' : 'Español';
 
     view.innerHTML =
